@@ -1,0 +1,14 @@
+FROM node:22-alpine
+
+RUN corepack enable
+
+WORKDIR /app/web
+
+COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
+COPY web/packages/shared/package.json ./packages/shared/
+COPY web/apps/console/package.json ./apps/console/
+COPY web/apps/portal/package.json ./apps/portal/
+
+RUN pnpm install --frozen-lockfile
+
+COPY web/ .

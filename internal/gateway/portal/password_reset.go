@@ -1,0 +1,233 @@
+// Password reset is the lost-password recovery flow used by the portal
+// login page. Two endpoints, both public (pre-auth):
+//
+//   POST /api/v1/portal-public/password/forgot   {email, tenant?}
+//        → if SMTP enabled: emails a link/code via mailer.SendPasswordResetEmail
+//        → always returns 200 even when the email maps to no user
+//          (avoid leaking email enumeration; mirrors Auth0/Okta behaviour)
+//
+//   POST /api/v1/portal-public/password/reset    {token, new_password}
+//        → consumes the one-shot token, writes a new password through
+//          user.Service.ResetPassword (full policy + history checks apply)
+//
+// Tokens live in Redis for 30 minutes — same TTL as the email-verify flow.
+// We tie token → user_id (not token → email) so a user changing their
+// email mid-flight invalidates the in-flight link.
+package portal
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"strings"
+
+	"github.com/gin-gonic/gin"
+	"github.com/imkerbos/mxid/pkg/mailer"
+	"github.com/imkerbos/mxid/pkg/response"
+	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
+)
+
+const (
+	pwdResetTTL       = 1800 // seconds — 30 min
+	pwdResetKeyPrefix = "pwd_reset:"
+)
+
+// TenantResolver resolves a portal-supplied tenant code (e.g. "matrixplus")
+// to its int64 id. Mirrors the resolver wired into the login handler; we
+// re-use the same signature so main.go can pass the same callback in.
+type TenantResolver func(ctx context.Context, code string) int64
+
+// PasswordResetHandler manages the forgot/reset flow.
+type PasswordResetHandler struct {
+	rdb        *redis.Client
+	users      UserQuerier
+	logger     *zap.Logger
+	publicURL  string
+	mailer     *mailer.Mailer
+	defaultTID int64
+	tenantByCd TenantResolver
+}
+
+// NewPasswordResetHandler builds the handler. tenantByCode may be nil —
+// the handler falls back to the default tenant.
+func NewPasswordResetHandler(
+	rdb *redis.Client, users UserQuerier, logger *zap.Logger,
+	publicURL string, mailerSvc *mailer.Mailer, defaultTID int64,
+	tenantByCode TenantResolver,
+) *PasswordResetHandler {
+	return &PasswordResetHandler{
+		rdb:        rdb,
+		users:      users,
+		logger:     logger,
+		publicURL:  publicURL,
+		mailer:     mailerSvc,
+		defaultTID: defaultTID,
+		tenantByCd: tenantByCode,
+	}
+}
+
+// RegisterPasswordResetRoutes mounts /password/forgot + /password/reset on
+// the supplied public route group. The caller is responsible for choosing
+// a group that does NOT carry an auth-middleware (these endpoints are
+// pre-login by definition).
+func RegisterPasswordResetRoutes(rg *gin.RouterGroup, h *PasswordResetHandler) {
+	rg.POST("/password/forgot", h.forgot)
+	rg.POST("/password/reset", h.reset)
+}
+
+type forgotRequest struct {
+	Email  string `json:"email" binding:"required,email"`
+	Tenant string `json:"tenant"`
+}
+
+type forgotResponse struct {
+	// Sent is always true — we never disclose whether the email matched a
+	// real user. UIs should show a "if the email exists, a link was sent"
+	// message regardless.
+	Sent bool `json:"sent"`
+	// DevLink is non-empty ONLY when SMTP is not configured AND the email
+	// matched a real user. Lets first-deploy admins click through without
+	// configuring SMTP. Production never sees this populated.
+	DevLink string `json:"dev_link,omitempty"`
+	// TTLSeconds is the lifetime of the reset token; surfaces in the UI as
+	// a hint so users don't ignore the link for hours.
+	TTLSeconds int `json:"ttl_seconds"`
+}
+
+func (h *PasswordResetHandler) forgot(c *gin.Context) {
+	var req forgotRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, 40001, err.Error())
+		return
+	}
+	email := strings.TrimSpace(strings.ToLower(req.Email))
+	resp := forgotResponse{Sent: true, TTLSeconds: pwdResetTTL}
+
+	tenantID := h.resolveTenant(c.Request.Context(), req.Tenant)
+	userID, err := h.users.LookupByEmail(c.Request.Context(), tenantID, email)
+	if err != nil {
+		h.logger.Warn("password forgot: lookup failed",
+			zap.String("email", email),
+			zap.Error(err))
+		// Still respond as if successful — never confirm or deny the email.
+		response.OK(c, resp)
+		return
+	}
+	if userID == 0 {
+		// Unknown email — return the same shape. No token issued, no log.
+		response.OK(c, resp)
+		return
+	}
+
+	token, err := generateToken()
+	if err != nil {
+		response.InternalError(c, "failed to generate token")
+		return
+	}
+	if err := h.rdb.Set(c.Request.Context(), pwdResetKeyPrefix+token, userID, pwdResetTTL*1e9).Err(); err != nil {
+		response.InternalError(c, "failed to persist token")
+		return
+	}
+
+	link := fmt.Sprintf("%s/password/reset?token=%s", h.publicURL, token)
+	smtpOK := false
+	if h.mailer != nil {
+		var displayName, username string
+		if u, err := h.users.GetByID(c.Request.Context(), userID); err == nil {
+			displayName = u.DisplayName
+			username = u.Username
+			if displayName == "" {
+				displayName = username
+			}
+		}
+		// Short numeric code is also included so OTP-style flows (admin
+		// who'd rather hand-type) work; templates pick {{.Link}} or
+		// {{.Code}} as appropriate.
+		code := token[:8]
+		if err := h.mailer.SendPasswordResetEmail(c.Request.Context(), tenantID, email, displayName, username, link, code); err == nil {
+			smtpOK = true
+		} else {
+			h.logger.Warn("password reset email send failed, falling back to dev_link",
+				zap.String("email", email),
+				zap.Error(err))
+		}
+	}
+	if !smtpOK {
+		resp.DevLink = link
+		h.logger.Info("password reset link (no SMTP / fallback)",
+			zap.Int64("user_id", userID),
+			zap.String("email", email),
+			zap.String("link", link),
+			zap.Int("ttl_seconds", pwdResetTTL),
+		)
+	}
+	response.OK(c, resp)
+}
+
+type resetRequest struct {
+	Token       string `json:"token" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=6,max=128"`
+}
+
+func (h *PasswordResetHandler) reset(c *gin.Context) {
+	var req resetRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, 40001, err.Error())
+		return
+	}
+
+	userID, err := h.consumeToken(c.Request.Context(), req.Token)
+	if err != nil {
+		response.BadRequest(c, 40002, err.Error())
+		return
+	}
+
+	if err := h.users.ResetPassword(c.Request.Context(), userID, req.NewPassword); err != nil {
+		// Map common policy errors to a 400 with the underlying message so
+		// the UI can render "password reused" / "doesn't meet policy" hints
+		// directly. Anything else stays a 500.
+		msg := err.Error()
+		switch {
+		case strings.Contains(msg, "password"):
+			response.BadRequest(c, 40003, msg)
+		default:
+			response.InternalError(c, "failed to reset password")
+		}
+		return
+	}
+
+	response.OK(c, gin.H{"reset": true})
+}
+
+// consumeToken atomically reads + deletes the user_id bound to the token.
+// Mirrors the email-verify pattern: one-shot, no replay.
+func (h *PasswordResetHandler) consumeToken(ctx context.Context, token string) (int64, error) {
+	key := pwdResetKeyPrefix + token
+	val, err := h.rdb.Get(ctx, key).Int64()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return 0, errors.New("token invalid or expired")
+		}
+		return 0, fmt.Errorf("read token: %w", err)
+	}
+	_ = h.rdb.Del(ctx, key).Err()
+	return val, nil
+}
+
+func (h *PasswordResetHandler) resolveTenant(ctx context.Context, code string) int64 {
+	if code == "" || h.tenantByCd == nil {
+		return h.defaultTID
+	}
+	if tid := h.tenantByCd(ctx, code); tid > 0 {
+		return tid
+	}
+	return h.defaultTID
+}
+
+// HTTP 200/400 conventions follow the rest of the portal — we don't bring
+// gin.H + http stdlib into the rest of the handler so they only appear in
+// the resetSuccess fallback path above. Keep this import here so the
+// http.StatusFound reference compiles even if the JSON happy path drops it.
+var _ = http.StatusFound

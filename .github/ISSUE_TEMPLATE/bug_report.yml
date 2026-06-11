@@ -1,0 +1,93 @@
+name: Bug report
+description: Report a defect — wrong protocol behavior, crash, UI break, etc.
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please fill out the relevant sections — vague reports take much longer to fix than reproducible ones.
+
+        **Security vulnerabilities**: do NOT file here. See [SECURITY.md](../../SECURITY.md).
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One sentence describing the bug.
+      placeholder: CAS p3/serviceValidate returns INVALID_TICKET when service URL contains a trailing slash.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal repro. Include the exact HTTP requests where relevant.
+      placeholder: |
+        1. Create CAS app with code `jumpserver`, subject_strategy=username.
+        2. Configure JumpServer …
+        3. Click "CAS Login" …
+        4. Observe: …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: "p3/serviceValidate returns <cas:authenticationSuccess>"
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      placeholder: "Returns INVALID_TICKET / 500 / unexpected redirect"
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: MXID version / commit
+      placeholder: v0.1.0 or commit SHA
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deploy
+    attributes:
+      label: Deployment
+      options:
+        - Docker compose (dev — make dev-docker-up)
+        - Docker compose (prod example)
+        - Local binary (make dev)
+        - Custom
+    validations:
+      required: true
+
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      placeholder: |
+        - OS: macOS 14.5 / Ubuntu 22.04 / …
+        - PostgreSQL: 15.5
+        - Redis: 7.2
+        - Browser: Chrome 130 / Safari 17
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Backend stderr + browser console + network response body. Redact secrets.
+      render: text
+
+  - type: checkboxes
+    id: pre
+    attributes:
+      label: Pre-flight
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: I am running a recent main / released build.
+          required: true

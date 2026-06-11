@@ -1,0 +1,45 @@
+name: Feature request
+description: Suggest a new capability — protocol, integration, UI affordance.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can't you do today?
+      placeholder: We can't auto-map JumpServer system_roles from CAS attributes.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      placeholder: Add a `role_mapping` field to CAS protocol_config keyed by attribute value.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - Backend protocol (OIDC / SAML / CAS / JWT)
+        - Backend identity / setting / auth
+        - Console UI
+        - Portal UI
+        - Deployment / infra
+        - Documentation
+    validations:
+      required: true
+
+  - type: input
+    id: reference
+    attributes:
+      label: Reference
+      description: Spec link, similar IAM behavior (Okta, Keycloak, Auth0…), etc.

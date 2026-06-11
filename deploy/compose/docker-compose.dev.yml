@@ -1,0 +1,113 @@
+# Compose project name = mxid-dev. Overrides the default "compose" (parent
+# directory name) so logs/containers are grouped by env. For prod copy this
+# file and use `name: mxid-prod`.
+#
+# Single user-facing entrypoint: nginx at host port 3500. It fronts three
+# internal services (Go backend, console vite, portal vite) so dev URLs
+# match the Keycloak-style routing the prod deployment uses:
+#
+#   http://<host>:3500/         → portal SPA
+#   http://<host>:3500/admin/   → console SPA
+#   http://<host>:3500/api/...  → backend
+#   http://<host>:3500/protocol → backend (OIDC/SAML/CAS)
+#
+# Internal ports (5173 console, 5174 portal, 10050 backend) stay on the
+# docker network. Backend keeps its host-port mapping for direct curl
+# debugging — remove the `ports:` line if you want it fully internal.
+name: mxid-dev
+
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: mxid-nginx
+    ports:
+      - "3500:80"
+    volumes:
+      - ../nginx/dev.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - mxid
+      - console-vite
+      - portal-vite
+    restart: unless-stopped
+
+  mxid:
+    image: golang:1.25-alpine
+    container_name: mxid-dev
+    working_dir: /app
+    command: >
+      sh -c "which air >/dev/null 2>&1 || go install github.com/air-verse/air@v1.61.7 && air -c .air.toml"
+    # Backend port kept exposed for direct curl debugging during dev. Remove
+    # this `ports:` block if you want everything strictly behind nginx.
+    ports:
+      - "10050:10050"
+    volumes:
+      - ../..:/app
+      - mxid-go-cache:/go
+      - mxid-go-build:/root/.cache/go-build
+    environment:
+      # Pinned explicitly so volume mounts below stay correct even if the base
+      # image flips its defaults. golang:*-alpine ships GOPATH=/go, GOCACHE
+      # under $HOME — write them out to avoid silent cache-miss regressions.
+      - GOPATH=/go
+      - GOMODCACHE=/go/pkg/mod
+      - GOCACHE=/root/.cache/go-build
+      - MXID_SERVER_PORT=10050
+      - MXID_SERVER_MODE=debug
+      - MXID_DATABASE_HOST=host.docker.internal
+      - MXID_DATABASE_PORT=${POSTGRES_PORT:-5432}
+      - MXID_DATABASE_NAME=${POSTGRES_DB:-mxid}
+      - MXID_DATABASE_USER=${POSTGRES_USER:-postgres}
+      - MXID_DATABASE_PASSWORD=${POSTGRES_PASSWORD:-12345}
+      - MXID_REDIS_HOST=host.docker.internal
+      - MXID_REDIS_PORT=${REDIS_PORT:-6379}
+      - MXID_REDIS_PASSWORD=${REDIS_PASSWORD:-123456}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:10050/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+
+  console-vite:
+    image: node:22-alpine
+    container_name: mxid-console-vite
+    working_dir: /app/web
+    environment:
+      - CI=true
+    command: >
+      sh -c "corepack enable && pnpm install --prefer-offline --frozen-lockfile && pnpm dev:console"
+    expose:
+      - "5173"
+    volumes:
+      - ../..:/app
+      - mxid-pnpm-store:/root/.local/share/pnpm/store
+    depends_on:
+      mxid:
+        condition: service_healthy
+    restart: unless-stopped
+
+  portal-vite:
+    image: node:22-alpine
+    container_name: mxid-portal-vite
+    working_dir: /app/web
+    environment:
+      - CI=true
+    command: >
+      sh -c "corepack enable && pnpm install --prefer-offline --frozen-lockfile && pnpm dev:portal"
+    expose:
+      - "5174"
+    volumes:
+      - ../..:/app
+      - mxid-pnpm-store:/root/.local/share/pnpm/store
+    depends_on:
+      mxid:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  mxid-go-cache:
+  mxid-go-build:
+  mxid-pnpm-store:

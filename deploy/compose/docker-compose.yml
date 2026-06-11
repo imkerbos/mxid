@@ -1,0 +1,34 @@
+# Compose project name = mxid-prod for env isolation.
+name: mxid-prod
+
+services:
+  mxid:
+    build:
+      context: ../..
+      dockerfile: deploy/dockerfile/Dockerfile
+    container_name: mxid
+    ports:
+      - "10050:8080"
+    environment:
+      - MXID_SERVER_PORT=8080
+      - MXID_SERVER_MODE=release
+      - MXID_DATABASE_HOST=host.docker.internal
+      - MXID_DATABASE_PORT=${POSTGRES_PORT:-5432}
+      - MXID_DATABASE_NAME=${POSTGRES_DB:-mxid}
+      - MXID_DATABASE_USER=${POSTGRES_USER:-postgres}
+      # Secrets: no dev fallback. Compose aborts if unset so prod can never
+      # silently boot on the public example credentials.
+      - MXID_DATABASE_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
+      - MXID_REDIS_HOST=host.docker.internal
+      - MXID_REDIS_PORT=${REDIS_PORT:-6379}
+      - MXID_REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD required}
+      - MXID_CRYPTO_KEY_ENCRYPTION_KEY=${MXID_CRYPTO_KEY_ENCRYPTION_KEY:?run openssl rand -base64 32}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
