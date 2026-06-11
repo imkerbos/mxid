@@ -1,0 +1,1766 @@
+import { useEffect, useState, useCallback } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Plus, AppWindow, Loader2, Copy, X, Settings, Eye, EyeOff, LayoutGrid } from 'lucide-react'
+import { appApi, protocolLabel, statusLabel, statusColor, cn, AppIcon, useTranslation } from '@mxid/shared'
+import type { App, PaginatedData } from '@mxid/shared'
+import PageHeader from '../../components/layout/PageHeader'
+import AppGroupsTab from './AppGroupsTab'
+import { useTabParam } from '../../hooks/useTabParam'
+import { CodeField } from '../../components/ui'
+import { IconPicker } from '../../components/icon-picker/IconPicker'
+import { toast, extractMessage } from '../../components/ui/toast'
+import AccessPolicyTab from './AccessPolicyTab'
+import AppRolesTab from './AppRolesTab'
+
+const APPS_VIEW_VALUES = ['apps', 'groups'] as const
+const DETAIL_TAB_VALUES = ['basic', 'protocol', 'credentials', 'access', 'roles'] as const
+
+const protocolColors: Record<string, string> = {
+  oidc: 'bg-blue-100 text-blue-700',
+  saml: 'bg-purple-100 text-purple-700',
+  cas: 'bg-teal-100 text-teal-700',
+  jwt: 'bg-amber-100 text-amber-700',
+  form: 'bg-gray-100 text-gray-700',
+}
+
+// ---------------------------------------------------------------------------
+// Protocol config field definitions
+// ---------------------------------------------------------------------------
+
+// coerce: how to convert the form's string value when sending it into
+// protocol_config JSON, and how to flatten it back into a string when
+// loading from the backend. Default ("string") keeps everything as-is.
+type Coerce = 'string' | 'int' | 'bool' | 'string_array_csv' | 'json'
+
+interface SelectOption {
+  value: string
+  label: string
+}
+
+interface ConfigField {
+  key: string
+  label: string
+  type: 'text' | 'textarea' | 'select'
+  placeholder?: string
+  coerce?: Coerce
+  // For `select` fields. The first option is used when the form value is empty.
+  options?: SelectOption[]
+  // Optional one-line hint rendered below the input. Use to explain
+  // non-obvious fields (e.g. NameID format trade-offs) without forcing
+  // operators to read docs.
+  hint?: string
+}
+
+// encodeFieldValue turns a form string into the value the backend expects.
+// Empty inputs return undefined so the caller can drop the key from the
+// payload — leaves the backend default in place.
+function encodeFieldValue(raw: string, coerce: Coerce | undefined): unknown {
+  if (raw === '' || raw === undefined) return undefined
+  switch (coerce) {
+    case 'int':
+      return Number.parseInt(raw, 10)
+    case 'bool':
+      return raw.toLowerCase() === 'true'
+    case 'string_array_csv':
+      return raw.split(',').map((s) => s.trim()).filter(Boolean)
+    case 'json':
+      try {
+        return JSON.parse(raw)
+      } catch {
+        // Surface as-is so the backend returns a clearer error than
+        // silently dropping the field.
+        throw new Error(`Invalid JSON: ${raw}`)
+      }
+    default:
+      return raw
+  }
+}
+
+// decodeFieldValue flattens a backend value back into the text the form
+// renders. Mirrors encodeFieldValue exactly.
+function decodeFieldValue(v: unknown, coerce: Coerce | undefined): string {
+  if (v === null || v === undefined) return ''
+  switch (coerce) {
+    case 'string_array_csv':
+      return Array.isArray(v) ? v.join(',') : String(v)
+    case 'json':
+      return typeof v === 'string' ? v : JSON.stringify(v)
+    case 'bool':
+      return v === true ? 'true' : 'false'
+    default:
+      return typeof v === 'string' ? v : String(v)
+  }
+}
+
+const protocolConfigFields: Record<string, ConfigField[]> = {
+  oidc: [
+    // Fields below populate the protocol_config JSONB blob that the OIDC IdP
+    // reads when handling /authorize and /token for THIS app. They do NOT
+    // describe a remote OIDC provider — MXID is the provider.
+    { key: 'scopes', label: 'Scopes', type: 'text', placeholder: 'openid profile email phone groups' },
+    { key: 'grant_types', label: 'Grant Types', type: 'text', placeholder: 'authorization_code refresh_token' },
+    { key: 'response_types', label: 'Response Types', type: 'text', placeholder: 'code' },
+    { key: 'token_endpoint_auth_method', label: 'Token Endpoint Auth Method', type: 'text', placeholder: 'client_secret_basic | client_secret_post | none' },
+    { key: 'pkce_required', label: 'PKCE Required (true/false)', type: 'text', placeholder: 'false (true for SPA / native)' },
+    { key: 'access_token_lifetime', label: 'Access Token Lifetime (sec)', type: 'text', placeholder: '3600' },
+    { key: 'id_token_lifetime', label: 'ID Token Lifetime (sec)', type: 'text', placeholder: '3600' },
+    { key: 'refresh_token_lifetime', label: 'Refresh Token Lifetime (sec)', type: 'text', placeholder: '2592000' },
+    { key: 'id_token_signing_alg', label: 'ID Token Signing Alg', type: 'text', placeholder: 'RS256' },
+    { key: 'subject_type', label: 'Subject Type', type: 'text', placeholder: 'public' },
+  ],
+  saml: [
+    // Field keys match internal/protocol/saml/config.go SAMLConfig json tags
+    // one-to-one. Don't rename without updating the backend struct.
+    {
+      key: 'sp_entity_id',
+      label: 'SP Entity ID',
+      type: 'text',
+      placeholder: 'https://app.example.com/saml/metadata',
+      hint: 'EntityID declared in the SP metadata. Required.',
+    },
+    {
+      key: 'acs_url',
+      label: 'ACS URL (Assertion Consumer Service)',
+      type: 'text',
+      placeholder: 'https://app.example.com/saml/acs',
+      hint: 'Where the IdP POSTs the signed SAML Response. Required.',
+    },
+    {
+      key: 'slo_url',
+      label: 'SLO URL (Single Logout)',
+      type: 'text',
+      placeholder: 'https://app.example.com/saml/sls',
+      hint: 'Optional. SP endpoint that receives LogoutRequest / LogoutResponse.',
+    },
+    {
+      key: 'name_id_format',
+      label: 'NameID Format',
+      type: 'select',
+      options: [
+        { value: 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress', label: 'emailAddress (use user email)' },
+        { value: 'urn:oasis:names:tc:SAML:2.0:nameid-format:persistent', label: 'persistent (stable opaque ID)' },
+        { value: 'urn:oasis:names:tc:SAML:2.0:nameid-format:unspecified', label: 'unspecified (use username)' },
+        { value: 'urn:oasis:names:tc:SAML:2.0:nameid-format:transient', label: 'transient (one-shot session ID)' },
+      ],
+      hint: 'How the IdP identifies the subject in the assertion. Match the SP’s expectation.',
+    },
+    {
+      key: 'sp_cert',
+      label: 'SP Certificate (PEM)',
+      type: 'textarea',
+      placeholder: '-----BEGIN CERTIFICATE-----',
+      hint: 'Optional. Required if SP signs AuthnRequest, or if you enable assertion encryption.',
+    },
+    {
+      key: 'sign_assertions',
+      label: 'Sign Assertions',
+      type: 'select',
+      coerce: 'bool',
+      options: [
+        { value: 'true', label: 'Yes (recommended)' },
+        { value: 'false', label: 'No' },
+      ],
+      hint: 'Sign each <Assertion> element. Default: yes.',
+    },
+    {
+      key: 'sign_response',
+      label: 'Sign Response',
+      type: 'select',
+      coerce: 'bool',
+      options: [
+        { value: 'true', label: 'Yes (recommended)' },
+        { value: 'false', label: 'No' },
+      ],
+      hint: 'Sign the whole <Response> envelope. Default: yes.',
+    },
+    {
+      key: 'encrypt_assertion',
+      label: 'Encrypt Assertion',
+      type: 'select',
+      coerce: 'bool',
+      options: [
+        { value: 'false', label: 'No (default)' },
+        { value: 'true', label: 'Yes (requires SP cert)' },
+      ],
+      hint: 'XML-encrypt the <Assertion> with the SP certificate.',
+    },
+    {
+      key: 'attribute_mapping',
+      label: 'Attribute Mapping (JSON)',
+      type: 'textarea',
+      coerce: 'json',
+      placeholder: '{"username":"uid","email":"mail","display_name":"displayName","phone":"telephoneNumber"}',
+      hint: 'User profile field → SAML attribute name. Empty = built-in defaults.',
+    },
+    {
+      key: 'session_ttl',
+      label: 'Session TTL (seconds)',
+      type: 'text',
+      coerce: 'int',
+      placeholder: '28800',
+      hint: 'SessionNotOnOrAfter window in the SAML assertion. Default: 28800 (8h).',
+    },
+  ],
+  cas: [
+    { key: 'service_urls', label: 'Service URL Allow-list (CSV)', type: 'text', placeholder: 'http://app.example.com/cas/callback,https://other.example.com/', coerce: 'string_array_csv' },
+    { key: 'ticket_ttl', label: 'Ticket TTL (sec)', type: 'text', placeholder: '30', coerce: 'int' },
+    { key: 'attribute_mapping', label: 'Attribute Mapping (JSON)', type: 'textarea', placeholder: '{"username":"uid","email":"mail","display_name":"displayName","phone":"telephoneNumber"}', coerce: 'json' },
+    { key: 'renew_enabled', label: 'Force Re-authentication', type: 'text', placeholder: 'false', coerce: 'bool' },
+  ],
+  jwt: [
+    { key: 'secret', label: 'Secret', type: 'text', placeholder: 'your-jwt-secret' },
+    { key: 'algorithm', label: 'Algorithm', type: 'text', placeholder: 'HS256' },
+    { key: 'expiry', label: 'Expiry (seconds)', type: 'text', placeholder: '3600' },
+  ],
+  form: [
+    { key: 'login_url', label: 'Login URL', type: 'text', placeholder: 'https://app.example.com/login' },
+    { key: 'username_field', label: 'Username Field', type: 'text', placeholder: 'username' },
+    { key: 'password_field', label: 'Password Field', type: 'text', placeholder: 'password' },
+  ],
+}
+
+// ---------------------------------------------------------------------------
+// Clipboard helper
+// ---------------------------------------------------------------------------
+
+function copyToClipboard(text: string) {
+  navigator.clipboard.writeText(text).catch(() => {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    document.execCommand('copy')
+    document.body.removeChild(ta)
+  })
+}
+
+// ---------------------------------------------------------------------------
+// CopyField component
+// ---------------------------------------------------------------------------
+
+function CopyField({ label, value }: { label: string; value: string }) {
+  const { t } = useTranslation()
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = () => {
+    copyToClipboard(value)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  return (
+    <div>
+      <label className="mb-1 block text-sm font-medium text-gray-700">{label}</label>
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={value}
+          readOnly
+          className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 outline-none"
+        />
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-50"
+        >
+          <Copy className="h-3.5 w-3.5" />
+          {copied ? t('common.copied') : t('common.copy')}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// SecretField component (with show/hide toggle)
+// ---------------------------------------------------------------------------
+
+function SecretField({ label, value }: { label: string; value: string }) {
+  const { t } = useTranslation()
+  const [visible, setVisible] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = () => {
+    copyToClipboard(value)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  return (
+    <div>
+      <label className="mb-1 block text-sm font-medium text-gray-700">{label}</label>
+      <div className="flex items-center gap-2">
+        <input
+          type={visible ? 'text' : 'password'}
+          value={value}
+          readOnly
+          className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 outline-none"
+        />
+        <button
+          type="button"
+          onClick={() => setVisible((v) => !v)}
+          className="inline-flex items-center rounded-lg border border-gray-200 px-2.5 py-2 text-gray-500 transition-colors hover:bg-gray-50"
+        >
+          {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        </button>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-50"
+        >
+          <Copy className="h-3.5 w-3.5" />
+          {copied ? t('common.copied') : t('common.copy')}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Detail drawer tabs
+// ---------------------------------------------------------------------------
+
+type DetailTab = 'basic' | 'protocol' | 'credentials' | 'access' | 'roles'
+
+const DETAIL_TAB_KEYS: DetailTab[] = ['basic', 'protocol', 'credentials', 'access', 'roles']
+
+// ---------------------------------------------------------------------------
+// Input class constant
+// ---------------------------------------------------------------------------
+
+const inputCls =
+  'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+
+// ---------------------------------------------------------------------------
+// Main page component
+// ---------------------------------------------------------------------------
+
+type AppsView = 'apps' | 'groups'
+
+export default function AppsPage() {
+  const { t } = useTranslation()
+  // tab + nested-detail tab persisted to URL so refresh / share preserves UI state.
+  const [view, setView] = useTabParam<AppsView>('view', 'apps', APPS_VIEW_VALUES)
+  const [data, setData] = useState<PaginatedData<App>>({ items: [], total: 0, page: 1, page_size: 50 })
+  const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+
+  // Create modal state
+  const [showCreate, setShowCreate] = useState(false)
+  const [createForm, setCreateForm] = useState({
+    name: '',
+    code: '',
+    protocol: 'oidc',
+    client_type: 'web_app',
+    home_url: '',
+    redirect_uris: '',
+  })
+  const [creating, setCreating] = useState(false)
+
+  // One-time client_secret reveal modal (shown immediately after create / rotate).
+  // The backend stores bcrypt hash only; if the user closes this modal they
+  // cannot retrieve the plaintext — they must rotate.
+  const [revealedSecret, setRevealedSecret] = useState<{ clientId: string; clientSecret: string } | null>(null)
+
+  // Detail drawer state
+  const [detailApp, setDetailApp] = useState<App | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailTab, setDetailTab] = useTabParam<DetailTab>('detail_tab', 'basic', DETAIL_TAB_VALUES)
+
+  // Edit basic info state
+  const [editForm, setEditForm] = useState({
+    name: '',
+    description: '',
+    icon: '',
+    home_url: '',
+    login_url: '',
+    logout_url: '',
+    redirect_uris: '',
+  })
+  const [saving, setSaving] = useState(false)
+
+  // Protocol config state
+  const [protocolConfig, setProtocolConfig] = useState<Record<string, string>>({})
+  const [protocolConfigLoading, setProtocolConfigLoading] = useState(false)
+  const [savingProtocol, setSavingProtocol] = useState(false)
+
+  // -------------------------------------------------------------------------
+  // Data loading
+  // -------------------------------------------------------------------------
+
+  const loadData = useCallback(async () => {
+    setLoading(true)
+    try {
+      const result = await appApi.list({ page, page_size: 50 })
+      setData(result)
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false)
+    }
+  }, [page])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+
+  // -------------------------------------------------------------------------
+  // Open detail drawer
+  // -------------------------------------------------------------------------
+
+  const openDetail = async (app: App) => {
+    setDetailTab('basic')
+    setDetailLoading(true)
+    setDetailApp(app)
+
+    // Pre-fill edit form with current data
+    setEditForm({
+      name: app.name || '',
+      description: app.description || '',
+      icon: app.icon || '',
+      home_url: app.home_url || '',
+      login_url: app.login_url || '',
+      logout_url: app.logout_url || '',
+      redirect_uris: (app.redirect_uris || []).join('\n'),
+    })
+
+    try {
+      const full = await appApi.getById(app.id)
+      setDetailApp(full)
+      setEditForm({
+        name: full.name || '',
+        description: full.description || '',
+        icon: full.icon || '',
+        home_url: full.home_url || '',
+        login_url: full.login_url || '',
+        logout_url: full.logout_url || '',
+        redirect_uris: (full.redirect_uris || []).join('\n'),
+      })
+    } catch {
+      // keep the card-level data we already have
+    } finally {
+      setDetailLoading(false)
+    }
+  }
+
+  const closeDetail = () => {
+    setDetailApp(null)
+    setProtocolConfig({})
+  }
+
+  // -------------------------------------------------------------------------
+  // Load protocol config when switching to that tab
+  // -------------------------------------------------------------------------
+
+  const loadProtocolConfig = useCallback(async (appId: string, protocol: string) => {
+    setProtocolConfigLoading(true)
+    try {
+      const cfg = await appApi.getProtocolConfig(appId)
+      const fields = protocolConfigFields[protocol] || []
+      const coerceByKey: Record<string, Coerce | undefined> = {}
+      for (const f of fields) coerceByKey[f.key] = f.coerce
+      // Seed select fields with their first option so the rendered value
+      // matches the actual state (avoids the "shown but unsaved" gap where
+      // a select displays "Yes" while protocolConfig[key] is undefined and
+      // the field gets dropped from the save payload).
+      const flat: Record<string, string> = {}
+      for (const f of fields) {
+        if (f.type === 'select' && f.options && f.options.length > 0) {
+          flat[f.key] = f.options[0].value
+        }
+      }
+      if (cfg) {
+        for (const [k, v] of Object.entries(cfg)) {
+          flat[k] = decodeFieldValue(v, coerceByKey[k])
+        }
+      }
+      setProtocolConfig(flat)
+    } catch {
+      setProtocolConfig({})
+    } finally {
+      setProtocolConfigLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (detailTab === 'protocol' && detailApp) {
+      loadProtocolConfig(detailApp.id, detailApp.protocol)
+    }
+  }, [detailTab, detailApp, loadProtocolConfig])
+
+  // -------------------------------------------------------------------------
+  // Save basic info
+  // -------------------------------------------------------------------------
+
+  const handleSaveBasic = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!detailApp) return
+    setSaving(true)
+    try {
+      const uris = editForm.redirect_uris
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean)
+      const updated = await appApi.update(detailApp.id, {
+        name: editForm.name,
+        description: editForm.description || null,
+        icon: editForm.icon || null,
+        home_url: editForm.home_url || null,
+        login_url: editForm.login_url || null,
+        logout_url: editForm.logout_url || null,
+        redirect_uris: uris,
+      })
+      setDetailApp(updated)
+      loadData()
+      toast.success(t('common.success'))
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+      toast.error(t('common.failed'), msg)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Save protocol config
+  // -------------------------------------------------------------------------
+
+  const handleSaveProtocol = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!detailApp) return
+    setSavingProtocol(true)
+    try {
+      const payload: Record<string, unknown> = {}
+      const fields = protocolConfigFields[detailApp.protocol] || []
+      for (const f of fields) {
+        const raw = protocolConfig[f.key]
+        const v = encodeFieldValue(raw, f.coerce)
+        if (v !== undefined) {
+          payload[f.key] = v
+        }
+      }
+      await appApi.updateProtocolConfig(detailApp.id, payload)
+      toast.success(t('common.success'))
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+      toast.error(t('common.failed'), msg)
+    } finally {
+      setSavingProtocol(false)
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Toggle status / delete (existing features)
+  // -------------------------------------------------------------------------
+
+  const handleToggleStatus = async (app: App) => {
+    const newStatus = app.status === 1 ? 2 : 1
+    try {
+      await appApi.updateStatus(app.id, newStatus)
+      toast.success(newStatus === 1 ? t('apps.list.statusEnabled') : t('apps.list.statusDisabled'))
+      loadData()
+    } catch (e) {
+      toast.error(t('common.failed'), extractMessage(e))
+    }
+  }
+
+  const handleDelete = async (app: App) => {
+    if (!confirm(t('apps.list.confirmDelete', { name: app.name }))) return
+    try {
+      await appApi.delete(app.id)
+      toast.success(t('common.success'))
+      if (detailApp?.id === app.id) closeDetail()
+      loadData()
+    } catch (e) {
+      toast.error(t('common.failed'), extractMessage(e))
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Create app
+  // -------------------------------------------------------------------------
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!createForm.name || !createForm.code) return
+    setCreating(true)
+    try {
+      const redirectURIs = createForm.redirect_uris
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean)
+
+      // Default OIDC protocol_config built from the form: keeps the create
+      // flow self-contained so the freshly minted app can immediately serve
+      // /authorize without a follow-up config edit.
+      const protocolConfig =
+        createForm.protocol === 'oidc'
+          ? {
+              redirect_uris: redirectURIs,
+              scopes: ['openid', 'profile', 'email', 'groups'],
+              grant_types:
+                createForm.client_type === 'm2m'
+                  ? ['client_credentials']
+                  : ['authorization_code', 'refresh_token'],
+              response_types: ['code'],
+              token_endpoint_auth_method:
+                createForm.client_type === 'spa' || createForm.client_type === 'native'
+                  ? 'none'
+                  : 'client_secret_basic',
+              pkce_required:
+                createForm.client_type === 'spa' || createForm.client_type === 'native',
+              access_token_lifetime: 3600,
+              id_token_lifetime: 3600,
+              refresh_token_lifetime: 2592000,
+              id_token_signing_alg: 'RS256',
+              subject_type: 'public',
+            }
+          : undefined
+
+      const created = await appApi.create({
+        name: createForm.name,
+        code: createForm.code,
+        protocol: createForm.protocol,
+        client_type: createForm.client_type,
+        home_url: createForm.home_url || null,
+        redirect_uris: redirectURIs,
+        protocol_config: protocolConfig,
+      })
+
+      setShowCreate(false)
+      setCreateForm({
+        name: '',
+        code: '',
+        protocol: 'oidc',
+        client_type: 'web_app',
+        home_url: '',
+        redirect_uris: '',
+      })
+
+      // Capture the one-time plaintext client_secret. Only confidential clients
+      // (web_app / m2m) receive it; SPA / native have no secret to reveal.
+      if (created?.client_secret) {
+        setRevealedSecret({
+          clientId: created.client_id || '',
+          clientSecret: created.client_secret,
+        })
+      }
+      loadData()
+      toast.success(t('common.success'))
+    } catch (e) {
+      toast.error(t('common.failed'), extractMessage(e))
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Rotate client_secret
+  // -------------------------------------------------------------------------
+
+  const handleRotateSecret = async (app: App) => {
+    if (!confirm(t('apps.detail.credentials.confirmRotate', { name: app.name }))) return
+    try {
+      const result = await appApi.regenerateSecret(app.id)
+      setRevealedSecret({
+        clientId: app.client_id || '',
+        clientSecret: result.client_secret,
+      })
+      toast.success(t('apps.detail.credentials.rotated'))
+    } catch (e) {
+      toast.error(t('common.failed'), extractMessage(e))
+    }
+  }
+
+  const totalPages = Math.ceil(data.total / data.page_size) || 1
+
+  // -------------------------------------------------------------------------
+  // Render
+  // -------------------------------------------------------------------------
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
+      <PageHeader
+        title={t('apps.title')}
+        description={view === 'apps' ? t('apps.subtitle') : t('apps.appGroups.subtitle')}
+        actions={
+          view === 'apps' ? (
+            <button
+              onClick={() => setShowCreate(true)}
+              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-hover"
+            >
+              <Plus className="h-4 w-4" />
+              {t('apps.createModal.title')}
+            </button>
+          ) : null
+        }
+      />
+
+      {/* View switcher */}
+      <div className="mb-4 inline-flex rounded-lg border border-gray-200 bg-white p-1">
+        <button
+          onClick={() => setView('apps')}
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+            view === 'apps' ? 'bg-primary text-white' : 'text-gray-600 hover:text-gray-900',
+          )}
+        >
+          <AppWindow className="h-3.5 w-3.5" />
+          {t('apps.list.appList')}
+        </button>
+        <button
+          onClick={() => setView('groups')}
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+            view === 'groups' ? 'bg-primary text-white' : 'text-gray-600 hover:text-gray-900',
+          )}
+        >
+          <LayoutGrid className="h-3.5 w-3.5" />
+          {t('apps.list.appGroups')}
+        </button>
+      </div>
+
+      {view === 'groups' ? (
+        <AppGroupsTab />
+      ) : (
+      <>
+      {/* Card grid */}
+      {loading ? (
+        <div className="py-20 text-center text-sm text-gray-400">{t('common.loading')}</div>
+      ) : data.items.length === 0 ? (
+        <div className="py-20 text-center text-sm text-gray-400">{t('apps.list.empty')}</div>
+      ) : (
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {data.items.map((app, i) => (
+            <motion.div
+              key={app.id}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.04, duration: 0.25 }}
+              className="group cursor-pointer rounded-xl border border-gray-100 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
+              onClick={() => openDetail(app)}
+            >
+              {/* App icon + name */}
+              <div className="mb-4 flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  {app.icon ? (
+                    <AppIcon value={app.icon} size={40} />
+                  ) : (
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <AppWindow className="h-5 w-5" />
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <h3 className="truncate text-sm font-semibold text-gray-900">{app.name}</h3>
+                    <p className="truncate text-xs text-gray-400">{app.code}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    openDetail(app)
+                  }}
+                  className="rounded-lg p-1.5 text-gray-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-gray-100 hover:text-gray-600"
+                  title={t('apps.list.detail')}
+                >
+                  <Settings className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Description */}
+              <p className="mb-4 line-clamp-2 text-xs text-gray-500">
+                {app.description || t('apps.list.noDescription')}
+              </p>
+
+              {/* Tags */}
+              <div className="mb-4 flex items-center gap-2">
+                <span
+                  className={cn(
+                    'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium',
+                    protocolColors[app.protocol] || 'bg-gray-100 text-gray-700'
+                  )}
+                >
+                  {protocolLabel(app.protocol)}
+                </span>
+                <span
+                  className={cn(
+                    'inline-flex items-center text-xs font-medium',
+                    statusColor(app.status)
+                  )}
+                >
+                  {statusLabel(app.status)}
+                </span>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-2 border-t border-gray-50 pt-3">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleToggleStatus(app)
+                  }}
+                  className={cn(
+                    'rounded px-2.5 py-1 text-xs font-medium transition-colors',
+                    app.status === 1
+                      ? 'text-gray-500 hover:bg-gray-100'
+                      : 'text-green-600 hover:bg-green-50'
+                  )}
+                >
+                  {app.status === 1 ? t('common.disable') : t('common.enable')}
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleDelete(app)
+                  }}
+                  className="rounded px-2.5 py-1 text-xs font-medium text-red-500 transition-colors hover:bg-red-50"
+                >
+                  {t('common.delete')}
+                </button>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {data.total > 0 && (
+        <div className="mt-6 flex items-center justify-between">
+          <p className="text-sm text-gray-500">{t('apps.list.total', { total: data.total })}</p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-gray-50"
+            >
+              {t('apps.list.prevPage')}
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-gray-50"
+            >
+              {t('apps.list.nextPage')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Create Modal */}
+      {showCreate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl"
+          >
+            <h3 className="mb-4 text-lg font-semibold">{t('apps.createModal.title')}</h3>
+            <form onSubmit={handleCreate} className="space-y-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">{t('apps.createModal.nameLabel')}</label>
+                <input
+                  type="text"
+                  value={createForm.name}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value }))}
+                  className={inputCls}
+                  required
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">{t('apps.createModal.codeLabel')}</label>
+                <CodeField
+                  value={createForm.code}
+                  onChange={(v) => setCreateForm((f) => ({ ...f, code: v }))}
+                  nameForSlug={createForm.name}
+                  prefix="app"
+                  placeholder="jira / harbor / jumpserver ..."
+                />
+                <p className="mt-1 text-xs text-gray-400">
+                  {t('apps.createModal.codeHint', { example: `/protocol/saml/${createForm.code || 'jira'}/metadata` })}
+                </p>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">{t('apps.createModal.protocolLabel')}</label>
+                <select
+                  value={createForm.protocol}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, protocol: e.target.value }))}
+                  className={inputCls}
+                >
+                  <option value="oidc">OIDC</option>
+                  <option value="saml">SAML 2.0</option>
+                  <option value="cas">CAS 3.0</option>
+                  <option value="jwt">JWT</option>
+                  <option value="form">FORM</option>
+                </select>
+              </div>
+
+              {createForm.protocol === 'oidc' && (
+                <>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                      {t('apps.createModal.clientTypeLabel')}
+                    </label>
+                    <select
+                      value={createForm.client_type}
+                      onChange={(e) => setCreateForm((f) => ({ ...f, client_type: e.target.value }))}
+                      className={inputCls}
+                    >
+                      <option value="web_app">{t('apps.createModal.clientTypes.webApp')}</option>
+                      <option value="spa">{t('apps.createModal.clientTypes.spa')}</option>
+                      <option value="native">{t('apps.createModal.clientTypes.native')}</option>
+                      <option value="m2m">{t('apps.createModal.clientTypes.m2m')}</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                      {t('apps.createModal.homeUrlLabel')}
+                    </label>
+                    <input
+                      type="text"
+                      value={createForm.home_url}
+                      onChange={(e) => setCreateForm((f) => ({ ...f, home_url: e.target.value }))}
+                      className={inputCls}
+                      placeholder="https://app.example.com"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                      {t('apps.createModal.redirectUrisLabel')} {createForm.client_type !== 'm2m' && '*'}
+                    </label>
+                    <textarea
+                      value={createForm.redirect_uris}
+                      onChange={(e) =>
+                        setCreateForm((f) => ({ ...f, redirect_uris: e.target.value }))
+                      }
+                      rows={3}
+                      className={inputCls}
+                      placeholder={'http://localhost:8090/callback\nhttps://app.example.com/auth/callback'}
+                      required={createForm.client_type !== 'm2m'}
+                    />
+                  </div>
+                </>
+              )}
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreate(false)}
+                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50"
+                >
+                  {t('common.cancel')}
+                </button>
+                <button
+                  type="submit"
+                  disabled={creating}
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-60"
+                >
+                  {creating && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {t('apps.createModal.submit')}
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
+
+      </>
+      )}
+
+      {/* Detail Drawer */}
+      <AnimatePresence>
+        {detailApp && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-black/40"
+              onClick={closeDetail}
+            />
+            {/* Drawer */}
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              className="fixed inset-y-0 right-0 z-50 flex w-full max-w-4xl flex-col bg-white shadow-2xl"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+                <div className="flex items-center gap-3">
+                  {detailApp.icon ? (
+                    <AppIcon value={detailApp.icon} size={40} />
+                  ) : (
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <AppWindow className="h-5 w-5" />
+                    </div>
+                  )}
+                  <div>
+                    <h2 className="text-lg font-semibold text-gray-900">{detailApp.name}</h2>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400">{detailApp.code}</span>
+                      <span
+                        className={cn(
+                          'inline-flex rounded-full px-2 py-0.5 text-xs font-medium',
+                          protocolColors[detailApp.protocol] || 'bg-gray-100 text-gray-700'
+                        )}
+                      >
+                        {protocolLabel(detailApp.protocol)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={closeDetail}
+                  className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Tabs */}
+              <div className="flex border-b border-gray-100 px-6">
+                {DETAIL_TAB_KEYS.map((tabKey) => (
+                  <button
+                    key={tabKey}
+                    onClick={() => setDetailTab(tabKey)}
+                    className={cn(
+                      'relative px-4 py-3 text-sm font-medium transition-colors',
+                      detailTab === tabKey
+                        ? 'text-primary'
+                        : 'text-gray-500 hover:text-gray-700'
+                    )}
+                  >
+                    {t(`apps.detail.tabs.${tabKey}`)}
+                    {detailTab === tabKey && (
+                      <motion.div
+                        layoutId="detail-tab-indicator"
+                        className="absolute inset-x-0 bottom-0 h-0.5 bg-primary"
+                      />
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              {/* Tab content */}
+              <div className="flex-1 overflow-y-auto px-6 py-6">
+                {detailLoading ? (
+                  <div className="flex items-center justify-center py-20">
+                    <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                  </div>
+                ) : (
+                  <>
+                    {/* ---- Basic Info tab ---- */}
+                    {detailTab === 'basic' && (
+                      <form onSubmit={handleSaveBasic} className="space-y-5">
+                        <div>
+                          <label className="mb-1 block text-sm font-medium text-gray-700">
+                            {t('apps.detail.basic.nameLabel')}
+                          </label>
+                          <input
+                            type="text"
+                            value={editForm.name}
+                            onChange={(e) =>
+                              setEditForm((f) => ({ ...f, name: e.target.value }))
+                            }
+                            className={inputCls}
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label className="mb-1 block text-sm font-medium text-gray-700">
+                            {t('apps.detail.basic.descLabel')}
+                          </label>
+                          <textarea
+                            value={editForm.description}
+                            onChange={(e) =>
+                              setEditForm((f) => ({ ...f, description: e.target.value }))
+                            }
+                            rows={3}
+                            className={inputCls}
+                          />
+                        </div>
+
+                        <div>
+                          <label className="mb-1 block text-sm font-medium text-gray-700">
+                            {t('apps.detail.basic.iconLabel')}
+                          </label>
+                          <IconPicker
+                            value={editForm.icon}
+                            onChange={(v) => setEditForm((f) => ({ ...f, icon: v }))}
+                          />
+                        </div>
+
+                        <div>
+                          <label className="mb-1 block text-sm font-medium text-gray-700">
+                            {t('apps.detail.basic.homeUrlLabel')}
+                          </label>
+                          <input
+                            type="text"
+                            value={editForm.home_url}
+                            onChange={(e) =>
+                              setEditForm((f) => ({ ...f, home_url: e.target.value }))
+                            }
+                            className={inputCls}
+                            placeholder="https://app.example.com"
+                          />
+                          <p className="mt-1 text-xs text-gray-500">
+                            {t('apps.detail.basic.homeUrlHint')}
+                          </p>
+                        </div>
+
+                        <div>
+                          <label className="mb-1 block text-sm font-medium text-gray-700">
+                            {t('apps.detail.basic.loginUrlLabel')}
+                          </label>
+                          <input
+                            type="text"
+                            value={editForm.login_url}
+                            onChange={(e) =>
+                              setEditForm((f) => ({ ...f, login_url: e.target.value }))
+                            }
+                            className={inputCls}
+                            placeholder="https://app.example.com/login"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="mb-1 block text-sm font-medium text-gray-700">
+                            {t('apps.detail.basic.logoutUrlLabel')}
+                          </label>
+                          <input
+                            type="text"
+                            value={editForm.logout_url}
+                            onChange={(e) =>
+                              setEditForm((f) => ({ ...f, logout_url: e.target.value }))
+                            }
+                            className={inputCls}
+                            placeholder="https://app.example.com/logout"
+                          />
+                        </div>
+
+                        {/* Redirect URIs are an OIDC concept (redirect_uri spec). SAML
+                            uses ACS URL configured under 协议配置; CAS uses the service
+                            URL allow-list there. Hide for non-OIDC apps to keep the
+                            basic tab protocol-clean. */}
+                        {detailApp.protocol === 'oidc' && (
+                          <div>
+                            <label className="mb-1 block text-sm font-medium text-gray-700">
+                              {t('apps.detail.basic.redirectUrisLabel')}
+                            </label>
+                            <textarea
+                              value={editForm.redirect_uris}
+                              onChange={(e) =>
+                                setEditForm((f) => ({ ...f, redirect_uris: e.target.value }))
+                              }
+                              rows={3}
+                              className={inputCls}
+                              placeholder={'https://app.example.com/callback\nhttps://app.example.com/auth/callback'}
+                            />
+                          </div>
+                        )}
+
+                        <div className="flex justify-end pt-2">
+                          <button
+                            type="submit"
+                            disabled={saving}
+                            className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-60"
+                          >
+                            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+                            {t('common.save')}
+                          </button>
+                        </div>
+                      </form>
+                    )}
+
+                    {/* ---- Protocol Config tab ---- */}
+                    {detailTab === 'protocol' && (
+                      <>
+                        {protocolConfigLoading ? (
+                          <div className="flex items-center justify-center py-20">
+                            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                          </div>
+                        ) : (
+                          <form onSubmit={handleSaveProtocol} className="space-y-5">
+                            <div className="mb-4 rounded-lg bg-gray-50 px-4 py-3">
+                              <p className="text-sm text-gray-600">
+                                {t('apps.detail.protocol.protocolType')}
+                                <span
+                                  className={cn(
+                                    'ml-1 inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium',
+                                    protocolColors[detailApp.protocol] || 'bg-gray-100 text-gray-700'
+                                  )}
+                                >
+                                  {protocolLabel(detailApp.protocol)}
+                                </span>
+                              </p>
+                            </div>
+
+                            {/* SAML SP metadata one-shot import. Hidden for other protocols. */}
+                            {detailApp.protocol === 'saml' && (
+                              <SamlMetadataImport
+                                appId={detailApp.id}
+                                onImported={(cfg) => {
+                                  // Refresh form from backend echo so the
+                                  // operator sees what was parsed without a
+                                  // re-fetch.
+                                  const flat: Record<string, string> = {}
+                                  const fields = protocolConfigFields['saml'] || []
+                                  const coerceByKey: Record<string, Coerce | undefined> = {}
+                                  for (const f of fields) coerceByKey[f.key] = f.coerce
+                                  for (const f of fields) {
+                                    if (f.type === 'select' && f.options && f.options.length > 0) {
+                                      flat[f.key] = f.options[0].value
+                                    }
+                                  }
+                                  for (const [k, v] of Object.entries(cfg)) {
+                                    flat[k] = decodeFieldValue(v, coerceByKey[k])
+                                  }
+                                  setProtocolConfig(flat)
+                                }}
+                              />
+                            )}
+
+                            {(protocolConfigFields[detailApp.protocol] || []).map((field) => (
+                              <div key={field.key}>
+                                <label className="mb-1 block text-sm font-medium text-gray-700">
+                                  {field.label}
+                                </label>
+                                {field.type === 'textarea' ? (
+                                  <textarea
+                                    value={protocolConfig[field.key] || ''}
+                                    onChange={(e) =>
+                                      setProtocolConfig((c) => ({
+                                        ...c,
+                                        [field.key]: e.target.value,
+                                      }))
+                                    }
+                                    rows={5}
+                                    className={inputCls}
+                                    placeholder={field.placeholder}
+                                  />
+                                ) : field.type === 'select' ? (
+                                  <select
+                                    value={
+                                      protocolConfig[field.key] !== undefined && protocolConfig[field.key] !== ''
+                                        ? protocolConfig[field.key]
+                                        : field.options?.[0]?.value || ''
+                                    }
+                                    onChange={(e) =>
+                                      setProtocolConfig((c) => ({
+                                        ...c,
+                                        [field.key]: e.target.value,
+                                      }))
+                                    }
+                                    className={inputCls}
+                                  >
+                                    {(field.options || []).map((opt) => (
+                                      <option key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <input
+                                    type="text"
+                                    value={protocolConfig[field.key] || ''}
+                                    onChange={(e) =>
+                                      setProtocolConfig((c) => ({
+                                        ...c,
+                                        [field.key]: e.target.value,
+                                      }))
+                                    }
+                                    className={inputCls}
+                                    placeholder={field.placeholder}
+                                  />
+                                )}
+                                {field.hint && (
+                                  <p className="mt-1 text-xs text-gray-500">{field.hint}</p>
+                                )}
+                              </div>
+                            ))}
+
+                            {(protocolConfigFields[detailApp.protocol] || []).length === 0 && (
+                              <p className="py-10 text-center text-sm text-gray-400">
+                                {t('apps.detail.protocol.emptyConfig')}
+                              </p>
+                            )}
+
+                            {(protocolConfigFields[detailApp.protocol] || []).length > 0 && (
+                              <div className="flex justify-end pt-2">
+                                <button
+                                  type="submit"
+                                  disabled={savingProtocol}
+                                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-60"
+                                >
+                                  {savingProtocol && (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  )}
+                                  {t('apps.detail.protocol.saveConfig')}
+                                </button>
+                              </div>
+                            )}
+                          </form>
+                        )}
+                      </>
+                    )}
+
+                    {/* ---- Credentials tab ---- */}
+                    {/*
+                      Protocol-specific credential rendering. Showing OIDC
+                      client_id / client_secret / discovery / JWKS on a SAML or
+                      CAS app is misleading — SPs there don't use those.
+                      Industry-standard (Okta / Keycloak / Auth0) split:
+                        OIDC → client creds + discovery + JWKS
+                        SAML → IdP entity + metadata XML + SSO/SLO + signing cert
+                        CAS  → CAS server URL + validate URL
+                        JWT  → static secret + algorithm
+                        FORM → nothing
+                    */}
+                    {detailTab === 'credentials' && (
+                      <CredentialsTab app={detailApp} onRotateSecret={() => handleRotateSecret(detailApp)} />
+                    )}
+
+                    {/* ---- Access policy tab ---- */}
+                    {detailTab === 'access' && detailApp && (
+                      <AccessPolicyTab owner="app" ownerId={String(detailApp.id)} />
+                    )}
+
+                    {/* ---- App roles tab ---- */}
+                    {detailTab === 'roles' && detailApp && (
+                      <AppRolesTab owner="app" ownerId={String(detailApp.id)} />
+                    )}
+                  </>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* One-time Client Secret reveal — shown immediately after create / rotate */}
+      <AnimatePresence>
+        {revealedSecret && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-lg rounded-xl bg-white p-6 shadow-2xl"
+            >
+              <h3 className="mb-2 text-lg font-semibold text-gray-900">{t('apps.secretReveal.title')}</h3>
+              <p className="mb-4 text-sm text-gray-500">
+                {t('apps.secretReveal.desc')}
+              </p>
+
+              <div className="space-y-4">
+                <CopyField label="Client ID" value={revealedSecret.clientId} />
+                <SecretField label="Client Secret" value={revealedSecret.clientSecret} />
+              </div>
+
+              <div className="mt-6 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setRevealedSecret(null)}
+                  className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-white hover:bg-primary-hover"
+                >
+                  {t('apps.secretReveal.acknowledge')}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// CredentialsTab — protocol-aware "what the SP needs from us" panel.
+// Mirrors the Keycloak "Keys / Credentials / Installation" layout.
+// ---------------------------------------------------------------------------
+
+function CredentialsTab({
+  app,
+  onRotateSecret,
+}: {
+  app: App
+  onRotateSecret: () => void
+}) {
+  const { t } = useTranslation()
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+
+  if (app.protocol === 'oidc') {
+    return (
+      <div className="space-y-6">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="text-sm text-amber-700">{t('apps.detail.credentials.warning')}</p>
+        </div>
+        <CopyField label="Client ID" value={app.client_id || '—'} />
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-700">Client Secret</label>
+          <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
+            <span className="flex-1 font-mono">{t('apps.detail.credentials.masked')}</span>
+            {(app.client_type === 'web_app' || app.client_type === 'm2m') && (
+              <button
+                type="button"
+                onClick={onRotateSecret}
+                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100"
+              >
+                {t('apps.detail.credentials.rotate')}
+              </button>
+            )}
+          </div>
+          {(app.client_type === 'spa' || app.client_type === 'native') && (
+            <p className="mt-1 text-xs text-gray-400">
+              {t('apps.detail.credentials.publicClientHint', { clientType: app.client_type })}
+            </p>
+          )}
+        </div>
+        <CopyField label={t('apps.detail.credentials.discovery')} value={`${origin}/protocol/oidc/.well-known/openid-configuration`} />
+        <CopyField label={t('apps.detail.credentials.jwks')} value={`${origin}/protocol/oidc/jwks`} />
+      </div>
+    )
+  }
+
+  if (app.protocol === 'saml') {
+    const metadataURL = `${origin}/protocol/saml/${app.code}/metadata`
+    const ssoURL = `${origin}/protocol/saml/${app.code}/sso`
+    const sloURL = `${origin}/protocol/saml/${app.code}/slo`
+    return (
+      <div className="space-y-6">
+        <CopyField label={t('apps.detail.credentials.saml.entityID')} value={origin} />
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-700">
+            {t('apps.detail.credentials.saml.metadataURL')}
+          </label>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              readOnly
+              value={metadataURL}
+              className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600"
+            />
+            <button
+              type="button"
+              onClick={() => copyToClipboard(metadataURL)}
+              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-50"
+            >
+              <Copy className="h-3.5 w-3.5" />
+              {t('common.copy')}
+            </button>
+            <a
+              href={metadataURL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-50"
+            >
+              {t('apps.detail.credentials.saml.openMetadata')}
+            </a>
+            <a
+              href={metadataURL}
+              download={`${app.code}-idp-metadata.xml`}
+              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-50"
+            >
+              {t('apps.detail.credentials.saml.downloadMetadata')}
+            </a>
+          </div>
+          <p className="mt-1 text-xs text-gray-500">
+            {t('apps.detail.credentials.saml.metadataHint')}
+          </p>
+        </div>
+        <CopyField label={t('apps.detail.credentials.saml.ssoURL')} value={ssoURL} />
+        <CopyField label={t('apps.detail.credentials.saml.sloURL')} value={sloURL} />
+        <SAMLCertView appId={app.id} />
+      </div>
+    )
+  }
+
+  if (app.protocol === 'cas') {
+    const baseURL = `${origin}/protocol/cas/${app.code}`
+    return (
+      <div className="space-y-6">
+        <CopyField label={t('apps.detail.credentials.cas.serverURL')} value={baseURL} />
+        <CopyField label={t('apps.detail.credentials.cas.loginURL')} value={`${baseURL}/login`} />
+        <CopyField label={t('apps.detail.credentials.cas.logoutURL')} value={`${baseURL}/logout`} />
+        <CopyField label={t('apps.detail.credentials.cas.validateURL')} value={`${baseURL}/serviceValidate`} />
+        <CopyField label={t('apps.detail.credentials.cas.p3ValidateURL')} value={`${baseURL}/p3/serviceValidate`} />
+        <p className="text-xs text-gray-500">{t('apps.detail.credentials.cas.hint')}</p>
+      </div>
+    )
+  }
+
+  if (app.protocol === 'jwt') {
+    return (
+      <div className="space-y-6">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="text-sm text-amber-700">{t('apps.detail.credentials.jwt.warning')}</p>
+        </div>
+        <p className="text-sm text-gray-500">{t('apps.detail.credentials.jwt.hint')}</p>
+      </div>
+    )
+  }
+
+  return (
+    <p className="py-10 text-center text-sm text-gray-400">
+      {t('apps.detail.credentials.noneForProtocol')}
+    </p>
+  )
+}
+
+// SAMLCertView fetches and displays the active signing cert PEM. Two
+// affordances: copy base64 (for fields that want the raw blob) and
+// download .pem (for fields that want a file).
+function SAMLCertView({ appId }: { appId: string }) {
+  const { t } = useTranslation()
+  const [pem, setPem] = useState<string>('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError('')
+    appApi
+      .listCerts(appId)
+      .then((certs) => {
+        if (cancelled) return
+        const active = certs[0]
+        setPem(active?.public_key || '')
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return
+        const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+        setError(msg || String(e))
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [appId])
+
+  const rawBase64 = pem
+    .replace(/-----BEGIN CERTIFICATE-----/g, '')
+    .replace(/-----END CERTIFICATE-----/g, '')
+    .replace(/\s+/g, '')
+
+  const downloadPEM = () => {
+    const blob = new Blob([pem], { type: 'application/x-pem-file' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `mxid-idp-signing.pem`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  return (
+    <div>
+      <label className="mb-1 block text-sm font-medium text-gray-700">
+        {t('apps.detail.credentials.saml.signingCert')}
+      </label>
+      {loading && <p className="text-xs text-gray-400">{t('common.loading')}</p>}
+      {error && <p className="text-xs text-red-500">{error}</p>}
+      {!loading && !error && pem && (
+        <>
+          <textarea
+            readOnly
+            value={pem}
+            rows={5}
+            className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-700"
+          />
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              onClick={() => copyToClipboard(pem)}
+              className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
+            >
+              <Copy className="h-3.5 w-3.5" />
+              {t('apps.detail.credentials.saml.copyPEM')}
+            </button>
+            <button
+              type="button"
+              onClick={() => copyToClipboard(rawBase64)}
+              className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
+            >
+              <Copy className="h-3.5 w-3.5" />
+              {t('apps.detail.credentials.saml.copyBase64')}
+            </button>
+            <button
+              type="button"
+              onClick={downloadPEM}
+              className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
+            >
+              {t('apps.detail.credentials.saml.downloadPEM')}
+            </button>
+          </div>
+          <p className="mt-1 text-xs text-gray-500">
+            {t('apps.detail.credentials.saml.signingCertHint')}
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// SamlMetadataImport — one-shot SP metadata XML importer (paste / file /
+// URL). Keycloak / Auth0 / Okta all ship this exact UX so operators don't
+// have to copy 4 fields by hand. Backend parses + patches protocol_config,
+// echoes the result so the form refreshes without a separate GET.
+// ---------------------------------------------------------------------------
+
+function SamlMetadataImport({
+  appId,
+  onImported,
+}: {
+  appId: string
+  onImported: (cfg: Record<string, unknown>) => void
+}) {
+  const { t } = useTranslation()
+  const [mode, setMode] = useState<'paste' | 'file' | 'url'>('paste')
+  const [xmlText, setXmlText] = useState('')
+  const [urlInput, setUrlInput] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const submit = async (xml: string) => {
+    setBusy(true)
+    try {
+      const cfg = await appApi.importSAMLMetadata(appId, xml)
+      onImported(cfg)
+      toast.success(t('apps.detail.protocol.samlImport.success'))
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+      toast.error(t('apps.detail.protocol.samlImport.failed'), msg)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const onPaste = async () => {
+    if (!xmlText.trim()) return
+    await submit(xmlText)
+  }
+
+  const onFile = async (file: File) => {
+    if (file.size > 256 * 1024) {
+      toast.error(t('apps.detail.protocol.samlImport.failed'), '>256KB')
+      return
+    }
+    const txt = await file.text()
+    await submit(txt)
+  }
+
+  const onUrl = async () => {
+    const u = urlInput.trim()
+    if (!u) return
+    try {
+      const resp = await fetch(u, { credentials: 'omit' })
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      const txt = await resp.text()
+      await submit(txt)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      toast.error(t('apps.detail.protocol.samlImport.failed'), msg)
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-dashed border-blue-200 bg-blue-50/40 p-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <p className="text-sm font-medium text-gray-800">
+          {t('apps.detail.protocol.samlImport.title')}
+        </p>
+        <div className="inline-flex rounded-md border border-gray-200 bg-white text-xs">
+          {(['paste', 'file', 'url'] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              className={cn(
+                'px-3 py-1.5 transition',
+                mode === m ? 'bg-primary text-white' : 'text-gray-600 hover:bg-gray-50',
+              )}
+            >
+              {t(`apps.detail.protocol.samlImport.mode.${m}`)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <p className="mb-3 text-xs text-gray-500">
+        {t('apps.detail.protocol.samlImport.hint')}
+      </p>
+
+      {mode === 'paste' && (
+        <div className="space-y-2">
+          <textarea
+            value={xmlText}
+            onChange={(e) => setXmlText(e.target.value)}
+            rows={4}
+            placeholder="<EntityDescriptor entityID=&quot;...&quot;>...</EntityDescriptor>"
+            className={inputCls}
+          />
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={onPaste}
+              disabled={busy || !xmlText.trim()}
+              className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-hover disabled:opacity-60"
+            >
+              {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              {t('apps.detail.protocol.samlImport.parseAndFill')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {mode === 'file' && (
+        <div className="flex items-center gap-2">
+          <input
+            type="file"
+            accept=".xml,application/xml,text/xml"
+            disabled={busy}
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) onFile(f)
+            }}
+            className="text-xs"
+          />
+          {busy && <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-400" />}
+        </div>
+      )}
+
+      {mode === 'url' && (
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            placeholder="https://sp.example.com/saml/metadata"
+            className={inputCls}
+          />
+          <button
+            type="button"
+            onClick={onUrl}
+            disabled={busy || !urlInput.trim()}
+            className="inline-flex shrink-0 items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-hover disabled:opacity-60"
+          >
+            {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {t('apps.detail.protocol.samlImport.fetchAndFill')}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}

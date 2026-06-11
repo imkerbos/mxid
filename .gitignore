@@ -1,0 +1,63 @@
+# Binaries
+bin/
+tmp/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+cmd/server/server
+/server
+
+# Test
+*.test
+coverage.out
+coverage.html
+
+# Dependencies
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Editor crash residue (sandboxed Edit tool / atomic save leftovers)
+*.tmp.*
+*.patchprobe.tmp.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Build
+build-errors.log
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Node
+**/node_modules/
+web/apps/*/dist/
+web/apps/*/.next/
+web/packages/*/dist/
+.pnpm-store/
+**/.pnpm-store/
+
+# Reference upstream (benchmark only, not project source)
+topiam/
+
+# Claude Code local
+.claude/
+
+# Secrets
+*.pem
+*.key

@@ -1,0 +1,239 @@
+package appaccess
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/imkerbos/mxid/pkg/event"
+	"github.com/imkerbos/mxid/pkg/snowflake"
+)
+
+// Event types — published whenever access policy mutates so the portal
+// SSE channel can push refresh signals to currently-connected users.
+const (
+	EventAccessPolicyChanged = "app_access.changed"
+)
+
+type Service struct {
+	repo     Repository
+	idGen    *snowflake.Generator
+	eventBus *event.Bus
+}
+
+func NewService(repo Repository, idGen *snowflake.Generator, eventBus *event.Bus) *Service {
+	return &Service{repo: repo, idGen: idGen, eventBus: eventBus}
+}
+
+// ListOwnByApp returns rules attached directly to a single app (excludes
+// group-inherited rules). Console renders these in the app's own access
+// tab; the inherited ones are shown separately as read-only badges.
+func (s *Service) ListOwnByApp(ctx context.Context, appID, tenantID int64) ([]*Policy, error) {
+	return s.repo.ListOwnByApp(ctx, appID, tenantID)
+}
+
+// ListByApp returns the EFFECTIVE policy set for an app (own + inherited
+// from app groups). Used by CanAccess; also exposed if UI wants to show
+// the full picture for diagnostics.
+func (s *Service) ListByApp(ctx context.Context, appID, tenantID int64) ([]*Policy, error) {
+	return s.repo.ListByApp(ctx, appID, tenantID)
+}
+
+// ListByAppGroup returns rules attached to an app group.
+func (s *Service) ListByAppGroup(ctx context.Context, groupID, tenantID int64) ([]*Policy, error) {
+	return s.repo.ListByAppGroup(ctx, groupID, tenantID)
+}
+
+// AddPolicy creates a new access rule. Exactly one of AppID / AppGroupID
+// must be set. SubjectType + SubjectID uniqueness within the target +
+// tenant is enforced by the underlying UNIQUE index.
+type AddPolicyRequest struct {
+	AppID       *int64
+	AppGroupID  *int64
+	TenantID    int64
+	SubjectType string
+	SubjectID   int64
+	Effect      string
+	CreatedBy   *int64
+}
+
+func (s *Service) AddPolicy(ctx context.Context, req AddPolicyRequest) (*Policy, error) {
+	if (req.AppID == nil) == (req.AppGroupID == nil) {
+		return nil, fmt.Errorf("exactly one of app_id / app_group_id must be set")
+	}
+	if !validSubjectType(req.SubjectType) {
+		return nil, fmt.Errorf("invalid subject_type: %s", req.SubjectType)
+	}
+	if req.Effect == "" {
+		req.Effect = EffectAllow
+	}
+	if !validEffect(req.Effect) {
+		return nil, fmt.Errorf("invalid effect: %s", req.Effect)
+	}
+	if req.SubjectType == SubjectPublic {
+		req.SubjectID = 0 // normalize
+	} else if req.SubjectID == 0 {
+		return nil, fmt.Errorf("subject_id required for subject_type %s", req.SubjectType)
+	}
+	p := &Policy{
+		ID:          s.idGen.Generate(),
+		AppID:       req.AppID,
+		AppGroupID:  req.AppGroupID,
+		TenantID:    req.TenantID,
+		SubjectType: req.SubjectType,
+		SubjectID:   req.SubjectID,
+		Effect:      req.Effect,
+		CreatedBy:   req.CreatedBy,
+	}
+	if err := s.repo.Create(ctx, p); err != nil {
+		return nil, err
+	}
+	// Always publish — portal SSE refreshes /apps regardless of which side
+	// (app or group) was touched; the user's effective access set might
+	// change in either case.
+	s.publishGroupOrApp(req.AppID, req.AppGroupID, req.TenantID)
+	return p, nil
+}
+
+func (s *Service) DeletePolicy(ctx context.Context, id, tenantID int64) error {
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+	// Publish without a specific target id — clients re-fetch the whole
+	// /apps list on apps_updated, so the exact id isn't important.
+	s.publishGroupOrApp(nil, nil, tenantID)
+	return nil
+}
+
+// CanAccess decides whether `userID` may launch `appID`. Returns the
+// matched rule for audit logging. Walks rules once; deny short-circuits.
+func (s *Service) CanAccess(ctx context.Context, userID, appID, tenantID int64) (*AccessDecision, error) {
+	rows, err := s.repo.ListByApp(ctx, appID, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	// Cross-tenant policies (tenant_id=0) inherit for shared apps; merge them.
+	if tenantID != 0 {
+		global, err := s.repo.ListByApp(ctx, appID, 0)
+		if err == nil {
+			rows = append(rows, global...)
+		}
+	}
+
+	if len(rows) == 0 {
+		return &AccessDecision{Allowed: false, Reason: "no-rule-defined"}, nil
+	}
+
+	// First pass: find any deny that matches → instant deny.
+	for _, r := range rows {
+		if r.Effect != EffectDeny {
+			continue
+		}
+		matched, err := s.subjectMatches(ctx, r, userID)
+		if err != nil {
+			return nil, err
+		}
+		if matched {
+			return &AccessDecision{
+				Allowed:     false,
+				MatchedRule: r,
+				Reason:      fmt.Sprintf("deny:%s:%d", r.SubjectType, r.SubjectID),
+			}, nil
+		}
+	}
+
+	// Second pass: any allow match.
+	for _, r := range rows {
+		if r.Effect != EffectAllow {
+			continue
+		}
+		matched, err := s.subjectMatches(ctx, r, userID)
+		if err != nil {
+			return nil, err
+		}
+		if matched {
+			return &AccessDecision{
+				Allowed:     true,
+				MatchedRule: r,
+				Reason:      fmt.Sprintf("%s:%d", r.SubjectType, r.SubjectID),
+			}, nil
+		}
+	}
+
+	return &AccessDecision{Allowed: false, Reason: "no-rule-matched"}, nil
+}
+
+// SubjectMatcher provides per-subject-type membership lookups. We inject
+// these instead of importing every domain module here — keeps appaccess
+// independent of user/group/org/role packages.
+type SubjectMatcher interface {
+	UserInGroup(ctx context.Context, userID, groupID int64) (bool, error)
+	UserInOrg(ctx context.Context, userID, orgID int64) (bool, error)
+	UserHasRole(ctx context.Context, userID, roleID int64) (bool, error)
+}
+
+// matcher is injected via SetMatcher at bootstrap. nil-safe so unit tests
+// without full domain wiring can still test public/user matching.
+var matcher SubjectMatcher
+
+func SetMatcher(m SubjectMatcher) { matcher = m }
+
+func (s *Service) subjectMatches(ctx context.Context, r *Policy, userID int64) (bool, error) {
+	switch r.SubjectType {
+	case SubjectPublic:
+		return true, nil
+	case SubjectUser:
+		return r.SubjectID == userID, nil
+	case SubjectGroup:
+		if matcher == nil {
+			return false, nil
+		}
+		return matcher.UserInGroup(ctx, userID, r.SubjectID)
+	case SubjectOrg:
+		if matcher == nil {
+			return false, nil
+		}
+		return matcher.UserInOrg(ctx, userID, r.SubjectID)
+	case SubjectRole:
+		if matcher == nil {
+			return false, nil
+		}
+		return matcher.UserHasRole(ctx, userID, r.SubjectID)
+	}
+	return false, nil
+}
+
+// AppsForUser is a thin pass-through used by the portal /apps handler.
+func (s *Service) AppsForUser(ctx context.Context, userID, tenantID int64) ([]int64, error) {
+	return s.repo.AppsForUser(ctx, userID, tenantID)
+}
+
+// publishGroupOrApp emits the policy-changed event. Either or both of
+// appID / appGroupID may be nil — portal SSE clients refetch their /apps
+// list on receipt regardless, so granular targeting isn't needed yet.
+// Could later filter per-tenant if shared-app deployments grow.
+func (s *Service) publishGroupOrApp(appID, appGroupID *int64, tenantID int64) {
+	if s.eventBus == nil {
+		return
+	}
+	payload := map[string]any{"tenant_id": tenantID}
+	if appID != nil {
+		payload["app_id"] = *appID
+	}
+	if appGroupID != nil {
+		payload["app_group_id"] = *appGroupID
+	}
+	s.eventBus.Publish(context.Background(), event.Event{
+		Type:    EventAccessPolicyChanged,
+		Payload: payload,
+	})
+}
+
+func validSubjectType(s string) bool {
+	switch s {
+	case SubjectPublic, SubjectUser, SubjectGroup, SubjectOrg, SubjectRole:
+		return true
+	}
+	return false
+}
+
+func validEffect(e string) bool { return e == EffectAllow || e == EffectDeny }
