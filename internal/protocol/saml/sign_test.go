@@ -76,7 +76,10 @@ func TestEncodeResponse_SignedAndVerifiable(t *testing.T) {
 		t.Fatalf("BuildResponse: %v", err)
 	}
 
-	encoded, err := EncodeResponse(resp, &SignOptions{Key: key, CertPEM: certPEM})
+	encoded, err := EncodeResponse(resp, &SignOptions{
+		Key: key, CertPEM: certPEM,
+		SignResponse: true, SignAssertion: true,
+	})
 	if err != nil {
 		t.Fatalf("EncodeResponse: %v", err)
 	}
@@ -113,10 +116,27 @@ func TestEncodeResponse_SignedAndVerifiable(t *testing.T) {
 	keyStore := &fixedKeyStore{key: key, certDER: mustCertDER(t, certPEM)}
 	vctx := dsig.NewDefaultValidationContext(&trustingStore{store: keyStore})
 	if _, err := vctx.Validate(root); err != nil {
-		t.Fatalf("dsig validation failed: %v\nXML:\n%s", err, xmlStr)
+		t.Fatalf("response dsig validation failed: %v\nXML:\n%s", err, xmlStr)
 	}
 
-	// 3. Quick sanity: dump signed XML on -v so operators can eyeball it.
+	// 3. The Assertion must ALSO carry its own valid signature — Nextcloud
+	// user_saml (WantAssertionsSigned) rejects a Response whose Assertion is
+	// unsigned even when the Response itself is signed. Two signatures total.
+	if n := strings.Count(xmlStr, "<ds:Signature "); n != 2 {
+		t.Fatalf("expected 2 signatures (Response + Assertion), got %d", n)
+	}
+	assertion := root.FindElement("//Assertion")
+	if assertion == nil {
+		t.Fatalf("no Assertion element found")
+	}
+	if assertion.SelectElement("ds:Signature") == nil {
+		t.Fatalf("Assertion is not signed")
+	}
+	if _, err := vctx.Validate(assertion); err != nil {
+		t.Fatalf("assertion dsig validation failed: %v\nXML:\n%s", err, xmlStr)
+	}
+
+	// 4. Quick sanity: dump signed XML on -v so operators can eyeball it.
 	t.Logf("signed Response XML:\n%s", xmlStr)
 }
 

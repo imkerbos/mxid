@@ -248,22 +248,34 @@ func (b *AssertionBuilder) BuildResponse(params *BuildParams) (*Response, error)
 	return resp, nil
 }
 
-// SignResponse signs the SAML response XML using XML-DSIG enveloped
-// signature (RSA-SHA256). Produces a <ds:Signature> element child of
-// <Response> referencing the response by ID — matches OneLogin php-saml,
-// SimpleSAMLphp, Keycloak, Auth0 default output. Caller passes the active
-// signing key + matching X.509 cert PEM; the public cert is embedded in
-// KeyInfo so SPs that pinned a fingerprint can verify offline.
-func SignResponse(xmlBytes []byte, key *rsa.PrivateKey, certPEM string) ([]byte, error) {
-	certDER, err := pemCertBytes(certPEM)
-	if err != nil {
-		return nil, fmt.Errorf("decode signing cert: %w", err)
-	}
+// signEnveloped applies an enveloped XML-DSIG signature (RSA-SHA256, exclusive
+// C14N) to a single element, returning the signed copy. The element's ID
+// attribute drives the Reference URI. Matches OneLogin php-saml / SimpleSAMLphp
+// / Keycloak / Auth0 default output; the public cert is embedded in KeyInfo so
+// SPs that pinned a fingerprint can verify offline.
+func signEnveloped(el *etree.Element, key *rsa.PrivateKey, certDER []byte) (*etree.Element, error) {
 	keystore := &fixedKeyStore{key: key, certDER: certDER}
 	signingCtx := dsig.NewDefaultSigningContext(keystore)
 	signingCtx.Canonicalizer = dsig.MakeC14N10ExclusiveCanonicalizerWithPrefixList("")
 	if err := signingCtx.SetSignatureMethod(dsig.RSASHA256SignatureMethod); err != nil {
 		return nil, fmt.Errorf("set signature method: %w", err)
+	}
+	return signingCtx.SignEnveloped(el)
+}
+
+// applySignatures signs the Assertion and/or the Response per opts. The
+// Assertion is signed FIRST so the Response signature (which envelopes it)
+// covers the already-signed Assertion — signing the Response first then
+// touching the Assertion would invalidate the Response signature.
+//
+// The signature is left where goxmldsig places it (enveloped, as the signed
+// element's last child). onelogin/php-saml & xmlseclibs (Nextcloud, BookStack)
+// locate the Signature node by reference, not by schema position, so this
+// validates cleanly; repositioning it breaks goxmldsig's own round-trip.
+func applySignatures(xmlBytes []byte, opts *SignOptions) ([]byte, error) {
+	certDER, err := pemCertBytes(opts.CertPEM)
+	if err != nil {
+		return nil, fmt.Errorf("decode signing cert: %w", err)
 	}
 
 	doc := etree.NewDocument()
@@ -275,15 +287,30 @@ func SignResponse(xmlBytes []byte, key *rsa.PrivateKey, certPEM string) ([]byte,
 		return nil, fmt.Errorf("empty xml document")
 	}
 
-	signed, err := signingCtx.SignEnveloped(root)
-	if err != nil {
-		return nil, fmt.Errorf("sign envelope: %w", err)
+	if opts.SignAssertion {
+		assertion := root.SelectElement("Assertion")
+		if assertion == nil {
+			return nil, fmt.Errorf("no Assertion element to sign")
+		}
+		signed, err := signEnveloped(assertion, opts.Key, certDER)
+		if err != nil {
+			return nil, fmt.Errorf("sign assertion: %w", err)
+		}
+		// Assertion is the Response's last child; remove + re-append keeps it
+		// in place, now carrying its own signature.
+		root.RemoveChild(assertion)
+		root.AddChild(signed)
 	}
 
-	// Place <Signature> immediately after <Issuer> (per SAML schema).
-	out := etree.NewDocument()
-	out.SetRoot(signed)
-	return out.WriteToBytes()
+	if opts.SignResponse {
+		signed, err := signEnveloped(root, opts.Key, certDER)
+		if err != nil {
+			return nil, fmt.Errorf("sign response: %w", err)
+		}
+		doc.SetRoot(signed)
+	}
+
+	return doc.WriteToBytes()
 }
 
 // fixedKeyStore is a minimal X509KeyStore implementation for goxmldsig
@@ -331,8 +358,10 @@ func pemCertBytes(certPEM string) ([]byte, error) {
 // MessagesSigned. Every modern SP (BookStack, Nextcloud user_saml,
 // SimpleSAMLphp, Auth0 SP) expects a signed Response by default.
 type SignOptions struct {
-	Key     *rsa.PrivateKey
-	CertPEM string
+	Key           *rsa.PrivateKey
+	CertPEM       string
+	SignResponse  bool
+	SignAssertion bool
 }
 
 // EncodeResponse base64-encodes the SAML response for POST binding.
@@ -347,10 +376,10 @@ func EncodeResponse(resp *Response, sign *SignOptions) (string, error) {
 	// xmlns:xsi injection happens above it — goxmldsig parses the bytes
 	// into an etree document, finds the Response element, computes the
 	// digest, and writes back a Signature element inside Response.
-	if sign != nil && sign.Key != nil && sign.CertPEM != "" {
-		signed, serr := SignResponse(xmlBytes, sign.Key, sign.CertPEM)
+	if sign != nil && sign.Key != nil && sign.CertPEM != "" && (sign.SignAssertion || sign.SignResponse) {
+		signed, serr := applySignatures(xmlBytes, sign)
 		if serr != nil {
-			return "", fmt.Errorf("sign response: %w", serr)
+			return "", fmt.Errorf("sign saml: %w", serr)
 		}
 		xmlBytes = signed
 	}
