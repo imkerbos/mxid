@@ -62,26 +62,6 @@ func TestEvaluate(t *testing.T) {
 			signals:    Signals{NewCountry: true},
 			wantAction: ActionNormal,
 		},
-		{
-			name:        "trusted network with skip allowed and no risk -> allow skip",
-			policy:      Policy{Enabled: true, OnNewDevice: true, AllowTrustedSkip: true},
-			signals:     Signals{TrustedNetwork: true},
-			wantAction:  ActionAllowSkip,
-			wantReasons: []string{"trusted_network"},
-		},
-		{
-			name:       "trusted network but skip not allowed -> normal",
-			policy:     Policy{Enabled: true, AllowTrustedSkip: false},
-			signals:    Signals{TrustedNetwork: true},
-			wantAction: ActionNormal,
-		},
-		{
-			name:        "risk wins over trusted-network skip",
-			policy:      Policy{Enabled: true, OnNewDevice: true, AllowTrustedSkip: true},
-			signals:     Signals{TrustedNetwork: true, NewDevice: true},
-			wantAction:  ActionRequireMFA,
-			wantReasons: []string{"new_device"},
-		},
 	}
 
 	for _, tc := range cases {

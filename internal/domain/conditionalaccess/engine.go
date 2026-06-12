@@ -17,24 +17,17 @@ const (
 	// ActionRequireMFA forces a second factor because a risk signal fired —
 	// even for a user who would not otherwise be challenged.
 	ActionRequireMFA
-	// ActionAllowSkip permits skipping an otherwise-mandatory MFA because the
-	// login is from a trusted network with no risk signals (opt-in friction
-	// reduction).
-	ActionAllowSkip
 )
 
 // Policy is the tenant's admin-configured rule set (DB-backed). Every toggle
 // defaults to the zero value (off), so an unconfigured tenant keeps today's
-// behaviour (Evaluate returns ActionNormal).
+// behaviour (Evaluate returns ActionNormal). The engine only ever ADDS a
+// factor on risk — it never skips MFA (a trusted network still requires it).
 type Policy struct {
 	Enabled            bool
 	OnNewCountry       bool // require MFA on login from a country never seen before
 	OnImpossibleTravel bool // require MFA when the geo/time delta is physically implausible
 	OnNewDevice        bool // require MFA from an unrecognised device
-	// AllowTrustedSkip lets a trusted-network login skip the MFA the user would
-	// otherwise perform. Off by default — adding friction on risk is safe;
-	// removing it must be a deliberate opt-in.
-	AllowTrustedSkip bool
 }
 
 // Signals are the computed facts about one login attempt. Adapters fill these.
@@ -42,7 +35,6 @@ type Signals struct {
 	NewCountry       bool
 	ImpossibleTravel bool
 	NewDevice        bool
-	TrustedNetwork   bool
 }
 
 // Decision is the engine output. Reasons carries machine tags for the audit
@@ -52,12 +44,8 @@ type Decision struct {
 	Reasons []string
 }
 
-// Evaluate maps (policy, signals) to a decision. Pure and deterministic.
-//
-// Precedence: any active risk signal forces MFA and wins over a trusted-network
-// skip — a new device on the corporate network still gets challenged. The
-// low-friction skip applies only to an otherwise-clean login from a trusted
-// network when the policy opts in.
+// Evaluate maps (policy, signals) to a decision. Pure and deterministic. The
+// engine only ever forces MFA on a risk signal; it never skips MFA.
 func Evaluate(p Policy, s Signals) Decision {
 	if !p.Enabled {
 		return Decision{Action: ActionNormal}
@@ -77,10 +65,5 @@ func Evaluate(p Policy, s Signals) Decision {
 	if len(reasons) > 0 {
 		return Decision{Action: ActionRequireMFA, Reasons: reasons}
 	}
-
-	if s.TrustedNetwork && p.AllowTrustedSkip {
-		return Decision{Action: ActionAllowSkip, Reasons: []string{"trusted_network"}}
-	}
-
 	return Decision{Action: ActionNormal}
 }

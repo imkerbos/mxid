@@ -9,7 +9,6 @@ import (
 // security.conditional_access setting).
 type RuntimeConfig struct {
 	Policy       Policy
-	TrustedCIDRs []string
 	TravelWindow time.Duration
 }
 
@@ -52,7 +51,6 @@ type AssessInput struct {
 // Assessment is the decision returned to the auth handler.
 type Assessment struct {
 	RequireMFA bool
-	AllowSkip  bool
 	Reasons    []string
 }
 
@@ -69,7 +67,6 @@ func (s *Service) Assess(ctx context.Context, in AssessInput) (Assessment, error
 		UserID:                 in.UserID,
 		IP:                     in.IP,
 		DeviceID:               in.DeviceID,
-		TrustedCIDRs:           rc.TrustedCIDRs,
 		ImpossibleTravelWindow: rc.TravelWindow,
 	})
 	if err != nil {
@@ -78,15 +75,12 @@ func (s *Service) Assess(ctx context.Context, in AssessInput) (Assessment, error
 
 	d := Evaluate(rc.Policy, sig)
 	a := Assessment{Reasons: d.Reasons}
-	switch d.Action {
-	case ActionRequireMFA:
+	if d.Action == ActionRequireMFA {
 		a.RequireMFA = true
 		if !in.CanSecondFactor && s.risk != nil {
 			// A3: risky login the user cannot second-factor — allow, but record.
 			s.risk.Risk(ctx, in.UserID, in.TenantID, in.IP, d.Reasons)
 		}
-	case ActionAllowSkip:
-		a.AllowSkip = true
 	}
 	return a, nil
 }

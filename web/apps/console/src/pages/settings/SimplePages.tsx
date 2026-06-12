@@ -338,8 +338,6 @@ export function ConditionalAccessPage() {
         { kind: 'bool', key: 'on_new_country', label: t('settings.conditionalAccess.onNewCountry') },
         { kind: 'bool', key: 'on_impossible_travel', label: t('settings.conditionalAccess.onImpossibleTravel') },
         { kind: 'bool', key: 'on_new_device', label: t('settings.conditionalAccess.onNewDevice') },
-        { kind: 'bool', key: 'allow_trusted_skip', label: t('settings.conditionalAccess.allowTrustedSkip') },
-        { kind: 'list', key: 'trusted_cidrs', label: t('settings.conditionalAccess.trustedCidrs'), hint: t('settings.conditionalAccess.trustedCidrsHint') },
         { kind: 'number', key: 'impossible_travel_window_minutes', label: t('settings.conditionalAccess.window'), hint: t('settings.conditionalAccess.windowHint') },
       ]}
       load={() => settingsApi.getConditionalAccess()}
