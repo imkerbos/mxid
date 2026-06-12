@@ -30,6 +30,22 @@ type Session struct {
 	CreatedAt    time.Time `json:"created_at"`
 	ExpiresAt    time.Time `json:"expires_at"`
 	LastActiveAt time.Time `json:"last_active_at"`
+	// MFAVerifiedAt is the last time the user passed a multi-factor check on
+	// THIS session — set at MFA login and refreshed by a step-up challenge.
+	// nil means never. Step-up enforcement compares it against the configured
+	// grace window to decide whether a high-risk operation needs a fresh MFA.
+	MFAVerifiedAt *time.Time `json:"mfa_verified_at,omitempty"`
+}
+
+// StepUpFresh reports whether this session passed MFA within `window` of now —
+// i.e. a high-risk operation may proceed without a new step-up challenge.
+// A nil MFAVerifiedAt (never verified) is never fresh. A non-positive window
+// disables the grace period, forcing a challenge on every high-risk call.
+func (s *Session) StepUpFresh(now time.Time, window time.Duration) bool {
+	if s.MFAVerifiedAt == nil || window <= 0 {
+		return false
+	}
+	return now.Before(s.MFAVerifiedAt.Add(window))
 }
 
 // PolicyProvider returns runtime idle and absolute timeouts. When set,
@@ -152,6 +168,28 @@ func (m *Manager) Touch(ctx context.Context, namespace, sessionID string) error 
 		return fmt.Errorf("touch unmarshal: %w", err)
 	}
 	sess.LastActiveAt = time.Now()
+	return m.save(ctx, &sess)
+}
+
+// MarkMFAVerified stamps the session's MFAVerifiedAt to now and persists it.
+// Called after a successful MFA login or step-up challenge so subsequent
+// high-risk operations fall inside the grace window. No-op if the session is
+// gone (already expired/revoked).
+func (m *Manager) MarkMFAVerified(ctx context.Context, namespace, sessionID string) error {
+	key := fmt.Sprintf("%s:%s", namespace, sessionID)
+	data, err := m.redis.Get(ctx, key).Bytes()
+	if err != nil {
+		if err == redis.Nil {
+			return nil
+		}
+		return fmt.Errorf("mark mfa get: %w", err)
+	}
+	var sess Session
+	if err := json.Unmarshal(data, &sess); err != nil {
+		return fmt.Errorf("mark mfa unmarshal: %w", err)
+	}
+	now := time.Now()
+	sess.MFAVerifiedAt = &now
 	return m.save(ctx, &sess)
 }
 

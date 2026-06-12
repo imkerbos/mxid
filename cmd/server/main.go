@@ -287,6 +287,34 @@ func registerModules(a *bootstrap.App) {
 	// requests to a target tenant via X-Tenant-ID header (used by the
 	// console tenant switcher).
 	a.ConsoleGroup.Use(middleware.TenantContext())
+
+	// 4d. Step-up MFA on high-risk console operations (deletes + security-
+	// critical writes). Deps resolve lazily at request time: authzSvc is
+	// assigned later in this bootstrap but always before the first request.
+	// No dedicated Audit hook — every high-risk operation already emits its
+	// own domain audit event downstream, so the action is on the trail
+	// regardless of whether step-up was enforced or skipped (MFA off).
+	a.ConsoleGroup.Use(authn.StepUpMiddleware(authn.StepUpDeps{
+		SessionMgr: sessionMgr,
+		Policy: func(ctx context.Context, tenantID int64) (string, time.Duration) {
+			p, err := settingService.MFAPolicy(ctx, tenantID)
+			if err != nil {
+				p = setting.DefaultMFAPolicy()
+			}
+			return p.Mode, time.Duration(p.StepUpWindowSeconds) * time.Second
+		},
+		IsAdmin: func(ctx context.Context, tenantID, userID int64) bool {
+			if authzSvc == nil {
+				return false
+			}
+			perms, err := authzSvc.PermissionsForUser(ctx, tenantID, userID)
+			return err == nil && len(perms) > 0
+		},
+		HasMFA: func(ctx context.Context, userID int64) (bool, error) {
+			return authnModule.Engine.HasMFA(ctx, userID)
+		},
+	}))
+
 	userModule.RegisterRoutes(a)
 
 	// 5. Register domain modules

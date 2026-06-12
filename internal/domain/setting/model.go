@@ -51,6 +51,14 @@ const (
 	KeyLocalization    = "localization"
 	KeyLicense         = "license"
 	KeyExternalURLs    = "external.urls"
+	KeyMFAPolicy       = "security.mfa"
+)
+
+// MFA enforcement modes for MFAPolicy.Mode.
+const (
+	MFAModeOff       = "off"        // MFA not enforced; step-up is audit-only
+	MFAModeAdminOnly = "admin_only" // console-eligible admins must use MFA
+	MFAModeAll       = "all"        // every user must use MFA
 )
 
 /* ──────────────── Category structs ──────────────── */
@@ -160,6 +168,16 @@ type AuditPolicy struct {
 	AlertWebhookURL    string   `json:"alert_webhook_url"`
 	AlertOnEventTypes  []string `json:"alert_on_event_types"`
 	HighRiskRecipients []string `json:"high_risk_recipients"` // email/phone for critical events
+}
+
+// MFAPolicy — multi-factor enforcement + step-up grace window.
+//
+// Mode governs WHO must enrol MFA (see MFAMode* consts). StepUpWindowSeconds
+// is how long a passed MFA stays "fresh" for high-risk operations before a
+// new step-up challenge is required (0 = challenge every time).
+type MFAPolicy struct {
+	Mode                string `json:"mode"`
+	StepUpWindowSeconds int    `json:"step_up_window_seconds"`
 }
 
 // Localization — default language / timezone / date format.

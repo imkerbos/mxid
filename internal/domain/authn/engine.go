@@ -251,6 +251,42 @@ func (e *Engine) completeLogin(ctx context.Context, namespace string, req *AuthR
 // reused for the session record, NOT the values from the MFA-verify request.
 // Rationale: the session belongs to the device that started the login —
 // consistent audit signals matter more here than the transport endpoint.
+// HasMFA reports whether the user has a verified MFA factor enrolled. Used by
+// step-up enforcement to choose between challenging an enrolled user and
+// demanding enrollment from one who has none.
+func (e *Engine) HasMFA(ctx context.Context, userID int64) (bool, error) {
+	if e.mfaVerifier == nil {
+		return false, nil
+	}
+	return e.mfaVerifier.HasVerifiedTOTP(ctx, userID)
+}
+
+// VerifyStepUp validates a TOTP (or backup) code for an ALREADY-authenticated
+// user performing a high-risk operation. Unlike VerifyMFAChallenge there is no
+// login challenge token — the caller already holds a live session. Rate-limited
+// per user+IP. Returns nil on success, ErrMFAVerifyFailed on a bad code,
+// ErrMFANotConfigured / ErrMFARateLimited otherwise.
+func (e *Engine) VerifyStepUp(ctx context.Context, userID int64, clientIP, code string) error {
+	if e.mfaVerifier == nil {
+		return ErrMFANotConfigured
+	}
+	if err := e.mfaRateLimiter.Check(ctx, userID, clientIP); err != nil {
+		return err
+	}
+	verifyErr := e.mfaVerifier.VerifyTOTP(ctx, userID, code)
+	if verifyErr != nil && looksLikeBackupCode(code) {
+		if err := e.mfaVerifier.ConsumeBackupCode(ctx, userID, code); err == nil {
+			verifyErr = nil
+		}
+	}
+	if verifyErr != nil {
+		e.mfaRateLimiter.RecordFailure(ctx, userID, clientIP)
+		return ErrMFAVerifyFailed
+	}
+	e.mfaRateLimiter.Reset(ctx, userID, clientIP)
+	return nil
+}
+
 func (e *Engine) VerifyMFAChallenge(ctx context.Context, challenge, code string) (*LoginResponse, error) {
 	if e.mfaVerifier == nil {
 		return nil, ErrMFANotConfigured
