@@ -5,6 +5,25 @@ import { authApi, useAuthStore, useBootstrap, useTranslation } from '@mxid/share
 import { Eye, EyeOff, Loader2, RefreshCw } from 'lucide-react'
 import logo from '../../assets/logo.png'
 
+// loginErrorMessage maps the backend error code to a specific, localized
+// message so the user knows whether it was the captcha or the credentials —
+// not a bare "Request failed with status code 400".
+function loginErrorMessage(err: unknown, t: (k: string) => string): string {
+  const e = err as { code?: number; response?: { data?: { code?: number; message?: string } } }
+  const code = e?.response?.data?.code ?? e?.code
+  switch (code) {
+    case 40003: // captcha required
+    case 40004: // invalid captcha
+      return t('login.invalidCaptcha')
+    case 40101: // invalid credentials
+      return t('login.invalidCredentials')
+    case 40102: // invalid mfa code
+      return t('login.invalidMfaCode')
+    default:
+      return e?.response?.data?.message || t('login.failedRetry')
+  }
+}
+
 export default function LoginPage() {
   const navigate = useNavigate()
   const { setUser } = useAuthStore()
@@ -66,8 +85,7 @@ export default function LoginPage() {
       setUser(user)
       navigate('/dashboard', { replace: true })
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : t('login.failedRetry')
-      setError(msg)
+      setError(loginErrorMessage(err, t))
       loadCaptcha()
     } finally {
       setLoading(false)
@@ -85,9 +103,8 @@ export default function LoginPage() {
       setUser(user)
       navigate('/dashboard', { replace: true })
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : t('login.invalidPwd')
       // Challenge is single-use; on failure, restart from password.
-      setError(msg)
+      setError(loginErrorMessage(err, t))
       setMfaChallenge('')
       setMfaCode('')
       setPassword('')
