@@ -127,9 +127,13 @@ func (h *Handler) RegisterConsoleRoutes(rg *gin.RouterGroup) {
 		auth.POST("/mfa/verify", h.verifyMFAHandler(session.NamespaceConsole, CookieConsole))
 		auth.POST("/logout", h.logoutHandler(session.NamespaceConsole, CookieConsole))
 		auth.GET("/me", h.meHandler(session.NamespaceConsole, CookieConsole))
-		// Seamless SSO: derive a console session from an existing SSO session
-		// (portal login). Admin-gated — non-admins get 403 and fall back to login.
-		auth.POST("/sso", h.ssoHandler(session.NamespaceConsole, CookieConsole, true))
+		// Seamless SSO: derive a console session from the user's active portal
+		// session (preferred — stays warm) or the shared proto SSO session.
+		// Admin-gated — non-admins get 403 and fall back to login.
+		auth.POST("/sso", h.ssoHandler(session.NamespaceConsole, CookieConsole, true, []ssoSource{
+			{session.NamespacePortal, CookiePortal},
+			{session.NamespaceProtocol, CookieProto},
+		}))
 		// Step-up: re-verify MFA on the current console session to clear a
 		// high-risk operation's step_up_required gate.
 		auth.POST("/step-up", h.stepUpHandler())
@@ -145,9 +149,13 @@ func (h *Handler) RegisterPortalRoutes(rg *gin.RouterGroup) {
 		auth.POST("/mfa/verify", h.verifyMFAHandler(session.NamespacePortal, CookiePortal))
 		auth.POST("/logout", h.logoutHandler(session.NamespacePortal, CookiePortal))
 		auth.GET("/me", h.meHandler(session.NamespacePortal, CookiePortal))
-		// Seamless SSO: derive a portal session from an existing SSO session
-		// (e.g. switching back from console). Open to any authenticated identity.
-		auth.POST("/sso", h.ssoHandler(session.NamespacePortal, CookiePortal, false))
+		// Seamless SSO: derive a portal session from the user's active console
+		// session (e.g. switching back from console) or the shared proto SSO
+		// session. Open to any authenticated identity.
+		auth.POST("/sso", h.ssoHandler(session.NamespacePortal, CookiePortal, false, []ssoSource{
+			{session.NamespaceConsole, CookieConsole},
+			{session.NamespaceProtocol, CookieProto},
+		}))
 	}
 }
 
@@ -369,42 +377,52 @@ func (h *Handler) meHandler(namespace, cookieName string) gin.HandlerFunc {
 	}
 }
 
-// ssoHandler bridges an existing protocol (SSO) session into a fresh SPA
-// session for the given namespace WITHOUT re-entering credentials. This is
-// what makes "switch to console" seamless for an already-logged-in user:
-// portal login already minted the shared mxid_proto_sid SSO session, and this
-// endpoint derives a namespace session from it.
-//
-// requireAdmin gates the console namespace — only users the AdminChecker
-// approves get a console session; everyone else is told 403 (the SPA then
-// falls back to the normal login form rather than looping). The portal
-// namespace passes requireAdmin=false: any authenticated SSO identity may
-// re-establish a portal session.
-//
-// Security notes:
-//   - The proto session is the single source of truth; an expired/absent one
-//     yields 401, so this can never manufacture a session out of nothing.
-//   - The minted SPA session is non-persistent (no Remember Me) and carries
-//     its own idle/absolute lifetime — switching apps does not extend the
-//     other app's session.
-//   - AuthType is carried forward from the proto session, preserving the
-//     hook for a future step-up policy (e.g. require mfa_verified for console).
-func (h *Handler) ssoHandler(namespace, cookieName string, requireAdmin bool) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		protoID, err := c.Cookie(CookieProto)
-		if err != nil || protoID == "" {
-			response.Unauthorized(c, 40101, "no sso session")
-			return
-		}
+// ssoSource is a place to look for an existing valid session to derive a new
+// SPA session from — a (namespace, cookie) pair.
+type ssoSource struct {
+	namespace string
+	cookie    string
+}
 
-		protoSess, err := h.engine.GetSession(c.Request.Context(), session.NamespaceProtocol, protoID)
-		if err != nil {
-			response.Unauthorized(c, 40101, "invalid sso session")
+// ssoHandler bridges an existing session into a fresh SPA session for the
+// target namespace WITHOUT re-entering credentials — the mechanism behind
+// seamless portal⇄console switching.
+//
+// It tries each source in order and uses the first VALID session as the
+// identity. Sources list the SIBLING SPA session first (portal for a console
+// bridge, console for a portal bridge), then the shared proto/SSO session.
+//
+// Why sibling-first: the proto session idle-expires independently (nothing
+// Touch()es it after login), while the SPA the user is actively viewing keeps
+// its session warm. Deriving from the sibling makes the switch survive a
+// proto session that idle-died under an otherwise-active login — the exact
+// failure seen in the wild (portal polling kept mxid_portal_sid alive; the
+// untouched mxid_proto_sid expired at 30m → bridge 401 → spurious re-login).
+//
+// requireAdmin gates the console target — only AdminChecker-approved users get
+// a console session; others get 403 and the SPA falls back to the login form.
+// The minted session is non-persistent and carries its own idle/absolute
+// lifetime. AuthType is carried forward, preserving the step-up hook.
+func (h *Handler) ssoHandler(targetNS, targetCookie string, requireAdmin bool, sources []ssoSource) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var src *session.Session
+		for _, s := range sources {
+			id, err := c.Cookie(s.cookie)
+			if err != nil || id == "" {
+				continue
+			}
+			if sess, err := h.engine.GetSession(c.Request.Context(), s.namespace, id); err == nil && sess != nil {
+				src = sess
+				break
+			}
+		}
+		if src == nil {
+			response.Unauthorized(c, 40101, "no valid session to bridge")
 			return
 		}
 
 		if requireAdmin {
-			if h.adminCheck == nil || !h.adminCheck(c.Request.Context(), protoSess.TenantID, protoSess.UserID) {
+			if h.adminCheck == nil || !h.adminCheck(c.Request.Context(), src.TenantID, src.UserID) {
 				response.Forbidden(c, 40301, "not authorized for console")
 				return
 			}
@@ -412,19 +430,19 @@ func (h *Handler) ssoHandler(namespace, cookieName string, requireAdmin bool) gi
 
 		spaSess, err := h.engine.SessionManager().Create(
 			c.Request.Context(),
-			namespace,
-			protoSess.UserID,
-			protoSess.TenantID,
+			targetNS,
+			src.UserID,
+			src.TenantID,
 			c.ClientIP(),
 			c.Request.UserAgent(),
-			protoSess.AuthType,
+			src.AuthType,
 		)
 		if err != nil {
 			response.InternalError(c, "failed to establish session")
 			return
 		}
 
-		h.setSessionCookieWithRemember(c, cookieName, spaSess.ID, false)
+		h.setSessionCookieWithRemember(c, targetCookie, spaSess.ID, false)
 		response.OK(c, nil)
 	}
 }
