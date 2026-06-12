@@ -97,6 +97,13 @@ export interface AuditPolicy {
   high_risk_recipients: string[]
 }
 
+// ─── MFA policy ───
+export type MFAMode = 'off' | 'admin_only' | 'all'
+export interface MFAPolicy {
+  mode: MFAMode
+  step_up_window_seconds: number
+}
+
 // ─── Localization ───
 export interface Localization {
   default_language: string
@@ -166,6 +173,11 @@ export const settingsApi = {
   getAuditPolicy: () => client.get<ApiResponse<AuditPolicy>>('/settings/audit-policy').then(r => r.data.data),
   putAuditPolicy: (v: AuditPolicy) =>
     client.put<ApiResponse<{ saved: boolean }>>('/settings/audit-policy', v).then(r => r.data),
+
+  // MFA policy
+  getMFA: () => client.get<ApiResponse<MFAPolicy>>('/settings/mfa').then(r => r.data.data),
+  putMFA: (v: MFAPolicy) =>
+    client.put<ApiResponse<{ saved: boolean }>>('/settings/mfa', v).then(r => r.data),
 
   // Localization
   getLocalization: () => client.get<ApiResponse<Localization>>('/settings/localization').then(r => r.data.data),

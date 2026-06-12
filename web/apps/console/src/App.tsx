@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore, authApi, useBootstrap } from '@mxid/shared'
 import MainLayout from './components/layout/MainLayout'
+import StepUpModal from './components/StepUpModal'
 import LoginPage from './pages/login'
 import DashboardPage from './pages/dashboard'
 import UsersPage from './pages/users'
@@ -24,6 +25,7 @@ import {
   ProtocolDefaultsPage,
   SMSPage,
   AuditPolicyPage,
+  MFAPolicyPage,
   LocalizationPage,
   LicensePage,
   MailTemplatesPage,
@@ -88,6 +90,7 @@ export default function App() {
         element={
           <AuthGuard>
             <MainLayout>
+              <StepUpModal />
               <Routes>
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 <Route path="/dashboard" element={<DashboardPage />} />
@@ -108,6 +111,7 @@ export default function App() {
                   <Route path="mail/templates" element={<MailTemplatesPage />} />
                   <Route path="sms" element={<SMSPage />} />
                   <Route path="security" element={<SecurityPage />} />
+                  <Route path="mfa" element={<MFAPolicyPage />} />
                   <Route path="login-methods" element={<LoginMethodsPage />} />
                   <Route path="protocol-defaults" element={<ProtocolDefaultsPage />} />
                   <Route path="branding" element={<BrandingPage />} />

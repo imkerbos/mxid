@@ -16,6 +16,7 @@ import {
   type ProtocolDefaults,
   type SMS,
   type AuditPolicy,
+  type MFAPolicy,
   type Localization,
   type License,
   type MailTemplates,
@@ -298,6 +299,29 @@ export function AuditPolicyPage() {
       ]}
       load={() => settingsApi.getAuditPolicy()}
       save={(v) => settingsApi.putAuditPolicy(v)}
+    />
+  )
+}
+
+export function MFAPolicyPage() {
+  const { t } = useTranslation()
+  return (
+    <GenericForm<MFAPolicy>
+      title={t('settings.mfa.title')}
+      desc={t('settings.mfa.desc')}
+      rows={[
+        {
+          kind: 'select', key: 'mode', label: t('settings.mfa.mode'),
+          options: [
+            { value: 'off', label: t('settings.mfa.modeOff') },
+            { value: 'admin_only', label: t('settings.mfa.modeAdminOnly') },
+            { value: 'all', label: t('settings.mfa.modeAll') },
+          ],
+        },
+        { kind: 'number', key: 'step_up_window_seconds', label: t('settings.mfa.window'), hint: t('settings.mfa.windowHint') },
+      ]}
+      load={() => settingsApi.getMFA()}
+      save={(v) => settingsApi.putMFA(v)}
     />
   )
 }
