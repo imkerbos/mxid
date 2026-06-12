@@ -71,6 +71,7 @@ func (s *Service) SubscribeEvents() {
 	// Login events
 	s.eventBus.Subscribe(event.LoginSuccess, s.handleLoginSuccess)
 	s.eventBus.Subscribe(event.LoginFailed, s.handleLoginFailed)
+	s.eventBus.Subscribe(event.LoginRisk, s.handleLoginRisk)
 	s.eventBus.Subscribe(event.Logout, s.handleLogout)
 
 	// User events
@@ -146,6 +147,33 @@ func (s *Service) handleLoginSuccess(ctx context.Context, evt event.Event) {
 		IP:           strPtr(ip),
 		UserAgent:    strPtr(userAgent),
 		Detail:       s.marshalDetailFor(event.LoginSuccess, payload),
+		CreatedAt:    time.Now(),
+	}
+
+	s.createLog(ctx, log)
+}
+
+// handleLoginRisk records a conditional-access risk event: a login that fired a
+// risk signal but was allowed through (the user had no second factor to
+// challenge). Persisted so security operators can review risky logins.
+func (s *Service) handleLoginRisk(ctx context.Context, evt event.Event) {
+	payload := s.toMap(evt.Payload)
+
+	userID := s.toInt64(payload["user_id"])
+	ip := s.toString(payload["ip"])
+	tenantID := s.toInt64OrDefault(payload["tenant_id"], s.tenantID)
+	resourceType := "session"
+
+	log := &AuditLog{
+		ID:           s.idGen.Generate(),
+		TenantID:     tenantID,
+		ActorID:      &userID,
+		ActorType:    ActorUser,
+		EventType:    event.LoginRisk,
+		EventStatus:  EventStatusSuccess,
+		ResourceType: &resourceType,
+		IP:           strPtr(ip),
+		Detail:       s.marshalDetailFor(event.LoginRisk, payload),
 		CreatedAt:    time.Now(),
 	}
 

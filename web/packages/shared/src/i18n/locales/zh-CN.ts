@@ -1030,6 +1030,7 @@ export default {
     nextPage: '下一页',
     events: {
       all: '全部事件',
+      loginRisk: '风险登录',
       userLogin: '用户登录',
       userLogout: '用户登出',
       userCreate: '创建用户',

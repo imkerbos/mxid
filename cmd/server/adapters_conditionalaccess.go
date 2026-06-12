@@ -10,6 +10,7 @@ import (
 	"github.com/imkerbos/mxid/internal/bootstrap"
 	"github.com/imkerbos/mxid/internal/domain/conditionalaccess"
 	"github.com/imkerbos/mxid/internal/domain/setting"
+	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/geoip"
 )
 
@@ -45,16 +46,31 @@ func (l loginHistoryAdapter) RecentSuccessful(ctx context.Context, userID int64,
 }
 
 // caRiskLogger records the A3 fallback — a risky login allowed through because
-// the user has no second factor to challenge. Logs at WARN; the dedicated audit
-// event lands in a later phase.
-type caRiskLogger struct{ logger *zap.Logger }
+// the user has no second factor to challenge. Publishes a login.risk event the
+// audit pipeline persists (so it's queryable in the console), and logs at WARN
+// for live operability.
+type caRiskLogger struct {
+	logger *zap.Logger
+	bus    *event.Bus
+}
 
-func (l caRiskLogger) Risk(_ context.Context, userID, tenantID int64, ip string, reasons []string) {
+func (l caRiskLogger) Risk(ctx context.Context, userID, tenantID int64, ip string, reasons []string) {
 	l.logger.Warn("conditional-access risk: login allowed without a second factor",
 		zap.Int64("user_id", userID),
 		zap.Int64("tenant_id", tenantID),
 		zap.String("ip", ip),
 		zap.Strings("reasons", reasons))
+	if l.bus != nil {
+		l.bus.Publish(ctx, event.Event{
+			Type: event.LoginRisk,
+			Payload: map[string]any{
+				"user_id":   userID,
+				"tenant_id": tenantID,
+				"ip":        ip,
+				"reasons":   reasons,
+			},
+		})
+	}
 }
 
 // buildConditionalAccess wires the adaptive-authentication service from app
@@ -80,5 +96,5 @@ func buildConditionalAccess(a *bootstrap.App, settings *setting.Service, geo geo
 		}
 	}
 
-	return conditionalaccess.NewService(cfg, computer, deviceSvc, caRiskLogger{logger: a.Logger})
+	return conditionalaccess.NewService(cfg, computer, deviceSvc, caRiskLogger{logger: a.Logger, bus: a.EventBus})
 }
