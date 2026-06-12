@@ -513,7 +513,7 @@ func registerModules(a *bootstrap.App) {
 		issuer = v
 	}
 
-	appResolver := buildAppResolver(appModule, a.Config.Tenant.DefaultID, a.MasterKey)
+	appResolver := buildAppResolver(appModule, a.Config.Tenant.DefaultID, a.MasterKey, a.Logger)
 	idResolver := buildIdentityResolver(userModule, a)
 	sessResolver := resolver.NewSessionResolver(a.Redis)
 	tenantResolver := newDBTenantResolver(a)
@@ -717,7 +717,7 @@ func (a portalConsentQuerierAdapter) GetApp(ctx context.Context, appID int64) (*
 // Cert adapters decrypt the at-rest private_key via the bootstrap master key
 // before handing it to the protocol layer. The protocol layer never sees
 // the ciphertext.
-func buildAppResolver(appModule *app.Module, _ int64, masterKey *crypto.MasterKey) resolver.AppResolver {
+func buildAppResolver(appModule *app.Module, _ int64, masterKey *crypto.MasterKey, logger *zap.Logger) resolver.AppResolver {
 	convertCert := func(c *app.AppCert) (*resolver.CertConfig, error) {
 		cfg := &resolver.CertConfig{
 			ID:         c.ID,
@@ -810,7 +810,14 @@ func buildAppResolver(appModule *app.Module, _ int64, masterKey *crypto.MasterKe
 			for _, c := range certs {
 				converted, err := convertCert(c)
 				if err != nil {
-					return nil, err
+					// One unusable cert (e.g. orphaned by a KEK rotation) must
+					// not take down the whole IdP JWKS for every other app.
+					// Skip it — a key we can't load is a key we can't sign with,
+					// so it has no business being advertised — and log loudly so
+					// the operator knows to rotate that app's signing key.
+					logger.Warn("skipping unusable signing cert in JWKS aggregation",
+						zap.Int64("cert_id", c.ID), zap.Int64("app_id", c.AppID), zap.Error(err))
+					continue
 				}
 				result = append(result, converted)
 			}
