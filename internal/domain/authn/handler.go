@@ -105,11 +105,21 @@ type Handler struct {
 	rememberMe   RememberMeProvider
 	adminCheck   AdminChecker
 	ca           CAService
+	// mfaEnrollRequired reports whether the MFA policy requires this user to
+	// hold a factor. When true and the user has none, login flags the session
+	// enroll-pending so the gate forces enrollment. nil = no mandatory enroll.
+	mfaEnrollRequired func(ctx context.Context, tenantID, userID int64) bool
 }
 
 // SetConditionalAccess wires the adaptive-authentication service. nil keeps
 // the login flow unchanged.
 func (h *Handler) SetConditionalAccess(ca CAService) { h.ca = ca }
+
+// SetMFAEnrollGate wires the "must this user hold MFA?" check used to force
+// enrollment at login. nil disables mandatory enrollment.
+func (h *Handler) SetMFAEnrollGate(f func(ctx context.Context, tenantID, userID int64) bool) {
+	h.mfaEnrollRequired = f
+}
 
 // SetAdminChecker wires the runtime "is this user a console-eligible
 // admin?" lookup used by /auth/me to flag the switch-to-console button.
@@ -282,6 +292,15 @@ func (h *Handler) loginHandler(namespace, cookieName string) gin.HandlerFunc {
 
 		h.finalizeLoginCookies(c, cookieName, loginResp, authType, req.Remember)
 		h.rememberDevice(c, effectiveTenant, loginResp.UserID, deviceID)
+
+		// Mandatory MFA enrollment: this branch means the user has no factor
+		// (else MFA would have been required). If policy requires them to hold
+		// one, flag the session so the enroll gate blocks everything but MFA
+		// setup until they bind a factor.
+		if h.mfaEnrollRequired != nil && loginResp.UserID != 0 &&
+			h.mfaEnrollRequired(c.Request.Context(), effectiveTenant, loginResp.UserID) {
+			_ = h.engine.SessionManager().SetEnrollPending(c.Request.Context(), namespace, loginResp.SessionID, true)
+		}
 		response.OK(c, loginResp)
 	}
 }
@@ -647,9 +666,10 @@ func (h *Handler) handleAuthError(c *gin.Context, err error) {
 
 // Context keys used by the auth middleware to pass values via gin.Context.
 const (
-	CtxUserID    = "user_id"
-	CtxTenantID  = "tenant_id"
-	CtxSessionID = "session_id"
+	CtxUserID           = "user_id"
+	CtxTenantID         = "tenant_id"
+	CtxSessionID        = "session_id"
+	CtxMFAEnrollPending = "mfa_enroll_pending"
 )
 
 // GetUserID extracts the authenticated user ID from the gin context.

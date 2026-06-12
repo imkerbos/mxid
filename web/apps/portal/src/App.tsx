@@ -44,6 +44,15 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('mxid:unauthorized', handler)
   }, [clear, navigate])
 
+  // Mandatory MFA enrollment: when the backend gate reports the user must bind
+  // a factor before proceeding, send them to the security page where TOTP
+  // enrollment lives.
+  useEffect(() => {
+    const onEnroll = () => navigate('/security', { replace: true })
+    window.addEventListener('mxid:mfa-enroll-required', onEnroll)
+    return () => window.removeEventListener('mxid:mfa-enroll-required', onEnroll)
+  }, [navigate])
+
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center">
