@@ -42,7 +42,27 @@ func doSSO(t *testing.T, h *Handler, protoCookie string) *httptest.ResponseRecor
 		req.AddCookie(&http.Cookie{Name: CookieProto, Value: protoCookie})
 	}
 	c.Request = req
-	h.ssoHandler(session.NamespaceConsole, CookieConsole, true)(c)
+	h.ssoHandler(session.NamespaceConsole, CookieConsole, true, []ssoSource{
+		{session.NamespacePortal, CookiePortal},
+		{session.NamespaceProtocol, CookieProto},
+	})(c)
+	return w
+}
+
+// doSSOWithCookie drives the console bridge with an arbitrary source cookie,
+// for exercising the sibling-session (portal) source path.
+func doSSOWithCookie(t *testing.T, h *Handler, name, value string) *httptest.ResponseRecorder {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/console/auth/sso", nil)
+	req.AddCookie(&http.Cookie{Name: name, Value: value})
+	c.Request = req
+	h.ssoHandler(session.NamespaceConsole, CookieConsole, true, []ssoSource{
+		{session.NamespacePortal, CookiePortal},
+		{session.NamespaceProtocol, CookieProto},
+	})(c)
 	return w
 }
 
@@ -101,5 +121,35 @@ func TestSSOHandler_NonAdminForbidden(t *testing.T) {
 		if ck.Name == CookieConsole && ck.Value != "" {
 			t.Fatalf("console cookie must not be set for non-admin")
 		}
+	}
+}
+
+// The sibling portal session is a valid bridge source even when no proto
+// session exists — this is the fix for the proto session idle-expiring while
+// the actively-polled portal session stays alive.
+func TestSSOHandler_BridgesFromSiblingPortalSession(t *testing.T) {
+	h, sm := newTestHandler(t, true)
+	portal, err := sm.Create(context.Background(), session.NamespacePortal, 99, 1, "ip", "ua", "password")
+	if err != nil {
+		t.Fatalf("seed portal session: %v", err)
+	}
+
+	w := doSSOWithCookie(t, h, CookiePortal, portal.ID)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200 bridging from portal session, got %d (%s)", w.Code, w.Body.String())
+	}
+	var consoleSID string
+	for _, ck := range w.Result().Cookies() {
+		if ck.Name == CookieConsole {
+			consoleSID = ck.Value
+		}
+	}
+	if consoleSID == "" {
+		t.Fatalf("expected %s cookie to be set from sibling source", CookieConsole)
+	}
+	sess, err := sm.Get(context.Background(), session.NamespaceConsole, consoleSID)
+	if err != nil || sess == nil || sess.UserID != 99 {
+		t.Fatalf("console session not minted from portal identity: %v", err)
 	}
 }
