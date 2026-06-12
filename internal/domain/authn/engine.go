@@ -34,6 +34,7 @@ var (
 //     /auth/mfa/verify together with the TOTP code.
 type LoginResponse struct {
 	UserID      int64    `json:"user_id,string,omitempty"`
+	TenantID    int64    `json:"tenant_id,string,omitempty"`
 	Username    string   `json:"username,omitempty"`
 	DisplayName string   `json:"display_name,omitempty"`
 	SessionID   string   `json:"session_id,omitempty"`
@@ -196,6 +197,7 @@ func (e *Engine) Login(ctx context.Context, req *AuthRequest, namespace string) 
 				}
 				return &LoginResponse{
 					UserID:      result.UserID,
+					TenantID:    req.TenantID,
 					Username:    result.Username,
 					DisplayName: result.DisplayName,
 					MFARequired: true,
@@ -235,6 +237,7 @@ func (e *Engine) completeLogin(ctx context.Context, namespace string, req *AuthR
 
 	return &LoginResponse{
 		UserID:      result.UserID,
+		TenantID:    req.TenantID,
 		Username:    result.Username,
 		DisplayName: result.DisplayName,
 		SessionID:   sess.ID,

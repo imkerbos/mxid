@@ -369,16 +369,25 @@ func registerModules(a *bootstrap.App) {
 	auditModule := audit.Register(a)
 	// GeoIP enrichment for audit IP. Operator points config geoip.database_path
 	// at a MaxMind GeoLite2-City .mmdb; missing / unreadable falls back to
-	// noop so a missing licence doesn't break audit.
+	// noop so a missing licence doesn't break audit. Shared with conditional
+	// access (geo-based risk signals) below.
+	var geoResolver geoip.Resolver = geoip.NoopResolver{}
 	if path := a.Config.GeoIP.DatabasePath; path != "" {
 		if geo, err := geoip.NewMaxMindResolver(path); err == nil {
-			auditModule.Service.SetGeoResolver(geoip.PrivateAwareResolver{Inner: geo})
+			geoResolver = geoip.PrivateAwareResolver{Inner: geo}
+			auditModule.Service.SetGeoResolver(geoResolver)
 			a.Logger.Info("geoip resolver loaded", zap.String("path", path))
 		} else {
 			a.Logger.Warn("geoip mmdb unavailable, audit geo columns will be empty",
 				zap.String("path", path), zap.Error(err))
 		}
 	}
+
+	// Conditional access (adaptive auth): assess login risk + recognise devices.
+	// Disabled by default (policy.Enabled=false) so this is inert until an admin
+	// turns it on; device history still accumulates so the new-device signal is
+	// meaningful once enabled.
+	authnModule.Handler.SetConditionalAccess(buildConditionalAccess(a, settingService, geoResolver))
 	// Retention cron — purges audit_log rows older than AuditPolicy.RetentionDays
 	// every 6h. Hourly would be wasteful (no SLA on prompt deletion); daily
 	// risks losing the window during long maintenance. Default-tenant scope
