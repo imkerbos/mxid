@@ -6,7 +6,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import {
   Mail, MailOpen, ShieldCheck, Palette, LogIn,
-  Settings2, MessageSquare, FileClock, Globe, Award, Link2, KeyRound,
+  Settings2, MessageSquare, FileClock, Globe, Award, Link2, KeyRound, ShieldAlert,
 } from 'lucide-react'
 import { cn, useTranslation } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
@@ -28,6 +28,7 @@ const buildNav = (t: (k: string) => string): Array<{
     items: [
       { to: '/settings/security', icon: ShieldCheck, label: t('settings.sections.security'), hint: t('settings.sections.securityHint') },
       { to: '/settings/mfa', icon: KeyRound, label: t('settings.sections.mfa'), hint: t('settings.sections.mfaHint') },
+      { to: '/settings/conditional-access', icon: ShieldAlert, label: t('settings.sections.conditionalAccess'), hint: t('settings.sections.conditionalAccessHint') },
       { to: '/settings/login-methods', icon: LogIn, label: t('settings.sections.loginMethods') },
     ],
   },
