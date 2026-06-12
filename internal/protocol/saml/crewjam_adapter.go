@@ -117,7 +117,10 @@ func attrsToCrewjam(attrs map[string]string) []crewjam.Attribute {
 		out = append(out, crewjam.Attribute{
 			Name:       name,
 			NameFormat: "urn:oasis:names:tc:SAML:2.0:attrname-format:basic",
-			Values:     []crewjam.AttributeValue{{Value: val}},
+			// Type MUST be set — an empty xsi:type="" is schema-invalid and
+			// strict SPs (BookStack / onelogin php-saml) reject the whole
+			// Response against saml-schema-protocol-2.0.xsd.
+			Values: []crewjam.AttributeValue{{Type: "xs:string", Value: val}},
 		})
 	}
 	return out
