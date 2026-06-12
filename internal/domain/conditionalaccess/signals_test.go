@@ -93,38 +93,14 @@ func TestCompute_ImpossibleTravel(t *testing.T) {
 	}
 }
 
-func TestCompute_TrustedNetworkAndUnknownGeo(t *testing.T) {
-	// Trusted CIDR matches; geo unknown (empty) so no geo signals fire.
+func TestCompute_UnknownGeoNoSignals(t *testing.T) {
+	// Geo unknown (empty) so no geo signals fire, even with history present.
 	c := newComputer(fakeGeo{}, fakeHistory{{IP: "9.9.9.9", At: time.Unix(1, 0)}}, true, time.Unix(100, 0))
 	s, _ := c.Compute(context.Background(), ComputeInput{
-		UserID: 1, IP: "10.0.0.5:443", DeviceID: "d",
-		TrustedCIDRs:           []string{"10.0.0.0/8"},
+		UserID: 1, IP: "203.0.113.7", DeviceID: "d",
 		ImpossibleTravelWindow: time.Hour,
 	})
-	if !s.TrustedNetwork {
-		t.Fatalf("10.0.0.5 must match 10.0.0.0/8")
-	}
 	if s.NewCountry || s.ImpossibleTravel {
 		t.Fatalf("unknown geo must not raise geo signals")
-	}
-}
-
-func TestIPInAnyCIDR(t *testing.T) {
-	cases := []struct {
-		ip    string
-		cidrs []string
-		want  bool
-	}{
-		{"10.0.0.5", []string{"10.0.0.0/8"}, true},
-		{"10.0.0.5:443", []string{"10.0.0.0/8"}, true},
-		{"192.168.1.1", []string{"10.0.0.0/8"}, false},
-		{"203.0.113.7", []string{"203.0.113.0/24", "10.0.0.0/8"}, true},
-		{"bad-ip", []string{"10.0.0.0/8"}, false},
-		{"10.0.0.5", []string{"not-a-cidr"}, false},
-	}
-	for _, tc := range cases {
-		if got := ipInAnyCIDR(tc.ip, tc.cidrs); got != tc.want {
-			t.Errorf("ipInAnyCIDR(%q,%v)=%v want %v", tc.ip, tc.cidrs, got, tc.want)
-		}
 	}
 }

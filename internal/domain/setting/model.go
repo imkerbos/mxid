@@ -173,16 +173,14 @@ type AuditPolicy struct {
 
 // ConditionalAccess — adaptive-authentication policy. Disabled by default;
 // when enabled, risk signals on a login (new country / impossible travel / new
-// device) force a second factor, and a trusted-network login MAY skip MFA only
-// if AllowTrustedSkip is set. TrustedCIDRs are the networks treated as trusted.
+// device) force a second factor. The engine only ever ADDS MFA — it never
+// skips it (a trusted network still requires MFA).
 type ConditionalAccess struct {
-	Enabled                       bool     `json:"enabled"`
-	OnNewCountry                  bool     `json:"on_new_country"`
-	OnImpossibleTravel            bool     `json:"on_impossible_travel"`
-	OnNewDevice                   bool     `json:"on_new_device"`
-	AllowTrustedSkip              bool     `json:"allow_trusted_skip"`
-	TrustedCIDRs                  []string `json:"trusted_cidrs"`
-	ImpossibleTravelWindowMinutes int      `json:"impossible_travel_window_minutes"`
+	Enabled                       bool `json:"enabled"`
+	OnNewCountry                  bool `json:"on_new_country"`
+	OnImpossibleTravel            bool `json:"on_impossible_travel"`
+	OnNewDevice                   bool `json:"on_new_device"`
+	ImpossibleTravelWindowMinutes int  `json:"impossible_travel_window_minutes"`
 }
 
 // MFAPolicy — multi-factor enforcement + step-up grace window.

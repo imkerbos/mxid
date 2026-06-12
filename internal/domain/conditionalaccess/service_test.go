@@ -30,7 +30,7 @@ func TestAssess_DisabledIsNoop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.RequireMFA || a.AllowSkip || risk.calls != 0 {
+	if a.RequireMFA || risk.calls != 0 {
 		t.Fatalf("disabled policy must be a no-op, got %+v risk=%d", a, risk.calls)
 	}
 }
@@ -59,15 +59,13 @@ func TestAssess_RiskWithoutFactorAuditsAndAllows(t *testing.T) {
 	}
 }
 
-func TestAssess_AllowSkipOnTrustedNetwork(t *testing.T) {
-	cfg := RuntimeConfig{
-		Policy:       Policy{Enabled: true, OnNewDevice: true, AllowTrustedSkip: true},
-		TrustedCIDRs: []string{"10.0.0.0/8"},
-	}
-	// Known device + trusted network + no other risk → allow skip.
-	svc, _ := buildService(t, cfg, true, fakeHistory{}, fakeGeo{})
+func TestAssess_KnownDeviceCleanLoginNormal(t *testing.T) {
+	cfg := RuntimeConfig{Policy: Policy{Enabled: true, OnNewDevice: true}}
+	// Known device + no other risk → no MFA forced (a trusted network would NOT
+	// change this; the engine never skips, only adds).
+	svc, risk := buildService(t, cfg, true, fakeHistory{}, fakeGeo{})
 	a, _ := svc.Assess(context.Background(), AssessInput{UserID: 1, TenantID: 1, IP: "10.1.2.3", DeviceID: "dev-known"})
-	if !a.AllowSkip || a.RequireMFA {
-		t.Fatalf("trusted network clean login must allow skip, got %+v", a)
+	if a.RequireMFA || risk.calls != 0 {
+		t.Fatalf("known-device clean login must be a no-op, got %+v risk=%d", a, risk.calls)
 	}
 }

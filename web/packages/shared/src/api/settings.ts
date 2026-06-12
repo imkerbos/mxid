@@ -110,8 +110,6 @@ export interface ConditionalAccess {
   on_new_country: boolean
   on_impossible_travel: boolean
   on_new_device: boolean
-  allow_trusted_skip: boolean
-  trusted_cidrs: string[]
   impossible_travel_window_minutes: number
 }
 

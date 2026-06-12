@@ -8,9 +8,6 @@
 package settings
 
 import (
-	"net"
-	"strings"
-
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/setting"
 	"github.com/imkerbos/mxid/pkg/mailer"
@@ -292,14 +289,6 @@ func (h *Handler) putConditionalAccess(c *gin.Context) {
 	if err := c.ShouldBindJSON(&v); err != nil {
 		response.BadRequest(c, 40001, err.Error())
 		return
-	}
-	// Reject malformed CIDRs early — a bad trusted range would silently never
-	// match, which is a security-relevant surprise.
-	for _, cidr := range v.TrustedCIDRs {
-		if _, _, err := net.ParseCIDR(strings.TrimSpace(cidr)); err != nil {
-			response.BadRequest(c, 40001, "invalid trusted CIDR: "+cidr)
-			return
-		}
 	}
 	if v.ImpossibleTravelWindowMinutes < 0 {
 		v.ImpossibleTravelWindowMinutes = 0

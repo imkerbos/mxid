@@ -2,8 +2,6 @@ package conditionalaccess
 
 import (
 	"context"
-	"net"
-	"strings"
 	"time"
 
 	"github.com/imkerbos/mxid/pkg/geoip"
@@ -47,7 +45,6 @@ type ComputeInput struct {
 	UserID                 int64
 	IP                     string
 	DeviceID               string
-	TrustedCIDRs           []string
 	ImpossibleTravelWindow time.Duration // a country change within this window is "impossible travel"
 }
 
@@ -55,8 +52,6 @@ type ComputeInput struct {
 // (no db / private IP) it does NOT raise geo signals, to avoid false positives.
 func (c *SignalComputer) Compute(ctx context.Context, in ComputeInput) (Signals, error) {
 	var s Signals
-
-	s.TrustedNetwork = ipInAnyCIDR(in.IP, in.TrustedCIDRs)
 
 	known, err := c.devices.IsKnown(ctx, in.UserID, in.DeviceID)
 	if err != nil {
@@ -106,23 +101,4 @@ func (c *SignalComputer) country(ip string) string {
 		return ""
 	}
 	return loc.Country
-}
-
-// ipInAnyCIDR reports whether ip falls in any of the CIDR ranges. Bad entries
-// are skipped. ip may carry a port.
-func ipInAnyCIDR(ip string, cidrs []string) bool {
-	if host, _, err := net.SplitHostPort(ip); err == nil {
-		ip = host
-	}
-	ip = strings.Trim(strings.TrimSpace(ip), "[]")
-	parsed := net.ParseIP(ip)
-	if parsed == nil {
-		return false
-	}
-	for _, c := range cidrs {
-		if _, network, err := net.ParseCIDR(strings.TrimSpace(c)); err == nil && network.Contains(parsed) {
-			return true
-		}
-	}
-	return false
 }

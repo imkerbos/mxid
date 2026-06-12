@@ -75,9 +75,7 @@ func buildConditionalAccess(a *bootstrap.App, settings *setting.Service, geo geo
 				OnNewCountry:       c.OnNewCountry,
 				OnImpossibleTravel: c.OnImpossibleTravel,
 				OnNewDevice:        c.OnNewDevice,
-				AllowTrustedSkip:   c.AllowTrustedSkip,
 			},
-			TrustedCIDRs: c.TrustedCIDRs,
 			TravelWindow: time.Duration(c.ImpossibleTravelWindowMinutes) * time.Minute,
 		}
 	}
