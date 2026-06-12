@@ -1027,6 +1027,7 @@ export default {
     nextPage: 'Next',
     events: {
       all: 'All events',
+      loginRisk: 'Risky login',
       userLogin: 'User login',
       userLogout: 'User logout',
       userCreate: 'User create',

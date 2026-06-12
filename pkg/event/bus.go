@@ -79,6 +79,10 @@ const (
 	LoginSuccess = "login.success"
 	LoginFailed  = "login.failed"
 	Logout       = "logout"
+	// LoginRisk marks a login that conditional access flagged as risky (new
+	// country / impossible travel / new device) but allowed through because the
+	// user had no second factor to challenge. Surfaced in the audit trail.
+	LoginRisk = "login.risk"
 
 	AppCreated  = "app.created"
 	AppUpdated  = "app.updated"

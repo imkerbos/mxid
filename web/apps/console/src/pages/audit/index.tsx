@@ -6,6 +6,7 @@ import type { AuditLog, PaginatedData } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
 
 function getEventTypeColor(eventType: string): { bg: string; text: string } {
+  if (eventType === 'login.risk') return { bg: 'bg-red-50', text: 'text-red-700' }
   if (eventType.startsWith('user.')) return { bg: 'bg-blue-50', text: 'text-blue-700' }
   if (eventType.startsWith('app.')) return { bg: 'bg-purple-50', text: 'text-purple-700' }
   if (eventType.startsWith('role.')) return { bg: 'bg-amber-50', text: 'text-amber-700' }
@@ -18,6 +19,7 @@ function useEventTypes() {
   const { t } = useTranslation()
   return useMemo(() => ([
     { value: '', label: t('audit.events.all') },
+    { value: 'login.risk', label: t('audit.events.loginRisk') },
     { value: 'user.login', label: t('audit.events.userLogin') },
     { value: 'user.logout', label: t('audit.events.userLogout') },
     { value: 'user.create', label: t('audit.events.userCreate') },

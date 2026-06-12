@@ -72,6 +72,7 @@ var fallbackSchema = detailSchema{allow: []string{
 var detailSchemas = map[string]detailSchema{
 	event.LoginSuccess: {allow: []string{"user_id", "username", "tenant_id", "auth_type", "ip", "user_agent", "session_id"}},
 	event.LoginFailed:  {allow: []string{"username", "tenant_id", "reason", "auth_type", "ip", "user_agent"}},
+	event.LoginRisk:    {allow: []string{"user_id", "tenant_id", "ip", "user_agent", "reasons"}},
 	event.Logout:       {allow: []string{"user_id", "tenant_id", "session_id", "ip", "user_agent"}},
 
 	event.UserCreated:         {allow: []string{"user_id", "tenant_id", "username", "email", "display_name", "actor_id"}},
