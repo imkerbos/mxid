@@ -8,8 +8,6 @@ import (
 	"net/url"
 
 	crewjam "github.com/crewjam/saml"
-
-	"github.com/imkerbos/mxid/internal/protocol/resolver"
 )
 
 func encodeCertB64(der []byte) string { return base64.StdEncoding.EncodeToString(der) }
@@ -108,39 +106,19 @@ func buildIdentityProvider(cfg *SAMLConfig, key *rsa.PrivateKey, cert *x509.Cert
 	return idp, nil
 }
 
-// buildSession maps MXID's authenticated identity + the app's attribute mapping
-// into a crewjam Session — the NameID and the SAML attributes the SP receives.
-func buildSession(user *resolver.IdentityInfo, cfg *SAMLConfig, nameIDValue string) *crewjam.Session {
-	s := &crewjam.Session{
-		NameID:       nameIDValue,
-		NameIDFormat: cfg.NameIDFormat,
-		UserName:     user.Username,
-		UserEmail:    user.Email,
-	}
-	for srcAttr, samlName := range cfg.AttributeMapping {
-		val := attrValueForUser(srcAttr, user)
+// attrsToCrewjam converts MXID's resolved attribute map (already keyed by the
+// SP-facing SAML attribute names) into crewjam Attributes.
+func attrsToCrewjam(attrs map[string]string) []crewjam.Attribute {
+	out := make([]crewjam.Attribute, 0, len(attrs))
+	for name, val := range attrs {
 		if val == "" {
 			continue
 		}
-		s.CustomAttributes = append(s.CustomAttributes, crewjam.Attribute{
-			Name:       samlName,
+		out = append(out, crewjam.Attribute{
+			Name:       name,
 			NameFormat: "urn:oasis:names:tc:SAML:2.0:attrname-format:basic",
 			Values:     []crewjam.AttributeValue{{Value: val}},
 		})
 	}
-	return s
-}
-
-// attrValueForUser resolves a logical attribute key to the user's value.
-func attrValueForUser(key string, user *resolver.IdentityInfo) string {
-	switch key {
-	case "username":
-		return user.Username
-	case "email":
-		return user.Email
-	case "display_name":
-		return user.DisplayName
-	default:
-		return ""
-	}
+	return out
 }

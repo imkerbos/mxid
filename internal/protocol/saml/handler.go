@@ -19,6 +19,7 @@ import (
 
 	crewjam "github.com/crewjam/saml"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/imkerbos/mxid/internal/protocol/resolver"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/urlswap"
@@ -279,54 +280,82 @@ func (h *Handler) processSSO(c *gin.Context, appCode, requestID, relayState stri
 		attrs["username"] = subj.DisplayUsername
 	}
 
-	// Resolve issuer by request host so a SP that fetched metadata from
-	// host X gets a Response signed-as / issued-by host X. Without this
-	// the SP rejects the Response with "Invalid issuer ... expected X
-	// got Y" the moment it's reached via a non-canonical host.
-	urls := h.resolveURLs(c.Request.Context(), c.Request.Host)
-	ttl := time.Duration(samlCfg.SessionTTL) * time.Second
-	resp, err := h.builder.BuildResponse(&BuildParams{
-		RequestID:    requestID,
-		ACSURL:       samlCfg.ACSURL,
-		SPEntityID:   samlCfg.SPEntityID,
-		NameIDFormat: samlCfg.NameIDFormat,
-		NameIDValue:  nameIDValue,
-		User:         user,
-		Attributes:   attrs,
-		TTL:          ttl,
-		Issuer:       urls.Issuer,
-	})
+	h.emitCrewjamResponse(c, appCode, app.ID, samlCfg, requestID, relayState, nameIDValue, attrs)
+}
+
+// emitCrewjamResponse builds and writes the SAML Response via crewjam/saml,
+// which signs the assertion (and response), handles NameID / Conditions /
+// element ordering / canonicalisation, and renders the auto-submit POST form.
+// Handles both SP-initiated (requestID set) and IdP-initiated (empty) flows.
+func (h *Handler) emitCrewjamResponse(c *gin.Context, appCode string, appID int64, samlCfg *SAMLConfig, requestID, relayState, nameIDValue string, attrs map[string]string) {
+	key, cert, err := h.loadKeyAndCert(c.Request.Context(), appID)
 	if err != nil {
-		response.InternalError(c, "failed to build SAML response")
+		response.InternalError(c, "load signing key: "+err.Error())
+		return
+	}
+	idp, err := h.newIDP(c, appCode, samlCfg, key, cert)
+	if err != nil {
+		response.InternalError(c, "build idp: "+err.Error())
 		return
 	}
 
-	// Load the signing key for this app + build SignOptions when the
-	// admin asked for signed Responses (default true). Loading early so
-	// 500s point at "no cert" rather than failing inside EncodeResponse.
-	var signOpts *SignOptions
-	if samlCfg.SignResponse || samlCfg.SignAssertions {
-		signOpts, err = h.loadSignOptions(c.Request.Context(), app.ID)
+	now := time.Now()
+	session := &crewjam.Session{
+		ID:               uuid.NewString(),
+		CreateTime:       now,
+		ExpireTime:       now.Add(time.Duration(samlCfg.SessionTTL) * time.Second),
+		Index:            uuid.NewString(),
+		NameID:           nameIDValue,
+		NameIDFormat:     samlCfg.NameIDFormat,
+		CustomAttributes: attrsToCrewjam(attrs),
+	}
+
+	var req *crewjam.IdpAuthnRequest
+	if requestID != "" {
+		// SP-initiated: parse + validate the AuthnRequest off the HTTP request.
+		req, err = crewjam.NewIdpAuthnRequest(idp, c.Request)
 		if err != nil {
-			response.InternalError(c, "failed to load signing key: "+err.Error())
+			response.BadRequest(c, 40001, "parse AuthnRequest: "+err.Error())
 			return
 		}
-		// Honour both flags independently. Many SPs (Nextcloud user_saml with
-		// WantAssertionsSigned) require the Assertion itself to be signed, not
-		// just the Response.
-		signOpts.SignResponse = samlCfg.SignResponse
-		signOpts.SignAssertion = samlCfg.SignAssertions
+		if err := req.Validate(); err != nil {
+			response.BadRequest(c, 40001, "validate AuthnRequest: "+err.Error())
+			return
+		}
+	} else {
+		// IdP-initiated: no AuthnRequest — assemble the request + ACS manually.
+		req = &crewjam.IdpAuthnRequest{IDP: idp, HTTPRequest: c.Request, RelayState: relayState, Now: now}
+		req.ServiceProviderMetadata, err = idp.ServiceProviderProvider.GetServiceProvider(c.Request, samlCfg.SPEntityID)
+		if err != nil {
+			response.InternalError(c, "sp metadata: "+err.Error())
+			return
+		}
+		for di := range req.ServiceProviderMetadata.SPSSODescriptors {
+			acs := req.ServiceProviderMetadata.SPSSODescriptors[di].AssertionConsumerServices
+			for ai := range acs {
+				if acs[ai].Binding == crewjam.HTTPPostBinding {
+					req.ACSEndpoint = &acs[ai]
+					break
+				}
+			}
+			if req.ACSEndpoint != nil {
+				break
+			}
+		}
+		if req.ACSEndpoint == nil {
+			response.InternalError(c, "no POST ACS endpoint for SP")
+			return
+		}
 	}
 
-	// Encode response
-	encodedResp, err := EncodeResponse(resp, signOpts)
-	if err != nil {
-		response.InternalError(c, "failed to encode SAML response")
+	if err := (crewjam.DefaultAssertionMaker{}).MakeAssertion(req, session); err != nil {
+		response.InternalError(c, "make assertion: "+err.Error())
 		return
 	}
-
-	// Return auto-submit form (POST binding to SP's ACS)
-	h.renderPostForm(c, samlCfg.ACSURL, encodedResp, relayState)
+	if err := req.WriteResponse(c.Writer); err != nil {
+		response.InternalError(c, "write saml response: "+err.Error())
+		return
+	}
 }
 
 // idpInitiatedSSO handles IDP-Initiated SSO (no AuthnRequest).
