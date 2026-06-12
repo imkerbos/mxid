@@ -29,6 +29,25 @@ const IDP_BRAND: Record<string, { bg: string; label: string }> = {
   teams:  { bg: 'bg-[#5059C9] hover:bg-[#444cb3]', label: 'Microsoft Teams' },
 }
 
+// loginErrorMessage maps the backend error code to a specific, localized
+// message so the user sees whether the captcha or the credentials were wrong,
+// not a bare "Request failed with status code 400".
+function loginErrorMessage(err: unknown, t: (k: string) => string): string {
+  const e = err as { code?: number; response?: { data?: { code?: number; message?: string } } }
+  const code = e?.response?.data?.code ?? e?.code
+  switch (code) {
+    case 40003:
+    case 40004:
+      return t('login.invalidCaptcha')
+    case 40101:
+      return t('login.invalidCredentials')
+    case 40102:
+      return t('login.invalidMfaCode')
+    default:
+      return e?.response?.data?.message || t('login.failedRetry')
+  }
+}
+
 export default function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -117,9 +136,7 @@ export default function LoginPage() {
       const from = (location.state as { from?: string })?.from || '/apps'
       navigate(from, { replace: true })
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error ? err.message : t('login.failedRetry')
-      setError(msg)
+      setError(loginErrorMessage(err, t))
       loadCaptcha()
     } finally {
       setLoading(false)
@@ -143,10 +160,9 @@ export default function LoginPage() {
       const from = (location.state as { from?: string })?.from || '/apps'
       navigate(from, { replace: true })
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : t('login.invalidPwd')
       // Backend consumes the challenge on any verify attempt — wrong code
       // means the user must restart from password step.
-      setError(msg)
+      setError(loginErrorMessage(err, t))
       setMfaChallenge('')
       setMfaCode('')
       setPassword('')
