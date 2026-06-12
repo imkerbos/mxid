@@ -50,6 +50,16 @@ func AuthMiddleware(sessionMgr *session.Manager, namespace string) gin.HandlerFu
 		// sessions alive forever (see pkg/session/manager.go).
 		_ = sessionMgr.Touch(c.Request.Context(), namespace, sessionID)
 
+		// Keep the shared SSO (proto) session warm while the user is active in
+		// any first-party SPA. Otherwise it idle-expires on its own (nothing
+		// else touches it), and third-party OIDC SSO would demand a fresh login
+		// under an otherwise-active session. Best-effort: a missing/expired
+		// proto cookie is a no-op. The SPA session was just validated above, so
+		// an inactive user 401s here before reaching this revival.
+		if pid, err := c.Cookie(CookieProto); err == nil && pid != "" {
+			_ = sessionMgr.Touch(c.Request.Context(), session.NamespaceProtocol, pid)
+		}
+
 		// Inject into context
 		c.Set(CtxUserID, sess.UserID)
 		c.Set(CtxTenantID, sess.TenantID)

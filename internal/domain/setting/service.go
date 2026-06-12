@@ -240,7 +240,7 @@ func DefaultSecurityPolicy() SecurityPolicy {
 			MaxFailedAttempts: 5, LockoutMinutes: 15, CaptchaAfterFailures: 3,
 		},
 		Session: SessionPolicy{
-			IdleMinutes: 30, AbsoluteHours: 12, RememberMeHours: 168,
+			IdleMinutes: 480, AbsoluteHours: 24, RememberMeHours: 168,
 		},
 	}
 }

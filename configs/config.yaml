@@ -40,12 +40,19 @@ redis:
   password: ""
   pool_size: 20
 
+# NOTE: idle_timeout / absolute_timeout here are only a LAST-RESORT fallback
+# used if the DB security.policy is unreadable. The authoritative values live in
+# the DB (security.policy → session, editable in the console Security settings
+# page); DefaultSecurityPolicy seeds them (idle 8h / absolute 24h). Editing the
+# two timeouts below has no effect while the DB is reachable.
 session:
-  idle_timeout: 30m
-  absolute_timeout: 12h
+  idle_timeout: 8h
+  absolute_timeout: 24h
   cookie_secure: false
   cookie_domain: ""
 
+# Fallback only — authoritative in DB (security.policy, console Security page).
+# Seeded by DefaultSecurityPolicy; edits here are inert while the DB is reachable.
 security:
   password:
     min_length: 8
@@ -64,6 +71,8 @@ security:
     login: "5/m"
     api: "100/m"
 
+# OIDC token TTLs are authoritative in DB (protocol.defaults, console settings);
+# these seed the fallback. signing_algorithm is bootstrap-static.
 jwt:
   signing_algorithm: RS256
   access_token_ttl: 15m
