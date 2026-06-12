@@ -130,6 +130,9 @@ func (h *Handler) RegisterConsoleRoutes(rg *gin.RouterGroup) {
 		// Seamless SSO: derive a console session from an existing SSO session
 		// (portal login). Admin-gated — non-admins get 403 and fall back to login.
 		auth.POST("/sso", h.ssoHandler(session.NamespaceConsole, CookieConsole, true))
+		// Step-up: re-verify MFA on the current console session to clear a
+		// high-risk operation's step_up_required gate.
+		auth.POST("/step-up", h.stepUpHandler())
 	}
 }
 
@@ -254,7 +257,7 @@ type VerifyMFARequest struct {
 // shape as /auth/login success — sets the SPA + proto cookies and returns
 // the user info. On invalid code the challenge is already consumed; client
 // must restart the password login.
-func (h *Handler) verifyMFAHandler(_ string, cookieName string) gin.HandlerFunc {
+func (h *Handler) verifyMFAHandler(namespace, cookieName string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req VerifyMFARequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -269,6 +272,9 @@ func (h *Handler) verifyMFAHandler(_ string, cookieName string) gin.HandlerFunc 
 		}
 
 		h.finalizeLoginCookies(c, cookieName, loginResp, "totp", req.Remember)
+		// The user just passed MFA at login — stamp the SPA session so an
+		// immediate high-risk operation falls inside the step-up grace window.
+		_ = h.engine.SessionManager().MarkMFAVerified(c.Request.Context(), namespace, loginResp.SessionID)
 		response.OK(c, loginResp)
 	}
 }
@@ -419,6 +425,48 @@ func (h *Handler) ssoHandler(namespace, cookieName string, requireAdmin bool) gi
 		}
 
 		h.setSessionCookieWithRemember(c, cookieName, spaSess.ID, false)
+		response.OK(c, nil)
+	}
+}
+
+// StepUpRequest carries the MFA code submitted for a step-up challenge.
+type StepUpRequest struct {
+	Code string `json:"code" binding:"required"`
+}
+
+// stepUpHandler re-verifies the user's MFA on their existing console session
+// and refreshes MFAVerifiedAt, so subsequent high-risk operations fall inside
+// the grace window without another prompt. The user must already hold a valid
+// console session (the SPA calls this after a high-risk op returns
+// step_up_required). Reuses the same MFA verifier and rate limiter as login.
+func (h *Handler) stepUpHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		sid, err := c.Cookie(CookieConsole)
+		if err != nil || sid == "" {
+			response.Unauthorized(c, 40101, "authentication required")
+			return
+		}
+		sess, err := h.engine.GetSession(c.Request.Context(), session.NamespaceConsole, sid)
+		if err != nil {
+			response.Unauthorized(c, 40101, "invalid or expired session")
+			return
+		}
+
+		var req StepUpRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			response.BadRequest(c, 40001, err.Error())
+			return
+		}
+
+		if err := h.engine.VerifyStepUp(c.Request.Context(), sess.UserID, c.ClientIP(), req.Code); err != nil {
+			h.handleAuthError(c, err)
+			return
+		}
+
+		if err := h.engine.SessionManager().MarkMFAVerified(c.Request.Context(), session.NamespaceConsole, sid); err != nil {
+			response.InternalError(c, "failed to record mfa verification")
+			return
+		}
 		response.OK(c, nil)
 	}
 }
