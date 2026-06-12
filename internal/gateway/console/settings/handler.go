@@ -57,6 +57,9 @@ func (h *Handler) Register(rg *gin.RouterGroup) {
 		g.GET("/audit-policy", h.getAuditPolicy)
 		g.PUT("/audit-policy", h.putAuditPolicy)
 
+		g.GET("/mfa", h.getMFA)
+		g.PUT("/mfa", h.putMFA)
+
 		g.GET("/localization", h.getLocalization)
 		g.PUT("/localization", h.putLocalization)
 
@@ -246,6 +249,32 @@ func (h *Handler) getAuditPolicy(c *gin.Context) {
 func (h *Handler) putAuditPolicy(c *gin.Context) {
 	var v setting.AuditPolicy
 	h.genericPut(c, setting.KeyAuditPolicy, &v)
+}
+
+func (h *Handler) getMFA(c *gin.Context) {
+	v := setting.DefaultMFAPolicy()
+	h.genericGet(c, setting.KeyMFAPolicy, &v)
+}
+func (h *Handler) putMFA(c *gin.Context) {
+	var v setting.MFAPolicy
+	if err := c.ShouldBindJSON(&v); err != nil {
+		response.BadRequest(c, 40001, err.Error())
+		return
+	}
+	switch v.Mode {
+	case setting.MFAModeOff, setting.MFAModeAdminOnly, setting.MFAModeAll:
+	default:
+		response.BadRequest(c, 40001, "invalid mfa mode")
+		return
+	}
+	if v.StepUpWindowSeconds < 0 {
+		v.StepUpWindowSeconds = 0
+	}
+	if err := h.service.Set(c.Request.Context(), setting.KeyMFAPolicy, h.tenantID(c), &v, h.userID(c)); err != nil {
+		response.InternalError(c, "")
+		return
+	}
+	response.OK(c, gin.H{"saved": true})
 }
 
 func (h *Handler) getLocalization(c *gin.Context) {

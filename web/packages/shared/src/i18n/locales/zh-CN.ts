@@ -2,6 +2,14 @@
 // `t('users.title')` etc stays predictable. NEVER concatenate translated
 // strings; use {{var}} interpolation for dynamic pieces.
 export default {
+  stepup: {
+    title: '验证你的身份',
+    hint: '这是敏感操作。请输入认证器 App 上的 6 位验证码以继续。',
+    verify: '验证',
+    success: '已验证',
+    failed: '验证失败',
+    enrollRequired: '此操作需要两步验证，请先完成绑定。',
+  },
   common: {
     save: '保存',
     cancel: '取消',
@@ -1277,6 +1285,8 @@ export default {
       sms: '短信服务',
       security: '安全策略',
       securityHint: '密码 / 锁定 / 会话',
+      mfa: 'MFA 与二次验证',
+      mfaHint: '强制策略 + 敏感操作复验',
       loginMethods: '登录方式',
       protocolDefaults: '协议默认值',
       branding: '品牌定制',
@@ -1398,6 +1408,16 @@ export default {
       signName: '签名名称 (Sign Name)',
       template: '模板 ID / Code',
       region: '区域 (可选)',
+    },
+    mfa: {
+      title: 'MFA 与二次验证',
+      desc: '谁必须启用多因素认证，以及高风险操作的二次验证有效期。',
+      mode: '强制模式',
+      modeOff: '关闭 — 不强制',
+      modeAdminOnly: '仅管理员',
+      modeAll: '全员',
+      window: '二次验证有效期（秒）',
+      windowHint: '验证 MFA 后的有效期内，高风险操作不再提示。默认 1800（30 分钟）；0 表示每次都验证。',
     },
     auditPolicy: {
       title: '审计策略',

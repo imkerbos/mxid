@@ -1,4 +1,12 @@
 export default {
+  stepup: {
+    title: 'Verify your identity',
+    hint: 'This is a sensitive action. Enter the 6-digit code from your authenticator app to continue.',
+    verify: 'Verify',
+    success: 'Verified',
+    failed: 'Verification failed',
+    enrollRequired: 'This action requires two-step verification. Please set it up first.',
+  },
   common: {
     save: 'Save',
     cancel: 'Cancel',
@@ -1274,6 +1282,8 @@ export default {
       sms: 'SMS service',
       security: 'Security policy',
       securityHint: 'Password / lockout / session',
+      mfa: 'MFA & step-up',
+      mfaHint: 'Enforcement + sensitive-action re-verify',
       loginMethods: 'Login methods',
       protocolDefaults: 'Protocol defaults',
       branding: 'Branding',
@@ -1395,6 +1405,16 @@ export default {
       signName: 'Sign name',
       template: 'Template ID / Code',
       region: 'Region (optional)',
+    },
+    mfa: {
+      title: 'MFA & step-up',
+      desc: 'Who must use multi-factor auth, and how long a step-up verification stays valid for high-risk actions.',
+      mode: 'Enforcement mode',
+      modeOff: 'Off — not enforced',
+      modeAdminOnly: 'Admins only',
+      modeAll: 'All users',
+      window: 'Step-up grace window (seconds)',
+      windowHint: 'Within this window after verifying MFA, high-risk actions are not re-prompted. Default 1800 (30 min); 0 challenges every time.',
     },
     auditPolicy: {
       title: 'Audit policy',

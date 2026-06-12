@@ -16,6 +16,11 @@ export const authApi = {
   // login). 403 when the user isn't a console admin → caller falls back to login.
   sso: () =>
     client.post<ApiResponse<null>>('/auth/sso', null, { skipAuthEvent: true }).then(r => r.data),
+  // Step-up: re-verify MFA on the current console session to clear a high-risk
+  // operation's step_up_required gate. skipAuthEvent so a transient 401 here
+  // doesn't bounce the whole console to login.
+  stepUp: (code: string) =>
+    client.post<ApiResponse<null>>('/auth/step-up', { code }, { skipAuthEvent: true }).then(r => r.data),
 
   // Portal auth
   portalCaptcha: () =>
