@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -18,6 +19,32 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
+
+// appendOriginsFromURLs adds the scheme://host[:port] origin of each non-empty
+// URL to origins, de-duplicated. Malformed or schemeless/hostless URLs are
+// skipped. Used so the CSRF/CORS allow-list automatically trusts the configured
+// issuer / portal / console URLs without a duplicate allowed_origins entry.
+func appendOriginsFromURLs(origins []string, urls ...string) []string {
+	seen := make(map[string]struct{}, len(origins))
+	for _, o := range origins {
+		seen[o] = struct{}{}
+	}
+	for _, raw := range urls {
+		if raw == "" {
+			continue
+		}
+		u, err := url.Parse(raw)
+		if err != nil || u.Scheme == "" || u.Host == "" {
+			continue
+		}
+		o := u.Scheme + "://" + u.Host
+		if _, ok := seen[o]; !ok {
+			seen[o] = struct{}{}
+			origins = append(origins, o)
+		}
+	}
+	return origins
+}
 
 // App holds all shared dependencies for the application.
 type App struct {
@@ -92,6 +119,12 @@ func NewApp(configPath string) (*App, error) {
 	if len(origins) == 0 {
 		origins = middleware.DefaultCORSConfig().AllowOrigins
 	}
+	// Auto-trust the origins of the configured canonical URLs (issuer / portal
+	// / console). Setting the deployment host in one place then clears CORS +
+	// CSRF for it, so single-domain deploys don't also have to maintain a
+	// parallel allowed_origins entry.
+	origins = appendOriginsFromURLs(origins,
+		cfg.Server.IssuerURL, cfg.Server.PortalURL, cfg.Server.ConsoleURL)
 
 	// Apply shared middleware. CSRF is router-level (not per-group) with an
 	// explicit skip-list — fail-safe: any new route is protected by default,
