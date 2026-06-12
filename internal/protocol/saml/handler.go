@@ -330,6 +330,11 @@ func (h *Handler) processSSO(c *gin.Context, appCode, requestID, relayState stri
 			response.InternalError(c, "failed to load signing key: "+err.Error())
 			return
 		}
+		// Honour both flags independently. Many SPs (Nextcloud user_saml with
+		// WantAssertionsSigned) require the Assertion itself to be signed, not
+		// just the Response.
+		signOpts.SignResponse = samlCfg.SignResponse
+		signOpts.SignAssertion = samlCfg.SignAssertions
 	}
 
 	// Encode response
