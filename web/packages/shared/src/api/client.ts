@@ -2,6 +2,18 @@ import axios, { type AxiosInstance, type AxiosResponse } from 'axios'
 import JSONbig from 'json-bigint'
 import type { ApiResponse } from '../types'
 
+// skipAuthEvent opts a single request out of the global mxid:unauthorized
+// dispatch on 401. The SSO-bridge bootstrap uses it: a 401 from the initial
+// /auth/me probe or the /auth/sso attempt must NOT trigger the app-wide
+// redirect-to-login, or it would race the bridge. The AuthGuard owns the
+// fallback in that flow instead.
+declare module 'axios' {
+  // eslint-disable-next-line @typescript-eslint/no-empty-interface
+  interface AxiosRequestConfig {
+    skipAuthEvent?: boolean
+  }
+}
+
 // Server-issued IDs are snowflake int64 — they exceed JS Number.MAX_SAFE_INTEGER
 // (2^53). axios' default JSON.parse silently rounds the last few digits, which
 // breaks FK lookups (the rounded id no longer matches the DB row).
@@ -74,7 +86,7 @@ export function createApiClient(baseURL: string): AxiosInstance {
       return response
     },
     (error) => {
-      if (error.response?.status === 401) {
+      if (error.response?.status === 401 && !error.config?.skipAuthEvent) {
         window.dispatchEvent(new CustomEvent('mxid:unauthorized'))
       }
       return Promise.reject(error)

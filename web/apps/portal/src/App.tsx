@@ -18,12 +18,21 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate()
 
   useEffect(() => {
-    authApi.portalMe()
+    // Bootstrap: try the silent SSO bridge once (derive a portal session from
+    // an existing SSO session, e.g. after switching back from console) before
+    // falling back to the login form. skipAuthEvent keeps the probe's 401 from
+    // racing the global mxid:unauthorized redirect.
+    authApi.portalMe({ skipAuthEvent: true })
       .then(setUser)
-      .catch(() => {
-        clear()
-        navigate('/login', { replace: true })
-      })
+      .catch(() =>
+        authApi.portalSso()
+          .then(() => authApi.portalMe({ skipAuthEvent: true }))
+          .then(setUser)
+          .catch(() => {
+            clear()
+            navigate('/login', { replace: true })
+          }),
+      )
   }, [setUser, clear, navigate])
 
   useEffect(() => {
