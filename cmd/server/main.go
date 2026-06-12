@@ -272,6 +272,20 @@ func registerModules(a *bootstrap.App) {
 	a.ConsoleGroup.Use(authn.AuthMiddleware(authnModule.SessionMgr, session.NamespaceConsole))
 	a.PortalGroup.Use(authn.AuthMiddleware(authnModule.SessionMgr, session.NamespacePortal))
 
+	// 4a. Mandatory-MFA-enrollment gate — a session flagged at login (policy
+	// requires MFA but the user has none) is blocked from everything except the
+	// MFA enrollment surface until they bind a factor. Runs right after auth so
+	// it gates before any business handler. Self-heals once a factor exists.
+	enrollGate := func(ns string) gin.HandlerFunc {
+		return authn.EnrollGateMiddleware(authn.EnrollGateDeps{
+			Namespace:  ns,
+			SessionMgr: authnModule.SessionMgr,
+			HasMFA:     authnModule.Engine.HasMFA,
+		})
+	}
+	a.ConsoleGroup.Use(enrollGate(session.NamespaceConsole))
+	a.PortalGroup.Use(enrollGate(session.NamespacePortal))
+
 	// 4b. Install authz middleware lazily — domain modules below need to be
 	// constructed first to build the binding provider, but they also need
 	// the middleware to be in place when they register their routes. The
@@ -430,6 +444,28 @@ func registerModules(a *bootstrap.App) {
 			return false
 		}
 		return len(perms) > 0
+	})
+
+	// Mandatory-MFA-enrollment gate predicate: does the MFA policy require THIS
+	// user to hold a factor? all → everyone; admin_only → console-eligible
+	// admins; off → no one. Pairs with the EnrollGate middleware mounted above.
+	authnModule.Handler.SetMFAEnrollGate(func(ctx context.Context, tenantID, userID int64) bool {
+		pol, err := settingService.MFAPolicy(ctx, tenantID)
+		if err != nil {
+			return false
+		}
+		switch pol.Mode {
+		case setting.MFAModeAll:
+			return true
+		case setting.MFAModeAdminOnly:
+			if authzSvc == nil {
+				return false
+			}
+			perms, err := authzSvc.PermissionsForUser(ctx, tenantID, userID)
+			return err == nil && len(perms) > 0
+		default:
+			return false
+		}
 	})
 
 	// External IdP module — admin CRUD lives under console (authz-gated);

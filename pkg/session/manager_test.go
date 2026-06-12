@@ -81,3 +81,28 @@ func TestMarkMFAVerified_MissingSessionNoError(t *testing.T) {
 		t.Fatalf("missing session must be a no-op, got %v", err)
 	}
 }
+
+func TestSetEnrollPending_PersistsAndClears(t *testing.T) {
+	m := newTestManager(t)
+	ctx := context.Background()
+	sess, _ := m.Create(ctx, NamespaceConsole, 1, 1, "ip", "ua", "password")
+	if sess.MFAEnrollPending {
+		t.Fatalf("new session must not be enroll-pending")
+	}
+
+	if err := m.SetEnrollPending(ctx, NamespaceConsole, sess.ID, true); err != nil {
+		t.Fatalf("set pending: %v", err)
+	}
+	got, _ := m.Get(ctx, NamespaceConsole, sess.ID)
+	if got == nil || !got.MFAEnrollPending {
+		t.Fatalf("pending flag not persisted")
+	}
+
+	if err := m.SetEnrollPending(ctx, NamespaceConsole, sess.ID, false); err != nil {
+		t.Fatalf("clear pending: %v", err)
+	}
+	got, _ = m.Get(ctx, NamespaceConsole, sess.ID)
+	if got == nil || got.MFAEnrollPending {
+		t.Fatalf("pending flag not cleared")
+	}
+}

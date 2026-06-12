@@ -64,6 +64,7 @@ func AuthMiddleware(sessionMgr *session.Manager, namespace string) gin.HandlerFu
 		c.Set(CtxUserID, sess.UserID)
 		c.Set(CtxTenantID, sess.TenantID)
 		c.Set(CtxSessionID, sess.ID)
+		c.Set(CtxMFAEnrollPending, sess.MFAEnrollPending)
 
 		c.Next()
 	}

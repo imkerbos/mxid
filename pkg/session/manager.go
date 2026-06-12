@@ -35,6 +35,11 @@ type Session struct {
 	// nil means never. Step-up enforcement compares it against the configured
 	// grace window to decide whether a high-risk operation needs a fresh MFA.
 	MFAVerifiedAt *time.Time `json:"mfa_verified_at,omitempty"`
+	// MFAEnrollPending is true when the MFA policy requires this user to hold a
+	// factor but they have none — the session is blocked from everything except
+	// MFA enrollment until they bind one. Cleared automatically once a factor
+	// is detected.
+	MFAEnrollPending bool `json:"mfa_enroll_pending,omitempty"`
 }
 
 // StepUpFresh reports whether this session passed MFA within `window` of now —
@@ -190,6 +195,27 @@ func (m *Manager) MarkMFAVerified(ctx context.Context, namespace, sessionID stri
 	}
 	now := time.Now()
 	sess.MFAVerifiedAt = &now
+	return m.save(ctx, &sess)
+}
+
+// SetEnrollPending sets the MFA-enrollment-pending flag on a session and
+// persists it. Used to force a user with no factor through enrollment before
+// they can use the app, and to clear the flag once they bind one. No-op if the
+// session is gone.
+func (m *Manager) SetEnrollPending(ctx context.Context, namespace, sessionID string, pending bool) error {
+	key := fmt.Sprintf("%s:%s", namespace, sessionID)
+	data, err := m.redis.Get(ctx, key).Bytes()
+	if err != nil {
+		if err == redis.Nil {
+			return nil
+		}
+		return fmt.Errorf("set enroll pending get: %w", err)
+	}
+	var sess Session
+	if err := json.Unmarshal(data, &sess); err != nil {
+		return fmt.Errorf("set enroll pending unmarshal: %w", err)
+	}
+	sess.MFAEnrollPending = pending
 	return m.save(ctx, &sess)
 }
 
