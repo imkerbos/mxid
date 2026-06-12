@@ -282,6 +282,12 @@ func DefaultMFAPolicy() MFAPolicy {
 	return MFAPolicy{Mode: MFAModeOff, StepUpWindowSeconds: 1800}
 }
 
+// DefaultConditionalAccess: disabled by default (opt-in); 60-minute
+// impossible-travel window.
+func DefaultConditionalAccess() ConditionalAccess {
+	return ConditionalAccess{ImpossibleTravelWindowMinutes: 60}
+}
+
 // DefaultExternalURLs returns empty values. Empty = fall through to
 // bootstrap.Config defaults in handlers.
 func DefaultExternalURLs() ExternalURLs { return ExternalURLs{} }
@@ -345,6 +351,15 @@ func (s *Service) AuditPolicy(ctx context.Context, tenantID int64) (AuditPolicy,
 func (s *Service) MFAPolicy(ctx context.Context, tenantID int64) (MFAPolicy, error) {
 	v := DefaultMFAPolicy()
 	err := s.Get(ctx, KeyMFAPolicy, tenantID, &v)
+	if errors.Is(err, ErrNotFound) {
+		return v, nil
+	}
+	return v, err
+}
+
+func (s *Service) ConditionalAccess(ctx context.Context, tenantID int64) (ConditionalAccess, error) {
+	v := DefaultConditionalAccess()
+	err := s.Get(ctx, KeyConditionalAccess, tenantID, &v)
 	if errors.Is(err, ErrNotFound) {
 		return v, nil
 	}

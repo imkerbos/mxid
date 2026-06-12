@@ -7,6 +7,8 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/imkerbos/mxid/internal/domain/conditionalaccess"
+	"github.com/imkerbos/mxid/pkg/crypto"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/session"
 )
@@ -22,7 +24,13 @@ const (
 	CookieConsole = "mxid_console_sid"
 	CookiePortal  = "mxid_portal_sid"
 	CookieProto   = "mxid_proto_sid"
+	// CookieDevice carries the opaque device id for conditional-access device
+	// recognition. Long-lived (180d) so a device stays recognised across
+	// sessions; httpOnly so JS can't read it.
+	CookieDevice = "mxid_device_id"
 )
+
+const deviceCookieMaxAge = 180 * 24 * 60 * 60
 
 // LoginRequest is the API request for logging in.
 //
@@ -78,6 +86,14 @@ type LoginMethodGate func(ctx context.Context, authType string) error
 // seconds. nil = legacy hardcoded 30-day default.
 type RememberMeProvider func(ctx context.Context) int
 
+// CAService is the conditional-access hook the login flow consults. nil
+// disables it entirely (zero behaviour change). Implemented by the
+// conditionalaccess.Service, wired in main.
+type CAService interface {
+	Assess(ctx context.Context, in conditionalaccess.AssessInput) (conditionalaccess.Assessment, error)
+	RememberDevice(ctx context.Context, tenantID, userID int64, deviceID, userAgent string) error
+}
+
 type Handler struct {
 	engine       *Engine
 	captchaSvc   *CaptchaService
@@ -88,7 +104,12 @@ type Handler struct {
 	methodGate   LoginMethodGate
 	rememberMe   RememberMeProvider
 	adminCheck   AdminChecker
+	ca           CAService
 }
+
+// SetConditionalAccess wires the adaptive-authentication service. nil keeps
+// the login flow unchanged.
+func (h *Handler) SetConditionalAccess(ca CAService) { h.ca = ca }
 
 // SetAdminChecker wires the runtime "is this user a console-eligible
 // admin?" lookup used by /auth/me to flag the switch-to-console button.
@@ -243,7 +264,24 @@ func (h *Handler) loginHandler(namespace, cookieName string) gin.HandlerFunc {
 			return
 		}
 
+		// Conditional access: this branch is a login WITHOUT a second factor
+		// (the user has no TOTP, else MFARequired would be set). Assess the
+		// login's risk — when a signal fires, the service audits it (A3:
+		// allow-but-record, since there is no factor to challenge).
+		deviceID := h.readOrMintDeviceID(c)
+		if h.ca != nil && loginResp.UserID != 0 {
+			_, _ = h.ca.Assess(c.Request.Context(), conditionalaccess.AssessInput{
+				UserID:          loginResp.UserID,
+				TenantID:        effectiveTenant,
+				IP:              c.ClientIP(),
+				UserAgent:       c.Request.UserAgent(),
+				DeviceID:        deviceID,
+				CanSecondFactor: false,
+			})
+		}
+
 		h.finalizeLoginCookies(c, cookieName, loginResp, authType, req.Remember)
+		h.rememberDevice(c, effectiveTenant, loginResp.UserID, deviceID)
 		response.OK(c, loginResp)
 	}
 }
@@ -283,6 +321,10 @@ func (h *Handler) verifyMFAHandler(namespace, cookieName string) gin.HandlerFunc
 		// The user just passed MFA at login — stamp the SPA session so an
 		// immediate high-risk operation falls inside the step-up grace window.
 		_ = h.engine.SessionManager().MarkMFAVerified(c.Request.Context(), namespace, loginResp.SessionID)
+		// Recognise this device now that the user is fully authenticated, so a
+		// future login from it isn't flagged new (and can skip MFA if policy
+		// allows). LoginResponse carries TenantID for the device record.
+		h.rememberDevice(c, loginResp.TenantID, loginResp.UserID, h.readOrMintDeviceID(c))
 		response.OK(c, loginResp)
 	}
 }
@@ -542,6 +584,32 @@ func (h *Handler) rememberMaxAge(ctx context.Context) int {
 func (h *Handler) clearSessionCookie(c *gin.Context, name string) {
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie(name, "", -1, "/", h.cookieDomain, h.cookieSecure, true)
+}
+
+// readOrMintDeviceID returns the device id from the request cookie, minting a
+// fresh opaque id when absent (which itself is the new-device signal). The
+// cookie is (re)set by rememberDevice only after a fully successful login.
+func (h *Handler) readOrMintDeviceID(c *gin.Context) string {
+	if v, err := c.Cookie(CookieDevice); err == nil && v != "" {
+		return v
+	}
+	id, err := crypto.GenerateBase62(24)
+	if err != nil {
+		return ""
+	}
+	return id
+}
+
+// rememberDevice records the device for the user and (re)sets the long-lived
+// device cookie after a successful login. No-op when conditional access is
+// unwired. Runs regardless of policy state so device history accumulates.
+func (h *Handler) rememberDevice(c *gin.Context, tenantID, userID int64, deviceID string) {
+	if h.ca == nil || deviceID == "" || userID == 0 {
+		return
+	}
+	_ = h.ca.RememberDevice(c.Request.Context(), tenantID, userID, deviceID, c.Request.UserAgent())
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(CookieDevice, deviceID, deviceCookieMaxAge, "/", h.cookieDomain, h.cookieSecure, true)
 }
 
 // handleAuthError maps engine errors to HTTP responses.

@@ -51,7 +51,8 @@ const (
 	KeyLocalization    = "localization"
 	KeyLicense         = "license"
 	KeyExternalURLs    = "external.urls"
-	KeyMFAPolicy       = "security.mfa"
+	KeyMFAPolicy          = "security.mfa"
+	KeyConditionalAccess  = "security.conditional_access"
 )
 
 // MFA enforcement modes for MFAPolicy.Mode.
@@ -168,6 +169,20 @@ type AuditPolicy struct {
 	AlertWebhookURL    string   `json:"alert_webhook_url"`
 	AlertOnEventTypes  []string `json:"alert_on_event_types"`
 	HighRiskRecipients []string `json:"high_risk_recipients"` // email/phone for critical events
+}
+
+// ConditionalAccess — adaptive-authentication policy. Disabled by default;
+// when enabled, risk signals on a login (new country / impossible travel / new
+// device) force a second factor, and a trusted-network login MAY skip MFA only
+// if AllowTrustedSkip is set. TrustedCIDRs are the networks treated as trusted.
+type ConditionalAccess struct {
+	Enabled                       bool     `json:"enabled"`
+	OnNewCountry                  bool     `json:"on_new_country"`
+	OnImpossibleTravel            bool     `json:"on_impossible_travel"`
+	OnNewDevice                   bool     `json:"on_new_device"`
+	AllowTrustedSkip              bool     `json:"allow_trusted_skip"`
+	TrustedCIDRs                  []string `json:"trusted_cidrs"`
+	ImpossibleTravelWindowMinutes int      `json:"impossible_travel_window_minutes"`
 }
 
 // MFAPolicy — multi-factor enforcement + step-up grace window.
