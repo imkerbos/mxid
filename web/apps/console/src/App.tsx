@@ -26,6 +26,7 @@ import {
   SMSPage,
   AuditPolicyPage,
   MFAPolicyPage,
+  ConditionalAccessPage,
   LocalizationPage,
   LicensePage,
   MailTemplatesPage,
@@ -112,6 +113,7 @@ export default function App() {
                   <Route path="sms" element={<SMSPage />} />
                   <Route path="security" element={<SecurityPage />} />
                   <Route path="mfa" element={<MFAPolicyPage />} />
+                  <Route path="conditional-access" element={<ConditionalAccessPage />} />
                   <Route path="login-methods" element={<LoginMethodsPage />} />
                   <Route path="protocol-defaults" element={<ProtocolDefaultsPage />} />
                   <Route path="branding" element={<BrandingPage />} />

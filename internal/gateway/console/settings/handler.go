@@ -8,6 +8,9 @@
 package settings
 
 import (
+	"net"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/setting"
 	"github.com/imkerbos/mxid/pkg/mailer"
@@ -59,6 +62,9 @@ func (h *Handler) Register(rg *gin.RouterGroup) {
 
 		g.GET("/mfa", h.getMFA)
 		g.PUT("/mfa", h.putMFA)
+
+		g.GET("/conditional-access", h.getConditionalAccess)
+		g.PUT("/conditional-access", h.putConditionalAccess)
 
 		g.GET("/localization", h.getLocalization)
 		g.PUT("/localization", h.putLocalization)
@@ -271,6 +277,34 @@ func (h *Handler) putMFA(c *gin.Context) {
 		v.StepUpWindowSeconds = 0
 	}
 	if err := h.service.Set(c.Request.Context(), setting.KeyMFAPolicy, h.tenantID(c), &v, h.userID(c)); err != nil {
+		response.InternalError(c, "")
+		return
+	}
+	response.OK(c, gin.H{"saved": true})
+}
+
+func (h *Handler) getConditionalAccess(c *gin.Context) {
+	v := setting.DefaultConditionalAccess()
+	h.genericGet(c, setting.KeyConditionalAccess, &v)
+}
+func (h *Handler) putConditionalAccess(c *gin.Context) {
+	var v setting.ConditionalAccess
+	if err := c.ShouldBindJSON(&v); err != nil {
+		response.BadRequest(c, 40001, err.Error())
+		return
+	}
+	// Reject malformed CIDRs early — a bad trusted range would silently never
+	// match, which is a security-relevant surprise.
+	for _, cidr := range v.TrustedCIDRs {
+		if _, _, err := net.ParseCIDR(strings.TrimSpace(cidr)); err != nil {
+			response.BadRequest(c, 40001, "invalid trusted CIDR: "+cidr)
+			return
+		}
+	}
+	if v.ImpossibleTravelWindowMinutes < 0 {
+		v.ImpossibleTravelWindowMinutes = 0
+	}
+	if err := h.service.Set(c.Request.Context(), setting.KeyConditionalAccess, h.tenantID(c), &v, h.userID(c)); err != nil {
 		response.InternalError(c, "")
 		return
 	}

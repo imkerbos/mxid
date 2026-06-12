@@ -104,6 +104,17 @@ export interface MFAPolicy {
   step_up_window_seconds: number
 }
 
+// ─── Conditional access (adaptive auth) ───
+export interface ConditionalAccess {
+  enabled: boolean
+  on_new_country: boolean
+  on_impossible_travel: boolean
+  on_new_device: boolean
+  allow_trusted_skip: boolean
+  trusted_cidrs: string[]
+  impossible_travel_window_minutes: number
+}
+
 // ─── Localization ───
 export interface Localization {
   default_language: string
@@ -178,6 +189,12 @@ export const settingsApi = {
   getMFA: () => client.get<ApiResponse<MFAPolicy>>('/settings/mfa').then(r => r.data.data),
   putMFA: (v: MFAPolicy) =>
     client.put<ApiResponse<{ saved: boolean }>>('/settings/mfa', v).then(r => r.data),
+
+  // Conditional access
+  getConditionalAccess: () =>
+    client.get<ApiResponse<ConditionalAccess>>('/settings/conditional-access').then(r => r.data.data),
+  putConditionalAccess: (v: ConditionalAccess) =>
+    client.put<ApiResponse<{ saved: boolean }>>('/settings/conditional-access', v).then(r => r.data),
 
   // Localization
   getLocalization: () => client.get<ApiResponse<Localization>>('/settings/localization').then(r => r.data.data),

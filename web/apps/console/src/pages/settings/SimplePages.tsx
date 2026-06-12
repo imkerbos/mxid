@@ -17,6 +17,7 @@ import {
   type SMS,
   type AuditPolicy,
   type MFAPolicy,
+  type ConditionalAccess,
   type Localization,
   type License,
   type MailTemplates,
@@ -322,6 +323,27 @@ export function MFAPolicyPage() {
       ]}
       load={() => settingsApi.getMFA()}
       save={(v) => settingsApi.putMFA(v)}
+    />
+  )
+}
+
+export function ConditionalAccessPage() {
+  const { t } = useTranslation()
+  return (
+    <GenericForm<ConditionalAccess>
+      title={t('settings.conditionalAccess.title')}
+      desc={t('settings.conditionalAccess.desc')}
+      rows={[
+        { kind: 'bool', key: 'enabled', label: t('settings.conditionalAccess.enabled') },
+        { kind: 'bool', key: 'on_new_country', label: t('settings.conditionalAccess.onNewCountry') },
+        { kind: 'bool', key: 'on_impossible_travel', label: t('settings.conditionalAccess.onImpossibleTravel') },
+        { kind: 'bool', key: 'on_new_device', label: t('settings.conditionalAccess.onNewDevice') },
+        { kind: 'bool', key: 'allow_trusted_skip', label: t('settings.conditionalAccess.allowTrustedSkip') },
+        { kind: 'list', key: 'trusted_cidrs', label: t('settings.conditionalAccess.trustedCidrs'), hint: t('settings.conditionalAccess.trustedCidrsHint') },
+        { kind: 'number', key: 'impossible_travel_window_minutes', label: t('settings.conditionalAccess.window'), hint: t('settings.conditionalAccess.windowHint') },
+      ]}
+      load={() => settingsApi.getConditionalAccess()}
+      save={(v) => settingsApi.putConditionalAccess(v)}
     />
   )
 }
