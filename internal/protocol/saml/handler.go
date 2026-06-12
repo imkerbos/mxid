@@ -34,7 +34,6 @@ type Handler struct {
 	idRes       resolver.IdentityResolver
 	sessRes     resolver.SessionResolver
 	tenantRes   resolver.TenantResolver
-	builder     *AssertionBuilder
 }
 
 // SetURLProvider wires the runtime URL lookup. nil = stick with the
@@ -68,7 +67,6 @@ func NewHandler(
 		idRes:     idRes,
 		sessRes:   sessRes,
 		tenantRes: tenantRes,
-		builder:   NewAssertionBuilder(issuer),
 	}
 }
 
@@ -592,20 +590,6 @@ func (h *Handler) redirectToLogin(c *gin.Context, appCode, requestID, relayState
 	loginURL := fmt.Sprintf("%s/login?protocol=saml&app_code=%s&request_id=%s&relay_state=%s",
 		base, appCode, requestID, relayState)
 	c.Redirect(http.StatusFound, loginURL)
-}
-
-func (h *Handler) renderPostForm(c *gin.Context, acsURL, samlResponse, relayState string) {
-	html := fmt.Sprintf(`<!DOCTYPE html>
-<html>
-<body onload="document.forms[0].submit();">
-  <form method="POST" action="%s">
-    <input type="hidden" name="SAMLResponse" value="%s"/>
-    <input type="hidden" name="RelayState" value="%s"/>
-    <noscript><input type="submit" value="Continue"/></noscript>
-  </form>
-</body>
-</html>`, acsURL, samlResponse, relayState)
-	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(html))
 }
 
 // extractRequestID decodes a SAMLRequest and extracts the ID attribute.
