@@ -63,6 +63,14 @@ type ServerConfig struct {
 	TrustedProxies []string `mapstructure:"trusted_proxies"`
 }
 
+// IsRelease reports whether the server is running in production ("release")
+// mode. This is the single source of truth for the Mode=="release" string
+// comparison scattered across bootstrap; new code MUST gate on this helper
+// rather than re-comparing the raw string.
+func (s ServerConfig) IsRelease() bool {
+	return s.Mode == "release"
+}
+
 type DatabaseConfig struct {
 	Host         string `mapstructure:"host"`
 	Port         int    `mapstructure:"port"`

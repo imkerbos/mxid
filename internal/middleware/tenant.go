@@ -47,9 +47,12 @@ func TenantContext() gin.HandlerFunc {
 			return
 		}
 
-		// Verify super_admin (or explicit tenant.manage perm) before allowing
-		// the override. Falling back to the session tenant on failure is
-		// safer than silently silencing the request.
+		// Verify the caller is a super_admin before allowing the cross-tenant
+		// override. The gate MUST require the domain wildcard "*" (the
+		// super_admin trait per pkg/authz) — a tenant admin holding only
+		// tenant.manage in their own tenant must NOT be able to set X-Tenant-ID
+		// to escape into another tenant. tenant.manage stays sufficient for
+		// same-tenant ops; it is just not enough to authorize the escape.
 		svc := authz.FromContext(c)
 		if svc == nil {
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
@@ -62,11 +65,11 @@ func TenantContext() gin.HandlerFunc {
 		uid, _ := uidV.(int64)
 		stidV, _ := c.Get("session_tenant_id")
 		stid, _ := stidV.(int64)
-		ok, err := svc.Check(c.Request.Context(), stid, uid, "tenant.manage", nil)
+		ok, err := svc.Check(c.Request.Context(), stid, uid, "*", nil)
 		if err != nil || !ok {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 				"code":    40300,
-				"message": "tenant override requires tenant.manage",
+				"message": "tenant override requires super_admin",
 			})
 			return
 		}

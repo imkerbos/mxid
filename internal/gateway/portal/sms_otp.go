@@ -57,6 +57,9 @@ type SMSOTPHandler struct {
 	tenantByCd TenantResolver
 	cookieDom  string
 	cookieSec  bool
+	// devFallback gates the dev_code response field + code Info log on
+	// non-release mode. In release the OTP code is never returned or logged.
+	devFallback bool
 	// limiter caps wrong-code guesses per phone. consumeCode deliberately
 	// keeps a still-valid code alive on a typo (so the user isn't forced to
 	// resend), which without a cap leaves the 6-digit space brute-forceable
@@ -76,6 +79,8 @@ type SMSOTPHandlerOpts struct {
 	TenantByCode TenantResolver
 	CookieDomain string
 	CookieSecure bool
+	// DevFallback enables the non-release dev_code exposure.
+	DevFallback bool
 	// Limiter is the per-phone brute-force cap on /auth/sms/login. nil
 	// disables the cap (legacy behaviour).
 	Limiter *ratelimit.Limiter
@@ -91,9 +96,10 @@ func NewSMSOTPHandler(o SMSOTPHandlerOpts) *SMSOTPHandler {
 		enabled:    o.Enabled,
 		defaultTID: o.DefaultTID,
 		tenantByCd: o.TenantByCode,
-		cookieDom:  o.CookieDomain,
-		cookieSec:  o.CookieSecure,
-		limiter:    o.Limiter,
+		cookieDom:   o.CookieDomain,
+		cookieSec:   o.CookieSecure,
+		devFallback: o.DevFallback,
+		limiter:     o.Limiter,
 	}
 }
 
@@ -178,12 +184,17 @@ func (h *SMSOTPHandler) send(c *gin.Context) {
 		}
 	}
 	if !providerOK {
-		resp.DevCode = code
-		h.logger.Info("sms otp (no provider / fallback)",
-			zap.Int64("user_id", userID),
-			zap.String("phone", phone),
-			zap.String("code", code),
-			zap.Int("ttl_seconds", smsOTPTTL))
+		if h.devFallback {
+			resp.DevCode = code
+			h.logger.Info("sms otp (no provider / fallback)",
+				zap.Int64("user_id", userID),
+				zap.String("phone", phone),
+				zap.String("code", code),
+				zap.Int("ttl_seconds", smsOTPTTL))
+		} else {
+			h.logger.Warn("sms provider send failed (no dev fallback in release)",
+				zap.Int64("user_id", userID))
+		}
 	}
 	response.OK(c, resp)
 }

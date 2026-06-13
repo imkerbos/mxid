@@ -417,11 +417,24 @@ func (h *Handler) finalizeLoginCookies(c *gin.Context, cookieName string, loginR
 	// SPA login — the user is still authenticated for the SPA; they just
 	// lose SSO short-circuit and will have to re-auth at /protocol/oidc/authorize
 	// the next time an RP redirects.
+	//
+	// Stamp the proto-session with the EFFECTIVE login tenant (loginResp.TenantID,
+	// resolved from ?tenant=<code>), NOT the handler's hardcoded default tenant.
+	// Phase 2 only fixed the request-context scope (pinSessionTenant); the
+	// PERSISTED proto-session row was still created with h.tenantID, so a user
+	// logging into a non-default tenant got an SSO session keyed to the wrong
+	// tenant — driving the cross-tenant SSO short-circuit read at
+	// /protocol/oidc/authorize and SAML. Fall back to h.tenantID when the
+	// response carries no tenant (legacy/default-tenant logins).
+	protoTenantID := loginResp.TenantID
+	if protoTenantID <= 0 {
+		protoTenantID = h.tenantID
+	}
 	if protoSess, err := h.engine.SessionManager().Create(
 		c.Request.Context(),
 		session.NamespaceProtocol,
 		loginResp.UserID,
-		h.tenantID,
+		protoTenantID,
 		c.ClientIP(),
 		c.Request.UserAgent(),
 		authType,
