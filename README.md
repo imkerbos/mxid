@@ -5,7 +5,7 @@
 **Open-source Enterprise Identity and Access Management (IAM/SSO) Platform**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Go Version](https://img.shields.io/badge/Go-1.23+-00ADD8?logo=go)](https://go.dev)
+[![Go Version](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)](https://react.dev)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org)
 [![Redis](https://img.shields.io/badge/Redis-7+-DC382D?logo=redis&logoColor=white)](https://redis.io)
@@ -31,20 +31,20 @@ MXID is a self-hosted IAM platform: a single login portal, an admin console, and
 ### Identity
 - Local users + password policy (min length, character classes, **history N**, expire days, lockout, captcha).
 - **MFA**: TOTP (RFC 6238 — Google Authenticator / Authy / 1Password), backup recovery codes.
-- **External IdPs** (per-tenant): Lark / Feishu / Microsoft Teams (more pluggable via `pkg/externalidp/providers`).
+- **External IdPs** (per-tenant, **EE**): Lark / Feishu / Microsoft Teams (more pluggable via `pkg/externalidp/providers`).
 - Per-app access policies (allow / deny by user / group / org / role / public).
 - Per-app roles (`admin`, `viewer`, …) propagated as claims.
 - Sessions in Redis. Idle + absolute timeout configurable at runtime.
 
 ### Operations
-- **Multi-tenant** — global apps + per-tenant apps, with tenant code prefixed paths.
+- **Multi-tenant** (**EE**) — global apps + per-tenant apps, with tenant code prefixed paths. CE is single-tenant.
 - **i18n** — built-in Chinese + English; admin sets default; per-user override.
-- **Branding** — admin-supplied product name, primary color, logo, login footer HTML, custom CSS.
+- **Branding** (**EE**) — admin-supplied product name, primary color, logo, login page title / footer HTML, custom CSS.
 - **Email** — SMTP runtime config. Templates for email verification, password reset, magic-link, welcome.
-- **SMS OTP** — Aliyun / Tencent Cloud / Twilio (stdlib, no SDK).
+- **SMS OTP** (**EE**) — Aliyun / Tencent Cloud / Twilio (stdlib, no SDK).
 - **Magic-link** login (passwordless).
 - **Audit log** + retention cron + alert webhook.
-- **License** — quota enforcement on user / tenant count; enterprise feature gate.
+- **License** — Ed25519-signed offline license gates EE features (see [Editions](#editions)).
 - **API tokens** for headless integrations (OpenAPI under `/api/v1/openapi`).
 
 ### Architecture
@@ -52,6 +52,26 @@ MXID is a self-hosted IAM platform: a single login portal, an admin console, and
 - React 19 + Vite 8 + TypeScript + Tailwind (pnpm workspaces: `console`, `portal`, `shared`).
 - PostgreSQL primary store, Redis for sessions / tickets / TOTP rate-limit / event SSE.
 - Settings-domain layer: every operational knob (SMTP, policy, branding, URLs…) is admin-editable at runtime; no rebuild required.
+
+## Editions
+
+MXID is open-core. **Community Edition (CE)** is the default and fully usable.
+**Enterprise Edition (EE)** unlocks more features via an Ed25519-signed offline
+license.
+
+| | CE | EE |
+|--|:--:|:--:|
+| Core IAM (protocols, users/orgs/groups, RBAC, MFA, SMTP, audit) | ✅ | ✅ |
+| Single default tenant | ✅ | ✅ |
+| Multi-tenant · External IdP · Branding · Conditional access · WebAuthn · SCIM · SMS | ❌ | ✅ |
+
+- EE features are gated two ways: runtime license checks (branding, multi-tenant,
+  external IdP) and **code separation** — high-value features ship only in the
+  private `mxid-ee` build (garble-obfuscated), absent from the CE binary.
+- A license is verified against an embedded public key, so it can't be forged.
+  Activate via `MXID_LICENSE` env or the console License page.
+
+Full matrix, edition architecture, activation, and limits: **[docs/EDITIONS.md](docs/EDITIONS.md)**.
 
 ## Architecture
 
@@ -115,7 +135,7 @@ make dev-docker-up                # backend + console + portal + air hot-reload
 Single entry point through nginx on **port 3500**:
 
 - Portal:  <http://localhost:3500/>            — end-user login + my-apps
-- Console: <http://localhost:3500/admin/>      — admin (default `admin` / `admin123!`)
+- Console: <http://localhost:3500/admin/>      — admin (default `admin` / `admin123`)
 - API:     <http://localhost:3500/api/v1/...>
 - OIDC discovery: <http://localhost:3500/protocol/oidc/.well-known/openid-configuration>
 
@@ -129,7 +149,7 @@ make dev          # backend (air hot reload)
 make dev-web      # vite dev server for console + portal
 ```
 
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for production (single-domain, multi-domain, reverse proxy, secrets, HTTPS) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the deeper design.
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for production (single-domain, multi-domain, reverse proxy, secrets, HTTPS), [docs/EDITIONS.md](docs/EDITIONS.md) for CE/EE + licensing, and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the deeper design.
 
 ## Integration guides (battle-tested)
 
@@ -143,7 +163,8 @@ The console ships built-in integration docs at `/docs`:
 
 ```
 mxid/
-├── cmd/server/              # main + thin adapter glue (1 binary)
+├── cmd/server/              # thin main → app.Run() (CE binary entrypoint)
+├── app/                     # server wiring (importable; EE reuses it via app.Run)
 ├── internal/
 │   ├── bootstrap/           # config, router, gorm logger, app shell
 │   ├── domain/              # one package per business capability
@@ -156,7 +177,8 @@ mxid/
 │   │   └── portal/          # end-user REST + SSO bounce + magic-link/SMS/password-reset
 │   └── middleware/          # cors, logger, request-id
 ├── pkg/                     # reusable libs: event, mailer, sms, session, urlswap, …
-├── migrations/              # SQL (32+)
+│   └── ee/                  # license (Ed25519 verify) + registry (EE extension seam)
+├── migrations/              # SQL (39+)
 ├── web/
 │   ├── apps/console/        # React admin SPA
 │   ├── apps/portal/         # React end-user SPA
@@ -164,7 +186,7 @@ mxid/
 ├── configs/                 # config.{yaml,dev.yaml,prod.yaml}
 ├── deploy/                  # compose / dockerfile / nginx / scripts
 ├── scripts/                 # smoke-test, pre-commit, install-hooks
-└── docs/                    # README -> DEPLOYMENT / ARCHITECTURE
+└── docs/                    # DEPLOYMENT / EDITIONS / ARCHITECTURE
 ```
 
 ## Verification
@@ -187,9 +209,10 @@ See `web/apps/console/src/pages/docs/guides.ts` for the corresponding playbooks.
 
 ## License
 
-MXID is licensed under the **GNU Affero General Public License v3.0** (AGPL-3.0). See [LICENSE](LICENSE).
+MXID is **open-core**:
 
-If you run a modified MXID as a network service, the AGPL requires you to publish your modifications under the same license.
+- **Community Edition (CE)** — this repository — is licensed under the **GNU Affero General Public License v3.0** (AGPL-3.0). See [LICENSE](LICENSE). If you run a modified MXID as a network service, the AGPL requires you to publish your modifications under the same license.
+- **Enterprise Edition (EE)** features (the `mxid-ee` distribution + EE-gated capabilities) are commercial and require a license. See [docs/EDITIONS.md](docs/EDITIONS.md).
 
 ---
 
@@ -203,12 +226,16 @@ MXID 是自托管的开源企业 IAM/SSO 平台。一个登录门户、一个管
 
 - **协议**: OIDC 1.0 (含 PKCE / Refresh / RP-Initiated Logout)、SAML 2.0、CAS 3.0、JWT
 - **认证**: 本地账号 + 密码策略 (强度、历史、失败锁定、验证码) + TOTP MFA + 备用恢复码
-- **第三方登录**: Lark / 飞书 / Teams (可插拔)
-- **多租户**: 全局应用 + 租户私有应用, code 路径隔离
-- **设置热加载**: SMTP / 安全策略 / 品牌 / 登录方式 / 协议默认值 / 对外 URL — admin UI 改, 无需重启
-- **邮件 / 短信**: SMTP 模板, 阿里云 / 腾讯云 / Twilio 短信
-- **运维**: 审计日志 + 留存 cron, License 配额, API Token
+- **第三方登录** (**EE**): Lark / 飞书 / Teams (可插拔)
+- **多租户** (**EE**): 全局应用 + 租户私有应用, code 路径隔离;CE 为单租户
+- **设置热加载**: SMTP / 安全策略 / 品牌(**EE**) / 登录方式 / 协议默认值 / 对外 URL — admin UI 改, 无需重启
+- **邮件 / 短信(**EE**)**: SMTP 模板, 阿里云 / 腾讯云 / Twilio 短信
+- **运维**: 审计日志 + 留存 cron, Ed25519 签名 License 门控 EE 功能, API Token
 - **i18n**: 内置中英文 + 实时切换
+
+### 版本 (CE / EE)
+
+开源核心模式。**社区版 (CE)** 默认、可独立使用;**企业版 (EE)** 凭 Ed25519 签名离线 license 解锁多租户 / 外部 IdP / 品牌定制 / 条件访问 / WebAuthn / SCIM / SMS 等。高价值功能代码只在私有 `mxid-ee` 构建(garble 混淆),CE 二进制里不存在。完整矩阵 / 激活 / 限制见 **[docs/EDITIONS.md](docs/EDITIONS.md)**。
 
 ### 一键启动
 
@@ -230,6 +257,6 @@ prod 把 `localhost:3500` 换成你的域名即可, 路径不变.
 
 详细部署见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md), 架构设计见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), 协议端点 / 集成示例见控制台 `/admin/docs`.
 
-### 协议
+### 许可
 
-[AGPL v3.0](LICENSE). 把修改后的 MXID 作为网络服务对外提供时, 必须公开修改源码.
+开源核心:**社区版 (CE)** 本仓库采用 [AGPL v3.0](LICENSE) — 把修改后的 MXID 作为网络服务对外提供时必须公开修改源码;**企业版 (EE)** 功能(`mxid-ee` 发行 + EE 门控能力)为商业授权,见 [docs/EDITIONS.md](docs/EDITIONS.md)。

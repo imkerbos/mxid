@@ -156,8 +156,31 @@ Each SPA imports from `@mxid/shared/...` paths. Tailwind v4 needs an `@source` d
 
 1. New package under `internal/protocol/<name>/`.
 2. Implement handler, route registration, and ticket / token store as needed.
-3. Add `<name>.Register(...)` call in `cmd/server/main.go`, alongside CAS / SAML / OIDC.
+3. Add `<name>.Register(...)` call in `app/run.go`, alongside CAS / SAML / OIDC.
 4. Add a row to `app.Protocol` constants + `ProtocolDefaults` setting + UI dropdown.
+
+## Editions & licensing (CE / EE)
+
+Open-core, single source of truth, no fork. The server entrypoint lives in the
+importable package `github.com/imkerbos/mxid/app` (`app.Run()`); `cmd/server` is
+a thin `main` that calls it. The EE distribution (`github.com/imkerbos/mxid-ee`,
+private) is its own module that imports `app`, blank-imports its feature
+packages, and runs the same `app.Run()`.
+
+- **`pkg/ee/license`** — verifies an Ed25519-signed token against an embedded
+  public key (the private key lives only in the `license-authority` repo). Holds
+  the process-wide `Current()` Manager; CE by default, EE when a valid license is
+  loaded (from `MXID_LICENSE` env or the License setting). Offline (expiry +
+  renewal), product-bound.
+- **`pkg/ee/registry`** — the extension seam. EE feature packages call
+  `registry.RegisterConsole(...)` from `init()`; `app.Run` invokes the registered
+  mounters. CE imports none, so EE code is *absent* from the CE binary.
+- **Two gating tiers**: runtime checks (`middleware.RequireFeature` →
+  `license.Current().Has(feature)`) for branding / multi-tenant / external IdP,
+  which live in the CE binary; and **code separation** for high-value features,
+  which exist only in `mxid-ee` and are `garble`-obfuscated.
+
+User-facing matrix, activation, and limits: [EDITIONS.md](EDITIONS.md).
 
 ## Things deliberately not done (yet)
 

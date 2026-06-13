@@ -54,7 +54,7 @@ External URLs are admin-editable at **Console → Settings → External URLs**, 
 
 | Component | Version | Notes |
 |-----------|---------|-------|
-| Go | 1.23+ | Build the binary. Not needed at runtime. |
+| Go | 1.25+ | Build the binary. Not needed at runtime. |
 | Node | 22+ | Build the SPAs. Not needed at runtime. |
 | PostgreSQL | 15+ | Primary data store. Extensions: `pg_trgm` (auto-installed by migration 0030). |
 | Redis | 7+ | Sessions, tickets, TOTP rate-limit, event SSE. AOF or RDB persistence recommended. |
@@ -82,12 +82,13 @@ Rotating `MXID_MASTER_KEY` requires re-encrypting existing settings — see [`sc
 
 ## Container images & versioning
 
-Two images, published to GitHub Container Registry — prod is fully containerized
-(no host-side build, no `dist/` mounts):
+Images on GitHub Container Registry — prod is fully containerized (no host-side
+build, no `dist/` mounts):
 
 ```
-ghcr.io/imkerbos/mxid       # Go backend
-ghcr.io/imkerbos/mxid-web   # nginx + both SPAs baked in
+ghcr.io/imkerbos/mxid       # CE backend (public)
+ghcr.io/imkerbos/mxid-web   # nginx + both SPAs baked in (shared by CE + EE)
+ghcr.io/imkerbos/mxid-ee    # EE backend (private, garble-obfuscated) — see Editions
 ```
 
 Releases are tag-driven. Pushing a SemVer git tag (`vMAJOR.MINOR.PATCH`) runs
@@ -159,6 +160,27 @@ console URLs that protocol handlers use) is **set in the console** under
 
 - TLS certs are operator-supplied, mounted from `deploy/compose/cert/`, never baked into the image.
 - Behind an existing ingress (Traefik, Caddy, ALB)? Terminate TLS there and forward plain HTTP to the web container — drop the cert mount and the `listen 443 ssl` block from `prod.conf`.
+
+### Community vs Enterprise
+
+The compose above runs **Community Edition**. For **Enterprise Edition**, chain
+the EE overlay (swaps the backend to the private `mxid-ee` image) and supply a
+license. Full details in [EDITIONS.md](EDITIONS.md); the deploy delta:
+
+```ini
+# .env — add the EE overlay and a license token
+COMPOSE_FILE=deploy/compose/docker-compose.yml:deploy/compose/docker-compose.ee.yml
+MXID_LICENSE=<signed token from license-authority>
+```
+
+```bash
+docker login ghcr.io       # mxid-ee is private — token needs read:packages
+docker compose pull
+docker compose up -d
+```
+
+A license can also be pasted at runtime in the console (Settings → License) — no
+restart. No / invalid / expired license → the instance runs as CE.
 
 ### Reverse proxy headers
 
