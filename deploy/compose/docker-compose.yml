@@ -1,67 +1,82 @@
-# Compose project name = mxid-prod for env isolation.
+# MXID production stack — base file (app + containerized web edge).
+#
+# Everything deployment-specific comes from .env; you never edit this file or
+# the YAML config. Mode is selected by COMPOSE_FILE in .env:
+#
+#   external DB (default):
+#     COMPOSE_FILE=deploy/compose/docker-compose.yml
+#   self-contained (adds containerized Postgres + Redis + volumes):
+#     COMPOSE_FILE=deploy/compose/docker-compose.yml:deploy/compose/docker-compose.standalone.yml
+#
+# Then always just:  docker compose up -d
+#
+# This base file assumes an EXTERNAL Postgres/Redis reachable at
+# host.docker.internal (override the host via MXID_DATABASE_HOST / MXID_REDIS_HOST).
 name: mxid-prod
 
 services:
   mxid:
+    # MXID_TAG is required — pin an explicit released version (e.g. v0.1.0).
+    # No `latest`: this service runs DB migrations on boot, so a surprise image
+    # bump means a surprise migration. CI never publishes a `latest` tag.
+    image: ghcr.io/imkerbos/mxid:${MXID_TAG:?set MXID_TAG to a released version, e.g. v0.1.0}
     build:
       context: ../..
       dockerfile: deploy/dockerfile/Dockerfile
+      args:
+        VERSION: ${MXID_TAG}
     container_name: mxid
     ports:
-      - "10050:8080"
+      - "8080:8080"
     environment:
+      # config.prod.yaml is only a fallback template — every deploy value is an
+      # env override here (MXID_ prefix wins over the YAML).
+      - MXID_CONFIG_ENV=prod
       - MXID_SERVER_PORT=8080
       - MXID_SERVER_MODE=release
-      - MXID_DATABASE_HOST=host.docker.internal
-      - MXID_DATABASE_PORT=${POSTGRES_PORT:-5432}
+      # CORS/CSRF allow-list — the one origin value that MUST be set at boot
+      # (it gates who can even reach the console). Comma-separate multiple.
+      - MXID_SERVER_ALLOWED_ORIGINS=${MXID_SERVER_ALLOWED_ORIGINS:?set to your portal/console origin(s), e.g. https://id.example.com}
+      - MXID_DATABASE_HOST=${MXID_DATABASE_HOST:-host.docker.internal}
+      - MXID_DATABASE_PORT=${MXID_DATABASE_PORT:-5432}
       - MXID_DATABASE_NAME=${POSTGRES_DB:-mxid}
       - MXID_DATABASE_USER=${POSTGRES_USER:-postgres}
-      # Secrets: no dev fallback. Compose aborts if unset so prod can never
-      # silently boot on the public example credentials.
       - MXID_DATABASE_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
-      - MXID_REDIS_HOST=host.docker.internal
-      - MXID_REDIS_PORT=${REDIS_PORT:-6379}
+      - MXID_REDIS_HOST=${MXID_REDIS_HOST:-host.docker.internal}
+      - MXID_REDIS_PORT=${MXID_REDIS_PORT:-6379}
       - MXID_REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD required}
       - MXID_CRYPTO_KEY_ENCRYPTION_KEY=${MXID_CRYPTO_KEY_ENCRYPTION_KEY:?run openssl rand -base64 32}
+    volumes:
+      - ../../configs:/app/configs:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/health"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
     networks: [mxid]
 
-  # Containerized edge. TLS-terminates, serves the built SPAs, reverse-proxies
-  # /api /protocol to the backend (by service name over the `mxid` network),
-  # and forwards the real client IP via X-Forwarded-For / X-Real-IP.
-  #
-  # REAL CLIENT IP — REQUIRED for correct rate-limit / audit / conditional
-  # access. A bridge-published port loses the source IP under Docker's default
-  # userland-proxy. Enable kernel DNAT on the host so the real IP reaches this
-  # container while keeping bridge DNS (service names):
-  #
-  #   /etc/docker/daemon.json:  { "userland-proxy": false }   then: systemctl restart docker
-  #
-  # The backend trusts this nginx (172.x docker subnet is in the default
-  # trusted_proxies) and reads the forwarded client IP. For an ON-PREM intranet
-  # where clients are 10.x / 192.168.x, set MXID_SERVER_TRUSTED_PROXIES on the
-  # mxid service to ONLY this network's subnet so intranet client IPs aren't
-  # mistaken for proxies (the backend WARNs on the broad default in release).
   nginx:
-    image: nginx:1.27-alpine
+    # Fully containerized edge: SPAs + nginx config baked into the image
+    # (deploy/dockerfile/Dockerfile.web). Only TLS certs are mounted. The cert
+    # filenames + server_name are env-substituted into the config at startup.
+    image: ghcr.io/imkerbos/mxid-web:${MXID_TAG:?set MXID_TAG to a released version, e.g. v0.1.0}
+    build:
+      context: ../..
+      dockerfile: deploy/dockerfile/Dockerfile.web
     container_name: mxid-nginx
     ports:
       - "80:80"
       - "443:443"
+    environment:
+      - SERVER_NAME=${SERVER_NAME:-_}
+      - CERT_FILE=${CERT_FILE:-server.crt}
+      - KEY_FILE=${KEY_FILE:-server.key}
     volumes:
-      - ../nginx/prod.conf:/etc/nginx/conf.d/default.conf:ro
-      # Build first: pnpm --filter @mxid/console build / @mxid/portal build.
-      - ../../web/apps/console/dist:/var/www/mxid/console:ro
-      - ../../web/apps/portal/dist:/var/www/mxid/portal:ro
-      - ./cert:/etc/nginx/cert:ro          # server.crt + server.key
+      - ./cert:/etc/nginx/cert:ro          # put your CERT_FILE + KEY_FILE here
       - ./acme:/var/www/acme               # Let's Encrypt webroot (optional)
     depends_on:
       mxid:

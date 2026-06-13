@@ -29,6 +29,7 @@ import (
 	"github.com/imkerbos/mxid/internal/domain/user"
 	publicpkg "github.com/imkerbos/mxid/internal/gateway/console/public"
 	"github.com/imkerbos/mxid/internal/gateway/console/settings"
+	systemgw "github.com/imkerbos/mxid/internal/gateway/console/system"
 	"github.com/imkerbos/mxid/internal/gateway/portal"
 	"github.com/imkerbos/mxid/internal/middleware"
 	"github.com/imkerbos/mxid/internal/protocol/cas"
@@ -44,7 +45,9 @@ import (
 	"github.com/imkerbos/mxid/pkg/session"
 	"github.com/imkerbos/mxid/pkg/sms"
 	"github.com/imkerbos/mxid/pkg/tenantscope"
+	"github.com/imkerbos/mxid/pkg/updatecheck"
 	"github.com/imkerbos/mxid/pkg/urlswap"
+	"github.com/imkerbos/mxid/pkg/version"
 )
 
 func main() {
@@ -66,7 +69,7 @@ func main() {
 
 	// Public metadata endpoint — both portal and console SPAs fetch this
 	// before login to learn the canonical issuer / portal / console URLs.
-	bootstrap.RegisterSystemInfo(a.Router, &a.Config.Server, "")
+	bootstrap.RegisterSystemInfo(a.Router, &a.Config.Server, version.Version)
 	publicpkg.Register(a.Router, settingService, a.Config.Tenant.DefaultID)
 
 	// File upload (app icons) + static serve. Storage dir lives outside
@@ -421,6 +424,11 @@ func registerModules(a *bootstrap.App) {
 	// authenticated admin session (previously these registered pre-auth and
 	// were reachable unauthenticated).
 	settingsHandler.Register(a.ConsoleGroup)
+
+	// System update-check (read-only "is there a newer release"). super_admin
+	// only via the system.read permission. Outbound GitHub call goes through
+	// safehttp; results cached in Redis.
+	systemgw.NewHandler(updatecheck.New(a.Redis)).Register(a.ConsoleGroup)
 
 	// 5. Register domain modules
 	orgModule := org.Register(a)
