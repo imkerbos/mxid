@@ -2,6 +2,7 @@ package appaccess
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/imkerbos/mxid/pkg/event"
@@ -14,14 +15,102 @@ const (
 	EventAccessPolicyChanged = "app_access.changed"
 )
 
+// Referenced-entity guard errors. The parent app/app-group id arrives as an
+// untrusted path param and the subject id from the request body; both must be
+// proven to live in the caller's tenant before a policy row is written.
+var (
+	ErrParentNotInTenant  = errors.New("app or app-group not found in tenant")
+	ErrSubjectNotInTenant = errors.New("subject not found in tenant")
+)
+
+// EntityValidator reports whether a referenced entity id exists within the
+// caller's tenant. Backed by the referent's tenant-scoped GetByID (the
+// tenantscope plugin appends tenant_id=?, so a cross-tenant id resolves to
+// false). Injected so appaccess does not import app/user/group/org/role.
+type EntityValidator func(ctx context.Context, id int64) (bool, error)
+
+// RefValidators bundles the per-type tenant-scoped existence checks AddPolicy
+// needs: the parent app / app-group and the policy subject (user/group/org/
+// role). Subject "public" needs no validation.
+type RefValidators struct {
+	App      EntityValidator
+	AppGroup EntityValidator
+	User     EntityValidator
+	Group    EntityValidator
+	Org      EntityValidator
+	Role     EntityValidator
+}
+
 type Service struct {
-	repo     Repository
-	idGen    *snowflake.Generator
-	eventBus *event.Bus
+	repo       Repository
+	idGen      *snowflake.Generator
+	eventBus   *event.Bus
+	validators RefValidators
 }
 
 func NewService(repo Repository, idGen *snowflake.Generator, eventBus *event.Bus) *Service {
 	return &Service{repo: repo, idGen: idGen, eventBus: eventBus}
+}
+
+// SetRefValidators injects the tenant-scoped parent/subject existence checks
+// used by AddPolicy. Wired in cmd/server/main.go once the domains exist.
+func (s *Service) SetRefValidators(v RefValidators) { s.validators = v }
+
+// validateParent proves the parent app / app-group belongs to the caller's
+// tenant. Exactly one of appID / groupID is non-nil (caller already checked).
+func (s *Service) validateParent(ctx context.Context, appID, groupID *int64) error {
+	var (
+		v  EntityValidator
+		id int64
+	)
+	switch {
+	case appID != nil:
+		v, id = s.validators.App, *appID
+	case groupID != nil:
+		v, id = s.validators.AppGroup, *groupID
+	}
+	if v == nil {
+		return fmt.Errorf("appaccess: parent validator not configured")
+	}
+	ok, err := v(ctx, id)
+	if err != nil {
+		return fmt.Errorf("validate parent: %w", err)
+	}
+	if !ok {
+		return ErrParentNotInTenant
+	}
+	return nil
+}
+
+// validateSubject proves the policy subject belongs to the caller's tenant.
+// "public" needs no validation (SubjectID is normalized to 0 by the caller).
+func (s *Service) validateSubject(ctx context.Context, subjectType string, subjectID int64) error {
+	var v EntityValidator
+	switch subjectType {
+	case SubjectPublic:
+		return nil
+	case SubjectUser:
+		v = s.validators.User
+	case SubjectGroup:
+		v = s.validators.Group
+	case SubjectOrg:
+		v = s.validators.Org
+	case SubjectRole:
+		v = s.validators.Role
+	default:
+		return fmt.Errorf("appaccess: unknown subject_type %q", subjectType)
+	}
+	if v == nil {
+		return fmt.Errorf("appaccess: validator for %q not configured", subjectType)
+	}
+	ok, err := v(ctx, subjectID)
+	if err != nil {
+		return fmt.Errorf("validate subject: %w", err)
+	}
+	if !ok {
+		return ErrSubjectNotInTenant
+	}
+	return nil
 }
 
 // ListOwnByApp returns rules attached directly to a single app (excludes
@@ -73,6 +162,16 @@ func (s *Service) AddPolicy(ctx context.Context, req AddPolicyRequest) (*Policy,
 		req.SubjectID = 0 // normalize
 	} else if req.SubjectID == 0 {
 		return nil, fmt.Errorf("subject_id required for subject_type %s", req.SubjectType)
+	}
+	// Referenced-entity guard. The parent app/app-group id is an untrusted path
+	// param and the subject id comes from the request body; prove both live in
+	// the caller's tenant (cross-tenant ids 404 via the tenant-scoped
+	// validators) before writing the policy row.
+	if err := s.validateParent(ctx, req.AppID, req.AppGroupID); err != nil {
+		return nil, err
+	}
+	if err := s.validateSubject(ctx, req.SubjectType, req.SubjectID); err != nil {
+		return nil, err
 	}
 	p := &Policy{
 		ID:          s.idGen.Generate(),

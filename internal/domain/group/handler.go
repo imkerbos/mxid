@@ -195,6 +195,10 @@ func (h *Handler) AddMember(c *gin.Context) {
 			response.Error(c, http.StatusConflict, 40902, err.Error(), "")
 			return
 		}
+		if errors.Is(err, ErrUserNotInTenant) {
+			response.NotFound(c, 40402, "user not found")
+			return
+		}
 		response.InternalError(c, "failed to add member")
 		return
 	}
@@ -230,6 +234,10 @@ func (h *Handler) BatchAddMembers(c *gin.Context) {
 		}
 		if errors.Is(err, ErrGroupIsDynamic) {
 			response.Error(c, http.StatusConflict, 40902, err.Error(), "")
+			return
+		}
+		if errors.Is(err, ErrUserNotInTenant) {
+			response.NotFound(c, 40402, "user not found")
 			return
 		}
 		response.InternalError(c, "failed to add members")

@@ -25,7 +25,37 @@ var (
 	ErrCertNotFound      = errors.New("certificate not found")
 	ErrAccountNotFound   = errors.New("app account not found")
 	ErrInvalidClientType = errors.New("invalid client_type for protocol")
+	// ErrSubjectNotInTenant is returned when AddAccess is asked to authorize a
+	// subject (user/group/org/role) that does not exist in the caller's tenant
+	// — including a cross-tenant id, which the injected validator (tenant-scoped
+	// repo) reports as absent. The parent app is already guarded; this closes
+	// the residual referenced-entity IDOR on the subject.
+	ErrSubjectNotInTenant = errors.New("subject not found in tenant")
 )
+
+// Access subject type constants for AddAccess. Mirror the appaccess module's
+// subject vocabulary (user|group|org|role).
+const (
+	AccessSubjectUser  = "user"
+	AccessSubjectGroup = "group"
+	AccessSubjectOrg   = "org"
+	AccessSubjectRole  = "role"
+)
+
+// EntityValidator reports whether a referenced entity id exists within the
+// caller's tenant. Backed by the referent's tenant-scoped GetByID (the
+// tenantscope plugin appends tenant_id=?, so a cross-tenant id resolves to
+// false). Injected so the app service does not import user/group/org/role.
+type EntityValidator func(ctx context.Context, id int64) (bool, error)
+
+// AccessSubjectValidators bundles the per-type tenant-scoped existence checks
+// AddAccess needs to validate the request-body subject.
+type AccessSubjectValidators struct {
+	User  EntityValidator
+	Group EntityValidator
+	Org   EntityValidator
+	Role  EntityValidator
+}
 
 // Service provides business logic for application management.
 // ProtocolDefaults carries the admin-configured per-protocol defaults
@@ -46,11 +76,48 @@ type ProtocolDefaults struct {
 type ProtocolDefaultsProvider func(ctx context.Context, tenantID int64) ProtocolDefaults
 
 type Service struct {
-	repo           Repository
-	idGen          *snowflake.Generator
-	eventBus       *event.Bus
-	keyService     *KeyService
-	protoDefaultsP ProtocolDefaultsProvider
+	repo              Repository
+	idGen             *snowflake.Generator
+	eventBus          *event.Bus
+	keyService        *KeyService
+	protoDefaultsP    ProtocolDefaultsProvider
+	subjectValidators AccessSubjectValidators
+}
+
+// SetAccessSubjectValidators injects the tenant-scoped subject existence checks
+// used by AddAccess. Wired in cmd/server/main.go once the domains exist.
+func (s *Service) SetAccessSubjectValidators(v AccessSubjectValidators) {
+	s.subjectValidators = v
+}
+
+// validateAccessSubject proves the request-body subject belongs to the caller's
+// tenant. A cross-tenant id resolves to false via the tenant-scoped validator
+// → ErrSubjectNotInTenant. Fails closed if no validator was wired.
+func (s *Service) validateAccessSubject(ctx context.Context, subjectType string, subjectID int64) error {
+	var v EntityValidator
+	switch subjectType {
+	case AccessSubjectUser:
+		v = s.subjectValidators.User
+	case AccessSubjectGroup:
+		v = s.subjectValidators.Group
+	case AccessSubjectOrg:
+		v = s.subjectValidators.Org
+	case AccessSubjectRole:
+		v = s.subjectValidators.Role
+	default:
+		return fmt.Errorf("app: unknown access subject_type %q", subjectType)
+	}
+	if v == nil {
+		return fmt.Errorf("app: validator for %q not configured", subjectType)
+	}
+	ok, err := v(ctx, subjectID)
+	if err != nil {
+		return fmt.Errorf("validate subject: %w", err)
+	}
+	if !ok {
+		return ErrSubjectNotInTenant
+	}
+	return nil
 }
 
 // SetProtocolDefaultsProvider injects the runtime defaults lookup. Called
@@ -829,6 +896,13 @@ func (s *Service) AddAccess(ctx context.Context, appID int64, req *AddAccessRequ
 			return nil, ErrAppNotFound
 		}
 		return nil, fmt.Errorf("get app: %w", err)
+	}
+
+	// Referenced-entity guard: the subject id comes from the request body.
+	// Reject a subject that is not in the caller's tenant so a foreign
+	// user/group/org/role cannot be authorized onto this app.
+	if err := s.validateAccessSubject(ctx, req.SubjectType, req.SubjectID); err != nil {
+		return nil, err
 	}
 
 	access := &AppAccess{

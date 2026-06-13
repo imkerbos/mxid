@@ -11,10 +11,10 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/imkerbos/mxid/internal/bootstrap"
+	"github.com/imkerbos/mxid/internal/domain/apitoken"
 	"github.com/imkerbos/mxid/internal/domain/app"
 	"github.com/imkerbos/mxid/internal/domain/appaccess"
 	"github.com/imkerbos/mxid/internal/domain/approle"
-	"github.com/imkerbos/mxid/internal/domain/apitoken"
 	"github.com/imkerbos/mxid/internal/domain/audit"
 	"github.com/imkerbos/mxid/internal/domain/authn"
 	"github.com/imkerbos/mxid/internal/domain/consent"
@@ -710,6 +710,52 @@ func registerModules(a *bootstrap.App) {
 	approleHandler.Register(a.ConsoleGroup)
 	appRolesAdapter := &oidcAppRolesAdapter{svc: approleSvc}
 
+	// 6.7. Referenced-entity tenant validators (Phase 2.6).
+	//
+	// Association handlers accept a referenced entity id (user/group/org/role/
+	// app) from the request body and link it to a tenant-owned parent. The
+	// parent is tenant-guarded, but the referent was not validated — letting an
+	// admin plant a FOREIGN-tenant entity into their own org/group/role/app and
+	// inherit its scoped access. Inject tenant-scoped existence checks (backed
+	// by each referent's GetByID; the tenantscope plugin appends tenant_id=?, so
+	// a cross-tenant id 404s) so every site rejects a foreign referent.
+	userValidator := validateUserInTenant(userModule)
+	groupValidator := validateGroupInTenant(groupModule)
+	orgValidator := validateOrgInTenant(orgModule)
+	roleValidator := validateRoleInTenant(permissionModule)
+	appValidator := validateAppInTenant(appModule)
+	appGroupValidator := validateAppGroupInTenant(appModule)
+
+	orgModule.Service.SetUserValidator(userValidator)
+	groupModule.Service.SetUserValidator(userValidator)
+	permissionModule.Service.SetRefValidators(permission.RefValidators{
+		User:  userValidator,
+		Group: groupValidator,
+		Org:   orgValidator,
+	})
+	appModule.Service.SetAccessSubjectValidators(app.AccessSubjectValidators{
+		User:  userValidator,
+		Group: groupValidator,
+		Org:   orgValidator,
+		Role:  roleValidator,
+	})
+	accessSvc.SetRefValidators(appaccess.RefValidators{
+		App:      appValidator,
+		AppGroup: appGroupValidator,
+		User:     userValidator,
+		Group:    groupValidator,
+		Org:      orgValidator,
+		Role:     roleValidator,
+	})
+	approleSvc.SetRefValidators(approle.RefValidators{
+		App:      appValidator,
+		AppGroup: appGroupValidator,
+		User:     userValidator,
+		Group:    groupValidator,
+		Org:      orgValidator,
+		Role:     roleValidator,
+	})
+
 	// 7. Register protocol modules
 	//
 	// OIDC engine select: MXID_OIDC_ENGINE=zitadel mounts the zitadel/oidc-based
@@ -1096,9 +1142,9 @@ func appToConfig(a *app.App) *resolver.AppConfig {
 		Status:          a.Status,
 		FirstParty:      a.IsFirstParty,
 		RequireConsent:  a.RequireConsent,
-		ProtocolConfig: a.ProtocolConfig,
-		RedirectURIs:   resolver.ParseRedirectURIs(a.RedirectURIs),
-		AccessPolicy:   a.AccessPolicy,
+		ProtocolConfig:  a.ProtocolConfig,
+		RedirectURIs:    resolver.ParseRedirectURIs(a.RedirectURIs),
+		AccessPolicy:    a.AccessPolicy,
 	}
 	if a.ClientID != nil {
 		cfg.ClientID = *a.ClientID
@@ -1122,10 +1168,6 @@ func appToConfig(a *app.App) *resolver.AppConfig {
 // projection. Production code paths go through buildAppResolver's adapter
 // which decrypts at-rest ciphertext.
 var _ = (*resolver.CertConfig)(nil)
-
-
-
-
 
 // buildIdentityResolver bridges the user domain repo to the protocol
 // IdentityResolver so claim mappers can read user attributes without

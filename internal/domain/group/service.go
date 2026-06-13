@@ -15,13 +15,27 @@ import (
 var (
 	ErrGroupNotFound   = errors.New("user group not found")
 	ErrGroupHasMembers = errors.New("user group still has members; remove all members or pass force=true")
+	// ErrUserNotInTenant is returned when AddMember(s) is asked to add a user
+	// that does not exist in the caller's tenant — including a cross-tenant id,
+	// which the injected validator (tenant-scoped user repo) reports as absent.
+	// Blocks the residual referenced-entity IDOR where an admin plants a
+	// foreign-tenant user into their own group.
+	ErrUserNotInTenant = errors.New("user not found in tenant")
 )
+
+// EntityValidator reports whether a referenced entity id exists within the
+// caller's tenant. Backed by the referent's tenant-scoped GetByID (the
+// tenantscope plugin appends tenant_id=?, so a cross-tenant id resolves to
+// false). Injected via SetUserValidator so the group service does not import
+// the user domain.
+type EntityValidator func(ctx context.Context, id int64) (bool, error)
 
 // Service handles user group business logic.
 type Service struct {
-	repo     Repository
-	idGen    *snowflake.Generator
-	eventBus *event.Bus
+	repo          Repository
+	idGen         *snowflake.Generator
+	eventBus      *event.Bus
+	userValidator EntityValidator
 }
 
 // NewService creates a new user group service.
@@ -31,6 +45,30 @@ func NewService(repo Repository, idGen *snowflake.Generator, eventBus *event.Bus
 		idGen:    idGen,
 		eventBus: eventBus,
 	}
+}
+
+// SetUserValidator injects the tenant-scoped user existence check used by
+// AddMember / AddMembers to validate request-body user ids. Wired in
+// cmd/server/main.go once the user module exists.
+func (s *Service) SetUserValidator(v EntityValidator) { s.userValidator = v }
+
+// requireUsersInTenant validates request-body user ids against the caller's
+// tenant via the injected validator. A cross-tenant id resolves to false →
+// ErrUserNotInTenant. Fails closed when no validator is wired.
+func (s *Service) requireUsersInTenant(ctx context.Context, userIDs ...int64) error {
+	if s.userValidator == nil {
+		return fmt.Errorf("group: user validator not configured")
+	}
+	for _, uid := range userIDs {
+		ok, err := s.userValidator(ctx, uid)
+		if err != nil {
+			return fmt.Errorf("validate user: %w", err)
+		}
+		if !ok {
+			return ErrUserNotInTenant
+		}
+	}
+	return nil
 }
 
 // Create creates a new user group with a generated ID.
@@ -200,6 +238,11 @@ func (s *Service) AddMember(ctx context.Context, groupID int64, req *AddMemberRe
 	if g.Type == TypeDynamic {
 		return ErrGroupIsDynamic
 	}
+	// Referenced-entity guard: reject a request-body user id that is not in the
+	// caller's tenant (cross-tenant id resolves to not-found via the validator).
+	if err := s.requireUsersInTenant(ctx, req.UserID); err != nil {
+		return err
+	}
 	m := &UserGroupMember{
 		ID:      s.idGen.Generate(),
 		GroupID: groupID,
@@ -240,6 +283,12 @@ func (s *Service) AddMembers(ctx context.Context, groupID int64, userIDs []int64
 	}
 	if g.Type == TypeDynamic {
 		return nil, ErrGroupIsDynamic
+	}
+	// Referenced-entity guard: every request-body user id must belong to the
+	// caller's tenant. Reject the whole batch if any id is cross-tenant /
+	// missing (resolved via the tenant-scoped validator) before any write.
+	if err := s.requireUsersInTenant(ctx, userIDs...); err != nil {
+		return nil, err
 	}
 	members := make([]*UserGroupMember, 0, len(userIDs))
 	for _, uid := range userIDs {

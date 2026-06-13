@@ -519,6 +519,8 @@ func (h *Handler) handleServiceError(c *gin.Context, err error) {
 		response.NotFound(c, 40404, err.Error())
 	case errors.Is(err, ErrAccountNotFound):
 		response.NotFound(c, 40405, err.Error())
+	case errors.Is(err, ErrSubjectNotInTenant):
+		response.NotFound(c, 40406, err.Error())
 	case errors.Is(err, ErrAppCodeExists):
 		response.Error(c, http.StatusConflict, 40901, err.Error(), "")
 	case errors.Is(err, ErrGroupCodeExists):

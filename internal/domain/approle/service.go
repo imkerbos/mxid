@@ -5,20 +5,135 @@ import (
 	"errors"
 	"fmt"
 
+	"gorm.io/gorm"
+
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/snowflake"
 )
 
 const EventAppRoleChanged = "app_role.changed"
 
+// Referenced-entity guard errors. The parent app/app-group id and the subject
+// id arrive from the request and must be proven to live in the caller's tenant
+// before a role/binding row is written; the AppRoleID a binding attaches to
+// must additionally belong to that same parent.
+var (
+	ErrParentNotInTenant  = errors.New("app or app-group not found in tenant")
+	ErrSubjectNotInTenant = errors.New("subject not found in tenant")
+	ErrAppRoleNotInParent = errors.New("app role not found under this app/app-group")
+)
+
+// EntityValidator reports whether a referenced entity id exists within the
+// caller's tenant. Backed by the referent's tenant-scoped GetByID (the
+// tenantscope plugin appends tenant_id=?, so a cross-tenant id resolves to
+// false). Injected so approle does not import app/user/group/org/role.
+type EntityValidator func(ctx context.Context, id int64) (bool, error)
+
+// RefValidators bundles the per-type tenant-scoped existence checks CreateRole
+// and AddBinding need: the parent app / app-group and the binding subject
+// (user/group/org/role).
+type RefValidators struct {
+	App      EntityValidator
+	AppGroup EntityValidator
+	User     EntityValidator
+	Group    EntityValidator
+	Org      EntityValidator
+	Role     EntityValidator
+}
+
 type Service struct {
-	repo     Repository
-	idGen    *snowflake.Generator
-	eventBus *event.Bus
+	repo       Repository
+	idGen      *snowflake.Generator
+	eventBus   *event.Bus
+	validators RefValidators
 }
 
 func NewService(repo Repository, idGen *snowflake.Generator, eventBus *event.Bus) *Service {
 	return &Service{repo: repo, idGen: idGen, eventBus: eventBus}
+}
+
+// SetRefValidators injects the tenant-scoped parent/subject existence checks
+// used by CreateRole and AddBinding. Wired in cmd/server/main.go once the
+// domains exist.
+func (s *Service) SetRefValidators(v RefValidators) { s.validators = v }
+
+// validateParent proves the parent app / app-group belongs to the caller's
+// tenant. Exactly one of appID / groupID is non-nil (caller already checked).
+func (s *Service) validateParent(ctx context.Context, appID, groupID *int64) error {
+	var (
+		v  EntityValidator
+		id int64
+	)
+	switch {
+	case appID != nil:
+		v, id = s.validators.App, *appID
+	case groupID != nil:
+		v, id = s.validators.AppGroup, *groupID
+	}
+	if v == nil {
+		return fmt.Errorf("approle: parent validator not configured")
+	}
+	ok, err := v(ctx, id)
+	if err != nil {
+		return fmt.Errorf("validate parent: %w", err)
+	}
+	if !ok {
+		return ErrParentNotInTenant
+	}
+	return nil
+}
+
+// validateAppRoleParent proves the AppRoleID a binding attaches to exists in
+// the caller's tenant (repo.GetRoleByID already filters tenant_id) AND hangs
+// off the same parent app/app-group the request targets. A cross-tenant or
+// mismatched-parent role id resolves to ErrAppRoleNotInParent.
+func (s *Service) validateAppRoleParent(ctx context.Context, appRoleID, tenantID int64, appID, groupID *int64) error {
+	role, err := s.repo.GetRoleByID(ctx, appRoleID, tenantID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrAppRoleNotInParent
+		}
+		return fmt.Errorf("get app role: %w", err)
+	}
+	switch {
+	case appID != nil:
+		if role.AppID == nil || *role.AppID != *appID {
+			return ErrAppRoleNotInParent
+		}
+	case groupID != nil:
+		if role.AppGroupID == nil || *role.AppGroupID != *groupID {
+			return ErrAppRoleNotInParent
+		}
+	}
+	return nil
+}
+
+// validateSubject proves the binding subject belongs to the caller's tenant.
+func (s *Service) validateSubject(ctx context.Context, subjectType string, subjectID int64) error {
+	var v EntityValidator
+	switch subjectType {
+	case SubjectUser:
+		v = s.validators.User
+	case SubjectGroup:
+		v = s.validators.Group
+	case SubjectOrg:
+		v = s.validators.Org
+	case SubjectRole:
+		v = s.validators.Role
+	default:
+		return fmt.Errorf("approle: unknown subject_type %q", subjectType)
+	}
+	if v == nil {
+		return fmt.Errorf("approle: validator for %q not configured", subjectType)
+	}
+	ok, err := v(ctx, subjectID)
+	if err != nil {
+		return fmt.Errorf("validate subject: %w", err)
+	}
+	if !ok {
+		return ErrSubjectNotInTenant
+	}
+	return nil
 }
 
 /* ──────────────── Role CRUD ──────────────── */
@@ -44,6 +159,12 @@ func (s *Service) CreateRole(ctx context.Context, req CreateRoleRequest) (*AppRo
 	}
 	if req.Name == "" {
 		return nil, errors.New("name required")
+	}
+	// Referenced-entity guard: the parent app/app-group id is an untrusted path
+	// param. Prove it lives in the caller's tenant before stamping it into the
+	// new app-role (cross-tenant parent 404s via the tenant-scoped validator).
+	if err := s.validateParent(ctx, req.AppID, req.AppGroupID); err != nil {
+		return nil, err
 	}
 	r := &AppRole{
 		ID:         s.idGen.Generate(),
@@ -133,6 +254,20 @@ func (s *Service) AddBinding(ctx context.Context, req AddBindingRequest) (*Bindi
 	}
 	if req.SubjectID == 0 {
 		return nil, errors.New("subject_id required")
+	}
+	// Referenced-entity guard. (1) Parent app/app-group must live in the
+	// caller's tenant. (2) The AppRoleID the binding attaches to must belong to
+	// the same tenant AND hang off this same parent — otherwise a caller could
+	// attach a binding to a foreign/unrelated app-role. (3) The subject must
+	// live in the caller's tenant.
+	if err := s.validateParent(ctx, req.AppID, req.AppGroupID); err != nil {
+		return nil, err
+	}
+	if err := s.validateAppRoleParent(ctx, req.AppRoleID, req.TenantID, req.AppID, req.AppGroupID); err != nil {
+		return nil, err
+	}
+	if err := s.validateSubject(ctx, req.SubjectType, req.SubjectID); err != nil {
+		return nil, err
 	}
 	b := &Binding{
 		ID:          s.idGen.Generate(),
