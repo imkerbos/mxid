@@ -1,4 +1,4 @@
-package main
+package app
 
 // Wiring for the zitadel/oidc-based OIDC provider (engine=zitadel), the
 // replacement for the hand-rolled internal/protocol/oidc. Kept out of main.go

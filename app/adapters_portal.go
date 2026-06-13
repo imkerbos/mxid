@@ -1,4 +1,4 @@
-package main
+package app
 
 // portal.* querier adapters wiring user / app / session / mfa / identity
 // domain modules into the portal gateway's interfaces.

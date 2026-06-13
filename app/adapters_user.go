@@ -1,4 +1,4 @@
-package main
+package app
 
 // User-domain adapters used by authn / external IdP wiring and the
 // dbTenantResolver helper used by all protocol modules.

@@ -1,4 +1,4 @@
-package main
+package app
 
 // Referenced-entity tenant validators (Phase 2.6).
 //

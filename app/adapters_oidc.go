@@ -1,4 +1,4 @@
-package main
+package app
 
 // OIDC-related adapter shims. These bridge the protocol/oidc package
 // (which intentionally has no business-domain imports) to concrete

@@ -1,4 +1,4 @@
-package main
+package app
 
 // authz / permission adapters. Bridge the authz engine to the permission
 // domain + group / org membership lookups.
