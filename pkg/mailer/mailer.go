@@ -19,12 +19,35 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"net"
 	"net/smtp"
 	"strings"
 	"time"
 
 	"github.com/imkerbos/mxid/internal/domain/setting"
+	"github.com/imkerbos/mxid/pkg/safehttp"
 )
+
+// smtpDialTimeout bounds each SMTP TCP/TLS dial.
+const smtpDialTimeout = 30 * time.Second
+
+// dialGuardedSMTP opens a guarded TCP connection to addr. The dial runs through
+// safehttp.GuardedDialer, so the resolved remote IP is checked at connect time
+// (DNS-rebinding-safe) and an admin-configured SMTP host that resolves to an
+// internal/loopback/link-local/etc. address is rejected — closing the SSRF
+// vector that smtp.Dial/tls.Dial would otherwise leave open.
+func dialGuardedSMTP(addr string) (net.Conn, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), smtpDialTimeout)
+	defer cancel()
+	conn, err := safehttp.GuardedDialer(smtpDialTimeout).DialContext(ctx, "tcp", addr)
+	if err != nil {
+		if errors.Is(err, safehttp.ErrDisallowedAddress) {
+			return nil, fmt.Errorf("smtp host blocked by SSRF guard (resolves to a disallowed/internal address): %w", err)
+		}
+		return nil, err
+	}
+	return conn, nil
+}
 
 // Mailer is the outbound mail abstraction. Send* methods log failures
 // internally and surface a single error so callers don't have to
@@ -190,13 +213,21 @@ func (m *Mailer) Send(ctx context.Context, tenantID int64, to []string, subject,
 }
 
 func sendTLS(addr string, cfg setting.MailSMTP, from string, to []string, msg []byte) error {
+	// Guarded TCP dial first (SSRF check on the resolved IP), then layer TLS
+	// over the validated conn — this replaces tls.Dial, which would have dialed
+	// the admin host with no IP guard.
+	rawConn, err := dialGuardedSMTP(addr)
+	if err != nil {
+		return fmt.Errorf("smtp tls dial: %w", err)
+	}
 	tlsCfg := &tls.Config{
 		ServerName:         cfg.Host,
 		InsecureSkipVerify: cfg.SkipVerify,
 	}
-	conn, err := tls.Dial("tcp", addr, tlsCfg)
-	if err != nil {
-		return fmt.Errorf("smtp tls dial: %w", err)
+	conn := tls.Client(rawConn, tlsCfg)
+	if err := conn.Handshake(); err != nil {
+		_ = rawConn.Close()
+		return fmt.Errorf("smtp tls handshake: %w", err)
 	}
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
@@ -210,9 +241,14 @@ func sendTLS(addr string, cfg setting.MailSMTP, from string, to []string, msg []
 }
 
 func sendSTARTTLS(addr string, cfg setting.MailSMTP, from string, to []string, msg []byte) error {
-	client, err := smtp.Dial(addr)
+	conn, err := dialGuardedSMTP(addr)
 	if err != nil {
 		return fmt.Errorf("smtp dial: %w", err)
+	}
+	client, err := smtp.NewClient(conn, cfg.Host)
+	if err != nil {
+		_ = conn.Close()
+		return fmt.Errorf("smtp client: %w", err)
 	}
 	defer func() { _ = client.Quit() }()
 	if cfg.HeloHostname != "" {
@@ -231,9 +267,14 @@ func sendSTARTTLS(addr string, cfg setting.MailSMTP, from string, to []string, m
 }
 
 func sendPlain(addr string, cfg setting.MailSMTP, from string, to []string, msg []byte) error {
-	client, err := smtp.Dial(addr)
+	conn, err := dialGuardedSMTP(addr)
 	if err != nil {
 		return fmt.Errorf("smtp dial: %w", err)
+	}
+	client, err := smtp.NewClient(conn, cfg.Host)
+	if err != nil {
+		_ = conn.Close()
+		return fmt.Errorf("smtp client: %w", err)
 	}
 	defer func() { _ = client.Quit() }()
 	return finishSend(client, cfg, from, to, msg)

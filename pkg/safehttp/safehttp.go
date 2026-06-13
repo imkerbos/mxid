@@ -126,18 +126,68 @@ func New(opts ...Option) *Client {
 	}
 
 	hc := &http.Client{
-		Timeout:       cfg.timeout,
-		Transport:     transport,
+		Timeout: cfg.timeout,
+		// schemeGuardTransport enforces the scheme allow-list on the INITIAL
+		// request too. CheckRedirect only fires on redirect hops, so without
+		// this wrapper a plain-http initial request to a public host would
+		// proceed even on an https-only client. The dialer Control still guards
+		// every IP regardless; this is the scheme half of the policy.
+		Transport:     &schemeGuardTransport{base: transport, allowHTTP: cfg.allowHTTP},
 		CheckRedirect: checkRedirect(cfg.maxRedirects, cfg.allowHTTP),
 	}
 
 	return &Client{hc: hc}
 }
 
+// schemeGuardTransport wraps the guarded http.Transport and rejects any
+// request whose scheme is outside the allow-list BEFORE it is dialed. This
+// makes the scheme policy apply to the initial request, not only to redirect
+// hops (which are handled by CheckRedirect). The IP-level guard in the dialer
+// Control still applies to every connection regardless of scheme.
+type schemeGuardTransport struct {
+	base      *http.Transport
+	allowHTTP bool
+}
+
+func (t *schemeGuardTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if !schemeAllowed(req.URL.Scheme, t.allowHTTP) {
+		return nil, fmt.Errorf("%w: %q", ErrDisallowedScheme, req.URL.Scheme)
+	}
+	return t.base.RoundTrip(req)
+}
+
 // HTTPClient returns the underlying *http.Client for callers (e.g. SDKs) that
 // require an *http.Client directly. The SSRF guards remain in force because
 // they live in the transport and redirect policy.
 func (c *Client) HTTPClient() *http.Client { return c.hc }
+
+// GuardedDialer returns a *net.Dialer whose Control hook applies the SAME
+// post-resolution IP guard used by the HTTP client. It exists for raw-socket
+// callers that bypass net/http entirely (notably SMTP via net/smtp and
+// tls.Dial): those paths never run through the http.Transport, so they would
+// otherwise have no SSRF protection.
+//
+// Because the guard runs inside net.Dialer.Control — AFTER name resolution, at
+// dial time — it is DNS-rebinding-safe in exactly the same way as the HTTP
+// client: a host that resolves to a public IP at validation time but an
+// internal IP at connect time is still rejected, because the resolved address
+// handed to Control is the address actually being dialed. Do NOT replace this
+// with a resolve-then-check-then-dial pre-flight; that re-opens a TOCTOU window.
+//
+// Callers should dial via DialContext(ctx, "tcp", host:port) and layer their
+// own protocol (smtp.NewClient / tls.Client) over the returned net.Conn.
+//
+// timeout sets the per-dial timeout; a non-positive value uses DefaultTimeout.
+func GuardedDialer(timeout time.Duration) *net.Dialer {
+	if timeout <= 0 {
+		timeout = DefaultTimeout
+	}
+	return &net.Dialer{
+		Timeout:   timeout,
+		KeepAlive: 30 * time.Second,
+		Control:   guardControl,
+	}
+}
 
 // Do executes the request through the guarded client.
 func (c *Client) Do(req *http.Request) (*http.Response, error) {

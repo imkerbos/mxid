@@ -262,10 +262,14 @@ func TestNewAppliesOptions(t *testing.T) {
 	if hc.CheckRedirect == nil {
 		t.Fatal("CheckRedirect must be set")
 	}
-	tr, ok := hc.Transport.(*http.Transport)
+	// The transport is wrapped by schemeGuardTransport (which enforces the
+	// scheme allow-list on the initial request); the underlying *http.Transport
+	// holds the guarded DialContext and the nil Proxy.
+	sg, ok := hc.Transport.(*schemeGuardTransport)
 	if !ok {
-		t.Fatalf("transport type = %T, want *http.Transport", hc.Transport)
+		t.Fatalf("transport type = %T, want *schemeGuardTransport", hc.Transport)
 	}
+	tr := sg.base
 	if tr.DialContext == nil {
 		t.Fatal("transport must use a guarded DialContext")
 	}
