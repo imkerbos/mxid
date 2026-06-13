@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { CheckCircle2, Loader2, ShieldQuestion, XCircle } from 'lucide-react'
 import { portalApi, useTranslation } from '@mxid/shared'
+import { Button } from '@mxid/shared/ui'
 
 interface ConsentApp {
   id: string
@@ -132,23 +133,12 @@ export default function ConsentPage() {
         </ul>
 
         <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={handleDeny}
-            disabled={!!submitting}
-            className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
-          >
+          <Button type="button" variant="secondary" className="flex-1" onClick={handleDeny} disabled={!!submitting}>
             {t('portal.consent.denyBtn')}
-          </button>
-          <button
-            type="button"
-            onClick={handleAllow}
-            disabled={!!submitting}
-            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-60"
-          >
-            {submitting === 'allow' && <Loader2 className="h-4 w-4 animate-spin" />}
+          </Button>
+          <Button type="button" className="flex-1" onClick={handleAllow} loading={submitting === 'allow'} disabled={!!submitting}>
             {t('portal.consent.grantBtn')}
-          </button>
+          </Button>
         </div>
       </div>
 

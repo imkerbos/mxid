@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { motion } from 'framer-motion'
 import QRCode from 'qrcode'
 import { portalApi, formatDate, cn, parseUserAgent, useTranslation } from '@mxid/shared'
+import { Button } from '@mxid/shared/ui'
 import { toast } from '@mxid/shared/ui/toast'
 import type { MFAInfo, SessionInfo } from '@mxid/shared'
 import {
@@ -152,7 +153,7 @@ function ChangePasswordSection() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
-              msg.type === 'ok' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
+              msg.type === 'ok' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
             }`}
           >
             {msg.type === 'ok' ? <CheckCircle className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
@@ -160,14 +161,9 @@ function ChangePasswordSection() {
           </motion.div>
         )}
 
-        <button
-          type="submit"
-          disabled={saving || !oldPwd || !newPwd || !confirmPwd}
-          className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+        <Button type="submit" loading={saving} disabled={saving || !oldPwd || !newPwd || !confirmPwd}>
           {saving ? t('account.pwd.submitting') : t('account.pwd.submit')}
-        </button>
+        </Button>
       </form>
     </SectionCard>
   )
@@ -229,12 +225,9 @@ function MFASection() {
       title={t('account.mfaSection')}
       action={
         !totpActive ? (
-          <button
-            onClick={() => setEnrollOpen(true)}
-            className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-hover"
-          >
+          <Button size="sm" onClick={() => setEnrollOpen(true)}>
             {t('account.mfa.enableTotp')}
-          </button>
+          </Button>
         ) : null
       }
     >
@@ -273,8 +266,8 @@ function MFASection() {
                   className={cn(
                     'rounded-full px-2.5 py-0.5 text-xs font-medium',
                     mfa.verified
-                      ? 'bg-green-50 text-green-600'
-                      : 'bg-yellow-50 text-yellow-600',
+                      ? 'bg-emerald-50 text-emerald-600'
+                      : 'bg-amber-50 text-amber-600',
                   )}
                 >
                   {mfa.verified ? t('account.fields.verified') : t('account.fields.unverified')}

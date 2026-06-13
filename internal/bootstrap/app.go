@@ -126,6 +126,20 @@ func NewApp(configPath string) (*App, error) {
 	origins = appendOriginsFromURLs(origins,
 		cfg.Server.IssuerURL, cfg.Server.PortalURL, cfg.Server.ConsoleURL)
 
+	// Global per-IP rate-limit cap. Mode-aware on purpose:
+	//   - release (prod): a proper edge (nginx host-net / userland-proxy=false /
+	//     cloud LB) forwards the real client IP, so KeyByClientIP buckets each
+	//     real client. 1200/min is generous for one SPA user yet cuts bulk
+	//     automation. Narrow `trusted_proxies` so intranet clients aren't
+	//     collapsed (see InitRouter warning).
+	//   - debug (dev): on Docker Desktop every request shares the gateway IP
+	//     (192.168.65.1) — a per-IP cap can't discriminate users, so keep it
+	//     effectively out of the way to avoid false 429s during local testing.
+	ipRateLimit := 1200
+	if cfg.Server.Mode != "release" {
+		ipRateLimit = 30000
+	}
+
 	// Apply shared middleware. CSRF is router-level (not per-group) with an
 	// explicit skip-list — fail-safe: any new route is protected by default,
 	// only the documented cross-origin surfaces (SSO protocol callbacks,
@@ -144,12 +158,13 @@ func NewApp(configPath string) (*App, error) {
 			},
 			AllowBearerAuth: true,
 		}),
-		// Global per-IP cap protects every endpoint from credential-
-		// stuffing / brute force / scrapers. 600/min is comfortably
-		// above any honest SPA usage but cuts off bulk automation.
+		// Global per-IP cap (mode-aware, see ipRateLimit above). The SSE event
+		// stream is exempt: a long-lived, self-reconnecting connection that
+		// must not burn the budget.
 		middleware.RateLimiter(rdb, middleware.RateLimitRule{
-			Name: "ip", Limit: 600, Window: time.Minute,
-			KeyFunc: middleware.KeyByClientIP,
+			Name: "ip", Limit: ipRateLimit, Window: time.Minute,
+			KeyFunc:   middleware.KeyByClientIP,
+			SkipPaths: []string{"/api/v1/portal/events", "/api/v1/console/events"},
 		}),
 	)
 

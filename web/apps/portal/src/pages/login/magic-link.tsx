@@ -55,7 +55,7 @@ export default function MagicLinkLoginPage() {
           </p>
 
           {!enabled ? (
-            <div className="mt-6 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-3 text-sm text-yellow-200">
+            <div className="mt-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-sm text-amber-200">
               {t('login.magicLink.disabled')}
             </div>
           ) : sent ? (
@@ -64,9 +64,9 @@ export default function MagicLinkLoginPage() {
                 {t('login.magicLink.sentHint')}
               </div>
               {devLink && (
-                <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-3 text-xs">
-                  <p className="mb-1 text-yellow-200">{t('login.magicLink.devLinkHint')}</p>
-                  <a href={devLink} className="break-all text-yellow-100 underline">{devLink}</a>
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-xs">
+                  <p className="mb-1 text-amber-200">{t('login.magicLink.devLinkHint')}</p>
+                  <a href={devLink} className="break-all text-amber-100 underline">{devLink}</a>
                 </div>
               )}
             </div>

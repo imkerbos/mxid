@@ -23,7 +23,7 @@ import {
   type MailTemplates,
   type ExternalURLs,
 } from '@mxid/shared'
-import { Field, Input, Select, Textarea } from '../../components/ui'
+import { Field, Input, Select, Textarea, Button } from '../../components/ui'
 import { toast } from '../../components/ui/toast'
 
 type Row =
@@ -169,14 +169,9 @@ function GenericForm<T>({
         </div>
 
         <div className="mt-6 flex justify-end">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-60"
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          <Button onClick={handleSave} loading={saving} icon={<Save className="h-4 w-4" />}>
             {saving ? t('common.saving') : t('common.save')}
-          </button>
+          </Button>
         </div>
       </section>
     </div>

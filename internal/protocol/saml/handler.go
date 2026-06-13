@@ -329,9 +329,15 @@ func (h *Handler) emitCrewjamResponse(c *gin.Context, appCode string, appID int6
 			return
 		}
 		for di := range req.ServiceProviderMetadata.SPSSODescriptors {
-			acs := req.ServiceProviderMetadata.SPSSODescriptors[di].AssertionConsumerServices
+			desc := &req.ServiceProviderMetadata.SPSSODescriptors[di]
+			acs := desc.AssertionConsumerServices
 			for ai := range acs {
 				if acs[ai].Binding == crewjam.HTTPPostBinding {
+					// MakeAssertion derefs req.SPSSODescriptor (for
+					// AttributeConsumingServices); SP-initiated gets it
+					// from Validate(), so IdP-initiated must set it too or
+					// MakeAssertion nil-panics.
+					req.SPSSODescriptor = desc
 					req.ACSEndpoint = &acs[ai]
 					break
 				}
@@ -387,12 +393,62 @@ func (h *Handler) slo(c *gin.Context) {
 		relayState = c.PostForm("RelayState")
 	}
 
+	// SP-initiated SLO: a LogoutRequest is present. Answer with a signed
+	// SAML LogoutResponse posted to the SP's SLS (HTTP-Redirect binding) so
+	// the SP completes its own logout instead of hanging on the request.
+	if redirectURL, ok := h.sloResponseRedirect(c, relayState); ok {
+		c.Redirect(http.StatusFound, redirectURL)
+		return
+	}
+
+	// IdP-initiated / plain logout: no LogoutRequest to answer. Honour a
+	// safe RelayState redirect, else report success.
 	if relayState != "" && h.isAllowedSLORedirect(c, relayState) {
 		c.Redirect(http.StatusFound, relayState)
 		return
 	}
 
 	response.OK(c, gin.H{"message": "logged out"})
+}
+
+// sloResponseRedirect builds the SP SLS redirect URL carrying a signed SAML
+// LogoutResponse for an SP-initiated SLO. Returns ("", false) when there is no
+// LogoutRequest to answer, or the SP / signing material can't be resolved — the
+// caller then falls back to a plain logout.
+func (h *Handler) sloResponseRedirect(c *gin.Context, relayState string) (string, bool) {
+	encoded := c.Query("SAMLRequest")
+	if encoded == "" {
+		encoded = c.PostForm("SAMLRequest")
+	}
+	if encoded == "" {
+		return "", false
+	}
+
+	requestID, err := extractRequestID(encoded)
+	if err != nil {
+		return "", false
+	}
+
+	app, err := h.appRes.GetApp(c.Request.Context(), c.Param("app_code"))
+	if err != nil || app == nil {
+		return "", false
+	}
+	samlCfg := h.parseSAMLConfig(app.ProtocolConfig)
+	if samlCfg.SLOURL == "" {
+		return "", false
+	}
+
+	key, _, err := h.loadKeyAndCert(c.Request.Context(), app.ID)
+	if err != nil {
+		return "", false
+	}
+
+	issuer := h.resolveURLs(c.Request.Context(), c.Request.Host).Issuer
+	redirectURL, err := buildLogoutResponseRedirect(samlCfg.SLOURL, issuer, requestID, relayState, key)
+	if err != nil {
+		return "", false
+	}
+	return redirectURL, true
 }
 
 // isAllowedSLORedirect runs the layered SLO redirect check described on

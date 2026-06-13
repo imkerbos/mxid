@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { authApi, useAuthStore, useBootstrap, useTranslation } from '@mxid/shared'
+import { authApi, externalIdpApi, ExternalIdpButtons, useAuthStore, useBootstrap, useTranslation } from '@mxid/shared'
+import type { PublicIDP } from '@mxid/shared'
 import { Eye, EyeOff, Loader2, RefreshCw } from 'lucide-react'
 import logo from '../../assets/logo.png'
 
@@ -43,6 +44,23 @@ export default function LoginPage() {
   // MFA challenge state — set when /auth/login returns mfa_required.
   const [mfaChallenge, setMfaChallenge] = useState('')
   const [mfaCode, setMfaCode] = useState('')
+
+  // External IdPs (admin SSO). The OAuth dance lands a console session but is
+  // admin-gated server-side; the built-in admin is rejected and must use the
+  // password form. Empty array = no buttons rendered.
+  const [idps, setIdps] = useState<PublicIDP[]>([])
+  useEffect(() => {
+    externalIdpApi.consoleListPublic().then(setIdps).catch(() => {})
+  }, [])
+
+  // Surface the reason when an external-IdP login bounced back (e.g. the user
+  // isn't authorized for the console, or is the built-in admin).
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search)
+    if (p.get('err') === 'external') {
+      setError(p.get('reason') || t('login.externalFailed'))
+    }
+  }, [t])
 
   const loadCaptcha = useCallback(async () => {
     try {
@@ -311,9 +329,17 @@ export default function LoginPage() {
             </button>
           </form>
           ) : (
-            <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-3 text-sm text-yellow-200">
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-sm text-amber-200">
 {t('login.passwordDisabled')}
             </div>
+          )}
+
+          {!mfaChallenge && (
+            <ExternalIdpButtons
+              idps={idps}
+              hrefFor={(idp) => externalIdpApi.consoleStartURL(idp.code)}
+              dividerLabel={t('login.socialDivider')}
+            />
           )}
 
           <p className="mt-8 text-center text-xs text-white/55">

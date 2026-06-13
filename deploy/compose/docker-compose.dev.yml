@@ -61,6 +61,13 @@ services:
       - MXID_REDIS_HOST=host.docker.internal
       - MXID_REDIS_PORT=${REDIS_PORT:-6379}
       - MXID_REDIS_PASSWORD=${REDIS_PASSWORD:-123456}
+      # OIDC engine: "zitadel" mounts internal/protocol/oidcop, else hand-rolled.
+      - MXID_OIDC_ENGINE=${MXID_OIDC_ENGINE:-legacy}
+      # External-IdP OAuth callback host. Must be the BROWSER-facing origin
+      # (nginx :3500), not the internal backend port, so the redirect_uri sent
+      # to Lark/Teams matches what you register there AND lands same-origin as
+      # the SPA (clean session cookies). Prod: set to the public https domain.
+      - MXID_EXTERNAL_BACKEND_URL=${MXID_EXTERNAL_BACKEND_URL:-http://localhost:3500}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped

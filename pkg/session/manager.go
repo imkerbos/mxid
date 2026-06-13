@@ -80,6 +80,35 @@ func NewManager(rdb *redis.Client, idleTimeout, absoluteTimeout time.Duration) *
 // after construction; not goroutine-safe for repeated swaps.
 func (m *Manager) SetPolicyProvider(p PolicyProvider) { m.policy = p }
 
+// CountActive returns the number of live session value keys in the given
+// namespace. Session values live at `namespace:<id>`; the per-user index sets
+// live at `namespace:user:<uid>` and are excluded. Uses SCAN (non-blocking) so
+// it's safe to call against a production redis — it's an estimate under churn,
+// which is fine for a dashboard gauge.
+func (m *Manager) CountActive(ctx context.Context, namespace string) (int64, error) {
+	var count int64
+	prefix := namespace + ":"
+	userPrefix := namespace + ":user:"
+	var cursor uint64
+	for {
+		keys, next, err := m.redis.Scan(ctx, cursor, prefix+"*", 256).Result()
+		if err != nil {
+			return count, err
+		}
+		for _, k := range keys {
+			if len(k) >= len(userPrefix) && k[:len(userPrefix)] == userPrefix {
+				continue // user index set, not a session
+			}
+			count++
+		}
+		if next == 0 {
+			break
+		}
+		cursor = next
+	}
+	return count, nil
+}
+
 // resolveTimeouts returns the effective (idle, absolute) for this request,
 // preferring the runtime policy and falling back to the static config.
 func (m *Manager) resolveTimeouts(ctx context.Context) (time.Duration, time.Duration) {

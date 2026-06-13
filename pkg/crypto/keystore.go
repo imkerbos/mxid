@@ -1,6 +1,8 @@
 package crypto
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -30,6 +32,19 @@ func NewMasterKey(b64 string) (*MasterKey, error) {
 		return nil, fmt.Errorf("master key must decode to 32 bytes, got %d", len(raw))
 	}
 	return &MasterKey{raw: raw}, nil
+}
+
+// Derive returns a 32-byte sub-key bound to label, via HMAC-SHA256 keyed by the
+// master key (domain separation). Deterministic and stable across restarts /
+// instances, so it is safe for things that must round-trip — e.g. the
+// zitadel/oidc op CryptoKey that encrypts authorize state. The master key itself
+// never leaves the struct.
+func (k *MasterKey) Derive(label string) [32]byte {
+	mac := hmac.New(sha256.New, k.raw)
+	mac.Write([]byte(label))
+	var out [32]byte
+	copy(out[:], mac.Sum(nil))
+	return out
 }
 
 // Encrypt seals the plaintext with AES-256-GCM and returns the base64

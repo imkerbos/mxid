@@ -6,7 +6,7 @@ import type { App, PaginatedData } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
 import AppGroupsTab from './AppGroupsTab'
 import { useTabParam } from '../../hooks/useTabParam'
-import { CodeField } from '../../components/ui'
+import { CodeField, pageMotion, Button } from '../../components/ui'
 import { IconPicker } from '../../components/icon-picker/IconPicker'
 import { toast, extractMessage } from '../../components/ui/toast'
 import AccessPolicyTab from './AccessPolicyTab'
@@ -681,19 +681,15 @@ export default function AppsPage() {
   // -------------------------------------------------------------------------
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
+    <motion.div {...pageMotion}>
       <PageHeader
         title={t('apps.title')}
         description={view === 'apps' ? t('apps.subtitle') : t('apps.appGroups.subtitle')}
         actions={
           view === 'apps' ? (
-            <button
-              onClick={() => setShowCreate(true)}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-hover"
-            >
-              <Plus className="h-4 w-4" />
+            <Button onClick={() => setShowCreate(true)} icon={<Plus className="h-4 w-4" />}>
               {t('apps.createModal.title')}
-            </button>
+            </Button>
           ) : null
         }
       />
@@ -805,7 +801,7 @@ export default function AppsPage() {
                     'rounded px-2.5 py-1 text-xs font-medium transition-colors',
                     app.status === 1
                       ? 'text-gray-500 hover:bg-gray-100'
-                      : 'text-green-600 hover:bg-green-50'
+                      : 'text-emerald-600 hover:bg-emerald-50'
                   )}
                 >
                   {app.status === 1 ? t('common.disable') : t('common.enable')}
@@ -946,21 +942,12 @@ export default function AppsPage() {
               )}
 
               <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowCreate(false)}
-                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50"
-                >
+                <Button type="button" variant="secondary" onClick={() => setShowCreate(false)}>
                   {t('common.cancel')}
-                </button>
-                <button
-                  type="submit"
-                  disabled={creating}
-                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-60"
-                >
-                  {creating && <Loader2 className="h-4 w-4 animate-spin" />}
+                </Button>
+                <Button type="submit" loading={creating}>
                   {t('apps.createModal.submit')}
-                </button>
+                </Button>
               </div>
             </form>
           </motion.div>
@@ -1167,14 +1154,9 @@ export default function AppsPage() {
                         )}
 
                         <div className="flex justify-end pt-2">
-                          <button
-                            type="submit"
-                            disabled={saving}
-                            className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-60"
-                          >
-                            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+                          <Button type="submit" loading={saving}>
                             {t('common.save')}
-                          </button>
+                          </Button>
                         </div>
                       </form>
                     )}
@@ -1294,16 +1276,9 @@ export default function AppsPage() {
 
                             {(protocolConfigFields[detailApp.protocol] || []).length > 0 && (
                               <div className="flex justify-end pt-2">
-                                <button
-                                  type="submit"
-                                  disabled={savingProtocol}
-                                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-60"
-                                >
-                                  {savingProtocol && (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  )}
+                                <Button type="submit" loading={savingProtocol}>
                                   {t('apps.detail.protocol.saveConfig')}
-                                </button>
+                                </Button>
                               </div>
                             )}
                           </form>
@@ -1365,13 +1340,9 @@ export default function AppsPage() {
               </div>
 
               <div className="mt-6 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setRevealedSecret(null)}
-                  className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-white hover:bg-primary-hover"
-                >
+                <Button type="button" onClick={() => setRevealedSecret(null)}>
                   {t('apps.secretReveal.acknowledge')}
-                </button>
+                </Button>
               </div>
             </motion.div>
           </div>
@@ -1712,15 +1683,9 @@ function SamlMetadataImport({
             className={inputCls}
           />
           <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={onPaste}
-              disabled={busy || !xmlText.trim()}
-              className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-hover disabled:opacity-60"
-            >
-              {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            <Button type="button" size="md" onClick={onPaste} loading={busy} disabled={busy || !xmlText.trim()}>
               {t('apps.detail.protocol.samlImport.parseAndFill')}
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -1750,15 +1715,9 @@ function SamlMetadataImport({
             placeholder="https://sp.example.com/saml/metadata"
             className={inputCls}
           />
-          <button
-            type="button"
-            onClick={onUrl}
-            disabled={busy || !urlInput.trim()}
-            className="inline-flex shrink-0 items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-hover disabled:opacity-60"
-          >
-            {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          <Button type="button" size="md" className="shrink-0" onClick={onUrl} loading={busy} disabled={busy || !urlInput.trim()}>
             {t('apps.detail.protocol.samlImport.fetchAndFill')}
-          </button>
+          </Button>
         </div>
       )}
     </div>

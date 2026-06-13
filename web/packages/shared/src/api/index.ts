@@ -6,6 +6,8 @@ export { groupApi } from './group'
 export { appApi, appGroupApi } from './app'
 export { permissionApi } from './permission'
 export { auditApi } from './audit'
+export { dashboardApi } from './dashboard'
+export type { DashboardOverview, NameValue, TrendPoint, SecurityEvent } from './dashboard'
 export { portalApi } from './portal'
 export { consoleSecurityApi } from './console-security'
 export { bootstrapApi } from './bootstrap'
@@ -32,4 +34,5 @@ export type {
   MailSMTP, MailTemplate, MailTemplates,
   SecurityPolicy, Branding, LoginMethods,
   ProtocolDefaults, SMS, AuditPolicy, Localization, License, ExternalURLs,
+  MFAMode, MFAPolicy, ConditionalAccess,
 } from './settings'

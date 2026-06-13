@@ -32,6 +32,10 @@ type RateLimitRule struct {
 	// PathFilter, when non-nil, restricts the rule to paths matching
 	// any of the supplied prefixes.
 	PathFilter []string
+	// SkipPaths exempts paths matching any of these prefixes from the rule.
+	// Use for long-lived / self-reconnecting connections that must not burn
+	// the budget — e.g. the SSE event stream.
+	SkipPaths []string
 }
 
 // RateLimiter applies the given rule using a Redis-backed fixed-window
@@ -55,6 +59,10 @@ func RateLimiter(rdb *redis.Client, rule RateLimitRule) gin.HandlerFunc {
 			return
 		}
 		if len(rule.PathFilter) > 0 && !hasAnyPrefix(c.Request.URL.Path, rule.PathFilter) {
+			c.Next()
+			return
+		}
+		if len(rule.SkipPaths) > 0 && hasAnyPrefix(c.Request.URL.Path, rule.SkipPaths) {
 			c.Next()
 			return
 		}

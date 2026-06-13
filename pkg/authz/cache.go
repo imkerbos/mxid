@@ -47,7 +47,6 @@ type CachedBindingProvider struct {
 	l1 map[string]l1Entry
 
 	subOnce sync.Once
-	subErr  error
 }
 
 type l1Entry struct {

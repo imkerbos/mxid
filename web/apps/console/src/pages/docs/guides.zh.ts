@@ -198,13 +198,13 @@ curl {{ISSUER}}/protocol/oidc/.well-known/openid-configuration
   "userinfo_endpoint": "{{ISSUER}}/protocol/oidc/userinfo",
   "jwks_uri": "{{ISSUER}}/protocol/oidc/jwks",
   "end_session_endpoint": "{{ISSUER}}/protocol/oidc/end-session",
-  "response_types_supported": ["code", "id_token", "code id_token"],
+  "response_types_supported": ["code", "id_token", "token id_token", "code id_token", "code token", "code id_token token"],
   "grant_types_supported": ["authorization_code", "refresh_token", "client_credentials"],
   "subject_types_supported": ["public", "pairwise"],
   "id_token_signing_alg_values_supported": ["RS256"],
-  "token_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post", "none"],
+  "token_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post", "client_secret_jwt", "private_key_jwt", "none"],
   "code_challenge_methods_supported": ["S256"],
-  "scopes_supported": ["openid", "profile", "email", "phone", "address", "offline_access"]
+  "scopes_supported": ["openid", "profile", "email", "phone", "groups", "offline_access"]
 }
 \`\`\``,
       },
@@ -283,7 +283,7 @@ GET {{ISSUER}}/protocol/oidc/end-session?
     ],
     notes: [
       'MXID 不发 plain JWT access_token —— access_token 也是 RS256 签名 JWT',
-      'refresh_token 默认 168h（7 天），可在 config.jwt 调',
+      'access_token 默认 15m（900s）、refresh_token 默认 7d（604800s）；每个应用可在协议信息 tab 的 token_endpoint TTL 字段（protocol_config.access_token_ttl / refresh_token_ttl）覆盖',
       '同一个用户在不同 app 下 sub 可能不同：subject_strategy=pairwise 会按 client_id hash',
     ],
   },
@@ -357,18 +357,21 @@ console 端 app.\`protocol_config\` 填：
       },
       {
         title: '4. Attribute 默认输出',
-        body: `每个 SAML Assertion 自动带：
+        body: `Attribute 的 \`Name\` 由 \`attribute_mapping\` 决定。**默认映射**：\`username→uid\`、\`email→mail\`、\`display_name→displayName\`、\`phone→telephoneNumber\`。另外 \`username\`（原值）与 \`tenant_code\` 始终注入。默认配置下 Assertion：
 
 \`\`\`xml
 <saml:AttributeStatement>
-  <saml:Attribute Name="username">
+  <saml:Attribute Name="uid">
     <saml:AttributeValue>kerbos</saml:AttributeValue>
   </saml:Attribute>
-  <saml:Attribute Name="email">
+  <saml:Attribute Name="mail">
     <saml:AttributeValue>kerbos@solidleisure.com</saml:AttributeValue>
   </saml:Attribute>
-  <saml:Attribute Name="display_name">
+  <saml:Attribute Name="displayName">
     <saml:AttributeValue>Kerbos</saml:AttributeValue>
+  </saml:Attribute>
+  <saml:Attribute Name="username">
+    <saml:AttributeValue>kerbos</saml:AttributeValue>
   </saml:Attribute>
   <saml:Attribute Name="tenant_code">
     <saml:AttributeValue>solidleisure</saml:AttributeValue>
@@ -376,7 +379,7 @@ console 端 app.\`protocol_config\` 填：
 </saml:AttributeStatement>
 \`\`\`
 
-\`attribute_mapping\` 配置可以改 attribute name，例如 Jira 期望 \`displayName\` 不是 \`display_name\`。`,
+想换名字就改 \`attribute_mapping\`，例如 SP 期望 \`email\` 而非 \`mail\`，配 \`{"email":"email"}\` 即可。`,
       },
       {
         title: '5. SLO（Single Logout）',
@@ -449,20 +452,23 @@ GET {{ISSUER}}/protocol/cas/<app_code>/p3/serviceValidate?
       },
       {
         title: '3. P3 ServiceValidate 响应示例',
-        body: `\`\`\`xml
+        body: `attribute 标签名由 \`attribute_mapping\` 决定，**默认** \`email→mail\`、\`display_name→displayName\`、\`username→uid\`、\`phone→telephoneNumber\`；\`tenant_code\` 自动注入。默认配置下：
+
+\`\`\`xml
 <cas:serviceResponse xmlns:cas="http://www.yale.edu/tp/cas">
   <cas:authenticationSuccess>
     <cas:user>kerbos</cas:user>
     <cas:attributes>
-      <cas:email>kerbos@solidleisure.com</cas:email>
-      <cas:display_name>Kerbos</cas:display_name>
+      <cas:uid>kerbos</cas:uid>
+      <cas:mail>kerbos@solidleisure.com</cas:mail>
+      <cas:displayName>Kerbos</cas:displayName>
       <cas:tenant_code>solidleisure</cas:tenant_code>
-      <cas:groups>devops</cas:groups>
-      <cas:groups>admins</cas:groups>
     </cas:attributes>
   </cas:authenticationSuccess>
 </cas:serviceResponse>
 \`\`\`
+
+CAS **只输出** username/email/display_name/phone（按 mapping 改名）+ tenant_code，**不发 groups**。需要组信息走 OIDC/SAML。
 
 失败：
 
@@ -476,11 +482,11 @@ GET {{ISSUER}}/protocol/cas/<app_code>/p3/serviceValidate?
       },
       {
         title: '4. Ticket 生命周期',
-        body: `- **Service Ticket（ST）** \`ST-...\`：一次性，签发到验证 60s 内有效（可在 \`protocol_config.ticket_ttl\` 改）
+        body: `- **Service Ticket（ST）** \`ST-...\`：一次性，签发到验证默认 30s 内有效（可在 \`protocol_config.ticket_ttl\` 改）
 - 验证一次后立即作废（防重放）
 - 同一 service URL 重复登录会签发新 ticket，旧 ticket 不会自动失效（直到 TTL）
 
-**安全要求**：service URL 必须在 app.\`service_urls\` 白名单内，否则 MXID 拒绝签发 ticket（防开放重定向）。`,
+**安全要求**：\`service_urls\` 非空时，service 必须命中白名单（scheme+host 精确、path 前缀匹配），否则 \`INVALID_SERVICE\`。**\`service_urls\` 留空 = fail-open**（仅做 URL 合法性 sanity check，不限定目标）—— 生产务必显式配白名单防开放重定向。`,
       },
       {
         title: '5. SP 端配置必填',
@@ -495,7 +501,7 @@ console 端 app.\`protocol_config\`：
 \`\`\`json
 {
   "service_urls": ["https://<sp>/cas/callback"],
-  "ticket_ttl": 60,
+  "ticket_ttl": 30,
   "attribute_mapping": {
     "email": "mail",
     "display_name": "cn"
@@ -1040,7 +1046,7 @@ CAS Protocol:       CAS 3.0
 - 「凭证与基础信息」复制 **App ID** 和 **App Secret**
 - 「安全设置」→ 重定向 URL 添加：
   \`\`\`
-  {{ISSUER}}/api/v1/portal/auth/external/lark/callback
+  {{ISSUER}}/api/v1/portal-public/auth/external/lark/callback
   \`\`\`
 - 「权限管理」开通：获取用户基本信息 / 邮箱 / 手机号
 - 「版本管理与发布」→ 发布或加测试人员`,

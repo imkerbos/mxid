@@ -370,8 +370,10 @@ func (e *Engine) VerifyMFAChallenge(ctx context.Context, challenge, code string)
 	return e.completeLogin(ctx, payload.Namespace, authReq, result, "mfa")
 }
 
-// Logout deletes a session.
-func (e *Engine) Logout(ctx context.Context, namespace, sessionID string, userID int64) error {
+// Logout deletes a session. meta carries the request context (ip, user agent,
+// tenant) so the audit row is complete — without it the logout event records
+// only a user_id and the console shows blank actor / IP columns.
+func (e *Engine) Logout(ctx context.Context, namespace, sessionID string, userID int64, meta LogoutMeta) error {
 	if err := e.sessionMgr.Delete(ctx, namespace, sessionID); err != nil {
 		return fmt.Errorf("delete session: %w", err)
 	}
@@ -381,10 +383,20 @@ func (e *Engine) Logout(ctx context.Context, namespace, sessionID string, userID
 		Payload: map[string]any{
 			"user_id":    userID,
 			"session_id": sessionID,
+			"tenant_id":  meta.TenantID,
+			"ip":         meta.IP,
+			"user_agent": meta.UserAgent,
 		},
 	})
 
 	return nil
+}
+
+// LogoutMeta carries request-scoped context for the logout audit row.
+type LogoutMeta struct {
+	TenantID  int64
+	IP        string
+	UserAgent string
 }
 
 // GetSession retrieves and validates a session.

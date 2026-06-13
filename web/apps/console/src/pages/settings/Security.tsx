@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
 import { Loader2, Save } from 'lucide-react'
 import { settingsApi, useTranslation } from '@mxid/shared'
 import type { SecurityPolicy } from '@mxid/shared'
-import { Field, Input } from '../../components/ui'
+import { Field, Input, Button } from '../../components/ui'
 import { toast } from '../../components/ui/toast'
 
 export default function SecurityPage() {
@@ -167,14 +167,9 @@ export default function SecurityPage() {
       </Section>
 
       <div className="flex justify-end">
-        <button
-          onClick={save}
-          disabled={saving}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-60"
-        >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+        <Button onClick={save} loading={saving} icon={<Save className="h-4 w-4" />}>
           {saving ? t('common.saving') : t('settings.security.saveBtn')}
-        </button>
+        </Button>
       </div>
     </div>
   )

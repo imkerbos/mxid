@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { motion } from 'framer-motion'
 import { portalApi, useAuthStore, formatDate, useTranslation } from '@mxid/shared'
+import { Button } from '@mxid/shared/ui'
 import { UserCircle, Save, Loader2, AlertCircle, CheckCircle } from 'lucide-react'
 
 interface ProfileData {
@@ -266,7 +267,7 @@ export default function ProfilePage() {
                 animate={{ opacity: 1 }}
                 className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
                   saveMsg.type === 'ok'
-                    ? 'bg-green-50 text-green-600'
+                    ? 'bg-emerald-50 text-emerald-600'
                     : 'bg-red-50 text-red-600'
                 }`}
               >
@@ -279,18 +280,9 @@ export default function ProfilePage() {
               </motion.div>
             )}
 
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-50"
-            >
-              {saving ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}
+            <Button type="submit" loading={saving} icon={<Save className="h-4 w-4" />}>
               {saving ? t('common.saving') : t('common.save')}
-            </button>
+            </Button>
           </form>
         </div>
       </div>

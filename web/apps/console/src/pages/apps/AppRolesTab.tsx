@@ -14,7 +14,7 @@ import type {
   Group, User as UserT, OrgNode, Role,
 } from '@mxid/shared'
 import { Field, Input, Select, Button, Textarea } from '../../components/ui'
-import { toast } from '../../components/ui/toast'
+import { toast, extractMessage } from '../../components/ui/toast'
 
 export default function AppRolesTab({
   owner = 'app',
@@ -58,8 +58,7 @@ export default function AppRolesTab({
       toast.success(t("common.success"))
       reload()
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
-      toast.error(t("common.failed"), msg)
+      toast.error(t("common.failed"), extractMessage(e))
     }
   }
 
@@ -70,8 +69,7 @@ export default function AppRolesTab({
       toast.success(t("common.success"))
       reload()
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
-      toast.error(t("common.failed"), msg)
+      toast.error(t("common.failed"), extractMessage(e))
     }
   }
 
@@ -268,8 +266,7 @@ function RoleForm({
       toast.success(t("common.success"))
       onSaved()
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
-      toast.error(t("common.failed"), msg)
+      toast.error(t("common.failed"), extractMessage(e))
     } finally {
       setSaving(false)
     }

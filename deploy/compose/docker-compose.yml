@@ -32,3 +32,43 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    networks: [mxid]
+
+  # Containerized edge. TLS-terminates, serves the built SPAs, reverse-proxies
+  # /api /protocol to the backend (by service name over the `mxid` network),
+  # and forwards the real client IP via X-Forwarded-For / X-Real-IP.
+  #
+  # REAL CLIENT IP — REQUIRED for correct rate-limit / audit / conditional
+  # access. A bridge-published port loses the source IP under Docker's default
+  # userland-proxy. Enable kernel DNAT on the host so the real IP reaches this
+  # container while keeping bridge DNS (service names):
+  #
+  #   /etc/docker/daemon.json:  { "userland-proxy": false }   then: systemctl restart docker
+  #
+  # The backend trusts this nginx (172.x docker subnet is in the default
+  # trusted_proxies) and reads the forwarded client IP. For an ON-PREM intranet
+  # where clients are 10.x / 192.168.x, set MXID_SERVER_TRUSTED_PROXIES on the
+  # mxid service to ONLY this network's subnet so intranet client IPs aren't
+  # mistaken for proxies (the backend WARNs on the broad default in release).
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: mxid-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../nginx/prod.conf:/etc/nginx/conf.d/default.conf:ro
+      # Build first: pnpm --filter @mxid/console build / @mxid/portal build.
+      - ../../web/apps/console/dist:/var/www/mxid/console:ro
+      - ../../web/apps/portal/dist:/var/www/mxid/portal:ro
+      - ./cert:/etc/nginx/cert:ro          # server.crt + server.key
+      - ./acme:/var/www/acme               # Let's Encrypt webroot (optional)
+    depends_on:
+      mxid:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [mxid]
+
+networks:
+  mxid:
+    driver: bridge

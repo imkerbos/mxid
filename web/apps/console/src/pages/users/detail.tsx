@@ -37,7 +37,7 @@ import type {
 } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
 import { useTabParam } from '../../hooks/useTabParam'
-import { Field } from '../../components/ui'
+import { Field, pageMotion, Button } from '../../components/ui'
 import { toast, extractMessage } from '../../components/ui/toast'
 
 type Tab = 'basic' | 'detail' | 'groups' | 'roles' | 'identities' | 'mfa' | 'sessions' | 'history'
@@ -103,7 +103,7 @@ export default function UserDetailPage() {
   }
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
+    <motion.div {...pageMotion}>
       <PageHeader
         title={t('users.detail.title')}
         description={user ? `${user.display_name || user.username}` : t('users.detail.loading')}
@@ -277,17 +277,12 @@ function ResetPasswordButton({ userID, onDone }: { userID: string; onDone: () =>
                 {t('users.detail.resetPwd.forceChange')}
               </label>
               <div className="flex justify-end gap-3 pt-2">
-                <button onClick={() => setOpen(false)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50">
+                <Button variant="secondary" onClick={() => setOpen(false)}>
                   {t('users.detail.common.cancel')}
-                </button>
-                <button
-                  onClick={submit}
-                  disabled={submitting || pwd.length < 6}
-                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-60"
-                >
-                  {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                </Button>
+                <Button onClick={submit} loading={submitting} disabled={submitting || pwd.length < 6}>
                   {t('users.detail.resetPwd.submit')}
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -362,14 +357,9 @@ function BasicTab({ user, onSaved }: { user: User; onSaved: () => void }) {
         </select>
       </Field>
       <div className="pt-2">
-        <button
-          type="submit"
-          disabled={saving}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-60"
-        >
-          {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+        <Button type="submit" loading={saving}>
           {t('users.detail.common.save')}
-        </button>
+        </Button>
       </div>
     </form>
   )
@@ -467,14 +457,9 @@ function DetailTab({ userID }: { userID: string }) {
         <textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} rows={2} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
       </Field>
       <div className="pt-2">
-        <button
-          type="submit"
-          disabled={saving}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-60"
-        >
-          {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+        <Button type="submit" loading={saving}>
           {t('users.detail.common.save')}
-        </button>
+        </Button>
       </div>
       {detail && (
         <p className="text-xs text-gray-400">{t('users.detail.profile.lastUpdated', { date: formatDate(detail.birthday ? new Date().toISOString() : new Date().toISOString()) })}</p>
@@ -553,7 +538,10 @@ function IdentitiesTab({ userID }: { userID: string }) {
     setRemovingID(it.id)
     try {
       await userApi.unbindIdentity(userID, it.id)
+      toast.success(t('common.deleteSuccess'))
       await load()
+    } catch (e) {
+      toast.error(t('common.deleteFailed'), extractMessage(e))
     } finally {
       setRemovingID(null)
     }
@@ -620,7 +608,10 @@ function MFATab({ userID }: { userID: string }) {
     setRemoving(m.type)
     try {
       await userApi.deleteMFA(userID, m.type)
+      toast.success(t('common.deleteSuccess'))
       await load()
+    } catch (e) {
+      toast.error(t('common.deleteFailed'), extractMessage(e))
     } finally {
       setRemoving(null)
     }

@@ -162,7 +162,7 @@ func (h *PortalHandler) start(c *gin.Context) {
 		// redirect always lands on the frontend host, not the backend.
 		finalURL = h.portalURL + finalURL
 	}
-	redirectURI := fmt.Sprintf("%s/api/v1/portal/auth/external/%s/callback", h.baseURL, code)
+	redirectURI := fmt.Sprintf("%s/api/v1/portal-public/auth/external/%s/callback", h.baseURL, code)
 	authURL, err := h.svc.StartLogin(c.Request.Context(), h.tenantID, code, redirectURI, finalURL)
 	if err != nil {
 		c.Redirect(http.StatusFound, h.failureURL)
