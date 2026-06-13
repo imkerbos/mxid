@@ -5,9 +5,36 @@ import (
 	"time"
 
 	"github.com/imkerbos/mxid/pkg/crypto"
+	"golang.org/x/crypto/bcrypt"
 )
 
 const LocalProviderType = "local"
+
+// dummyPasswordHash is a real bcrypt hash (DefaultCost, matching production
+// password hashes) burned on every credential-rejecting branch that doesn't
+// otherwise run bcrypt — unknown username, disabled/locked/unknown status —
+// so those paths take ~the same wall-clock time as a genuine password
+// compare. Without it, an unknown username returns AuthFailed in microseconds
+// while a valid one spends tens of ms in bcrypt, a measurable user-enumeration
+// oracle (OWASP A07). Generated once at package init from a random string;
+// the value it hashes is irrelevant — only its cost matters.
+var dummyPasswordHash = func() string {
+	h, err := bcrypt.GenerateFromPassword([]byte("mxid-enumeration-equalizer"), bcrypt.DefaultCost)
+	if err != nil {
+		// Should never happen; fall back to a precomputed DefaultCost hash so
+		// the equalizer is still a real bcrypt compare rather than a no-op.
+		return "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
+	}
+	return string(h)
+}()
+
+// burnDummyCompare runs a constant-cost bcrypt compare against a fixed hash
+// and discards the result. Callers invoke it on the no-bcrypt rejection
+// branches so an attacker can't distinguish "unknown user" / "disabled" from
+// "wrong password" by response timing.
+func burnDummyCompare(password string) {
+	_ = crypto.CheckPassword(password, dummyPasswordHash)
+}
 
 // User status constants, mirrored to avoid importing the user package.
 const (
@@ -45,18 +72,25 @@ func (p *LocalProvider) Authenticate(ctx context.Context, req *AuthRequest) (*Au
 
 	u, err := p.userRepo.GetByUsername(ctx, req.TenantID, username)
 	if err != nil {
+		// Unknown user: burn an equivalent bcrypt compare so this path takes
+		// the same time as a real one (anti-enumeration). Uniform AuthFailed.
+		burnDummyCompare(password)
 		return &AuthResult{Status: AuthFailed}, nil
 	}
 
-	// Check account status
+	// Check account status. The locked/disabled/default branches short-circuit
+	// before the real password compare, so each burns a dummy bcrypt first to
+	// keep account-state from leaking via response timing.
 	switch u.Status {
 	case statusLocked:
+		burnDummyCompare(password)
 		return &AuthResult{
 			UserID:   u.ID,
 			Username: u.Username,
 			Status:   AuthLocked,
 		}, nil
 	case statusDisabled:
+		burnDummyCompare(password)
 		return &AuthResult{
 			UserID:   u.ID,
 			Username: u.Username,
@@ -65,6 +99,7 @@ func (p *LocalProvider) Authenticate(ctx context.Context, req *AuthRequest) (*Au
 	case statusActive:
 		// proceed
 	default:
+		burnDummyCompare(password)
 		return &AuthResult{
 			UserID:   u.ID,
 			Username: u.Username,

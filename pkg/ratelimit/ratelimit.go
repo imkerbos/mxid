@@ -236,6 +236,22 @@ func (l *Limiter) Reset(ctx context.Context, identifier string) {
 	l.rdb.Del(ctx, l.counterKey(identifier), l.lockKey(identifier))
 }
 
+// FailureCount returns the current failure count recorded for the identifier
+// (0 when none, expired, or on a store error). It's a read-only peek used by
+// callers that gate behaviour on the running tally — e.g. demanding a captcha
+// only after N failures — without recording a new failure. A nil Limiter or
+// empty identifier returns 0.
+func (l *Limiter) FailureCount(ctx context.Context, identifier string) int {
+	if l == nil || l.rdb == nil || identifier == "" {
+		return 0
+	}
+	n, err := l.rdb.Get(ctx, l.counterKey(identifier)).Int()
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
 // CheckMany applies Check to every identifier and returns the first lock
 // encountered (the most restrictive view: if any scope is locked, the
 // attempt is blocked). Empty identifiers are skipped. This is the

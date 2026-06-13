@@ -24,6 +24,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/authn"
+	"github.com/imkerbos/mxid/pkg/ratelimit"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/session"
 	"github.com/imkerbos/mxid/pkg/sms"
@@ -56,6 +57,11 @@ type SMSOTPHandler struct {
 	tenantByCd TenantResolver
 	cookieDom  string
 	cookieSec  bool
+	// limiter caps wrong-code guesses per phone. consumeCode deliberately
+	// keeps a still-valid code alive on a typo (so the user isn't forced to
+	// resend), which without a cap leaves the 6-digit space brute-forceable
+	// within the 5-min TTL. The limiter closes that hole; nil = no cap.
+	limiter *ratelimit.Limiter
 }
 
 // SMSOTPHandlerOpts groups the dependency soup.
@@ -70,6 +76,9 @@ type SMSOTPHandlerOpts struct {
 	TenantByCode TenantResolver
 	CookieDomain string
 	CookieSecure bool
+	// Limiter is the per-phone brute-force cap on /auth/sms/login. nil
+	// disables the cap (legacy behaviour).
+	Limiter *ratelimit.Limiter
 }
 
 func NewSMSOTPHandler(o SMSOTPHandlerOpts) *SMSOTPHandler {
@@ -84,6 +93,7 @@ func NewSMSOTPHandler(o SMSOTPHandlerOpts) *SMSOTPHandler {
 		tenantByCd: o.TenantByCode,
 		cookieDom:  o.CookieDomain,
 		cookieSec:  o.CookieSecure,
+		limiter:    o.Limiter,
 	}
 }
 
@@ -206,11 +216,30 @@ func (h *SMSOTPHandler) login(c *gin.Context) {
 	// Pin the resolved tenant so the user read below runs tenant-scoped.
 	c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), tenantID))
 
+	// Per-phone brute-force cap: the OTP is only 6 digits and consumeCode keeps
+	// a wrong-guess code alive (TTL-based), so without this the code is
+	// brute-forceable within its 5-min window. Block once the phone trips.
+	if rle := rateLimited(c.Request.Context(), h.limiter, "phone:"+phone); rle != nil {
+		respondRateLimited(c, rle)
+		return
+	}
+
 	userID, err := h.consumeCode(c.Request.Context(), phone, req.Code)
 	if err != nil {
+		// Wrong/expired code — count it against the phone's budget. Tripping
+		// the cap immediately returns 429 so the attacker can't keep guessing.
+		if rle := h.limiter.RecordFailure(c.Request.Context(), "phone:"+phone); rle != nil {
+			var rlErr *ratelimit.RateLimitError
+			if errors.As(rle, &rlErr) {
+				respondRateLimited(c, rlErr)
+				return
+			}
+		}
 		response.BadRequest(c, 40002, err.Error())
 		return
 	}
+	// Correct code — clear the phone's failure budget.
+	h.limiter.Reset(c.Request.Context(), "phone:"+phone)
 
 	user, err := h.users.GetByID(c.Request.Context(), userID)
 	if err != nil {

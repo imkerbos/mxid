@@ -40,6 +40,7 @@ import (
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/geoip"
 	"github.com/imkerbos/mxid/pkg/mailer"
+	"github.com/imkerbos/mxid/pkg/ratelimit"
 	"github.com/imkerbos/mxid/pkg/session"
 	"github.com/imkerbos/mxid/pkg/sms"
 	"github.com/imkerbos/mxid/pkg/tenantscope"
@@ -191,6 +192,32 @@ func registerModules(a *bootstrap.App) {
 	authnModule := authn.Register(a, sessionMgr, authQuerier, userQuerier, mfaVerifier)
 	authnModule.Engine.SetLoginRecorder(newUserLoginRecorderAdapter(userModule, a.Logger))
 
+	// Brute-force limiter for the password login path (per-IP + per-user).
+	// Replaces the old permanent mxid_user.status auto-lock with an
+	// auto-expiring Redis lock; admin LockUser stays the only permanent lock.
+	// Window/lockout mirror the YAML login defaults; MaxAttempts uses the
+	// configured threshold (fallback 5). Fail-closed: a Redis outage on this
+	// high-value path conservatively blocks rather than admitting unlimited
+	// guesses.
+	loginMaxAttempts := a.Config.Security.Login.MaxFailedAttempts
+	if loginMaxAttempts <= 0 {
+		loginMaxAttempts = 5
+	}
+	loginLockout := a.Config.Security.Login.LockoutDuration
+	if loginLockout <= 0 {
+		loginLockout = 15 * time.Minute
+	}
+	if loginLimiter, err := ratelimit.New(a.Redis, ratelimit.Config{
+		Purpose:     "login",
+		MaxAttempts: loginMaxAttempts,
+		Window:      loginLockout,
+		Lockout:     loginLockout,
+	}); err != nil {
+		a.Logger.Error("login rate limiter init failed: " + err.Error())
+	} else {
+		authnModule.Engine.SetLoginLimiter(loginLimiter)
+	}
+
 	// Live security policy — read setting DB on every check (cached by
 	// setting.Service itself) so admins can tighten without a restart.
 	// YAML LoginConfig remains the fallback when DB rows are absent.
@@ -214,6 +241,16 @@ func registerModules(a *bootstrap.App) {
 			pol = setting.DefaultSecurityPolicy()
 		}
 		return pol.Login.MaxFailedAttempts, time.Duration(pol.Login.LockoutMinutes) * time.Minute
+	})
+	// CaptchaAfterFailures: captcha is demanded only once the client IP has
+	// crossed this many login failures. Returning 0 keeps captcha mandatory
+	// on every attempt (the stricter pre-existing behaviour).
+	authnModule.Handler.SetCaptchaThresholdProvider(func(ctx context.Context, tenantID int64) int {
+		pol, err := settingService.SecurityPolicy(ctx, tenantID)
+		if err != nil {
+			return 0
+		}
+		return pol.Login.CaptchaAfterFailures
 	})
 	// License quota — block user creation when MaxUsers is set and the
 	// global user count already meets the cap. Zero MaxUsers = unlimited
@@ -727,10 +764,29 @@ func registerModules(a *bootstrap.App) {
 		}
 		return t.ID
 	}
-	portal.RegisterPasswordResetRoutes(publicPortalGroup, portal.NewPasswordResetHandler(
+	// Brute-force / abuse limiters for the public pre-auth flows. Each is
+	// fail-closed (a Redis outage blocks rather than admits) and keyed by the
+	// flow's natural identifier (phone / email). buildLimiter logs + returns
+	// nil on a config error so wiring degrades gracefully.
+	smsLoginLimiter := buildLimiter(a, ratelimit.Config{
+		Purpose: "sms_login", MaxAttempts: 5,
+		Window: 5 * time.Minute, Lockout: 15 * time.Minute,
+	})
+	magicLinkLimiter := buildLimiter(a, ratelimit.Config{
+		Purpose: "magic_link_send", MaxAttempts: 5,
+		Window: 15 * time.Minute, Lockout: 15 * time.Minute,
+	})
+	pwdResetLimiter := buildLimiter(a, ratelimit.Config{
+		Purpose: "pwd_reset_send", MaxAttempts: 5,
+		Window: 15 * time.Minute, Lockout: 15 * time.Minute,
+	})
+
+	pwdResetHandler := portal.NewPasswordResetHandler(
 		a.Redis, portalUserQ, a.Logger, a.Config.Server.PortalURL,
 		mailerSvc, a.Config.Tenant.DefaultID, tenantByCodeResolver,
-	))
+	)
+	pwdResetHandler.SetLimiter(pwdResetLimiter)
+	portal.RegisterPasswordResetRoutes(publicPortalGroup, pwdResetHandler)
 	// Public SMS OTP routes. Gated by LoginMethods.SMSOTP. Provider config
 	// (Aliyun / Tencent / Twilio) is per-tenant via setting.SMS; secret is
 	// AES-decrypted by setting.Service.SMS at send time.
@@ -752,6 +808,7 @@ func registerModules(a *bootstrap.App) {
 		TenantByCode: tenantByCodeResolver,
 		CookieDomain: a.Config.Session.CookieDomain,
 		CookieSecure: a.Config.Session.CookieSecure,
+		Limiter:      smsLoginLimiter,
 	}))
 
 	// Public magic-link routes. Gated by LoginMethods.EmailMagicLink — the
@@ -775,6 +832,7 @@ func registerModules(a *bootstrap.App) {
 		TenantByCode: tenantByCodeResolver,
 		CookieDomain: a.Config.Session.CookieDomain,
 		CookieSecure: a.Config.Session.CookieSecure,
+		Limiter:      magicLinkLimiter,
 	}))
 
 	// 9. Mount /security on BOTH portal and console groups so the rate
@@ -789,6 +847,10 @@ func registerModules(a *bootstrap.App) {
 	userModule.Service.SetMFALockoutClearer(func(ctx context.Context, uid int64) {
 		mfaLimiter.Reset(ctx, uid, "")
 	})
+	// TOTP single-use (replay) protection. Every VerifyTOTP call site (login
+	// MFA challenge, step-up, enroll/re-verify) routes through
+	// user.Service.VerifyTOTP, so this one wiring covers them all.
+	userModule.Service.SetTOTPReplayGuard(a.Redis)
 	portalLoginHistoryQ := buildPortalLoginHistoryQuerier(auditModule)
 	apiTokenModule := apitoken.Register(a)
 	portalAPITokenQ := buildPortalAPITokenQuerier(apiTokenModule.Service)
@@ -859,6 +921,18 @@ func (a portalConsentQuerierAdapter) GetApp(ctx context.Context, appID int64) (*
 		out.HomeURL = *ap.HomeURL
 	}
 	return out, nil
+}
+
+// buildLimiter constructs a fail-closed ratelimit.Limiter from the app's
+// shared redis client, logging and returning nil on a config error so the
+// caller's wiring degrades to "no limiter" rather than panicking at boot.
+func buildLimiter(a *bootstrap.App, cfg ratelimit.Config) *ratelimit.Limiter {
+	l, err := ratelimit.New(a.Redis, cfg)
+	if err != nil {
+		a.Logger.Error("rate limiter init failed for " + cfg.Purpose + ": " + err.Error())
+		return nil
+	}
+	return l
 }
 
 // buildAppResolver creates an AppResolver that bridges the app domain repo.

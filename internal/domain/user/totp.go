@@ -122,7 +122,19 @@ func (s *Service) VerifyTOTP(ctx context.Context, userID int64, code string) err
 		return fmt.Errorf("decrypt secret: %w", err)
 	}
 
-	if !totp.Validate(code, string(plain)) {
+	// Validate-then-claim for single-use (replay) protection. We can't use
+	// the bare totp.Validate because it never tells us WHICH step matched —
+	// and we need the matched step to reject a previously-consumed code.
+	// Walk the same ±skew window pquerna/otp uses, find the exact step that
+	// validates, then atomically claim it (reject if already consumed).
+	matchedStep, ok := s.matchTOTPStep(code, string(plain))
+	if !ok {
+		return ErrMFAInvalidCode
+	}
+	if !s.claimTOTPStep(ctx, userID, matchedStep) {
+		// Code is cryptographically valid but its time-step was already
+		// consumed in this window — a replay. Surface the same opaque error
+		// as a wrong code so the response shape never distinguishes them.
 		return ErrMFAInvalidCode
 	}
 

@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/conditionalaccess"
 	"github.com/imkerbos/mxid/pkg/crypto"
+	"github.com/imkerbos/mxid/pkg/ratelimit"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/session"
 	"github.com/imkerbos/mxid/pkg/tenantscope"
@@ -121,6 +122,19 @@ type Handler struct {
 	// hold a factor. When true and the user has none, login flags the session
 	// enroll-pending so the gate forces enrollment. nil = no mandatory enroll.
 	mfaEnrollRequired func(ctx context.Context, tenantID, userID int64) bool
+	// captchaThreshold returns the CaptchaAfterFailures policy value for the
+	// tenant: captcha is demanded only once this client IP has accumulated
+	// that many login failures. <=0 (or nil provider) keeps captcha required
+	// on every attempt — the stricter default. Wired by main.go from the
+	// security policy.
+	captchaThreshold func(ctx context.Context, tenantID int64) int
+}
+
+// SetCaptchaThresholdProvider wires the CaptchaAfterFailures lookup. nil keeps
+// captcha mandatory on every login (strict). When the provider returns N>0,
+// captcha is only enforced after the client IP has N recorded failures.
+func (h *Handler) SetCaptchaThresholdProvider(f func(ctx context.Context, tenantID int64) int) {
+	h.captchaThreshold = f
 }
 
 // SetConditionalAccess wires the adaptive-authentication service. nil keeps
@@ -223,14 +237,35 @@ func (h *Handler) loginHandler(namespace, cookieName string) gin.HandlerFunc {
 			return
 		}
 
-		// Validate captcha
-		if req.CaptchaID == "" || req.CaptchaCode == "" {
-			response.BadRequest(c, 40003, "captcha is required")
-			return
+		// Captcha gate. Policy CaptchaAfterFailures lets admins relax captcha
+		// below a failure threshold (commercial default: prompt only after a
+		// few bad attempts). When no provider is wired or the threshold is
+		// <=0 we keep captcha mandatory on every attempt (stricter). Once the
+		// client IP has crossed the threshold, captcha becomes required and a
+		// missing/invalid one is rejected.
+		requireCaptcha := true
+		if h.captchaThreshold != nil {
+			threshold := h.captchaThreshold(c.Request.Context(), h.tenantID)
+			if threshold > 0 {
+				requireCaptcha = h.engine.LoginFailureCount(c.Request.Context(), c.ClientIP()) >= threshold
+			}
 		}
-		if !h.captchaSvc.Verify(req.CaptchaID, req.CaptchaCode) {
-			response.BadRequest(c, 40004, "invalid captcha")
-			return
+		if requireCaptcha {
+			if req.CaptchaID == "" || req.CaptchaCode == "" {
+				response.BadRequest(c, 40003, "captcha is required")
+				return
+			}
+			if !h.captchaSvc.Verify(req.CaptchaID, req.CaptchaCode) {
+				response.BadRequest(c, 40004, "invalid captcha")
+				return
+			}
+		} else if req.CaptchaID != "" && req.CaptchaCode != "" {
+			// Below threshold but the client still supplied a captcha — honor
+			// it so a wrong one is still rejected (don't silently ignore).
+			if !h.captchaSvc.Verify(req.CaptchaID, req.CaptchaCode) {
+				response.BadRequest(c, 40004, "invalid captcha")
+				return
+			}
 		}
 
 		authType := req.AuthType
@@ -663,6 +698,16 @@ func (h *Handler) handleAuthError(c *gin.Context, err error) {
 	case errors.Is(err, ErrAuthFailed):
 		response.Unauthorized(c, 40101, "invalid credentials")
 	case errors.Is(err, ErrAccountLocked):
+		// Brute-force auto-lock carries a *ratelimit.RateLimitError cause with
+		// the remaining TTL — surface it as a 429 + Retry-After so SPAs can
+		// show a countdown. An admin (permanent) lock has no such cause and
+		// stays a plain 403.
+		var rle *ratelimit.RateLimitError
+		if errors.As(err, &rle) {
+			c.Header("Retry-After", strconv.Itoa(int(rle.RetryAfter.Seconds())))
+			response.Error(c, http.StatusTooManyRequests, 42901, "too many failed attempts, temporarily locked", "")
+			return
+		}
 		response.Error(c, http.StatusForbidden, 40301, "account is locked", "")
 	case errors.Is(err, ErrPasswordExpired):
 		response.Error(c, http.StatusForbidden, 40302, "password has expired", "")
