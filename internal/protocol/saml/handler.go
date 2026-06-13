@@ -469,11 +469,18 @@ func (h *Handler) isAllowedSLORedirect(c *gin.Context, relayState string) bool {
 
 	app := h.lookupSLOIssuer(c)
 	if app == nil {
-		// No issuer info — fall back to baseline shape check so legacy
-		// flows that didn't go through a LogoutRequest still work.
-		return true
+		// FAIL-CLOSED: the SP could not be identified (no/ malformed
+		// SAMLRequest, or an Issuer that doesn't resolve to a known app),
+		// so there is no registered SLO/ACS URL to bind RelayState to. We
+		// must NOT redirect — an attacker can otherwise just omit the
+		// SAMLRequest (plain GET /slo?RelayState=https://evil) to land in
+		// this branch. The caller renders the local logged-out page.
+		return false
 	}
 
+	// SP is known: RelayState must match the SP's registered SLO/ACS URL on
+	// scheme + host. This binds the landing target to the SP that initiated
+	// the logout instead of accepting any https host.
 	samlCfg := h.parseSAMLConfig(app.ProtocolConfig)
 	for _, candidate := range []string{samlCfg.SLOURL, samlCfg.ACSURL} {
 		regURL, err := url.Parse(candidate)

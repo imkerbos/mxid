@@ -18,6 +18,42 @@ interface ScopeItem {
   label: string
 }
 
+// FAIL-CLOSED return_to validator — mirrors saferedirect.ValidateRelativeOrOrigin
+// (pkg/saferedirect) on the client. The legitimate return_to is always the
+// backend /protocol/oidc/authorize URL, which is same-origin with the portal.
+// An unvalidated value here is an open redirect / javascript: sink on the IdP
+// origin (e.g. /consent?return_to=https://evil or return_to=javascript:...).
+// Accepts a single-slash-rooted relative path OR an absolute http(s) URL whose
+// origin === the portal origin; everything else falls back to /apps.
+function safeReturnTo(raw: string): string {
+  const fallback = '/apps'
+  if (!raw) return fallback
+  // Reject ASCII control chars (CR/LF/TAB/NUL etc.) used for header/parser
+  // tricks. Done without a control-char regex literal to keep the source
+  // free of raw control bytes.
+  for (let i = 0; i < raw.length; i++) {
+    const code = raw.charCodeAt(i)
+    if (code < 0x20 || code === 0x7f) return fallback
+  }
+  if (raw.startsWith('//') || raw.startsWith('/\\') || raw.startsWith('\\')) return fallback
+  // Same-origin relative path.
+  if (raw.startsWith('/')) {
+    if (raw.includes('\\')) return fallback
+    return raw
+  }
+  // Absolute URL: must parse, be http(s), carry no userinfo, and share the
+  // portal's exact origin.
+  try {
+    const u = new URL(raw, window.location.origin)
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return fallback
+    if (u.username || u.password) return fallback
+    if (u.origin !== window.location.origin) return fallback
+    return u.href
+  } catch {
+    return fallback
+  }
+}
+
 // Consent screen — OIDC Core 1.0 §3.1.2.4.
 //
 // User arrives via redirect from /protocol/oidc/authorize when the app
@@ -32,7 +68,7 @@ export default function ConsentPage() {
   const [params] = useSearchParams()
   const appId = params.get('app_id') || ''
   const scopeQ = params.get('scope') || ''
-  const returnTo = params.get('return_to') || '/apps'
+  const returnTo = safeReturnTo(params.get('return_to') || '')
   const scopes = scopeQ.split(/[\s+]+/).filter(Boolean)
 
   const [loading, setLoading] = useState(true)

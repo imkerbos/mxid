@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/pkg/response"
+	"github.com/imkerbos/mxid/pkg/saferedirect"
 	"github.com/imkerbos/mxid/pkg/session"
 	"github.com/imkerbos/mxid/pkg/tenantscope"
 )
@@ -154,16 +155,31 @@ func (h *PortalHandler) list(c *gin.Context) {
 	response.OK(c, items)
 }
 
+// resolveReturnTo validates a user-agent-supplied return_to and resolves it
+// to an absolute post-login destination. FAIL-CLOSED: this is a public,
+// unauthenticated route, so an unvalidated return_to is an open redirect that
+// fires after the user is authenticated. Only a same-origin relative path or
+// an absolute URL on the portal origin is accepted; anything else falls back
+// to the login URL and the raw attacker value is never persisted into state.
+func (h *PortalHandler) resolveReturnTo(returnTo string) string {
+	if returnTo == "" {
+		return h.loginURL
+	}
+	safe, err := saferedirect.ValidateRelativeOrOrigin(returnTo, []string{h.portalURL})
+	if err != nil {
+		return h.loginURL
+	}
+	// A validated relative path resolves against the frontend host so the
+	// callback redirect lands on the portal, not the backend API host.
+	if len(safe) > 0 && safe[0] == '/' {
+		return h.portalURL + safe
+	}
+	return safe
+}
+
 func (h *PortalHandler) start(c *gin.Context) {
 	code := c.Param("code")
-	finalURL := c.Query("return_to")
-	if finalURL == "" {
-		finalURL = h.loginURL
-	} else if len(finalURL) > 0 && finalURL[0] == '/' {
-		// Relative return_to → resolve against portalURL so callback
-		// redirect always lands on the frontend host, not the backend.
-		finalURL = h.portalURL + finalURL
-	}
+	finalURL := h.resolveReturnTo(c.Query("return_to"))
 	redirectURI := fmt.Sprintf("%s/api/v1/portal-public/auth/external/%s/callback", h.baseURL, code)
 	authURL, err := h.svc.StartLogin(c.Request.Context(), h.tenantID, code, redirectURI, finalURL)
 	if err != nil {
@@ -234,7 +250,13 @@ func (h *PortalHandler) callback(c *gin.Context) {
 		c.SetCookie("mxid_proto_sid", protoSess.ID, 24*60*60, "/", h.cookieDomain, h.cookieSecure, true)
 	}
 
-	if finalURL == "" {
+	// Belt-and-suspenders: finalURL was validated + absolutised at start()
+	// before being persisted into Redis state, but re-validate against the
+	// portal origin here before the post-auth redirect so a tampered/legacy
+	// state value can never become an open redirect.
+	if safe, err := saferedirect.ValidateRelativeOrOrigin(finalURL, []string{h.portalURL}); err == nil {
+		finalURL = safe
+	} else {
 		finalURL = h.loginURL
 	}
 	c.Redirect(http.StatusFound, finalURL)

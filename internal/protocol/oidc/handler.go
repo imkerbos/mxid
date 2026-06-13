@@ -245,6 +245,30 @@ func (h *Handler) authorize(c *gin.Context) {
 		return
 	}
 
+	// FAIL-CLOSED open-redirect guard: nothing below may redirect to
+	// redirect_uri until it has been proven to belong to the resolved app's
+	// registered allow-list. So we resolve the client and validate
+	// redirect_uri FIRST. Any error before this point — unknown client_id,
+	// unsupported response_type, disabled app — is rendered as a LOCAL HTTP
+	// 400, NEVER as a redirect to the attacker-supplied redirect_uri.
+	//
+	// Resolve app by client_id. An unknown client_id has no allow-list to
+	// validate against at all, so it can only ever be a local error.
+	app, err := h.appRes.GetAppByClientID(c.Request.Context(), clientID)
+	if err != nil || app == nil {
+		response.BadRequest(c, 40002, "invalid_request")
+		return
+	}
+
+	// Validate redirect_uri against THIS app's registered URIs before any
+	// branch that would redirectError() to it.
+	if !h.isValidRedirectURI(app, redirectURI) {
+		response.BadRequest(c, 40002, "invalid redirect_uri")
+		return
+	}
+
+	// From here on redirect_uri is pinned to the app's allow-list, so
+	// redirectError() is a safe (registered-target) redirect.
 	rtParts := parseResponseType(responseType)
 	if !isResponseTypeSupported(rtParts) {
 		h.redirectError(c, redirectURI, state, "unsupported_response_type", "response_type not supported")
@@ -254,21 +278,8 @@ func (h *Handler) authorize(c *gin.Context) {
 	wantIDToken := rtParts["id_token"]
 	wantToken := rtParts["token"]
 
-	// Resolve app by client_id
-	app, err := h.appRes.GetAppByClientID(c.Request.Context(), clientID)
-	if err != nil || app == nil {
-		h.redirectError(c, redirectURI, state, "invalid_client", "unknown client_id")
-		return
-	}
-
 	if app.Status != 1 {
 		h.redirectError(c, redirectURI, state, "access_denied", "application is disabled")
-		return
-	}
-
-	// Validate redirect_uri
-	if !h.isValidRedirectURI(app, redirectURI) {
-		response.BadRequest(c, 40002, "invalid redirect_uri")
 		return
 	}
 

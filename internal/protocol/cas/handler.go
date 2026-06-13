@@ -323,19 +323,21 @@ func (h *Handler) logout(c *gin.Context) {
 	}
 
 	service := c.Query("service")
-	// Re-use the login-path service validator: only follow ?service= on
-	// logout when it matches the calling SP's registered ServiceURLs.
-	// Without this guard /cas/logout?service=https://evil is an open
-	// redirect — exactly the attack vector that gets CAS deployments
-	// flagged in pentests.
+	// FAIL-CLOSED: only follow ?service= on logout when it matches the
+	// calling SP's registered ServiceURLs. The route carries :app_code, so
+	// unlike the old comment claimed we DO have an app context here — resolve
+	// it and bind the service to that app's allow-list. Without this guard
+	// /cas/:app_code/logout?service=https://evil is an open redirect on the
+	// IdP origin. Empty allow-list => no match => render the local logged-out
+	// page instead of redirecting.
 	if service != "" {
-		// We don't have an app context on logout, but isSafeServiceURL
-		// rejects javascript:/data:/non-loopback-http — the minimal
-		// baseline. Operators wanting strict allow-list semantics can
-		// add a per-tenant logout_uris registry later.
-		if isSafeServiceURL(service) {
-			c.Redirect(http.StatusFound, service)
-			return
+		appCode := c.Param("app_code")
+		if app, err := h.appRes.GetApp(c.Request.Context(), appCode); err == nil && app != nil {
+			casCfg := h.parseCASConfig(app.ProtocolConfig)
+			if h.isValidService(casCfg, service) {
+				c.Redirect(http.StatusFound, service)
+				return
+			}
 		}
 	}
 
@@ -353,11 +355,14 @@ func (h *Handler) parseCASConfig(raw json.RawMessage) *CASConfig {
 }
 
 func (h *Handler) isValidService(cfg *CASConfig, service string) bool {
+	// FAIL-CLOSED: an empty ServiceURLs allow-list means the SP has not
+	// registered any landing URL, so there is nothing to bind the service
+	// (and the freshly-minted service ticket appended to it) to. We MUST
+	// reject rather than fall back to a shape-only check that accepts any
+	// https host — that fallback is an open redirect AND a service-ticket
+	// leak to an attacker-chosen host.
 	if len(cfg.ServiceURLs) == 0 {
-		// Empty list is fail-open by historical CAS convention. We keep
-		// that for backwards compatibility, but apply the same scheme /
-		// shape sanity check we use on logout to block obvious abuse.
-		return isSafeServiceURL(service)
+		return false
 	}
 	requested, err := parseAbsoluteHTTP(service)
 	if err != nil {
@@ -405,21 +410,6 @@ func parseAbsoluteHTTP(raw string) (*url.URL, error) {
 		return nil, errInvalidServiceURL
 	}
 	return u, nil
-}
-
-// isSafeServiceURL is the fail-open guard for configs that have NOT
-// registered any service URLs. It rejects javascript:/data: and other
-// schemes that would turn the login redirect into an XSS sink.
-func isSafeServiceURL(raw string) bool {
-	u, err := parseAbsoluteHTTP(raw)
-	if err != nil {
-		return false
-	}
-	if u.Scheme == "http" {
-		host := u.Hostname()
-		return host == "localhost" || host == "127.0.0.1" || host == "::1"
-	}
-	return true
 }
 
 var errInvalidServiceURL = errInvalidService{}
