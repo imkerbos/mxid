@@ -3,6 +3,7 @@ package oidc
 import (
 	"context"
 	"crypto/rsa"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -1034,9 +1035,11 @@ func (h *Handler) introspect(c *gin.Context) {
 		}
 	}
 
-	// Verify client
+	// Verify client. Route through verifyClientSecret (bcrypt + constant-time
+	// legacy compare) so /introspect matches the token-endpoint auth semantics
+	// and never leaks the secret via string-compare timing.
 	app, err := h.appRes.GetAppByClientID(c.Request.Context(), clientID)
-	if err != nil || app == nil || app.ClientSecret != clientSecret {
+	if err != nil || app == nil || !verifyClientSecret(app.ClientSecret, clientSecret) {
 		c.JSON(http.StatusOK, gin.H{"active": false})
 		return
 	}
@@ -1306,9 +1309,10 @@ func verifyClientSecret(storedHash, plaintext string) bool {
 		return true
 	}
 	// Legacy plaintext compatibility (only matches when stored value is the
-	// literal plaintext, not a hash). Constant-time-ish; bcrypt does the heavy
-	// lifting above on the modern path.
-	return storedHash == plaintext
+	// literal plaintext, not a hash). Constant-time compare so the legacy-row
+	// path doesn't leak the secret length/prefix via early-exit timing the way
+	// Go's string == does.
+	return subtle.ConstantTimeCompare([]byte(storedHash), []byte(plaintext)) == 1
 }
 
 // authenticateClient resolves and authenticates the calling RP at the token

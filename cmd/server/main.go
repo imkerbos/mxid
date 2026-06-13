@@ -781,11 +781,16 @@ func registerModules(a *bootstrap.App) {
 		Window: 15 * time.Minute, Lockout: 15 * time.Minute,
 	})
 
+	// devFallback gates the dev_link/dev_code response + log exposure on
+	// non-release mode. In release we never leak the out-of-band reset/magic
+	// /OTP secret even when the mail/SMS provider is misconfigured or fails.
+	devFallback := !a.Config.Server.IsRelease()
 	pwdResetHandler := portal.NewPasswordResetHandler(
 		a.Redis, portalUserQ, a.Logger, a.Config.Server.PortalURL,
 		mailerSvc, a.Config.Tenant.DefaultID, tenantByCodeResolver,
 	)
 	pwdResetHandler.SetLimiter(pwdResetLimiter)
+	pwdResetHandler.SetDevFallback(devFallback)
 	portal.RegisterPasswordResetRoutes(publicPortalGroup, pwdResetHandler)
 	// Public SMS OTP routes. Gated by LoginMethods.SMSOTP. Provider config
 	// (Aliyun / Tencent / Twilio) is per-tenant via setting.SMS; secret is
@@ -808,6 +813,7 @@ func registerModules(a *bootstrap.App) {
 		TenantByCode: tenantByCodeResolver,
 		CookieDomain: a.Config.Session.CookieDomain,
 		CookieSecure: a.Config.Session.CookieSecure,
+		DevFallback:  devFallback,
 		Limiter:      smsLoginLimiter,
 	}))
 
@@ -832,6 +838,7 @@ func registerModules(a *bootstrap.App) {
 		TenantByCode: tenantByCodeResolver,
 		CookieDomain: a.Config.Session.CookieDomain,
 		CookieSecure: a.Config.Session.CookieSecure,
+		DevFallback:  devFallback,
 		Limiter:      magicLinkLimiter,
 	}))
 
@@ -889,9 +896,11 @@ func registerModules(a *bootstrap.App) {
 	//     redirect still points at the portal URL — admins clicking the
 	//     dev_link land in the portal, which is fine (single account state).
 	portal.RegisterProfileRoutes(a.ConsoleGroup, portal.NewProfileHandler(portalUserQ, a.EventBus))
-	portal.RegisterEmailVerifyRoutes(a.ConsoleGroup, portal.NewEmailVerifyHandler(
+	emailVerifyHandler := portal.NewEmailVerifyHandler(
 		a.Redis, portalUserQ, a.Logger, a.Config.Server.PortalURL, mailerSvc, tenantDefault,
-	))
+	)
+	emailVerifyHandler.SetDevFallback(devFallback)
+	portal.RegisterEmailVerifyRoutes(a.ConsoleGroup, emailVerifyHandler)
 }
 
 // buildPortalConsentQuerier surfaces a thin app-domain projection to the

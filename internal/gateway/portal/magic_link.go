@@ -57,6 +57,9 @@ type MagicLinkHandler struct {
 	tenantByCd TenantResolver
 	cookieDom  string
 	cookieSec  bool
+	// devFallback gates the dev_link response field + link Info log on
+	// non-release mode. In release the magic link is never returned or logged.
+	devFallback bool
 	// limiter throttles /auth/magic-link/send per email so an attacker can't
 	// email-bomb a victim (the send side previously had no throttle at all,
 	// unlike sms-otp's 60s cooldown). nil = no throttle.
@@ -77,6 +80,9 @@ type MagicLinkHandlerOpts struct {
 	TenantByCode TenantResolver
 	CookieDomain string
 	CookieSecure bool
+	// DevFallback enables the non-release dev_link exposure. Set from
+	// cfg.Server.IsRelease() inverted at the call site.
+	DevFallback bool
 	// Limiter throttles send per email. nil disables throttling.
 	Limiter *ratelimit.Limiter
 }
@@ -92,9 +98,10 @@ func NewMagicLinkHandler(o MagicLinkHandlerOpts) *MagicLinkHandler {
 		enabled:    o.Enabled,
 		defaultTID: o.DefaultTID,
 		tenantByCd: o.TenantByCode,
-		cookieDom:  o.CookieDomain,
-		cookieSec:  o.CookieSecure,
-		limiter:    o.Limiter,
+		cookieDom:   o.CookieDomain,
+		cookieSec:   o.CookieSecure,
+		devFallback: o.DevFallback,
+		limiter:     o.Limiter,
 	}
 }
 
@@ -196,11 +203,16 @@ func (h *MagicLinkHandler) send(c *gin.Context) {
 		}
 	}
 	if !smtpOK {
-		resp.DevLink = link
-		h.logger.Info("magic link (no SMTP / fallback)",
-			zap.Int64("user_id", userID),
-			zap.String("email", email),
-			zap.String("link", link))
+		if h.devFallback {
+			resp.DevLink = link
+			h.logger.Info("magic link (no SMTP / fallback)",
+				zap.Int64("user_id", userID),
+				zap.String("email", email),
+				zap.String("link", link))
+		} else {
+			h.logger.Warn("magic link mail send failed (no dev fallback in release)",
+				zap.Int64("user_id", userID))
+		}
 	}
 	response.OK(c, resp)
 }

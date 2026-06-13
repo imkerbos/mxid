@@ -51,10 +51,19 @@ type PasswordResetHandler struct {
 	mailer     *mailer.Mailer
 	defaultTID int64
 	tenantByCd TenantResolver
+	// devFallback gates the dev_link response field + the link Info log on
+	// non-release mode. In release the reset link is NEVER returned in the
+	// HTTP body and never logged, so a misconfigured/failing SMTP provider
+	// can't leak the out-of-band reset secret. Set from cfg.Server.IsRelease().
+	devFallback bool
 	// limiter throttles /password/forgot per email so repeated calls can't
 	// spam reset emails. nil = no throttle. Wired via SetLimiter.
 	limiter *ratelimit.Limiter
 }
+
+// SetDevFallback toggles the non-release dev_link exposure. Kept as a setter
+// so the positional constructor signature stays stable.
+func (h *PasswordResetHandler) SetDevFallback(on bool) { h.devFallback = on }
 
 // SetLimiter wires the per-email forgot-password send throttle. nil disables
 // throttling (legacy behaviour). Kept as a setter so the positional
@@ -188,13 +197,20 @@ func (h *PasswordResetHandler) forgot(c *gin.Context) {
 		}
 	}
 	if !smtpOK {
-		resp.DevLink = link
-		h.logger.Info("password reset link (no SMTP / fallback)",
-			zap.Int64("user_id", userID),
-			zap.String("email", email),
-			zap.String("link", link),
-			zap.Int("ttl_seconds", pwdResetTTL),
-		)
+		if h.devFallback {
+			resp.DevLink = link
+			h.logger.Info("password reset link (no SMTP / fallback)",
+				zap.Int64("user_id", userID),
+				zap.String("email", email),
+				zap.String("link", link),
+				zap.Int("ttl_seconds", pwdResetTTL),
+			)
+		} else {
+			// Release mode: never leak the reset link into the response or
+			// logs. Record only a non-sensitive warning.
+			h.logger.Warn("password reset email send failed (no dev fallback in release)",
+				zap.Int64("user_id", userID))
+		}
 	}
 	response.OK(c, resp)
 }
