@@ -10,6 +10,7 @@ import (
 	"github.com/imkerbos/mxid/pkg/crypto"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/snowflake"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
@@ -67,6 +68,7 @@ type Service struct {
 	clearMFALockout func(ctx context.Context, userID int64)
 	pwdPolicy       PasswordPolicyProvider
 	licenseQuota    LicenseQuotaCheck
+	totpReplayRDB   *redis.Client
 }
 
 // SetLicenseQuotaCheck wires the runtime license-quota lookup. Called by

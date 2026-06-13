@@ -25,6 +25,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/pkg/mailer"
+	"github.com/imkerbos/mxid/pkg/ratelimit"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"github.com/redis/go-redis/v9"
@@ -50,7 +51,15 @@ type PasswordResetHandler struct {
 	mailer     *mailer.Mailer
 	defaultTID int64
 	tenantByCd TenantResolver
+	// limiter throttles /password/forgot per email so repeated calls can't
+	// spam reset emails. nil = no throttle. Wired via SetLimiter.
+	limiter *ratelimit.Limiter
 }
+
+// SetLimiter wires the per-email forgot-password send throttle. nil disables
+// throttling (legacy behaviour). Kept as a setter so the positional
+// constructor signature stays stable.
+func (h *PasswordResetHandler) SetLimiter(l *ratelimit.Limiter) { h.limiter = l }
 
 // NewPasswordResetHandler builds the handler. tenantByCode may be nil —
 // the handler falls back to the default tenant.
@@ -106,6 +115,21 @@ func (h *PasswordResetHandler) forgot(c *gin.Context) {
 	}
 	email := strings.TrimSpace(strings.ToLower(req.Email))
 	resp := forgotResponse{Sent: true, TTLSeconds: pwdResetTTL}
+
+	// Per-email throttle so repeated /password/forgot calls can't spam reset
+	// emails. Checked + counted BEFORE the user lookup so existent and
+	// non-existent emails throttle identically (no enumeration leak).
+	if rle := rateLimited(c.Request.Context(), h.limiter, "pwreset:"+email); rle != nil {
+		respondRateLimited(c, rle)
+		return
+	}
+	if rle := h.limiter.RecordFailure(c.Request.Context(), "pwreset:"+email); rle != nil {
+		var rlErr *ratelimit.RateLimitError
+		if errors.As(rle, &rlErr) {
+			respondRateLimited(c, rlErr)
+			return
+		}
+	}
 
 	tenantID := h.resolveTenant(c.Request.Context(), req.Tenant)
 	// Pin the resolved tenant so the user lookups / reads below run
