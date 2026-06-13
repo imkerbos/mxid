@@ -58,6 +58,10 @@ topiam/
 # Claude Code local
 .claude/
 
+# Local-only working notes (never published)
+TODO.local.md
+*.local.md
+
 # Secrets
 *.pem
 *.key

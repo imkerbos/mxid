@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/pkg/response"
+	"github.com/imkerbos/mxid/pkg/tenantscope"
 )
 
 // Context keys for downstream handlers to read the token's identity +
@@ -50,6 +51,10 @@ func AuthMiddleware(svc *Service) gin.HandlerFunc {
 		c.Set(CtxTenantID, token.TenantID)
 		c.Set(CtxScopes, ScopesOf(token))
 		c.Set(CtxTokenID, token.ID)
+		// Pin the token's tenant onto the std context so the gorm
+		// tenant-isolation plugin scopes every downstream openapi DB read to
+		// the token's tenant (the openapi group has no session middleware).
+		c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), token.TenantID))
 		c.Next()
 	}
 }

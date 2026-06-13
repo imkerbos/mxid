@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/imkerbos/mxid/pkg/snowflake"
+	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
@@ -196,6 +197,11 @@ func (s *Service) Authenticate(ctx context.Context, plaintext string) (*Token, e
 		return nil, ErrInvalid
 	}
 	prefix := secret[:lookupPrefixLen]
+	// The PAT is identified by a globally-unique prefix with no tenant known
+	// yet — the token row YIELDS the tenant. So the lookup + last-used touch
+	// run as an explicit cross-tenant read (the middleware then pins the
+	// resolved tenant for the rest of the request).
+	ctx = tenantscope.WithCrossTenant(ctx)
 	candidates, err := s.repo.GetByPrefix(ctx, prefix)
 	if err != nil {
 		return nil, err

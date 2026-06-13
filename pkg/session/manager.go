@@ -30,6 +30,27 @@ type Session struct {
 	CreatedAt    time.Time `json:"created_at"`
 	ExpiresAt    time.Time `json:"expires_at"`
 	LastActiveAt time.Time `json:"last_active_at"`
+	// MFAVerifiedAt is the last time the user passed a multi-factor check on
+	// THIS session — set at MFA login and refreshed by a step-up challenge.
+	// nil means never. Step-up enforcement compares it against the configured
+	// grace window to decide whether a high-risk operation needs a fresh MFA.
+	MFAVerifiedAt *time.Time `json:"mfa_verified_at,omitempty"`
+	// MFAEnrollPending is true when the MFA policy requires this user to hold a
+	// factor but they have none — the session is blocked from everything except
+	// MFA enrollment until they bind one. Cleared automatically once a factor
+	// is detected.
+	MFAEnrollPending bool `json:"mfa_enroll_pending,omitempty"`
+}
+
+// StepUpFresh reports whether this session passed MFA within `window` of now —
+// i.e. a high-risk operation may proceed without a new step-up challenge.
+// A nil MFAVerifiedAt (never verified) is never fresh. A non-positive window
+// disables the grace period, forcing a challenge on every high-risk call.
+func (s *Session) StepUpFresh(now time.Time, window time.Duration) bool {
+	if s.MFAVerifiedAt == nil || window <= 0 {
+		return false
+	}
+	return now.Before(s.MFAVerifiedAt.Add(window))
 }
 
 // PolicyProvider returns runtime idle and absolute timeouts. When set,
@@ -58,6 +79,35 @@ func NewManager(rdb *redis.Client, idleTimeout, absoluteTimeout time.Duration) *
 // SetPolicyProvider installs a runtime policy lookup. Safe to call once
 // after construction; not goroutine-safe for repeated swaps.
 func (m *Manager) SetPolicyProvider(p PolicyProvider) { m.policy = p }
+
+// CountActive returns the number of live session value keys in the given
+// namespace. Session values live at `namespace:<id>`; the per-user index sets
+// live at `namespace:user:<uid>` and are excluded. Uses SCAN (non-blocking) so
+// it's safe to call against a production redis — it's an estimate under churn,
+// which is fine for a dashboard gauge.
+func (m *Manager) CountActive(ctx context.Context, namespace string) (int64, error) {
+	var count int64
+	prefix := namespace + ":"
+	userPrefix := namespace + ":user:"
+	var cursor uint64
+	for {
+		keys, next, err := m.redis.Scan(ctx, cursor, prefix+"*", 256).Result()
+		if err != nil {
+			return count, err
+		}
+		for _, k := range keys {
+			if len(k) >= len(userPrefix) && k[:len(userPrefix)] == userPrefix {
+				continue // user index set, not a session
+			}
+			count++
+		}
+		if next == 0 {
+			break
+		}
+		cursor = next
+	}
+	return count, nil
+}
 
 // resolveTimeouts returns the effective (idle, absolute) for this request,
 // preferring the runtime policy and falling back to the static config.
@@ -152,6 +202,49 @@ func (m *Manager) Touch(ctx context.Context, namespace, sessionID string) error 
 		return fmt.Errorf("touch unmarshal: %w", err)
 	}
 	sess.LastActiveAt = time.Now()
+	return m.save(ctx, &sess)
+}
+
+// MarkMFAVerified stamps the session's MFAVerifiedAt to now and persists it.
+// Called after a successful MFA login or step-up challenge so subsequent
+// high-risk operations fall inside the grace window. No-op if the session is
+// gone (already expired/revoked).
+func (m *Manager) MarkMFAVerified(ctx context.Context, namespace, sessionID string) error {
+	key := fmt.Sprintf("%s:%s", namespace, sessionID)
+	data, err := m.redis.Get(ctx, key).Bytes()
+	if err != nil {
+		if err == redis.Nil {
+			return nil
+		}
+		return fmt.Errorf("mark mfa get: %w", err)
+	}
+	var sess Session
+	if err := json.Unmarshal(data, &sess); err != nil {
+		return fmt.Errorf("mark mfa unmarshal: %w", err)
+	}
+	now := time.Now()
+	sess.MFAVerifiedAt = &now
+	return m.save(ctx, &sess)
+}
+
+// SetEnrollPending sets the MFA-enrollment-pending flag on a session and
+// persists it. Used to force a user with no factor through enrollment before
+// they can use the app, and to clear the flag once they bind one. No-op if the
+// session is gone.
+func (m *Manager) SetEnrollPending(ctx context.Context, namespace, sessionID string, pending bool) error {
+	key := fmt.Sprintf("%s:%s", namespace, sessionID)
+	data, err := m.redis.Get(ctx, key).Bytes()
+	if err != nil {
+		if err == redis.Nil {
+			return nil
+		}
+		return fmt.Errorf("set enroll pending get: %w", err)
+	}
+	var sess Session
+	if err := json.Unmarshal(data, &sess); err != nil {
+		return fmt.Errorf("set enroll pending unmarshal: %w", err)
+	}
+	sess.MFAEnrollPending = pending
 	return m.save(ctx, &sess)
 }
 

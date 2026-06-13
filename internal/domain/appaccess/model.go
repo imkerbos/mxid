@@ -51,6 +51,9 @@ type Policy struct {
 
 func (Policy) TableName() string { return "mxid_app_access_policy" }
 
+// TenantScoped marks mxid_app_access_policy for automatic tenant isolation.
+func (Policy) TenantScoped() {}
+
 // PolicyView is a Policy enriched with the resolved subject's display
 // name — handed to the console UI so it can render rows without N+1
 // round-trips for each subject lookup.

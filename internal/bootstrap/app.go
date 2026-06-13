@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -18,6 +19,32 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
+
+// appendOriginsFromURLs adds the scheme://host[:port] origin of each non-empty
+// URL to origins, de-duplicated. Malformed or schemeless/hostless URLs are
+// skipped. Used so the CSRF/CORS allow-list automatically trusts the configured
+// issuer / portal / console URLs without a duplicate allowed_origins entry.
+func appendOriginsFromURLs(origins []string, urls ...string) []string {
+	seen := make(map[string]struct{}, len(origins))
+	for _, o := range origins {
+		seen[o] = struct{}{}
+	}
+	for _, raw := range urls {
+		if raw == "" {
+			continue
+		}
+		u, err := url.Parse(raw)
+		if err != nil || u.Scheme == "" || u.Host == "" {
+			continue
+		}
+		o := u.Scheme + "://" + u.Host
+		if _, ok := seen[o]; !ok {
+			seen[o] = struct{}{}
+			origins = append(origins, o)
+		}
+	}
+	return origins
+}
 
 // App holds all shared dependencies for the application.
 type App struct {
@@ -82,6 +109,10 @@ func NewApp(configPath string) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("init master key (set MXID_CRYPTO_KEY_ENCRYPTION_KEY to base64(32 random bytes)): %w", err)
 	}
+	// Wire the process-wide MasterKey used by crypto.Secret's driver.Valuer /
+	// sql.Scanner (and Value()/Scan() have no context to thread a key through).
+	// MUST happen before any crypto.Secret is persisted or loaded.
+	crypto.SetSecretMasterKey(masterKey)
 
 	// Init router
 	router := InitRouter(&cfg.Server, logger)
@@ -91,6 +122,26 @@ func NewApp(configPath string) (*App, error) {
 	origins := cfg.Server.AllowedOrigins
 	if len(origins) == 0 {
 		origins = middleware.DefaultCORSConfig().AllowOrigins
+	}
+	// Auto-trust the origins of the configured canonical URLs (issuer / portal
+	// / console). Setting the deployment host in one place then clears CORS +
+	// CSRF for it, so single-domain deploys don't also have to maintain a
+	// parallel allowed_origins entry.
+	origins = appendOriginsFromURLs(origins,
+		cfg.Server.IssuerURL, cfg.Server.PortalURL, cfg.Server.ConsoleURL)
+
+	// Global per-IP rate-limit cap. Mode-aware on purpose:
+	//   - release (prod): a proper edge (nginx host-net / userland-proxy=false /
+	//     cloud LB) forwards the real client IP, so KeyByClientIP buckets each
+	//     real client. 1200/min is generous for one SPA user yet cuts bulk
+	//     automation. Narrow `trusted_proxies` so intranet clients aren't
+	//     collapsed (see InitRouter warning).
+	//   - debug (dev): on Docker Desktop every request shares the gateway IP
+	//     (192.168.65.1) — a per-IP cap can't discriminate users, so keep it
+	//     effectively out of the way to avoid false 429s during local testing.
+	ipRateLimit := 1200
+	if cfg.Server.Mode != "release" {
+		ipRateLimit = 30000
 	}
 
 	// Apply shared middleware. CSRF is router-level (not per-group) with an
@@ -111,12 +162,13 @@ func NewApp(configPath string) (*App, error) {
 			},
 			AllowBearerAuth: true,
 		}),
-		// Global per-IP cap protects every endpoint from credential-
-		// stuffing / brute force / scrapers. 600/min is comfortably
-		// above any honest SPA usage but cuts off bulk automation.
+		// Global per-IP cap (mode-aware, see ipRateLimit above). The SSE event
+		// stream is exempt: a long-lived, self-reconnecting connection that
+		// must not burn the budget.
 		middleware.RateLimiter(rdb, middleware.RateLimitRule{
-			Name: "ip", Limit: 600, Window: time.Minute,
-			KeyFunc: middleware.KeyByClientIP,
+			Name: "ip", Limit: ipRateLimit, Window: time.Minute,
+			KeyFunc:   middleware.KeyByClientIP,
+			SkipPaths: []string{"/api/v1/portal/events", "/api/v1/console/events"},
 		}),
 	)
 

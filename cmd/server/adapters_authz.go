@@ -161,6 +161,83 @@ func (a *authzBindingProvider) EffectiveBindingsForUser(ctx context.Context, ten
 	return out, nil
 }
 
+// casbinPolicyLoader reads the role→permission catalog and the set of
+// super-admin tenants straight from the admin source-of-truth tables
+// (mxid_role_permission / mxid_permission / mxid_user). The Casbin engine
+// rebuilds itself from this on boot and on every invalidation event, so the
+// enforcer always mirrors current DB state.
+type casbinPolicyLoader struct{ app *bootstrap.App }
+
+func newCasbinPolicyLoader(app *bootstrap.App) *casbinPolicyLoader {
+	return &casbinPolicyLoader{app: app}
+}
+
+func (l *casbinPolicyLoader) LoadPolicies(ctx context.Context) ([]authz.RolePolicy, []int64, error) {
+	// role→perm grants, tenant-scoped via the role's tenant_id. Soft-deleted
+	// roles are excluded so a deleted role grants nothing.
+	type grant struct {
+		TenantID int64
+		RoleID   int64
+		Code     string
+	}
+	var grants []grant
+	if err := l.app.DB.WithContext(ctx).
+		Table("mxid_role_permission rp").
+		Joins("INNER JOIN mxid_role r ON r.id = rp.role_id AND r.deleted_at IS NULL").
+		Joins("INNER JOIN mxid_permission p ON p.id = rp.permission_id").
+		Select("r.tenant_id AS tenant_id, rp.role_id AS role_id, p.code AS code").
+		Scan(&grants).Error; err != nil {
+		return nil, nil, err
+	}
+	policies := make([]authz.RolePolicy, 0, len(grants))
+	for _, g := range grants {
+		policies = append(policies, authz.RolePolicy{
+			TenantID:   g.TenantID,
+			RoleID:     g.RoleID,
+			Permission: g.Code,
+		})
+	}
+
+	// Tenants holding at least one super admin → wildcard role in that domain.
+	var superTenants []int64
+	if err := l.app.DB.WithContext(ctx).
+		Table("mxid_user").
+		Where("is_super_admin = TRUE AND deleted_at IS NULL").
+		Distinct().
+		Pluck("tenant_id", &superTenants).Error; err != nil {
+		return nil, nil, err
+	}
+	return policies, superTenants, nil
+}
+
+// wireCasbinSync rebuilds the Casbin policy set whenever a role/permission/
+// super-admin mutation fires — the SAME events that invalidate the binding
+// cache. Membership/org-structure events do NOT change role→perm grants (the
+// Go side resolves those edges), so they only invalidate the cache, not the
+// enforcer. Each handler does a full reload: cheap (a couple of joins) and
+// guarantees the enforcer never drifts from the DB.
+func wireCasbinSync(a *bootstrap.App, engine *authz.CasbinEngine, loader authz.PolicyLoader) {
+	if a == nil || engine == nil || loader == nil || a.EventBus == nil {
+		return
+	}
+	resync := func(_ context.Context, _ event.Event) {
+		if err := engine.Sync(context.Background(), loader); err != nil && a.Logger != nil {
+			a.Logger.Error("casbin resync failed: " + err.Error())
+		}
+	}
+	for _, t := range []string{
+		permission.RoleCreated,
+		permission.RoleUpdated,
+		permission.RoleDeleted,
+		permission.RolePermissionsSet,
+		event.UserSuperAdminGrant,
+		event.UserSuperAdminRevoke,
+		event.UserDeleted,
+	} {
+		a.EventBus.Subscribe(t, resync)
+	}
+}
+
 type authzOrgAncestry struct{ orgModule *org.Module }
 
 func newAuthzOrgAncestry(orgModule *org.Module) *authzOrgAncestry {

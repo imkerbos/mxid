@@ -119,5 +119,5 @@ func (h *Handler) Delete(c *gin.Context) {
 		response.BadRequest(c, 40002, err.Error())
 		return
 	}
-	c.JSON(http.StatusNoContent, nil)
+	response.OK(c, nil)
 }

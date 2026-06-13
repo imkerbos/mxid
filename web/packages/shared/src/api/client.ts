@@ -2,6 +2,34 @@ import axios, { type AxiosInstance, type AxiosResponse } from 'axios'
 import JSONbig from 'json-bigint'
 import type { ApiResponse } from '../types'
 
+// skipAuthEvent opts a single request out of the global mxid:unauthorized
+// dispatch on 401. The SSO-bridge bootstrap uses it: a 401 from the initial
+// /auth/me probe or the /auth/sso attempt must NOT trigger the app-wide
+// redirect-to-login, or it would race the bridge. The AuthGuard owns the
+// fallback in that flow instead.
+//
+// _stepUpRetried marks a request that has already been replayed once after a
+// step-up challenge, so a persistent 40330 can't loop forever.
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    skipAuthEvent?: boolean
+    _stepUpRetried?: boolean
+  }
+}
+
+// Backend response codes the client reacts to globally.
+export const CODE_STEP_UP_REQUIRED = 40330
+export const CODE_MFA_ENROLL_REQUIRED = 40331
+
+// Step-up handler: the console registers a callback (a modal) that resolves
+// once the user passes an MFA challenge. The 403/step_up_required interceptor
+// awaits it, then transparently replays the original high-risk request.
+type StepUpHandler = () => Promise<void>
+let stepUpHandler: StepUpHandler | null = null
+export function setStepUpHandler(fn: StepUpHandler | null) {
+  stepUpHandler = fn
+}
+
 // Server-issued IDs are snowflake int64 — they exceed JS Number.MAX_SAFE_INTEGER
 // (2^53). axios' default JSON.parse silently rounds the last few digits, which
 // breaks FK lookups (the rounded id no longer matches the DB row).
@@ -73,10 +101,38 @@ export function createApiClient(baseURL: string): AxiosInstance {
       }
       return response
     },
-    (error) => {
-      if (error.response?.status === 401) {
+    async (error) => {
+      const status = error.response?.status
+      const code = error.response?.data?.code
+
+      if (status === 401 && !error.config?.skipAuthEvent) {
         window.dispatchEvent(new CustomEvent('mxid:unauthorized'))
       }
+
+      // High-risk operation needs a fresh MFA. Run the step-up modal, then
+      // replay the original request exactly once.
+      if (
+        status === 403 &&
+        code === CODE_STEP_UP_REQUIRED &&
+        stepUpHandler &&
+        error.config &&
+        !error.config._stepUpRetried
+      ) {
+        try {
+          await stepUpHandler()
+          error.config._stepUpRetried = true
+          return instance(error.config)
+        } catch {
+          return Promise.reject(error)
+        }
+      }
+
+      // Policy requires MFA but the user has none enrolled — route them to
+      // enrollment; the SPA listens for this and navigates.
+      if (status === 403 && code === CODE_MFA_ENROLL_REQUIRED) {
+        window.dispatchEvent(new CustomEvent('mxid:mfa-enroll-required'))
+      }
+
       return Promise.reject(error)
     },
   )

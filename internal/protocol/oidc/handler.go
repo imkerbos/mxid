@@ -3,6 +3,7 @@ package oidc
 import (
 	"context"
 	"crypto/rsa"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -16,7 +17,9 @@ import (
 	"github.com/imkerbos/mxid/internal/protocol/resolver"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/response"
+	"github.com/imkerbos/mxid/pkg/safehttp"
 	"github.com/imkerbos/mxid/pkg/session"
+	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"github.com/imkerbos/mxid/pkg/urlswap"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -243,6 +246,30 @@ func (h *Handler) authorize(c *gin.Context) {
 		return
 	}
 
+	// FAIL-CLOSED open-redirect guard: nothing below may redirect to
+	// redirect_uri until it has been proven to belong to the resolved app's
+	// registered allow-list. So we resolve the client and validate
+	// redirect_uri FIRST. Any error before this point — unknown client_id,
+	// unsupported response_type, disabled app — is rendered as a LOCAL HTTP
+	// 400, NEVER as a redirect to the attacker-supplied redirect_uri.
+	//
+	// Resolve app by client_id. An unknown client_id has no allow-list to
+	// validate against at all, so it can only ever be a local error.
+	app, err := h.appRes.GetAppByClientID(c.Request.Context(), clientID)
+	if err != nil || app == nil {
+		response.BadRequest(c, 40002, "invalid_request")
+		return
+	}
+
+	// Validate redirect_uri against THIS app's registered URIs before any
+	// branch that would redirectError() to it.
+	if !h.isValidRedirectURI(app, redirectURI) {
+		response.BadRequest(c, 40002, "invalid redirect_uri")
+		return
+	}
+
+	// From here on redirect_uri is pinned to the app's allow-list, so
+	// redirectError() is a safe (registered-target) redirect.
 	rtParts := parseResponseType(responseType)
 	if !isResponseTypeSupported(rtParts) {
 		h.redirectError(c, redirectURI, state, "unsupported_response_type", "response_type not supported")
@@ -252,21 +279,8 @@ func (h *Handler) authorize(c *gin.Context) {
 	wantIDToken := rtParts["id_token"]
 	wantToken := rtParts["token"]
 
-	// Resolve app by client_id
-	app, err := h.appRes.GetAppByClientID(c.Request.Context(), clientID)
-	if err != nil || app == nil {
-		h.redirectError(c, redirectURI, state, "invalid_client", "unknown client_id")
-		return
-	}
-
 	if app.Status != 1 {
 		h.redirectError(c, redirectURI, state, "access_denied", "application is disabled")
-		return
-	}
-
-	// Validate redirect_uri
-	if !h.isValidRedirectURI(app, redirectURI) {
-		response.BadRequest(c, 40002, "invalid redirect_uri")
 		return
 	}
 
@@ -308,6 +322,12 @@ func (h *Handler) authorize(c *gin.Context) {
 		h.redirectToLogin(c, clientID, redirectURI, scope, state, nonce, codeChallenge, codeChallengeMethod)
 		return
 	}
+
+	// User authenticated — pin the SSO session's tenant onto the request
+	// context so the downstream access-policy / consent / app-role reads (all
+	// tenant-scoped tables) run under the gorm tenant-isolation plugin. The
+	// protocol group has no AuthMiddleware to set this.
+	c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), ssoSess.TenantID))
 
 	// User authenticated — issue authorization code
 	scopes := parseScopes(scope)
@@ -576,6 +596,9 @@ func (h *Handler) tokenAuthorizationCode(c *gin.Context) {
 		h.tokenError(c, "invalid_grant", "invalid or expired authorization code")
 		return
 	}
+	// Pin the auth-code's tenant so downstream claim/user/app-role reads are
+	// tenant-scoped (protocol group has no AuthMiddleware).
+	c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), ac.TenantID))
 
 	// Validate client
 	if ac.ClientID != clientID {
@@ -749,6 +772,9 @@ func (h *Handler) tokenRefreshToken(c *gin.Context) {
 		h.tokenError(c, "invalid_grant", "invalid or expired refresh token")
 		return
 	}
+	// Pin the refresh-token's tenant so downstream claim/user/app-role reads
+	// are tenant-scoped.
+	c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), rt.TenantID))
 	if rt.ClientID != clientID {
 		h.tokenError(c, "invalid_grant", "client_id mismatch")
 		return
@@ -917,6 +943,10 @@ func (h *Handler) userinfo(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_token"})
 		return
 	}
+	// Pin the token's tenant so the claim/user reads are tenant-scoped.
+	if tid, ok := claims["tenant_id"].(float64); ok && tid > 0 {
+		c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), int64(tid)))
+	}
 
 	scopeVal, _ := claims["scope"].([]any)
 	var scopes []string
@@ -1005,9 +1035,11 @@ func (h *Handler) introspect(c *gin.Context) {
 		}
 	}
 
-	// Verify client
+	// Verify client. Route through verifyClientSecret (bcrypt + constant-time
+	// legacy compare) so /introspect matches the token-endpoint auth semantics
+	// and never leaks the secret via string-compare timing.
 	app, err := h.appRes.GetAppByClientID(c.Request.Context(), clientID)
-	if err != nil || app == nil || app.ClientSecret != clientSecret {
+	if err != nil || app == nil || !verifyClientSecret(app.ClientSecret, clientSecret) {
 		c.JSON(http.StatusOK, gin.H{"active": false})
 		return
 	}
@@ -1199,12 +1231,23 @@ func (h *Handler) sendBackchannelLogout(ctx context.Context, appID, userID int64
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := backchannelLogoutClient.Do(req)
 	if err != nil {
+		// Includes the SSRF-guard block case (backchannel_logout_uri resolving
+		// to an internal/disallowed address, or a non-https scheme). This is a
+		// best-effort notification; the caller ignores the error, but blocking
+		// here prevents the signed logout_token from being POSTed to an internal
+		// address.
 		return
 	}
 	_ = resp.Body.Close()
 }
+
+// backchannelLogoutClient is the SSRF-safe client for POSTing signed
+// logout_tokens to an admin-configured backchannel_logout_uri (per-app,
+// arbitrary host). The IP/scheme guard prevents the token from being replayed
+// to an internal address, including via redirect.
+var backchannelLogoutClient = safehttp.New(safehttp.WithTimeout(5 * time.Second))
 
 // lookupAppByID walks an app ID to its full AppConfig via the resolver.
 func (h *Handler) lookupAppByID(ctx context.Context, appID int64) *resolver.AppConfig {
@@ -1266,9 +1309,10 @@ func verifyClientSecret(storedHash, plaintext string) bool {
 		return true
 	}
 	// Legacy plaintext compatibility (only matches when stored value is the
-	// literal plaintext, not a hash). Constant-time-ish; bcrypt does the heavy
-	// lifting above on the modern path.
-	return storedHash == plaintext
+	// literal plaintext, not a hash). Constant-time compare so the legacy-row
+	// path doesn't leak the secret length/prefix via early-exit timing the way
+	// Go's string == does.
+	return subtle.ConstantTimeCompare([]byte(storedHash), []byte(plaintext)) == 1
 }
 
 // authenticateClient resolves and authenticates the calling RP at the token

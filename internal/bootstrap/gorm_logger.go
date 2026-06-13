@@ -2,10 +2,12 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 )
 
@@ -66,6 +68,13 @@ func (l *zapGormLogger) Trace(_ context.Context, begin time.Time, fc func() (sql
 	}
 
 	switch {
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		// Expected control-flow outcome (optional-setting lookups, existence
+		// checks). Not an error — log at debug without a stacktrace so it
+		// stops masquerading as a real failure in the logs.
+		if l.level >= gormlogger.Info {
+			l.logger.Debug("query: record not found", fields...)
+		}
 	case err != nil && l.level >= gormlogger.Error:
 		l.logger.Error("query error", append(fields, zap.Error(err))...)
 	case elapsed > l.slowSQL && l.level >= gormlogger.Warn:

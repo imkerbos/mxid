@@ -3,8 +3,10 @@ package audit
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
+	"github.com/imkerbos/mxid/pkg/auditctx"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/geoip"
 	"github.com/imkerbos/mxid/pkg/snowflake"
@@ -19,6 +21,12 @@ type Service struct {
 	logger   *zap.Logger
 	tenantID int64
 	geo      geoip.Resolver
+	// nameResolver denormalizes an actor's username at write time for events
+	// whose publisher only carries a user_id (e.g. app.launched fired from the
+	// portal middleware context, which holds no username). nil falls back to a
+	// blank ActorName — the actor_id is still recorded, so the row stays
+	// attributable. Set via SetUserNameResolver.
+	nameResolver func(ctx context.Context, userID int64) string
 }
 
 // NewService creates a new audit service.
@@ -31,6 +39,13 @@ func NewService(repo Repository, idGen *snowflake.Generator, eventBus *event.Bus
 		tenantID: tenantID,
 		geo:      geoip.NoopResolver{},
 	}
+}
+
+// SetUserNameResolver wires a user_id → username lookup used to denormalize
+// ActorName for events whose payload omits the username. Best-effort: a nil
+// resolver or empty result leaves ActorName blank (actor_id still recorded).
+func (s *Service) SetUserNameResolver(fn func(ctx context.Context, userID int64) string) {
+	s.nameResolver = fn
 }
 
 // SetGeoResolver wires the GeoIP backend. Pass geoip.NoopResolver{} to
@@ -71,6 +86,7 @@ func (s *Service) SubscribeEvents() {
 	// Login events
 	s.eventBus.Subscribe(event.LoginSuccess, s.handleLoginSuccess)
 	s.eventBus.Subscribe(event.LoginFailed, s.handleLoginFailed)
+	s.eventBus.Subscribe(event.LoginRisk, s.handleLoginRisk)
 	s.eventBus.Subscribe(event.Logout, s.handleLogout)
 
 	// User events
@@ -94,6 +110,31 @@ func (s *Service) SubscribeEvents() {
 	s.eventBus.Subscribe(event.OrgCreated, s.handleResourceEvent(event.OrgCreated, "org"))
 	s.eventBus.Subscribe(event.OrgUpdated, s.handleResourceEvent(event.OrgUpdated, "org"))
 	s.eventBus.Subscribe(event.OrgDeleted, s.handleResourceEvent(event.OrgDeleted, "org"))
+
+	// Tenant events (super-admin operations)
+	s.eventBus.Subscribe(event.TenantCreated, s.handleResourceEvent(event.TenantCreated, "tenant"))
+	s.eventBus.Subscribe(event.TenantUpdated, s.handleResourceEvent(event.TenantUpdated, "tenant"))
+	s.eventBus.Subscribe(event.TenantDeleted, s.handleResourceEvent(event.TenantDeleted, "tenant"))
+
+	// External IdP (inbound federation) config events
+	s.eventBus.Subscribe(event.IDPCreated, s.handleResourceEvent(event.IDPCreated, "idp"))
+	s.eventBus.Subscribe(event.IDPUpdated, s.handleResourceEvent(event.IDPUpdated, "idp"))
+	s.eventBus.Subscribe(event.IDPDeleted, s.handleResourceEvent(event.IDPDeleted, "idp"))
+
+	// Application group events
+	s.eventBus.Subscribe(event.AppGroupCreated, s.handleResourceEvent(event.AppGroupCreated, "app_group"))
+	s.eventBus.Subscribe(event.AppGroupUpdated, s.handleResourceEvent(event.AppGroupUpdated, "app_group"))
+	s.eventBus.Subscribe(event.AppGroupDeleted, s.handleResourceEvent(event.AppGroupDeleted, "app_group"))
+	s.eventBus.Subscribe(event.AppGroupMemberAdded, s.handleResourceEvent(event.AppGroupMemberAdded, "app_group"))
+	s.eventBus.Subscribe(event.AppGroupMemberRemoved, s.handleResourceEvent(event.AppGroupMemberRemoved, "app_group"))
+
+	// Runtime settings changes (security policy, branding, SMTP, …)
+	s.eventBus.Subscribe(event.SettingsUpdated, s.handleGenericEvent(event.SettingsUpdated))
+
+	// Portal self-service identity changes
+	s.eventBus.Subscribe(event.ProfileUpdated, s.handleUserEvent(event.ProfileUpdated, EventStatusSuccess))
+	s.eventBus.Subscribe(event.APITokenCreated, s.handleGenericEvent(event.APITokenCreated))
+	s.eventBus.Subscribe(event.APITokenRevoked, s.handleGenericEvent(event.APITokenRevoked))
 
 	// Session and MFA events
 	s.eventBus.Subscribe(event.SessionKicked, s.handleGenericEvent(event.SessionKicked))
@@ -152,6 +193,33 @@ func (s *Service) handleLoginSuccess(ctx context.Context, evt event.Event) {
 	s.createLog(ctx, log)
 }
 
+// handleLoginRisk records a conditional-access risk event: a login that fired a
+// risk signal but was allowed through (the user had no second factor to
+// challenge). Persisted so security operators can review risky logins.
+func (s *Service) handleLoginRisk(ctx context.Context, evt event.Event) {
+	payload := s.toMap(evt.Payload)
+
+	userID := s.toInt64(payload["user_id"])
+	ip := s.toString(payload["ip"])
+	tenantID := s.toInt64OrDefault(payload["tenant_id"], s.tenantID)
+	resourceType := "session"
+
+	log := &AuditLog{
+		ID:           s.idGen.Generate(),
+		TenantID:     tenantID,
+		ActorID:      &userID,
+		ActorType:    ActorUser,
+		EventType:    event.LoginRisk,
+		EventStatus:  EventStatusSuccess,
+		ResourceType: &resourceType,
+		IP:           strPtr(ip),
+		Detail:       s.marshalDetailFor(event.LoginRisk, payload),
+		CreatedAt:    time.Now(),
+	}
+
+	s.createLog(ctx, log)
+}
+
 // handleLoginFailed creates an audit entry for a failed login attempt.
 func (s *Service) handleLoginFailed(ctx context.Context, evt event.Event) {
 	payload := s.toMap(evt.Payload)
@@ -188,17 +256,25 @@ func (s *Service) handleLogout(ctx context.Context, evt event.Event) {
 
 	userID := s.toInt64(payload["user_id"])
 	sessionID := s.toString(payload["session_id"])
+	ip := s.toString(payload["ip"])
+	userAgent := s.toString(payload["user_agent"])
 
 	resourceType := "session"
 
+	// A logout is definitionally a user action. The logout route runs without
+	// AuthMiddleware (it reads the cookie directly), so auditctx isn't stamped —
+	// pin ActorType here rather than letting enrich() fall back to system. Name
+	// still resolves from actor_id via nameResolver; IP comes from the payload.
 	log := &AuditLog{
 		ID:           s.idGen.Generate(),
-		TenantID:     s.tenantID,
+		TenantID:     s.toInt64OrDefault(payload["tenant_id"], s.tenantID),
 		ActorID:      int64Ptr(userID),
 		ActorType:    ActorUser,
 		EventType:    event.Logout,
 		EventStatus:  EventStatusSuccess,
 		ResourceType: &resourceType,
+		IP:           strPtr(ip),
+		UserAgent:    strPtr(userAgent),
 		SessionID:    strPtr(sessionID),
 		Detail:       s.marshalDetailFor(event.Logout, payload),
 		CreatedAt:    time.Now(),
@@ -215,10 +291,11 @@ func (s *Service) handleUserEvent(eventType string, status int) event.Handler {
 		userID := s.toInt64(payload["user_id"])
 		resourceType := "user"
 
+		// Actor (the admin or self-service user performing the change) is filled
+		// by enrich() from auditctx. ResourceID is the *target* user.
 		log := &AuditLog{
 			ID:           s.idGen.Generate(),
 			TenantID:     s.toInt64OrDefault(payload["tenant_id"], s.tenantID),
-			ActorType:    ActorAdmin,
 			EventType:    eventType,
 			EventStatus:  status,
 			ResourceType: &resourceType,
@@ -227,7 +304,8 @@ func (s *Service) handleUserEvent(eventType string, status int) event.Handler {
 			CreatedAt:    time.Now(),
 		}
 
-		// If the event payload includes a username, use it as actor and resource name.
+		// Denormalize the target user's name onto the resource column when the
+		// publisher carried it, so the row reads "<actor> changed <username>".
 		if name := s.toString(payload["username"]); name != "" {
 			log.ResourceName = &name
 		}
@@ -241,11 +319,11 @@ func (s *Service) handleResourceEvent(eventType, resourceType string) event.Hand
 	return func(ctx context.Context, evt event.Event) {
 		payload := s.toMap(evt.Payload)
 
+		// Actor identity is filled by enrich() from auditctx.
 		rt := resourceType
 		log := &AuditLog{
 			ID:           s.idGen.Generate(),
 			TenantID:     s.toInt64OrDefault(payload["tenant_id"], s.tenantID),
-			ActorType:    ActorAdmin,
 			EventType:    eventType,
 			EventStatus:  EventStatusSuccess,
 			ResourceType: &rt,
@@ -275,12 +353,14 @@ func (s *Service) handleAppLaunched(ctx context.Context, evt event.Event) {
 	userAgent := s.toString(payload["user_agent"])
 	sessionID := s.toString(payload["session_id"])
 
+	// Actor identity (id / name / type) is filled by enrich() from the
+	// request-scoped auditctx; the launch publisher only carries the network
+	// fields and the launched app id.
 	rt := "app"
 	log := &AuditLog{
 		ID:           s.idGen.Generate(),
 		TenantID:     s.toInt64OrDefault(payload["tenant_id"], s.tenantID),
 		ActorID:      int64Ptr(userID),
-		ActorType:    ActorUser,
 		EventType:    event.AppLaunched,
 		EventStatus:  EventStatusSuccess,
 		ResourceType: &rt,
@@ -300,24 +380,87 @@ func (s *Service) handleGenericEvent(eventType string) event.Handler {
 	return func(ctx context.Context, evt event.Event) {
 		payload := s.toMap(evt.Payload)
 
+		// Derive a resource type from the event prefix so generic rows still
+		// render a 资源类型 column (e.g. api_token.created → "api_token",
+		// settings.updated → "settings"). Actor identity is filled by enrich()
+		// from auditctx — do NOT hardcode ActorType here, or self-service /
+		// admin events would be mis-tagged as system.
+		rt := eventResourcePrefix(eventType)
 		log := &AuditLog{
-			ID:          s.idGen.Generate(),
-			TenantID:    s.toInt64OrDefault(payload["tenant_id"], s.tenantID),
-			ActorType:   ActorSystem,
-			EventType:   eventType,
-			EventStatus: EventStatusSuccess,
-			Detail:      s.marshalDetailFor(eventType, payload),
-			CreatedAt:   time.Now(),
+			ID:           s.idGen.Generate(),
+			TenantID:     s.toInt64OrDefault(payload["tenant_id"], s.tenantID),
+			EventType:    eventType,
+			EventStatus:  EventStatusSuccess,
+			ResourceType: &rt,
+			ResourceID:   int64Ptr(s.toInt64(payload["id"])),
+			Detail:       s.marshalDetailFor(eventType, payload),
+			CreatedAt:    time.Now(),
 		}
 
 		s.createLog(ctx, log)
 	}
 }
 
-// createLog persists an audit log, logging any errors.
-// Uses background context because event handlers may run after the HTTP request
-// context is canceled.
-func (s *Service) createLog(_ context.Context, log *AuditLog) {
+// eventResourcePrefix returns the segment of an event_type before the first
+// dot, used as a fallback resource_type for generic events.
+func eventResourcePrefix(eventType string) string {
+	if i := strings.IndexByte(eventType, '.'); i > 0 {
+		return eventType[:i]
+	}
+	return eventType
+}
+
+// enrich fills actor identity and request network context from the
+// request-scoped actor stamped by the auth middleware (auditctx). Per-event
+// handlers set only what they uniquely know (resource, event-specific detail);
+// the "who / from where" is centralized here so every audit row is
+// attributable without each publisher reassembling the fields. Values already
+// set by the handler win — an explicit payload actor overrides the caller.
+func (s *Service) enrich(ctx context.Context, log *AuditLog) {
+	if a, ok := auditctx.From(ctx); ok {
+		if log.ActorID == nil && a.ActorID != 0 {
+			id := a.ActorID
+			log.ActorID = &id
+		}
+		if log.ActorType == "" {
+			log.ActorType = a.ActorType
+		}
+		if log.IP == nil {
+			log.IP = strPtr(a.IP)
+		}
+		if log.UserAgent == nil {
+			log.UserAgent = strPtr(a.UserAgent)
+		}
+		if log.SessionID == nil {
+			log.SessionID = strPtr(a.SessionID)
+		}
+		if log.TenantID == 0 {
+			log.TenantID = a.TenantID
+		}
+	}
+
+	// Denormalize the actor name once, using a cancellation-detached context:
+	// the bus delivers events asynchronously (see pkg/event/bus.go) so the
+	// originating request context is frequently already canceled by the time
+	// this runs — resolving with the raw ctx silently yielded a blank name.
+	if log.ActorName == nil && log.ActorID != nil && s.nameResolver != nil {
+		if name := s.nameResolver(context.WithoutCancel(ctx), *log.ActorID); name != "" {
+			log.ActorName = &name
+		}
+	}
+
+	// actor_type is NOT NULL. Fall back to system for events with no
+	// authenticated caller (protocol-layer token lifecycle, scheduled jobs).
+	if log.ActorType == "" {
+		log.ActorType = ActorSystem
+	}
+}
+
+// createLog enriches the row with request-scoped actor context, then persists
+// it. Uses a background context for the write because event handlers may run
+// after the HTTP request context is canceled.
+func (s *Service) createLog(ctx context.Context, log *AuditLog) {
+	s.enrich(ctx, log)
 	if log.IP != nil {
 		s.fillGeo(log, *log.IP)
 	}

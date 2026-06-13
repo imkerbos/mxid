@@ -13,12 +13,16 @@ server:
   console_url: "http://localhost:3500"
   # Front-end origins permitted to call the backend with credentials. Drives
   # both CORS Access-Control-Allow-Origin and CSRF Origin/Referer matching.
-  # Empty list falls back to dev localhost defaults.
+  # The origins of issuer_url / portal_url / console_url below are trusted
+  # automatically, so you usually only list extra hosts here. Empty = localhost
+  # dev defaults. Single nginx origin (:3500 serves portal + /admin console and
+  # proxies /api to the backend), so only :3500 is needed per host.
   allowed_origins:
     - "http://localhost:3500"
-    - "http://localhost:3501"
     - "http://127.0.0.1:3500"
-    - "http://127.0.0.1:3501"
+    # LAN-IP demo host (SPs reach the IdP via this address, so the browser
+    # loads the portal/console from it too).
+    - "http://192.168.254.200:3500"
 
 database:
   host: host.docker.internal
@@ -40,12 +44,19 @@ redis:
   password: ""
   pool_size: 20
 
+# NOTE: idle_timeout / absolute_timeout here are only a LAST-RESORT fallback
+# used if the DB security.policy is unreadable. The authoritative values live in
+# the DB (security.policy → session, editable in the console Security settings
+# page); DefaultSecurityPolicy seeds them (idle 8h / absolute 24h). Editing the
+# two timeouts below has no effect while the DB is reachable.
 session:
-  idle_timeout: 30m
-  absolute_timeout: 12h
+  idle_timeout: 8h
+  absolute_timeout: 24h
   cookie_secure: false
   cookie_domain: ""
 
+# Fallback only — authoritative in DB (security.policy, console Security page).
+# Seeded by DefaultSecurityPolicy; edits here are inert while the DB is reachable.
 security:
   password:
     min_length: 8
@@ -64,6 +75,8 @@ security:
     login: "5/m"
     api: "100/m"
 
+# OIDC token TTLs are authoritative in DB (protocol.defaults, console settings);
+# these seed the fallback. signing_algorithm is bootstrap-static.
 jwt:
   signing_algorithm: RS256
   access_token_ttl: 15m

@@ -30,6 +30,9 @@ func (Role) TableName() string {
 	return "mxid_role"
 }
 
+// TenantScoped marks mxid_role for automatic tenant isolation.
+func (Role) TenantScoped() {}
+
 // Scope type constants for role bindings. Empty / NULL ScopeType means
 // the binding is global (admin-wide). Org bindings apply to the full ltree
 // subtree of the scope_id.
@@ -37,6 +40,14 @@ const (
 	ScopeTypeGlobal = ""
 	ScopeTypeOrg    = "org"
 	ScopeTypeGroup  = "group"
+)
+
+// Subject type constants for role bindings — the kind of principal a binding
+// grants the role to. Mirror the DTO oneof validation (user|group|org).
+const (
+	SubjectTypeUser  = "user"
+	SubjectTypeGroup = "group"
+	SubjectTypeOrg   = "org"
 )
 
 // RoleBinding represents the mxid_role_binding table.
@@ -76,6 +87,11 @@ type Permission struct {
 func (Permission) TableName() string {
 	return "mxid_permission"
 }
+
+// TenantScoped marks mxid_permission for automatic tenant isolation. Despite
+// the name this row IS tenant-scoped (has a tenant_id column), not a global
+// catalog.
+func (Permission) TenantScoped() {}
 
 // RolePermission represents the mxid_role_permission table.
 type RolePermission struct {

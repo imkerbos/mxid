@@ -72,6 +72,7 @@ var fallbackSchema = detailSchema{allow: []string{
 var detailSchemas = map[string]detailSchema{
 	event.LoginSuccess: {allow: []string{"user_id", "username", "tenant_id", "auth_type", "ip", "user_agent", "session_id"}},
 	event.LoginFailed:  {allow: []string{"username", "tenant_id", "reason", "auth_type", "ip", "user_agent"}},
+	event.LoginRisk:    {allow: []string{"user_id", "tenant_id", "ip", "user_agent", "reasons"}},
 	event.Logout:       {allow: []string{"user_id", "tenant_id", "session_id", "ip", "user_agent"}},
 
 	event.UserCreated:         {allow: []string{"user_id", "tenant_id", "username", "email", "display_name", "actor_id"}},
@@ -99,6 +100,26 @@ var detailSchemas = map[string]detailSchema{
 	event.GroupDeleted:       {allow: []string{"group_id", "tenant_id", "name", "actor_id"}},
 	event.GroupMemberAdded:   {allow: []string{"group_id", "tenant_id", "user_id"}},
 	event.GroupMemberRemoved: {allow: []string{"group_id", "tenant_id", "user_id"}},
+
+	event.TenantCreated: {allow: []string{"id", "tenant_id", "name", "code", "actor_id"}},
+	event.TenantUpdated: {allow: []string{"id", "tenant_id", "name", "fields", "actor_id"}},
+	event.TenantDeleted: {allow: []string{"id", "tenant_id", "name", "code", "actor_id"}},
+
+	event.IDPCreated: {allow: []string{"id", "tenant_id", "name", "type", "protocol", "actor_id"}},
+	event.IDPUpdated: {allow: []string{"id", "tenant_id", "name", "fields", "actor_id"}},
+	event.IDPDeleted: {allow: []string{"id", "tenant_id", "name", "type", "actor_id"}},
+
+	event.AppGroupCreated:       {allow: []string{"id", "tenant_id", "name", "code", "actor_id"}},
+	event.AppGroupUpdated:       {allow: []string{"id", "tenant_id", "name", "fields", "actor_id"}},
+	event.AppGroupDeleted:       {allow: []string{"id", "tenant_id", "name", "actor_id"}},
+	event.AppGroupMemberAdded:   {allow: []string{"id", "tenant_id", "app_id"}},
+	event.AppGroupMemberRemoved: {allow: []string{"id", "tenant_id", "app_id"}},
+
+	event.SettingsUpdated: {allow: []string{"section", "tenant_id", "fields", "actor_id"}},
+
+	event.ProfileUpdated:  {allow: []string{"user_id", "tenant_id", "fields"}},
+	event.APITokenCreated: {allow: []string{"user_id", "tenant_id", "token_id", "name", "scopes"}},
+	event.APITokenRevoked: {allow: []string{"user_id", "tenant_id", "token_id"}},
 
 	event.SessionKicked: {allow: []string{"user_id", "session_id", "tenant_id", "actor_id"}},
 	event.MFAEnabled:    {allow: []string{"user_id", "tenant_id", "type"}},

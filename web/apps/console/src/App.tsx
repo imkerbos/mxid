@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore, authApi, useBootstrap } from '@mxid/shared'
 import MainLayout from './components/layout/MainLayout'
+import StepUpModal from './components/StepUpModal'
 import LoginPage from './pages/login'
 import DashboardPage from './pages/dashboard'
 import UsersPage from './pages/users'
@@ -24,6 +25,8 @@ import {
   ProtocolDefaultsPage,
   SMSPage,
   AuditPolicyPage,
+  MFAPolicyPage,
+  ConditionalAccessPage,
   LocalizationPage,
   LicensePage,
   MailTemplatesPage,
@@ -36,10 +39,21 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate()
 
   useEffect(() => {
-    authApi.me().then(setUser).catch(() => {
-      clear()
-      navigate('/login', { replace: true })
-    })
+    // Bootstrap: if there's no console session yet, try the silent SSO bridge
+    // once (derives a console session from an existing portal/SSO session)
+    // before falling back to the login form. skipAuthEvent keeps the probe's
+    // 401 from racing the global mxid:unauthorized redirect.
+    authApi.me({ skipAuthEvent: true })
+      .then(setUser)
+      .catch(() =>
+        authApi.sso()
+          .then(() => authApi.me({ skipAuthEvent: true }))
+          .then(setUser)
+          .catch(() => {
+            clear()
+            navigate('/login', { replace: true })
+          }),
+      )
   }, [])
 
   useEffect(() => {
@@ -77,6 +91,7 @@ export default function App() {
         element={
           <AuthGuard>
             <MainLayout>
+              <StepUpModal />
               <Routes>
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 <Route path="/dashboard" element={<DashboardPage />} />
@@ -97,6 +112,8 @@ export default function App() {
                   <Route path="mail/templates" element={<MailTemplatesPage />} />
                   <Route path="sms" element={<SMSPage />} />
                   <Route path="security" element={<SecurityPage />} />
+                  <Route path="mfa" element={<MFAPolicyPage />} />
+                  <Route path="conditional-access" element={<ConditionalAccessPage />} />
                   <Route path="login-methods" element={<LoginMethodsPage />} />
                   <Route path="protocol-defaults" element={<ProtocolDefaultsPage />} />
                   <Route path="branding" element={<BrandingPage />} />

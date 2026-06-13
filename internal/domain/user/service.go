@@ -10,26 +10,27 @@ import (
 	"github.com/imkerbos/mxid/pkg/crypto"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/snowflake"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
 // Service errors.
 var (
-	ErrUserNotFound      = errors.New("user not found")
-	ErrUsernameExists    = errors.New("username already exists")
-	ErrEmailExists       = errors.New("email already exists")
-	ErrPhoneExists       = errors.New("phone already exists")
-	ErrInvalidPassword   = errors.New("invalid password")
-	ErrPasswordReused    = errors.New("password has been used recently")
+	ErrUserNotFound    = errors.New("user not found")
+	ErrUsernameExists  = errors.New("username already exists")
+	ErrEmailExists     = errors.New("email already exists")
+	ErrPhoneExists     = errors.New("phone already exists")
+	ErrInvalidPassword = errors.New("invalid password")
+	ErrPasswordReused  = errors.New("password has been used recently")
 	// ErrLicenseQuotaExceeded — admin tried to create a user beyond the
 	// license MaxUsers limit. Maps to HTTP 402 / 403 at the handler.
 	ErrLicenseQuotaExceeded = errors.New("license user quota exceeded")
-	ErrWeakPassword      = errors.New("password does not meet complexity policy")
-	ErrDetailNotFound    = errors.New("user detail not found")
-	ErrIdentityNotFound  = errors.New("user identity not found")
+	ErrWeakPassword         = errors.New("password does not meet complexity policy")
+	ErrDetailNotFound       = errors.New("user detail not found")
+	ErrIdentityNotFound     = errors.New("user identity not found")
 	// ErrLastSuperAdmin blocks revoking the only remaining super_admin
 	// of a tenant — without it the tenant becomes unmanageable.
-	ErrLastSuperAdmin    = errors.New("cannot revoke the last super admin of the tenant")
+	ErrLastSuperAdmin = errors.New("cannot revoke the last super admin of the tenant")
 )
 
 // PasswordPolicy is the runtime view user.Service uses for validation.
@@ -67,6 +68,7 @@ type Service struct {
 	clearMFALockout func(ctx context.Context, userID int64)
 	pwdPolicy       PasswordPolicyProvider
 	licenseQuota    LicenseQuotaCheck
+	totpReplayRDB   *redis.Client
 }
 
 // SetLicenseQuotaCheck wires the runtime license-quota lookup. Called by
@@ -601,8 +603,27 @@ func (s *Service) ResetPassword(ctx context.Context, id int64, req *ResetPasswor
 	return nil
 }
 
+// requireUser fetches the parent user via the tenant-scoped repo so the
+// tenantscope plugin appends tenant_id=?. A cross-tenant userID resolves to
+// ErrRecordNotFound, which we surface as ErrUserNotFound. This is the
+// parent-ownership guard the tenant-less child tables (mxid_user_detail,
+// mxid_user_mfa, mxid_user_mfa_backup_code) rely on, since the column plugin
+// cannot filter them directly.
+func (s *Service) requireUser(ctx context.Context, userID int64) error {
+	if _, err := s.repo.GetByID(ctx, userID); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrUserNotFound
+		}
+		return fmt.Errorf("get user: %w", err)
+	}
+	return nil
+}
+
 // GetDetail retrieves a user's detail record.
 func (s *Service) GetDetail(ctx context.Context, userID int64) (*UserDetail, error) {
+	if err := s.requireUser(ctx, userID); err != nil {
+		return nil, err
+	}
 	detail, err := s.repo.GetDetailByUserID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -810,6 +831,9 @@ func (s *Service) BatchAction(ctx context.Context, ids []int64, action BatchActi
 // DeleteMFA force-removes an MFA factor for a user. Admin operation; bypasses
 // the self-service flow that requires the user to verify a code first.
 func (s *Service) DeleteMFA(ctx context.Context, userID int64, mfaType string) error {
+	if err := s.requireUser(ctx, userID); err != nil {
+		return err
+	}
 	if err := s.repo.DeleteMFA(ctx, userID, mfaType); err != nil {
 		return fmt.Errorf("delete mfa: %w", err)
 	}
@@ -846,6 +870,9 @@ func (s *Service) ListIdentities(ctx context.Context, userID int64) ([]*UserIden
 //
 // Returns an empty (non-nil) slice when the user has not enrolled any factor.
 func (s *Service) ListMFA(ctx context.Context, userID int64) ([]*UserMFA, error) {
+	if err := s.requireUser(ctx, userID); err != nil {
+		return nil, err
+	}
 	mfas, err := s.repo.ListMFA(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list mfa: %w", err)

@@ -44,7 +44,15 @@ type EmailVerifyHandler struct {
 	publicURL  string // PortalURL — used to build the click-back link.
 	mailer     *mailer.Mailer
 	defaultTID int64
+	// devFallback gates the dev_link response field + link Info log on
+	// non-release mode. In release the verification link is never returned
+	// in the HTTP body and never logged.
+	devFallback bool
 }
+
+// SetDevFallback toggles the non-release dev_link exposure. Kept as a setter
+// so the positional constructor signature stays stable.
+func (h *EmailVerifyHandler) SetDevFallback(on bool) { h.devFallback = on }
 
 // NewEmailVerifyHandler builds the email-verification handler. Exported
 // so main.go can mount it on the console route group too.
@@ -118,19 +126,28 @@ func (h *EmailVerifyHandler) sendVerification(c *gin.Context) {
 		} else {
 			h.logger.Warn("smtp send failed, falling back to dev_link",
 				zap.Error(err), zap.String("email", email))
-			devLink = link
+			if h.devFallback {
+				devLink = link
+			}
 		}
-	} else {
+	} else if h.devFallback {
 		devLink = link
 	}
 
 	if !smtpOK {
-		h.logger.Info("email verification link (no SMTP / fallback)",
-			zap.Int64("user_id", userID),
-			zap.String("email", email),
-			zap.String("link", link),
-			zap.Int("ttl_seconds", emailVerifyTTL),
-		)
+		if h.devFallback {
+			h.logger.Info("email verification link (no SMTP / fallback)",
+				zap.Int64("user_id", userID),
+				zap.String("email", email),
+				zap.String("link", link),
+				zap.Int("ttl_seconds", emailVerifyTTL),
+			)
+		} else {
+			// Release mode: never leak the verification link into the
+			// response body or logs.
+			h.logger.Warn("email verification send failed (no dev fallback in release)",
+				zap.Int64("user_id", userID))
+		}
 	}
 
 	response.OK(c, gin.H{

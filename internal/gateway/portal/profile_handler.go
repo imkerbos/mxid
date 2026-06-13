@@ -3,6 +3,7 @@ package portal
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/authn"
+	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/response"
 )
 
@@ -26,12 +27,26 @@ type UpdateAvatarRequest struct {
 // ProfileHandler serves portal profile endpoints.
 type ProfileHandler struct {
 	userQuerier UserQuerier
+	bus         *event.Bus
 }
 
 // NewProfileHandler builds a profile handler. Used by cmd/server/main.go
 // to mount /profile on both portal and console route groups.
-func NewProfileHandler(user UserQuerier) *ProfileHandler {
-	return &ProfileHandler{userQuerier: user}
+func NewProfileHandler(user UserQuerier, bus *event.Bus) *ProfileHandler {
+	return &ProfileHandler{userQuerier: user, bus: bus}
+}
+
+// publish emits a profile change event. Actor / IP are denormalized downstream
+// from the request-scoped auditctx.
+func (h *ProfileHandler) publish(c *gin.Context, fields []string) {
+	if h.bus == nil {
+		return
+	}
+	userID, _ := authn.GetUserID(c)
+	h.bus.Publish(c.Request.Context(), event.Event{
+		Type:    event.ProfileUpdated,
+		Payload: map[string]any{"user_id": userID, "fields": fields},
+	})
 }
 
 // RegisterProfileRoutes mounts /profile + /profile/avatar onto rg. Public
@@ -97,6 +112,7 @@ func (h *ProfileHandler) updateProfile(c *gin.Context) {
 		return
 	}
 
+	h.publish(c, []string{"display_name", "phone", "email"})
 	response.OK(c, nil)
 }
 
@@ -119,5 +135,6 @@ func (h *ProfileHandler) updateAvatar(c *gin.Context) {
 		return
 	}
 
+	h.publish(c, []string{"avatar"})
 	response.OK(c, nil)
 }

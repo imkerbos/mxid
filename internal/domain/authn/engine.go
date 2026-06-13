@@ -9,8 +9,10 @@ import (
 
 	"github.com/imkerbos/mxid/internal/bootstrap"
 	"github.com/imkerbos/mxid/pkg/event"
+	"github.com/imkerbos/mxid/pkg/ratelimit"
 	"github.com/imkerbos/mxid/pkg/session"
 	"github.com/imkerbos/mxid/pkg/snowflake"
+	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -34,6 +36,7 @@ var (
 //     /auth/mfa/verify together with the TOTP code.
 type LoginResponse struct {
 	UserID      int64    `json:"user_id,string,omitempty"`
+	TenantID    int64    `json:"tenant_id,string,omitempty"`
 	Username    string   `json:"username,omitempty"`
 	DisplayName string   `json:"display_name,omitempty"`
 	SessionID   string   `json:"session_id,omitempty"`
@@ -81,7 +84,13 @@ type Engine struct {
 	mfaVerifier    MFAVerifier
 	mfaRateLimiter *MFARateLimiter
 	loginRecorder  LoginRecorder
+	loginLimiter   *ratelimit.Limiter
 }
+
+// SetLoginLimiter wires the brute-force limiter that backs the password
+// login path (per-IP + per-user). When nil the engine falls back to its
+// legacy per-user Redis counter (tests without redis). Called by main.go.
+func (e *Engine) SetLoginLimiter(l *ratelimit.Limiter) { e.loginLimiter = l }
 
 // SetLoginPolicyProvider injects the runtime policy lookup. Called by
 // main.go after the setting service is built; nil keeps engine on YAML.
@@ -139,6 +148,24 @@ func (e *Engine) Login(ctx context.Context, req *AuthRequest, namespace string) 
 		return nil, ErrUnknownProvider
 	}
 
+	// Login runs BEFORE any session exists, so the request context carries no
+	// tenant scope. The target tenant is resolved explicitly upstream
+	// (effectiveTenant -> req.TenantID); pin it onto the context so the gorm
+	// tenant-isolation plugin can scope the user lookups (GetByUsername/Email/
+	// Phone) instead of failing closed.
+	if req.TenantID > 0 {
+		ctx = tenantscope.WithTenant(ctx, req.TenantID)
+	}
+
+	// Brute-force gate (pre-auth, IP-scoped): if this client IP has already
+	// tripped the limiter, reject before spending a bcrypt compare. The
+	// per-user dimension is checked post-auth (we don't know the userID yet
+	// for a username that may not exist — keeping the pre-auth check IP-only
+	// also avoids leaking which usernames are locked).
+	if err := e.checkLoginLock(ctx, 0, req.ClientIP); err != nil {
+		return nil, err
+	}
+
 	result, err := provider.Authenticate(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("authenticate: %w", err)
@@ -166,9 +193,10 @@ func (e *Engine) Login(ctx context.Context, req *AuthRequest, namespace string) 
 		return nil, ErrMFARequired
 
 	case AuthSuccess:
-		// Clear failure count
+		// Clear failure count (both per-user and per-IP) so a legitimate
+		// login relieves the brute-force budget it may have nudged via typos.
 		if result.UserID > 0 {
-			e.clearFailureCount(ctx, result.UserID)
+			e.clearFailureCountIP(ctx, result.UserID, req.ClientIP)
 		}
 
 		// MFA gate: if the user has a verified TOTP factor, password-success
@@ -196,6 +224,7 @@ func (e *Engine) Login(ctx context.Context, req *AuthRequest, namespace string) 
 				}
 				return &LoginResponse{
 					UserID:      result.UserID,
+					TenantID:    req.TenantID,
 					Username:    result.Username,
 					DisplayName: result.DisplayName,
 					MFARequired: true,
@@ -235,6 +264,7 @@ func (e *Engine) completeLogin(ctx context.Context, namespace string, req *AuthR
 
 	return &LoginResponse{
 		UserID:      result.UserID,
+		TenantID:    req.TenantID,
 		Username:    result.Username,
 		DisplayName: result.DisplayName,
 		SessionID:   sess.ID,
@@ -251,6 +281,42 @@ func (e *Engine) completeLogin(ctx context.Context, namespace string, req *AuthR
 // reused for the session record, NOT the values from the MFA-verify request.
 // Rationale: the session belongs to the device that started the login —
 // consistent audit signals matter more here than the transport endpoint.
+// HasMFA reports whether the user has a verified MFA factor enrolled. Used by
+// step-up enforcement to choose between challenging an enrolled user and
+// demanding enrollment from one who has none.
+func (e *Engine) HasMFA(ctx context.Context, userID int64) (bool, error) {
+	if e.mfaVerifier == nil {
+		return false, nil
+	}
+	return e.mfaVerifier.HasVerifiedTOTP(ctx, userID)
+}
+
+// VerifyStepUp validates a TOTP (or backup) code for an ALREADY-authenticated
+// user performing a high-risk operation. Unlike VerifyMFAChallenge there is no
+// login challenge token — the caller already holds a live session. Rate-limited
+// per user+IP. Returns nil on success, ErrMFAVerifyFailed on a bad code,
+// ErrMFANotConfigured / ErrMFARateLimited otherwise.
+func (e *Engine) VerifyStepUp(ctx context.Context, userID int64, clientIP, code string) error {
+	if e.mfaVerifier == nil {
+		return ErrMFANotConfigured
+	}
+	if err := e.mfaRateLimiter.Check(ctx, userID, clientIP); err != nil {
+		return err
+	}
+	verifyErr := e.mfaVerifier.VerifyTOTP(ctx, userID, code)
+	if verifyErr != nil && looksLikeBackupCode(code) {
+		if err := e.mfaVerifier.ConsumeBackupCode(ctx, userID, code); err == nil {
+			verifyErr = nil
+		}
+	}
+	if verifyErr != nil {
+		e.mfaRateLimiter.RecordFailure(ctx, userID, clientIP)
+		return ErrMFAVerifyFailed
+	}
+	e.mfaRateLimiter.Reset(ctx, userID, clientIP)
+	return nil
+}
+
 func (e *Engine) VerifyMFAChallenge(ctx context.Context, challenge, code string) (*LoginResponse, error) {
 	if e.mfaVerifier == nil {
 		return nil, ErrMFANotConfigured
@@ -258,6 +324,12 @@ func (e *Engine) VerifyMFAChallenge(ctx context.Context, challenge, code string)
 	payload, err := e.consumeMFAChallenge(ctx, challenge)
 	if err != nil {
 		return nil, err
+	}
+
+	// Second-factor verification also runs pre-session; pin the challenge's
+	// tenant so downstream user/MFA repo reads are tenant-scoped.
+	if payload.TenantID > 0 {
+		ctx = tenantscope.WithTenant(ctx, payload.TenantID)
 	}
 
 	if err := e.mfaRateLimiter.Check(ctx, payload.UserID, payload.ClientIP); err != nil {
@@ -331,8 +403,10 @@ func (e *Engine) VerifyMFAChallenge(ctx context.Context, challenge, code string)
 	return e.completeLogin(ctx, payload.Namespace, authReq, result, "mfa")
 }
 
-// Logout deletes a session.
-func (e *Engine) Logout(ctx context.Context, namespace, sessionID string, userID int64) error {
+// Logout deletes a session. meta carries the request context (ip, user agent,
+// tenant) so the audit row is complete — without it the logout event records
+// only a user_id and the console shows blank actor / IP columns.
+func (e *Engine) Logout(ctx context.Context, namespace, sessionID string, userID int64, meta LogoutMeta) error {
 	if err := e.sessionMgr.Delete(ctx, namespace, sessionID); err != nil {
 		return fmt.Errorf("delete session: %w", err)
 	}
@@ -342,10 +416,20 @@ func (e *Engine) Logout(ctx context.Context, namespace, sessionID string, userID
 		Payload: map[string]any{
 			"user_id":    userID,
 			"session_id": sessionID,
+			"tenant_id":  meta.TenantID,
+			"ip":         meta.IP,
+			"user_agent": meta.UserAgent,
 		},
 	})
 
 	return nil
+}
+
+// LogoutMeta carries request-scoped context for the logout audit row.
+type LogoutMeta struct {
+	TenantID  int64
+	IP        string
+	UserAgent string
 }
 
 // GetSession retrieves and validates a session.
@@ -365,40 +449,78 @@ func (e *Engine) GetCurrentUser(ctx context.Context, userID int64) (*UserInfo, e
 	return e.userRepo.GetByID(ctx, userID)
 }
 
-// failCountKey returns the Redis key for tracking login failures.
+// failCountKey returns the legacy Redis key for tracking login failures.
+// Retained for the fallback path when no loginLimiter is wired (tests).
 func (e *Engine) failCountKey(userID int64) string {
 	return "mxid:login_fail:" + strconv.FormatInt(userID, 10)
 }
 
-// trackFailure increments the failure counter and locks the account if the threshold is reached.
+// loginIdentifiers builds the per-user and per-IP identifiers the brute-force
+// limiter keys on. Empty parts are omitted so a missing IP (test) or pre-auth
+// userID=0 simply narrows the scope rather than poisoning a shared key.
+func loginIdentifiers(userID int64, clientIP string) []string {
+	ids := make([]string, 0, 2)
+	if userID > 0 {
+		ids = append(ids, "u:"+strconv.FormatInt(userID, 10))
+	}
+	if clientIP != "" {
+		ids = append(ids, "ip:"+clientIP)
+	}
+	return ids
+}
+
+// checkLoginLock reports whether the (user, ip) pair is currently locked by
+// the brute-force limiter, returning ErrAccountLocked (with the limiter's
+// RateLimitError as cause, so the handler can surface Retry-After). userID may
+// be 0 pre-auth (IP-only check). nil limiter = no lock (legacy path).
+func (e *Engine) checkLoginLock(ctx context.Context, userID int64, clientIP string) error {
+	if e.loginLimiter == nil {
+		return nil
+	}
+	ids := loginIdentifiers(userID, clientIP)
+	if len(ids) == 0 {
+		return nil
+	}
+	if err := e.loginLimiter.CheckMany(ctx, ids...); err != nil {
+		return fmt.Errorf("%w: %w", ErrAccountLocked, err)
+	}
+	return nil
+}
+
+// LoginFailureCount returns the current brute-force failure count for the
+// given IP (and optionally user). Used by the handler to enforce
+// CaptchaAfterFailures: captcha is demanded only once an identifier has
+// crossed the policy threshold. Returns 0 when no limiter is wired.
+func (e *Engine) LoginFailureCount(ctx context.Context, clientIP string) int {
+	if e.loginLimiter == nil {
+		return 0
+	}
+	return e.loginLimiter.FailureCount(ctx, "ip:"+clientIP)
+}
+
+// trackFailure records a failed login against the brute-force limiter
+// (per-user + per-IP, auto-expiring lock) and emits UserLocked when the
+// threshold is crossed. It NO LONGER flips mxid_user.status — that permanent
+// DB lock is reserved for admin LockUser. The Redis lock self-heals when its
+// TTL elapses, so a brute-forced victim is not stranded until an admin
+// intervenes, while the per-IP dimension also throttles a scripted scan.
 func (e *Engine) trackFailure(ctx context.Context, userID int64, req *AuthRequest) {
-	key := e.failCountKey(userID)
-	count, err := e.rdb.Incr(ctx, key).Result()
-	if err != nil {
+	if e.loginLimiter == nil {
+		// Legacy fallback (no limiter wired, e.g. tests): keep a per-user
+		// counter but DO NOT flip account status — auto-lock is Redis-only now.
+		e.trackFailureLegacy(ctx, userID, req)
 		return
 	}
-
-	// Runtime policy from DB (with YAML fallback) so admins can tune
-	// these without a restart.
-	maxAttempts := e.loginConfig.MaxFailedAttempts
-	lockout := e.loginConfig.LockoutDuration
-	if e.loginPolicy != nil {
-		if m, d := e.loginPolicy(ctx, req.TenantID); m > 0 {
-			maxAttempts = m
-			lockout = d
-		}
+	ids := loginIdentifiers(userID, req.ClientIP)
+	if len(ids) == 0 {
+		return
 	}
-
-	// Set TTL on first failure
-	if count == 1 {
-		e.rdb.Expire(ctx, key, lockout)
-	}
-
-	maxAttemptsI64 := int64(maxAttempts)
-	if maxAttemptsI64 > 0 && count >= maxAttemptsI64 {
-		// Lock the account
-		_ = e.userRepo.UpdateStatus(ctx, userID, 2) // StatusLocked = 2
-
+	// Read the pre-increment lock state so we only emit UserLocked on the
+	// transition (this failure is the one that trips it), not on every
+	// subsequent attempt while already locked.
+	alreadyLocked := e.loginLimiter.CheckMany(ctx, ids...) != nil
+	tripped := e.loginLimiter.RecordFailureMany(ctx, ids...)
+	if tripped != nil && !alreadyLocked {
 		e.eventBus.Publish(ctx, event.Event{
 			Type: event.UserLocked,
 			Payload: map[string]any{
@@ -410,9 +532,59 @@ func (e *Engine) trackFailure(ctx context.Context, userID int64, req *AuthReques
 	}
 }
 
-// clearFailureCount removes the failure counter after a successful login.
+// trackFailureLegacy is the pre-limiter per-user counter, kept for the
+// no-redis-limiter path. It records the failure and emits UserLocked at the
+// threshold but never touches mxid_user.status (no permanent auto-lock).
+func (e *Engine) trackFailureLegacy(ctx context.Context, userID int64, req *AuthRequest) {
+	if e.rdb == nil {
+		return
+	}
+	key := e.failCountKey(userID)
+	count, err := e.rdb.Incr(ctx, key).Result()
+	if err != nil {
+		return
+	}
+	maxAttempts := e.loginConfig.MaxFailedAttempts
+	lockout := e.loginConfig.LockoutDuration
+	if e.loginPolicy != nil {
+		if m, d := e.loginPolicy(ctx, req.TenantID); m > 0 {
+			maxAttempts = m
+			lockout = d
+		}
+	}
+	if count == 1 {
+		e.rdb.Expire(ctx, key, lockout)
+	}
+	maxAttemptsI64 := int64(maxAttempts)
+	if maxAttemptsI64 > 0 && count == maxAttemptsI64 {
+		e.eventBus.Publish(ctx, event.Event{
+			Type: event.UserLocked,
+			Payload: map[string]any{
+				"user_id": userID,
+				"reason":  "max_failed_attempts",
+				"ip":      req.ClientIP,
+			},
+		})
+	}
+}
+
+// clearFailureCount removes all brute-force failure state after a successful
+// login — both the new limiter keys (per-user + per-IP) and the legacy
+// per-user counter.
 func (e *Engine) clearFailureCount(ctx context.Context, userID int64) {
-	e.rdb.Del(ctx, e.failCountKey(userID))
+	e.clearFailureCountIP(ctx, userID, "")
+}
+
+// clearFailureCountIP clears the limiter keys for the user AND the supplied IP
+// (so a legitimate login also relieves the per-IP budget), plus the legacy
+// per-user counter.
+func (e *Engine) clearFailureCountIP(ctx context.Context, userID int64, clientIP string) {
+	if e.loginLimiter != nil {
+		e.loginLimiter.ResetMany(ctx, loginIdentifiers(userID, clientIP)...)
+	}
+	if e.rdb != nil {
+		e.rdb.Del(ctx, e.failCountKey(userID))
+	}
 }
 
 // publishLoginEvent emits a login success or failure event AND persists a

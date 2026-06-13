@@ -18,24 +18,82 @@ var (
 	ErrSystemRoleDelete   = errors.New("cannot delete system role")
 	ErrMemberNotFound     = errors.New("member not found")
 	ErrPermissionNotFound = errors.New("permission not found")
+	// ErrSubjectNotInTenant is returned when AddMember is asked to bind a
+	// subject (user/group/org) that does not exist in the caller's tenant —
+	// including a cross-tenant id, which the injected validator (tenant-scoped
+	// repo) reports as absent. Blocks the residual referenced-entity IDOR where
+	// an admin binds a foreign-tenant subject to their own role.
+	ErrSubjectNotInTenant = errors.New("subject not found in tenant")
+	// ErrScopeNotInTenant is the same guard for the optional binding scope
+	// (org/group) target.
+	ErrScopeNotInTenant = errors.New("scope not found in tenant")
 )
+
+// EntityValidator reports whether a referenced entity id exists within the
+// caller's tenant. Backed by the referent's tenant-scoped GetByID (the
+// tenantscope plugin appends tenant_id=?, so a cross-tenant id resolves to
+// false). Injected so the permission service does not import user/group/org.
+type EntityValidator func(ctx context.Context, id int64) (bool, error)
+
+// RefValidators bundles the per-type tenant-scoped existence checks the
+// binding-subject / scope guards need. Each may be nil only if the
+// corresponding type can never be referenced.
+type RefValidators struct {
+	User  EntityValidator
+	Group EntityValidator
+	Org   EntityValidator
+}
 
 // Event type constants.
 const (
-	RoleCreated           = "role.created"
-	RoleUpdated           = "role.updated"
-	RoleDeleted           = "role.deleted"
-	RolePermissionsSet    = "role.permissions_set"
-	RoleMemberAdded       = "role.member_added"
-	RoleMemberRemoved     = "role.member_removed"
+	RoleCreated        = "role.created"
+	RoleUpdated        = "role.updated"
+	RoleDeleted        = "role.deleted"
+	RolePermissionsSet = "role.permissions_set"
+	RoleMemberAdded    = "role.member_added"
+	RoleMemberRemoved  = "role.member_removed"
 )
 
 // Service provides business logic for permission management.
 type Service struct {
-	repo     Repository
-	idGen    *snowflake.Generator
-	eventBus *event.Bus
-	tenantID int64
+	repo       Repository
+	idGen      *snowflake.Generator
+	eventBus   *event.Bus
+	tenantID   int64
+	validators RefValidators
+}
+
+// SetRefValidators injects the tenant-scoped subject/scope existence checks
+// used by AddMember to validate request-body subject and scope ids. Wired in
+// cmd/server/main.go once the user/group/org modules exist.
+func (s *Service) SetRefValidators(v RefValidators) { s.validators = v }
+
+// validateRef runs the tenant-scoped existence check for refType (user/group/
+// org). A cross-tenant id resolves to false → notFoundErr. Fails closed if the
+// matching validator was not wired.
+func (s *Service) validateRef(ctx context.Context, refType string, id int64, notFoundErr error) error {
+	var v EntityValidator
+	switch refType {
+	case SubjectTypeUser:
+		v = s.validators.User
+	case SubjectTypeGroup: // == ScopeTypeGroup
+		v = s.validators.Group
+	case SubjectTypeOrg: // == ScopeTypeOrg
+		v = s.validators.Org
+	default:
+		return fmt.Errorf("permission: unknown ref type %q", refType)
+	}
+	if v == nil {
+		return fmt.Errorf("permission: validator for %q not configured", refType)
+	}
+	ok, err := v(ctx, id)
+	if err != nil {
+		return fmt.Errorf("validate %s: %w", refType, err)
+	}
+	if !ok {
+		return notFoundErr
+	}
+	return nil
 }
 
 // NewService creates a new permission service.
@@ -260,6 +318,19 @@ func (s *Service) AddMember(ctx context.Context, roleID int64, req *AddMemberReq
 	// scope_type and scope_id must come together.
 	if (req.ScopeType != nil) != (req.ScopeID != nil) {
 		return nil, fmt.Errorf("scope_type and scope_id must be set together")
+	}
+
+	// Referenced-entity guard: the subject (and optional scope) ids come from
+	// the request body. Validate each against the caller's tenant so a foreign
+	// subject/scope cannot be bound to a role the caller owns. A cross-tenant id
+	// resolves to not-found via the tenant-scoped validator.
+	if err := s.validateRef(ctx, req.SubjectType, req.SubjectID, ErrSubjectNotInTenant); err != nil {
+		return nil, err
+	}
+	if req.ScopeType != nil {
+		if err := s.validateRef(ctx, *req.ScopeType, *req.ScopeID, ErrScopeNotInTenant); err != nil {
+			return nil, err
+		}
 	}
 
 	binding := &RoleBinding{

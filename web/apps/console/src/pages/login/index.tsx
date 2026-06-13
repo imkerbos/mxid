@@ -1,9 +1,29 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { authApi, useAuthStore, useBootstrap, useTranslation } from '@mxid/shared'
+import { authApi, externalIdpApi, ExternalIdpButtons, useAuthStore, useBootstrap, useTranslation } from '@mxid/shared'
+import type { PublicIDP } from '@mxid/shared'
 import { Eye, EyeOff, Loader2, RefreshCw } from 'lucide-react'
 import logo from '../../assets/logo.png'
+
+// loginErrorMessage maps the backend error code to a specific, localized
+// message so the user knows whether it was the captcha or the credentials —
+// not a bare "Request failed with status code 400".
+function loginErrorMessage(err: unknown, t: (k: string) => string): string {
+  const e = err as { code?: number; response?: { data?: { code?: number; message?: string } } }
+  const code = e?.response?.data?.code ?? e?.code
+  switch (code) {
+    case 40003: // captcha required
+    case 40004: // invalid captcha
+      return t('login.invalidCaptcha')
+    case 40101: // invalid credentials
+      return t('login.invalidCredentials')
+    case 40102: // invalid mfa code
+      return t('login.invalidMfaCode')
+    default:
+      return e?.response?.data?.message || t('login.failedRetry')
+  }
+}
 
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -24,6 +44,23 @@ export default function LoginPage() {
   // MFA challenge state — set when /auth/login returns mfa_required.
   const [mfaChallenge, setMfaChallenge] = useState('')
   const [mfaCode, setMfaCode] = useState('')
+
+  // External IdPs (admin SSO). The OAuth dance lands a console session but is
+  // admin-gated server-side; the built-in admin is rejected and must use the
+  // password form. Empty array = no buttons rendered.
+  const [idps, setIdps] = useState<PublicIDP[]>([])
+  useEffect(() => {
+    externalIdpApi.consoleListPublic().then(setIdps).catch(() => {})
+  }, [])
+
+  // Surface the reason when an external-IdP login bounced back (e.g. the user
+  // isn't authorized for the console, or is the built-in admin).
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search)
+    if (p.get('err') === 'external') {
+      setError(p.get('reason') || t('login.externalFailed'))
+    }
+  }, [t])
 
   const loadCaptcha = useCallback(async () => {
     try {
@@ -66,8 +103,7 @@ export default function LoginPage() {
       setUser(user)
       navigate('/dashboard', { replace: true })
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : t('login.failedRetry')
-      setError(msg)
+      setError(loginErrorMessage(err, t))
       loadCaptcha()
     } finally {
       setLoading(false)
@@ -85,9 +121,8 @@ export default function LoginPage() {
       setUser(user)
       navigate('/dashboard', { replace: true })
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : t('login.invalidPwd')
       // Challenge is single-use; on failure, restart from password.
-      setError(msg)
+      setError(loginErrorMessage(err, t))
       setMfaChallenge('')
       setMfaCode('')
       setPassword('')
@@ -294,9 +329,17 @@ export default function LoginPage() {
             </button>
           </form>
           ) : (
-            <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-3 text-sm text-yellow-200">
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-sm text-amber-200">
 {t('login.passwordDisabled')}
             </div>
+          )}
+
+          {!mfaChallenge && (
+            <ExternalIdpButtons
+              idps={idps}
+              hrefFor={(idp) => externalIdpApi.consoleStartURL(idp.code)}
+              dividerLabel={t('login.socialDivider')}
+            />
           )}
 
           <p className="mt-8 text-center text-xs text-white/55">

@@ -1,4 +1,4 @@
-export { client, createApiClient, portalClient, systemClient, getActiveTenantID, setActiveTenantID } from './client'
+export { client, createApiClient, portalClient, systemClient, getActiveTenantID, setActiveTenantID, setStepUpHandler, CODE_STEP_UP_REQUIRED, CODE_MFA_ENROLL_REQUIRED } from './client'
 export { authApi } from './auth'
 export { userApi } from './user'
 export { orgApi } from './org'
@@ -6,6 +6,8 @@ export { groupApi } from './group'
 export { appApi, appGroupApi } from './app'
 export { permissionApi } from './permission'
 export { auditApi } from './audit'
+export { dashboardApi } from './dashboard'
+export type { DashboardOverview, NameValue, TrendPoint, SecurityEvent } from './dashboard'
 export { portalApi } from './portal'
 export { consoleSecurityApi } from './console-security'
 export { bootstrapApi } from './bootstrap'
@@ -32,4 +34,5 @@ export type {
   MailSMTP, MailTemplate, MailTemplates,
   SecurityPolicy, Branding, LoginMethods,
   ProtocolDefaults, SMS, AuditPolicy, Localization, License, ExternalURLs,
+  MFAMode, MFAPolicy, ConditionalAccess,
 } from './settings'

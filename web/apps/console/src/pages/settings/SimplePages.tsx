@@ -16,12 +16,14 @@ import {
   type ProtocolDefaults,
   type SMS,
   type AuditPolicy,
+  type MFAPolicy,
+  type ConditionalAccess,
   type Localization,
   type License,
   type MailTemplates,
   type ExternalURLs,
 } from '@mxid/shared'
-import { Field, Input, Select, Textarea } from '../../components/ui'
+import { Field, Input, Select, Textarea, Button } from '../../components/ui'
 import { toast } from '../../components/ui/toast'
 
 type Row =
@@ -167,14 +169,9 @@ function GenericForm<T>({
         </div>
 
         <div className="mt-6 flex justify-end">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-60"
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          <Button onClick={handleSave} loading={saving} icon={<Save className="h-4 w-4" />}>
             {saving ? t('common.saving') : t('common.save')}
-          </button>
+          </Button>
         </div>
       </section>
     </div>
@@ -298,6 +295,48 @@ export function AuditPolicyPage() {
       ]}
       load={() => settingsApi.getAuditPolicy()}
       save={(v) => settingsApi.putAuditPolicy(v)}
+    />
+  )
+}
+
+export function MFAPolicyPage() {
+  const { t } = useTranslation()
+  return (
+    <GenericForm<MFAPolicy>
+      title={t('settings.mfa.title')}
+      desc={t('settings.mfa.desc')}
+      rows={[
+        {
+          kind: 'select', key: 'mode', label: t('settings.mfa.mode'),
+          options: [
+            { value: 'off', label: t('settings.mfa.modeOff') },
+            { value: 'admin_only', label: t('settings.mfa.modeAdminOnly') },
+            { value: 'all', label: t('settings.mfa.modeAll') },
+          ],
+        },
+        { kind: 'number', key: 'step_up_window_seconds', label: t('settings.mfa.window'), hint: t('settings.mfa.windowHint') },
+      ]}
+      load={() => settingsApi.getMFA()}
+      save={(v) => settingsApi.putMFA(v)}
+    />
+  )
+}
+
+export function ConditionalAccessPage() {
+  const { t } = useTranslation()
+  return (
+    <GenericForm<ConditionalAccess>
+      title={t('settings.conditionalAccess.title')}
+      desc={t('settings.conditionalAccess.desc')}
+      rows={[
+        { kind: 'bool', key: 'enabled', label: t('settings.conditionalAccess.enabled') },
+        { kind: 'bool', key: 'on_new_country', label: t('settings.conditionalAccess.onNewCountry') },
+        { kind: 'bool', key: 'on_impossible_travel', label: t('settings.conditionalAccess.onImpossibleTravel') },
+        { kind: 'bool', key: 'on_new_device', label: t('settings.conditionalAccess.onNewDevice') },
+        { kind: 'number', key: 'impossible_travel_window_minutes', label: t('settings.conditionalAccess.window'), hint: t('settings.conditionalAccess.windowHint') },
+      ]}
+      load={() => settingsApi.getConditionalAccess()}
+      save={(v) => settingsApi.putConditionalAccess(v)}
     />
   )
 }

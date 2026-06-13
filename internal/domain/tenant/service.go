@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/snowflake"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
@@ -25,12 +26,25 @@ type LicenseQuotaCheck func(ctx context.Context) error
 type Service struct {
 	repo         Repository
 	idGen        *snowflake.Generator
+	eventBus     *event.Bus
 	licenseQuota LicenseQuotaCheck
 }
 
 // NewService wires the service.
-func NewService(repo Repository, idGen *snowflake.Generator) *Service {
-	return &Service{repo: repo, idGen: idGen}
+func NewService(repo Repository, idGen *snowflake.Generator, eventBus *event.Bus) *Service {
+	return &Service{repo: repo, idGen: idGen, eventBus: eventBus}
+}
+
+// publish emits a tenant lifecycle event. Actor / IP are denormalized
+// downstream from the request-scoped auditctx.
+func (s *Service) publish(ctx context.Context, eventType string, t *Tenant) {
+	if s.eventBus == nil {
+		return
+	}
+	s.eventBus.Publish(ctx, event.Event{
+		Type:    eventType,
+		Payload: map[string]any{"id": t.ID, "name": t.Name, "code": t.Code},
+	})
 }
 
 // SetLicenseQuotaCheck wires the runtime tenant-quota lookup.
@@ -86,6 +100,7 @@ func (s *Service) Create(ctx context.Context, req *CreateRequest) (*Tenant, erro
 	if err := s.repo.Create(ctx, t); err != nil {
 		return nil, err
 	}
+	s.publish(ctx, event.TenantCreated, t)
 	return t, nil
 }
 
@@ -138,12 +153,26 @@ func (s *Service) Update(ctx context.Context, id int64, req *UpdateRequest) (*Te
 	if err := s.repo.Update(ctx, t); err != nil {
 		return nil, err
 	}
+	s.publish(ctx, event.TenantUpdated, t)
 	return t, nil
 }
 
 // Delete removes a tenant. id=1 (default) is protected at the repo layer.
 func (s *Service) Delete(ctx context.Context, id int64) error {
-	return s.repo.Delete(ctx, id)
+	// Load before delete so the audit event carries the tenant name/code.
+	// Already gone → idempotent success (preserves the prior no-op behavior).
+	t, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return err
+	}
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+	s.publish(ctx, event.TenantDeleted, t)
+	return nil
 }
 
 // List returns every tenant. super_admin only.

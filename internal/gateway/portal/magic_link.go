@@ -26,8 +26,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/authn"
 	"github.com/imkerbos/mxid/pkg/mailer"
+	"github.com/imkerbos/mxid/pkg/ratelimit"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/session"
+	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
@@ -55,6 +57,13 @@ type MagicLinkHandler struct {
 	tenantByCd TenantResolver
 	cookieDom  string
 	cookieSec  bool
+	// devFallback gates the dev_link response field + link Info log on
+	// non-release mode. In release the magic link is never returned or logged.
+	devFallback bool
+	// limiter throttles /auth/magic-link/send per email so an attacker can't
+	// email-bomb a victim (the send side previously had no throttle at all,
+	// unlike sms-otp's 60s cooldown). nil = no throttle.
+	limiter *ratelimit.Limiter
 }
 
 // MagicLinkHandlerOpts captures the dependency soup so call sites can pass
@@ -71,6 +80,11 @@ type MagicLinkHandlerOpts struct {
 	TenantByCode TenantResolver
 	CookieDomain string
 	CookieSecure bool
+	// DevFallback enables the non-release dev_link exposure. Set from
+	// cfg.Server.IsRelease() inverted at the call site.
+	DevFallback bool
+	// Limiter throttles send per email. nil disables throttling.
+	Limiter *ratelimit.Limiter
 }
 
 func NewMagicLinkHandler(o MagicLinkHandlerOpts) *MagicLinkHandler {
@@ -84,8 +98,10 @@ func NewMagicLinkHandler(o MagicLinkHandlerOpts) *MagicLinkHandler {
 		enabled:    o.Enabled,
 		defaultTID: o.DefaultTID,
 		tenantByCd: o.TenantByCode,
-		cookieDom:  o.CookieDomain,
-		cookieSec:  o.CookieSecure,
+		cookieDom:   o.CookieDomain,
+		cookieSec:   o.CookieSecure,
+		devFallback: o.DevFallback,
+		limiter:     o.Limiter,
 	}
 }
 
@@ -120,7 +136,26 @@ func (h *MagicLinkHandler) send(c *gin.Context) {
 	email := strings.TrimSpace(strings.ToLower(req.Email))
 	resp := magicSendResponse{Sent: true, TTLSeconds: magicLinkTTL}
 
+	// Per-email send throttle to stop email-bombing. Checked BEFORE the user
+	// lookup so existent and non-existent emails are throttled identically
+	// (no enumeration via differential throttling). Every send counts toward
+	// the budget; the limiter trips after MaxAttempts within Window.
+	if rle := rateLimited(c.Request.Context(), h.limiter, "mlink:"+email); rle != nil {
+		respondRateLimited(c, rle)
+		return
+	}
+	if rle := h.limiter.RecordFailure(c.Request.Context(), "mlink:"+email); rle != nil {
+		var rlErr *ratelimit.RateLimitError
+		if errors.As(rle, &rlErr) {
+			respondRateLimited(c, rlErr)
+			return
+		}
+	}
+
 	tenantID := h.resolveTenant(c.Request.Context(), req.Tenant)
+	// Pin the resolved tenant so the user lookup / read run tenant-scoped
+	// (public route, no AuthMiddleware to set the scope).
+	c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), tenantID))
 	userID, err := h.users.LookupByEmail(c.Request.Context(), tenantID, email)
 	if err != nil {
 		h.logger.Warn("magic link send: lookup failed", zap.String("email", email), zap.Error(err))
@@ -168,11 +203,16 @@ func (h *MagicLinkHandler) send(c *gin.Context) {
 		}
 	}
 	if !smtpOK {
-		resp.DevLink = link
-		h.logger.Info("magic link (no SMTP / fallback)",
-			zap.Int64("user_id", userID),
-			zap.String("email", email),
-			zap.String("link", link))
+		if h.devFallback {
+			resp.DevLink = link
+			h.logger.Info("magic link (no SMTP / fallback)",
+				zap.Int64("user_id", userID),
+				zap.String("email", email),
+				zap.String("link", link))
+		} else {
+			h.logger.Warn("magic link mail send failed (no dev fallback in release)",
+				zap.Int64("user_id", userID))
+		}
 	}
 	response.OK(c, resp)
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/imkerbos/mxid/pkg/crypto"
+	"github.com/imkerbos/mxid/pkg/event"
 	"gorm.io/gorm"
 )
 
@@ -22,10 +23,15 @@ import (
 type Service struct {
 	repo      Repository
 	masterKey *crypto.MasterKey
+	eventBus  *event.Bus
 
 	mu    sync.RWMutex
 	cache map[string]cacheEntry
 }
+
+// SetEventBus wires the event bus so settings changes emit a settings.updated
+// audit event. Optional — a nil bus disables the emission.
+func (s *Service) SetEventBus(bus *event.Bus) { s.eventBus = bus }
 
 type cacheEntry struct {
 	value     []byte
@@ -83,6 +89,17 @@ func (s *Service) Set(ctx context.Context, key string, tenantID int64, value any
 		return err
 	}
 	s.invalidate(key, tenantID)
+
+	// Emit a settings.updated audit event carrying which section changed.
+	// Actor / IP are denormalized downstream from the request-scoped auditctx;
+	// actor_id is also passed explicitly from the updatedBy argument.
+	if s.eventBus != nil {
+		payload := map[string]any{"section": key, "tenant_id": tenantID}
+		if updatedBy != nil {
+			payload["actor_id"] = *updatedBy
+		}
+		s.eventBus.Publish(ctx, event.Event{Type: event.SettingsUpdated, Payload: payload})
+	}
 	return nil
 }
 
@@ -240,7 +257,7 @@ func DefaultSecurityPolicy() SecurityPolicy {
 			MaxFailedAttempts: 5, LockoutMinutes: 15, CaptchaAfterFailures: 3,
 		},
 		Session: SessionPolicy{
-			IdleMinutes: 30, AbsoluteHours: 12, RememberMeHours: 168,
+			IdleMinutes: 480, AbsoluteHours: 24, RememberMeHours: 168,
 		},
 	}
 }
@@ -275,6 +292,18 @@ func DefaultLocalization() Localization {
 	return Localization{DefaultLanguage: "zh-CN", DefaultTimezone: "Asia/Shanghai"}
 }
 func DefaultLicense() License { return License{} }
+
+// DefaultMFAPolicy: off by default (opt-in so an upgrade never locks anyone
+// out) with a 30-minute step-up grace window.
+func DefaultMFAPolicy() MFAPolicy {
+	return MFAPolicy{Mode: MFAModeOff, StepUpWindowSeconds: 1800}
+}
+
+// DefaultConditionalAccess: disabled by default (opt-in); 60-minute
+// impossible-travel window.
+func DefaultConditionalAccess() ConditionalAccess {
+	return ConditionalAccess{ImpossibleTravelWindowMinutes: 60}
+}
 
 // DefaultExternalURLs returns empty values. Empty = fall through to
 // bootstrap.Config defaults in handlers.
@@ -330,6 +359,24 @@ func (s *Service) ExternalURLs(ctx context.Context, tenantID int64) (ExternalURL
 func (s *Service) AuditPolicy(ctx context.Context, tenantID int64) (AuditPolicy, error) {
 	v := DefaultAuditPolicy()
 	err := s.Get(ctx, KeyAuditPolicy, tenantID, &v)
+	if errors.Is(err, ErrNotFound) {
+		return v, nil
+	}
+	return v, err
+}
+
+func (s *Service) MFAPolicy(ctx context.Context, tenantID int64) (MFAPolicy, error) {
+	v := DefaultMFAPolicy()
+	err := s.Get(ctx, KeyMFAPolicy, tenantID, &v)
+	if errors.Is(err, ErrNotFound) {
+		return v, nil
+	}
+	return v, err
+}
+
+func (s *Service) ConditionalAccess(ctx context.Context, tenantID int64) (ConditionalAccess, error) {
+	v := DefaultConditionalAccess()
+	err := s.Get(ctx, KeyConditionalAccess, tenantID, &v)
 	if errors.Is(err, ErrNotFound) {
 		return v, nil
 	}

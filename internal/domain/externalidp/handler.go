@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/imkerbos/mxid/pkg/authz"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/tenantctx"
 )
@@ -29,12 +30,12 @@ func NewAdminHandler(svc *Service, tenantID int64) *AdminHandler {
 func (h *AdminHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	g := rg.Group("/external-idps")
 	{
-		g.GET("", h.List)
-		g.GET("/types", h.ListTypes)
-		g.POST("", h.Create)
-		g.GET("/:id", h.Get)
-		g.PUT("/:id", h.Update)
-		g.DELETE("/:id", h.Delete)
+		g.GET("", authz.Require("idp.read", nil), h.List)
+		g.GET("/types", authz.Require("idp.read", nil), h.ListTypes)
+		g.POST("", authz.Require("idp.create", nil), h.Create)
+		g.GET("/:id", authz.Require("idp.read", nil), h.Get)
+		g.PUT("/:id", authz.Require("idp.update", nil), h.Update)
+		g.DELETE("/:id", authz.Require("idp.delete", nil), h.Delete)
 	}
 }
 
@@ -44,7 +45,7 @@ func (h *AdminHandler) List(c *gin.Context) {
 		response.InternalError(c, "list idps: "+err.Error())
 		return
 	}
-	response.OK(c, items)
+	response.OK(c, MaskList(items))
 }
 
 // ListTypes surfaces the provider type identifiers the build supports, so
@@ -68,7 +69,7 @@ func (h *AdminHandler) Create(c *gin.Context) {
 		response.BadRequest(c, 40002, err.Error())
 		return
 	}
-	response.Created(c, idp)
+	response.Created(c, Mask(idp))
 }
 
 func (h *AdminHandler) Get(c *gin.Context) {
@@ -86,7 +87,7 @@ func (h *AdminHandler) Get(c *gin.Context) {
 		response.InternalError(c, "")
 		return
 	}
-	response.OK(c, idp)
+	response.OK(c, Mask(idp))
 }
 
 func (h *AdminHandler) Update(c *gin.Context) {
@@ -109,7 +110,7 @@ func (h *AdminHandler) Update(c *gin.Context) {
 		response.BadRequest(c, 40002, err.Error())
 		return
 	}
-	response.OK(c, idp)
+	response.OK(c, Mask(idp))
 }
 
 func (h *AdminHandler) Delete(c *gin.Context) {
@@ -122,7 +123,7 @@ func (h *AdminHandler) Delete(c *gin.Context) {
 		response.InternalError(c, "")
 		return
 	}
-	c.JSON(http.StatusNoContent, nil)
+	response.OK(c, nil)
 }
 
 func parseID(c *gin.Context, name string) (int64, error) {

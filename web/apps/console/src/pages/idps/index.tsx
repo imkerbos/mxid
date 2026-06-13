@@ -4,11 +4,12 @@
 // 保存后 portal 登录页会自动出现「使用 Lark 登录」等按钮。
 import { useCallback, useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Pencil, Trash2, Loader2, X, Plug, Power } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, Plug, Power } from 'lucide-react'
 import { externalIdpApi, cn, useTranslation } from '@mxid/shared'
 import type { ExternalIDP } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
-import { Field } from '../../components/ui'
+import { Field, Button, Tag, EmptyState, LoadingState, pageMotion } from '../../components/ui'
+import { toast, extractMessage } from '../../components/ui/toast'
 
 // Provider field schemas — what the config form renders per type. Keep this
 // in lock-step with the Go provider implementations (providers/*.go).
@@ -78,37 +79,41 @@ export default function IDPsPage() {
   }
   const remove = async (idp: ExternalIDP) => {
     if (!confirm(t('idps.confirmDelete', { name: idp.name }))) return
-    await externalIdpApi.delete(idp.id)
-    await load()
+    try {
+      await externalIdpApi.delete(idp.id)
+      toast.success(t('common.deleteSuccess'))
+      await load()
+    } catch (e) {
+      toast.error(t('common.deleteFailed'), extractMessage(e))
+    }
   }
   const toggleStatus = async (idp: ExternalIDP) => {
-    await externalIdpApi.update(idp.id, { status: idp.status === 1 ? 2 : 1 })
-    await load()
+    try {
+      await externalIdpApi.update(idp.id, { status: idp.status === 1 ? 2 : 1 })
+      toast.success(t('common.saveSuccess'))
+      await load()
+    } catch (e) {
+      toast.error(t('common.saveFailed'), extractMessage(e))
+    }
   }
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
+    <motion.div {...pageMotion}>
       <PageHeader
         title={t('idps.title')}
         description={t('idps.subtitle')}
         actions={
-          <button
-            onClick={openCreate}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover"
-          >
-            <Plus className="h-4 w-4" />
+          <Button onClick={openCreate} icon={<Plus className="h-4 w-4" />}>
             {t('idps.addBtn')}
-          </button>
+          </Button>
         }
       />
 
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
         {loading ? (
-          <p className="py-16 text-center text-sm text-gray-400">
-            <Loader2 className="mx-auto h-5 w-5 animate-spin" />
-          </p>
+          <LoadingState />
         ) : items.length === 0 ? (
-          <p className="py-16 text-center text-sm text-gray-400">{t('idps.empty')}</p>
+          <EmptyState>{t('idps.empty')}</EmptyState>
         ) : (
           <div className="divide-y divide-gray-50">
             {items.map((idp) => (
@@ -120,15 +125,13 @@ export default function IDPsPage() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-semibold text-gray-900">{idp.name}</span>
-                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">{PROVIDER_LABEL[idp.type] ?? idp.type}</span>
+                      <Tag variant="blue">{PROVIDER_LABEL[idp.type] ?? idp.type}</Tag>
                       {idp.status === 1 ? (
-                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">{t('common.enabled')}</span>
+                        <Tag variant="green">{t('common.enabled')}</Tag>
                       ) : (
-                        <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-600">{t('common.disabled')}</span>
+                        <Tag variant="gray">{t('common.disabled')}</Tag>
                       )}
-                      {idp.auto_create && (
-                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">{t('idps.autoCreateTag')}</span>
-                      )}
+                      {idp.auto_create && <Tag variant="amber">{t('idps.autoCreateTag')}</Tag>}
                     </div>
                     <p className="mt-0.5 text-xs text-gray-500">
                       <code className="rounded bg-gray-100 px-1.5 py-0.5">{idp.code}</code>
@@ -137,24 +140,20 @@ export default function IDPsPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button
+                  <Button
+                    size="sm"
+                    variant={idp.status === 1 ? 'secondary' : 'success'}
                     onClick={() => toggleStatus(idp)}
-                    className={cn(
-                      'inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs',
-                      idp.status === 1
-                        ? 'border-gray-200 text-gray-600 hover:bg-gray-100'
-                        : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100',
-                    )}
+                    icon={<Power className="h-3.5 w-3.5" />}
                   >
-                    <Power className="h-3.5 w-3.5" />
                     {idp.status === 1 ? t('common.disable') : t('common.enable')}
-                  </button>
-                  <button onClick={() => openEdit(idp)} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs hover:bg-gray-50">
-                    <Pencil className="h-3.5 w-3.5" /> {t('common.edit')}
-                  </button>
-                  <button onClick={() => remove(idp)} className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs text-red-600 hover:bg-red-100">
-                    <Trash2 className="h-3.5 w-3.5" /> {t('common.delete')}
-                  </button>
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => openEdit(idp)} icon={<Pencil className="h-3.5 w-3.5" />}>
+                    {t('common.edit')}
+                  </Button>
+                  <Button size="sm" variant="danger" onClick={() => remove(idp)} icon={<Trash2 className="h-3.5 w-3.5" />}>
+                    {t('common.delete')}
+                  </Button>
                 </div>
               </div>
             ))}
@@ -280,9 +279,12 @@ function IDPForm({
           sort_order: form.sort_order,
         })
       }
+      toast.success(t('common.saveSuccess'))
       await onSaved()
     } catch (e) {
-      setErr((e as Error).message || t('idps.saveFailed'))
+      const msg = extractMessage(e, t('idps.saveFailed'))
+      setErr(msg)
+      toast.error(t('common.saveFailed'), msg)
     } finally {
       setSaving(false)
     }
@@ -382,11 +384,10 @@ function IDPForm({
           {err && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>}
 
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={onCancel} className="rounded-lg border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50">{t('common.cancel')}</button>
-            <button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-60">
-              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+            <Button type="button" variant="secondary" onClick={onCancel}>{t('common.cancel')}</Button>
+            <Button type="submit" loading={saving}>
               {initial ? t('common.save') : t('common.create')}
-            </button>
+            </Button>
           </div>
         </form>
       </motion.div>

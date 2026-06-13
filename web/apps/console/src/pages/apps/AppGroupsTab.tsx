@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Pencil, Trash2, Loader2, X, LayoutGrid } from 'lucide-react'
 import { appApi, appGroupApi, cn, useTranslation } from '@mxid/shared'
 import type { App, AppGroup } from '@mxid/shared'
-import { Field, CodeField } from '../../components/ui'
+import { Field, CodeField, Button } from '../../components/ui'
 import AccessPolicyTab from './AccessPolicyTab'
 import AppRolesTab from './AppRolesTab'
 import AppGroupRolesAggregated from './AppGroupRolesAggregated'
@@ -109,12 +109,9 @@ export default function AppGroupsTab() {
       <div className="w-72 shrink-0 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-700">{t('apps.appGroups.title')}</h3>
-          <button
-            onClick={openCreate}
-            className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-white hover:bg-primary-hover"
-          >
-            <Plus className="h-3.5 w-3.5" /> {t('apps.appGroups.create')}
-          </button>
+          <Button size="sm" onClick={openCreate} icon={<Plus className="h-3.5 w-3.5" />}>
+            {t('apps.appGroups.create')}
+          </Button>
         </div>
         {loading ? (
           <p className="py-6 text-center text-sm text-gray-400">
@@ -206,11 +203,10 @@ export default function AppGroupsTab() {
                   <input type="number" value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: Number(e.target.value) })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
                 </Field>
                 <div className="flex justify-end gap-3 pt-2">
-                  <button type="button" onClick={() => setShowForm(false)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50">{t('common.cancel')}</button>
-                  <button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-60">
-                    {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+                  <Button type="button" variant="secondary" onClick={() => setShowForm(false)}>{t('common.cancel')}</Button>
+                  <Button type="submit" loading={saving}>
                     {editing ? t('common.save') : t('common.create')}
-                  </button>
+                  </Button>
                 </div>
               </form>
             </motion.div>
@@ -314,12 +310,12 @@ function GroupDetail({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={onEdit} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs hover:bg-gray-50">
-            <Pencil className="h-3.5 w-3.5" /> {t('common.edit')}
-          </button>
-          <button onClick={onDelete} className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs text-red-600 hover:bg-red-100">
-            <Trash2 className="h-3.5 w-3.5" /> {t('common.delete')}
-          </button>
+          <Button size="sm" variant="secondary" onClick={onEdit} icon={<Pencil className="h-3.5 w-3.5" />}>
+            {t('common.edit')}
+          </Button>
+          <Button size="sm" variant="danger" onClick={onDelete} icon={<Trash2 className="h-3.5 w-3.5" />}>
+            {t('common.delete')}
+          </Button>
         </div>
       </div>
 

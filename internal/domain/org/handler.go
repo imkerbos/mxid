@@ -109,7 +109,7 @@ func (h *Handler) Delete(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusNoContent, nil)
+	response.OK(c, nil)
 }
 
 // Move moves an organization to a new parent.
@@ -145,6 +145,10 @@ func (h *Handler) GetMembers(c *gin.Context) {
 	p := pagination.Parse(c)
 	userIDs, total, err := h.service.GetMembers(c.Request.Context(), id, p.Page, p.PageSize)
 	if err != nil {
+		if errors.Is(err, ErrOrgNotFound) {
+			response.NotFound(c, 40401, "organization not found")
+			return
+		}
 		response.InternalError(c, "failed to get organization members")
 		return
 	}
@@ -167,6 +171,14 @@ func (h *Handler) AddMember(c *gin.Context) {
 	}
 
 	if err := h.service.AddMember(c.Request.Context(), id, &req); err != nil {
+		if errors.Is(err, ErrOrgNotFound) {
+			response.NotFound(c, 40401, "organization not found")
+			return
+		}
+		if errors.Is(err, ErrUserNotInTenant) {
+			response.NotFound(c, 40402, "user not found")
+			return
+		}
 		response.InternalError(c, "failed to add member")
 		return
 	}
@@ -189,11 +201,15 @@ func (h *Handler) RemoveMember(c *gin.Context) {
 	}
 
 	if err := h.service.RemoveMember(c.Request.Context(), userID, orgID); err != nil {
+		if errors.Is(err, ErrOrgNotFound) {
+			response.NotFound(c, 40401, "organization not found")
+			return
+		}
 		response.InternalError(c, "failed to remove member")
 		return
 	}
 
-	c.JSON(http.StatusNoContent, nil)
+	response.OK(c, nil)
 }
 
 // parseID parses an int64 ID from a URL parameter.

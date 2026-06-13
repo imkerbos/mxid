@@ -31,6 +31,16 @@ type Setting struct {
 
 func (Setting) TableName() string { return "mxid_setting" }
 
+// TenantScoped marks mxid_setting for automatic tenant isolation.
+func (Setting) TenantScoped() {}
+
+// TenantScopePredicate keeps the tenant_id=0 GLOBAL-default rows visible so the
+// settings fallback (tenant override -> global default) keeps working. A naive
+// `tenant_id = ?` would hide the global defaults.
+func (Setting) TenantScopePredicate() (string, bool) {
+	return "tenant_id IN (?, 0)", true
+}
+
 // Decode unmarshals the JSON value into the given target.
 func (s *Setting) Decode(target any) error {
 	return json.Unmarshal(s.Value, target)
@@ -51,6 +61,15 @@ const (
 	KeyLocalization    = "localization"
 	KeyLicense         = "license"
 	KeyExternalURLs    = "external.urls"
+	KeyMFAPolicy          = "security.mfa"
+	KeyConditionalAccess  = "security.conditional_access"
+)
+
+// MFA enforcement modes for MFAPolicy.Mode.
+const (
+	MFAModeOff       = "off"        // MFA not enforced; step-up is audit-only
+	MFAModeAdminOnly = "admin_only" // console-eligible admins must use MFA
+	MFAModeAll       = "all"        // every user must use MFA
 )
 
 /* ──────────────── Category structs ──────────────── */
@@ -160,6 +179,28 @@ type AuditPolicy struct {
 	AlertWebhookURL    string   `json:"alert_webhook_url"`
 	AlertOnEventTypes  []string `json:"alert_on_event_types"`
 	HighRiskRecipients []string `json:"high_risk_recipients"` // email/phone for critical events
+}
+
+// ConditionalAccess — adaptive-authentication policy. Disabled by default;
+// when enabled, risk signals on a login (new country / impossible travel / new
+// device) force a second factor. The engine only ever ADDS MFA — it never
+// skips it (a trusted network still requires MFA).
+type ConditionalAccess struct {
+	Enabled                       bool `json:"enabled"`
+	OnNewCountry                  bool `json:"on_new_country"`
+	OnImpossibleTravel            bool `json:"on_impossible_travel"`
+	OnNewDevice                   bool `json:"on_new_device"`
+	ImpossibleTravelWindowMinutes int  `json:"impossible_travel_window_minutes"`
+}
+
+// MFAPolicy — multi-factor enforcement + step-up grace window.
+//
+// Mode governs WHO must enrol MFA (see MFAMode* consts). StepUpWindowSeconds
+// is how long a passed MFA stays "fresh" for high-risk operations before a
+// new step-up challenge is required (0 = challenge every time).
+type MFAPolicy struct {
+	Mode                string `json:"mode"`
+	StepUpWindowSeconds int    `json:"step_up_window_seconds"`
 }
 
 // Localization — default language / timezone / date format.

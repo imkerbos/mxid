@@ -8,19 +8,34 @@ import (
 
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/snowflake"
+	"gorm.io/gorm"
 )
 
 // Service errors.
 var (
-	ErrGroupNotFound  = errors.New("user group not found")
+	ErrGroupNotFound   = errors.New("user group not found")
 	ErrGroupHasMembers = errors.New("user group still has members; remove all members or pass force=true")
+	// ErrUserNotInTenant is returned when AddMember(s) is asked to add a user
+	// that does not exist in the caller's tenant — including a cross-tenant id,
+	// which the injected validator (tenant-scoped user repo) reports as absent.
+	// Blocks the residual referenced-entity IDOR where an admin plants a
+	// foreign-tenant user into their own group.
+	ErrUserNotInTenant = errors.New("user not found in tenant")
 )
+
+// EntityValidator reports whether a referenced entity id exists within the
+// caller's tenant. Backed by the referent's tenant-scoped GetByID (the
+// tenantscope plugin appends tenant_id=?, so a cross-tenant id resolves to
+// false). Injected via SetUserValidator so the group service does not import
+// the user domain.
+type EntityValidator func(ctx context.Context, id int64) (bool, error)
 
 // Service handles user group business logic.
 type Service struct {
-	repo     Repository
-	idGen    *snowflake.Generator
-	eventBus *event.Bus
+	repo          Repository
+	idGen         *snowflake.Generator
+	eventBus      *event.Bus
+	userValidator EntityValidator
 }
 
 // NewService creates a new user group service.
@@ -30,6 +45,30 @@ func NewService(repo Repository, idGen *snowflake.Generator, eventBus *event.Bus
 		idGen:    idGen,
 		eventBus: eventBus,
 	}
+}
+
+// SetUserValidator injects the tenant-scoped user existence check used by
+// AddMember / AddMembers to validate request-body user ids. Wired in
+// cmd/server/main.go once the user module exists.
+func (s *Service) SetUserValidator(v EntityValidator) { s.userValidator = v }
+
+// requireUsersInTenant validates request-body user ids against the caller's
+// tenant via the injected validator. A cross-tenant id resolves to false →
+// ErrUserNotInTenant. Fails closed when no validator is wired.
+func (s *Service) requireUsersInTenant(ctx context.Context, userIDs ...int64) error {
+	if s.userValidator == nil {
+		return fmt.Errorf("group: user validator not configured")
+	}
+	for _, uid := range userIDs {
+		ok, err := s.userValidator(ctx, uid)
+		if err != nil {
+			return fmt.Errorf("validate user: %w", err)
+		}
+		if !ok {
+			return ErrUserNotInTenant
+		}
+	}
+	return nil
 }
 
 // Create creates a new user group with a generated ID.
@@ -51,7 +90,26 @@ func (s *Service) Create(ctx context.Context, tenantID int64, req *CreateGroupRe
 		return nil, fmt.Errorf("create user group: %w", err)
 	}
 
+	s.publishGroup(ctx, event.GroupCreated, g)
 	return g, nil
+}
+
+// publishGroup emits a group lifecycle event. Actor / IP are denormalized
+// downstream from the request-scoped auditctx; the payload carries the group
+// identity that the audit resource columns render.
+func (s *Service) publishGroup(ctx context.Context, eventType string, g *UserGroup) {
+	if s.eventBus == nil {
+		return
+	}
+	s.eventBus.Publish(ctx, event.Event{
+		Type: eventType,
+		Payload: map[string]any{
+			"id":        g.ID,
+			"tenant_id": g.TenantID,
+			"name":      g.Name,
+			"code":      g.Code,
+		},
+	})
 }
 
 // GetByID retrieves a user group by ID.
@@ -59,6 +117,22 @@ func (s *Service) GetByID(ctx context.Context, id int64) (*UserGroup, error) {
 	g, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("get user group: %w", err)
+	}
+	return g, nil
+}
+
+// requireGroup fetches the parent group via the tenant-scoped repo so the
+// tenantscope plugin appends tenant_id=?. A cross-tenant groupID resolves to
+// ErrRecordNotFound, surfaced as ErrGroupNotFound. This is the parent-ownership
+// guard the tenant-less child tables (mxid_user_group_member,
+// mxid_user_group_rule) rely on, since the column plugin cannot filter them.
+func (s *Service) requireGroup(ctx context.Context, groupID int64) (*UserGroup, error) {
+	g, err := s.repo.GetByID(ctx, groupID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrGroupNotFound
+		}
+		return nil, fmt.Errorf("get group: %w", err)
 	}
 	return g, nil
 }
@@ -81,6 +155,7 @@ func (s *Service) Update(ctx context.Context, id int64, req *UpdateGroupRequest)
 		return nil, fmt.Errorf("update user group: %w", err)
 	}
 
+	s.publishGroup(ctx, event.GroupUpdated, g)
 	return g, nil
 }
 
@@ -91,6 +166,16 @@ func (s *Service) Update(ctx context.Context, id int64, req *UpdateGroupRequest)
 // FK on mxid_user_group_member has ON DELETE CASCADE so the rows clean up
 // automatically; the flag is purely a safety gate at the API boundary.
 func (s *Service) Delete(ctx context.Context, id int64, force bool) error {
+	// Load before delete so the audit event carries the group's name/tenant.
+	// Already gone → idempotent success (preserves the pre-existing behavior
+	// where repo.Delete on a missing row was a no-op).
+	g, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return fmt.Errorf("get group for delete: %w", err)
+	}
 	count, err := s.repo.CountMembers(ctx, id)
 	if err != nil {
 		return fmt.Errorf("count members before delete: %w", err)
@@ -101,6 +186,7 @@ func (s *Service) Delete(ctx context.Context, id int64, force bool) error {
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return fmt.Errorf("delete user group: %w", err)
 	}
+	s.publishGroup(ctx, event.GroupDeleted, g)
 	return nil
 }
 
@@ -152,6 +238,11 @@ func (s *Service) AddMember(ctx context.Context, groupID int64, req *AddMemberRe
 	if g.Type == TypeDynamic {
 		return ErrGroupIsDynamic
 	}
+	// Referenced-entity guard: reject a request-body user id that is not in the
+	// caller's tenant (cross-tenant id resolves to not-found via the validator).
+	if err := s.requireUsersInTenant(ctx, req.UserID); err != nil {
+		return err
+	}
 	m := &UserGroupMember{
 		ID:      s.idGen.Generate(),
 		GroupID: groupID,
@@ -184,6 +275,21 @@ func (s *Service) publishMember(ctx context.Context, eventType string, tenantID,
 // AddMembers adds multiple users to a group. Users already in the group are
 // reported via the skipped slice in the returned response — never as errors.
 func (s *Service) AddMembers(ctx context.Context, groupID int64, userIDs []int64) (*BatchMembersResponse, error) {
+	// Tenant-ownership guard BEFORE any membership write — mirrors the singular
+	// AddMember, which also rejects dynamic groups.
+	g, err := s.requireGroup(ctx, groupID)
+	if err != nil {
+		return nil, err
+	}
+	if g.Type == TypeDynamic {
+		return nil, ErrGroupIsDynamic
+	}
+	// Referenced-entity guard: every request-body user id must belong to the
+	// caller's tenant. Reject the whole batch if any id is cross-tenant /
+	// missing (resolved via the tenant-scoped validator) before any write.
+	if err := s.requireUsersInTenant(ctx, userIDs...); err != nil {
+		return nil, err
+	}
 	members := make([]*UserGroupMember, 0, len(userIDs))
 	for _, uid := range userIDs {
 		members = append(members, &UserGroupMember{
@@ -203,13 +309,11 @@ func (s *Service) AddMembers(ctx context.Context, groupID int64, userIDs []int64
 	for _, uid := range skipped {
 		skippedSet[uid] = struct{}{}
 	}
-	if g, err := s.repo.GetByID(ctx, groupID); err == nil {
-		for _, uid := range userIDs {
-			if _, skip := skippedSet[uid]; skip {
-				continue
-			}
-			s.publishMember(ctx, event.GroupMemberAdded, g.TenantID, groupID, uid)
+	for _, uid := range userIDs {
+		if _, skip := skippedSet[uid]; skip {
+			continue
 		}
+		s.publishMember(ctx, event.GroupMemberAdded, g.TenantID, groupID, uid)
 	}
 	return &BatchMembersResponse{
 		Affected: len(userIDs) - len(skipped),
@@ -237,6 +341,11 @@ func (s *Service) RemoveMember(ctx context.Context, groupID, userID int64) error
 // RemoveMembers removes multiple users from a group. UserIDs that were not
 // members are reported via the skipped slice.
 func (s *Service) RemoveMembers(ctx context.Context, groupID int64, userIDs []int64) (*BatchMembersResponse, error) {
+	// Tenant-ownership guard BEFORE the delete.
+	g, err := s.requireGroup(ctx, groupID)
+	if err != nil {
+		return nil, err
+	}
 	skipped, err := s.repo.RemoveMembers(ctx, groupID, userIDs)
 	if err != nil {
 		return nil, fmt.Errorf("batch remove members: %w", err)
@@ -245,13 +354,11 @@ func (s *Service) RemoveMembers(ctx context.Context, groupID int64, userIDs []in
 	for _, uid := range skipped {
 		skippedSet[uid] = struct{}{}
 	}
-	if g, err := s.repo.GetByID(ctx, groupID); err == nil {
-		for _, uid := range userIDs {
-			if _, skip := skippedSet[uid]; skip {
-				continue
-			}
-			s.publishMember(ctx, event.GroupMemberRemoved, g.TenantID, groupID, uid)
+	for _, uid := range userIDs {
+		if _, skip := skippedSet[uid]; skip {
+			continue
 		}
+		s.publishMember(ctx, event.GroupMemberRemoved, g.TenantID, groupID, uid)
 	}
 	if skipped == nil {
 		skipped = []int64{}
@@ -277,6 +384,9 @@ func int64sToStrings(ids []int64) []string {
 // Empty result returns an empty (non-nil) slice so JSON encoders emit `[]`,
 // not `null`.
 func (s *Service) GetMembers(ctx context.Context, groupID int64, page, pageSize int) ([]*MemberInfo, int64, error) {
+	if _, err := s.requireGroup(ctx, groupID); err != nil {
+		return nil, 0, err
+	}
 	members, total, err := s.repo.GetMembers(ctx, groupID, page, pageSize)
 	if err != nil {
 		return nil, 0, err

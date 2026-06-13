@@ -18,12 +18,21 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate()
 
   useEffect(() => {
-    authApi.portalMe()
+    // Bootstrap: try the silent SSO bridge once (derive a portal session from
+    // an existing SSO session, e.g. after switching back from console) before
+    // falling back to the login form. skipAuthEvent keeps the probe's 401 from
+    // racing the global mxid:unauthorized redirect.
+    authApi.portalMe({ skipAuthEvent: true })
       .then(setUser)
-      .catch(() => {
-        clear()
-        navigate('/login', { replace: true })
-      })
+      .catch(() =>
+        authApi.portalSso()
+          .then(() => authApi.portalMe({ skipAuthEvent: true }))
+          .then(setUser)
+          .catch(() => {
+            clear()
+            navigate('/login', { replace: true })
+          }),
+      )
   }, [setUser, clear, navigate])
 
   useEffect(() => {
@@ -34,6 +43,15 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     window.addEventListener('mxid:unauthorized', handler)
     return () => window.removeEventListener('mxid:unauthorized', handler)
   }, [clear, navigate])
+
+  // Mandatory MFA enrollment: when the backend gate reports the user must bind
+  // a factor before proceeding, send them to the security page where TOTP
+  // enrollment lives.
+  useEffect(() => {
+    const onEnroll = () => navigate('/security', { replace: true })
+    window.addEventListener('mxid:mfa-enroll-required', onEnroll)
+    return () => window.removeEventListener('mxid:mfa-enroll-required', onEnroll)
+  }, [navigate])
 
   if (loading) {
     return (

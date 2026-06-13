@@ -16,6 +16,7 @@ import {
   UserMinus,
 } from 'lucide-react'
 import { orgApi, userApi, cn, statusLabel, statusColor, useTranslation } from '@mxid/shared'
+import { pageMotion, Button } from '@mxid/shared/ui'
 import type { OrgNode, User, PaginatedData } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
 import { useTabParam } from '../../hooks/useTabParam'
@@ -434,18 +435,14 @@ export default function OrgsPage() {
   /* ────────────────────────────── Render ────────────────────────────────── */
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
+    <motion.div {...pageMotion}>
       <PageHeader
         title={t('orgs.title')}
         description={t('orgs.subtitle')}
         actions={
-          <button
-            onClick={() => setShowCreate(true)}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-hover"
-          >
-            <Plus className="h-4 w-4" />
+          <Button onClick={() => setShowCreate(true)} icon={<Plus className="h-4 w-4" />}>
             {t('orgs.addChild')}
-          </button>
+          </Button>
         }
       />
 
@@ -725,21 +722,12 @@ export default function OrgsPage() {
                 </p>
               </div>
               <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowCreate(false)}
-                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50"
-                >
+                <Button type="button" variant="secondary" onClick={() => setShowCreate(false)}>
                   {t('common.cancel')}
-                </button>
-                <button
-                  type="submit"
-                  disabled={creating}
-                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-60"
-                >
-                  {creating && <Loader2 className="h-4 w-4 animate-spin" />}
+                </Button>
+                <Button type="submit" loading={creating}>
                   {t('orgs.createModal.createBtn')}
-                </button>
+                </Button>
               </div>
             </form>
           </motion.div>
@@ -769,21 +757,12 @@ export default function OrgsPage() {
                 <p className="mt-1 text-xs text-gray-400">{t('orgs.editModal.nameHint')}</p>
               </div>
               <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowEdit(false)}
-                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50"
-                >
+                <Button type="button" variant="secondary" onClick={() => setShowEdit(false)}>
                   {t('common.cancel')}
-                </button>
-                <button
-                  type="submit"
-                  disabled={editing}
-                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-60"
-                >
-                  {editing && <Loader2 className="h-4 w-4 animate-spin" />}
+                </Button>
+                <Button type="submit" loading={editing}>
                   {t('common.save')}
-                </button>
+                </Button>
               </div>
             </form>
           </motion.div>
@@ -845,23 +824,18 @@ export default function OrgsPage() {
             </div>
 
             <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4">
-              <button
+              <Button
+                variant="secondary"
                 onClick={() => {
                   setShowMove(false)
                   setMoveTargetId(null)
                 }}
-                className="rounded-lg border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50"
               >
                 {t('common.cancel')}
-              </button>
-              <button
-                onClick={handleMove}
-                disabled={moving}
-                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-60"
-              >
-                {moving && <Loader2 className="h-4 w-4 animate-spin" />}
+              </Button>
+              <Button onClick={handleMove} loading={moving}>
                 {t('orgs.moveModal.confirmBtn')}
-              </button>
+              </Button>
             </div>
           </motion.div>
         </div>
@@ -958,16 +932,16 @@ export default function OrgsPage() {
             </div>
 
             <div className="flex justify-end border-t border-gray-100 px-6 py-4">
-              <button
+              <Button
+                variant="secondary"
                 onClick={() => {
                   setShowAddMember(false)
                   setUserSearch('')
                   setUserSearchResults([])
                 }}
-                className="rounded-lg border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50"
               >
                 {t('common.close')}
-              </button>
+              </Button>
             </div>
           </motion.div>
         </div>

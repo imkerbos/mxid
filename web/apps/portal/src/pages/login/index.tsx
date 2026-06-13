@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, type FormEvent } from 'react'
 import { useNavigate, useLocation, useSearchParams, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { authApi, externalIdpApi, useAuthStore, useBootstrap, useTranslation } from '@mxid/shared'
+import { authApi, externalIdpApi, ExternalIdpButtons, useAuthStore, useBootstrap, useTranslation } from '@mxid/shared'
 import type { PublicIDP } from '@mxid/shared'
 import { Eye, EyeOff, Loader2, RefreshCw } from 'lucide-react'
 import logo from '../../assets/logo.png'
@@ -21,12 +21,23 @@ function resumeSSOIfAny(sp: URLSearchParams): boolean {
   return false
 }
 
-// Provider-specific brand colours for the social login buttons. Anything not
-// listed falls back to neutral white-on-grey.
-const IDP_BRAND: Record<string, { bg: string; label: string }> = {
-  lark:   { bg: 'bg-[#00D6B9] hover:bg-[#00bda3]', label: 'Lark' },
-  feishu: { bg: 'bg-[#3370FF] hover:bg-[#285ddb]', label: '飞书' },
-  teams:  { bg: 'bg-[#5059C9] hover:bg-[#444cb3]', label: 'Microsoft Teams' },
+// loginErrorMessage maps the backend error code to a specific, localized
+// message so the user sees whether the captcha or the credentials were wrong,
+// not a bare "Request failed with status code 400".
+function loginErrorMessage(err: unknown, t: (k: string) => string): string {
+  const e = err as { code?: number; response?: { data?: { code?: number; message?: string } } }
+  const code = e?.response?.data?.code ?? e?.code
+  switch (code) {
+    case 40003:
+    case 40004:
+      return t('login.invalidCaptcha')
+    case 40101:
+      return t('login.invalidCredentials')
+    case 40102:
+      return t('login.invalidMfaCode')
+    default:
+      return e?.response?.data?.message || t('login.failedRetry')
+  }
 }
 
 export default function LoginPage() {
@@ -117,9 +128,7 @@ export default function LoginPage() {
       const from = (location.state as { from?: string })?.from || '/apps'
       navigate(from, { replace: true })
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error ? err.message : t('login.failedRetry')
-      setError(msg)
+      setError(loginErrorMessage(err, t))
       loadCaptcha()
     } finally {
       setLoading(false)
@@ -143,10 +152,9 @@ export default function LoginPage() {
       const from = (location.state as { from?: string })?.from || '/apps'
       navigate(from, { replace: true })
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : t('login.invalidPwd')
       // Backend consumes the challenge on any verify attempt — wrong code
       // means the user must restart from password step.
-      setError(msg)
+      setError(loginErrorMessage(err, t))
       setMfaChallenge('')
       setMfaCode('')
       setPassword('')
@@ -201,31 +209,12 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {!mfaChallenge && idpFirst && idps.length > 0 && (
-            <div className="mb-6">
-              <div className="grid grid-cols-2 gap-2">
-                {idps.map((idp) => {
-                  const brand = IDP_BRAND[idp.type] ?? { bg: 'bg-white/10 hover:bg-white/20', label: idp.name }
-                  return (
-                    <a
-                      key={idp.id}
-                      href={externalIdpApi.startURL(idp.code, undefined, tenantCode || undefined)}
-                      className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-white transition-colors ${brand.bg}`}
-                    >
-                      {idp.icon ? (
-                        <img src={idp.icon} alt={idp.name} className="h-4 w-4" />
-                      ) : null}
-                      {idp.name || brand.label}
-                    </a>
-                  )
-                })}
-              </div>
-              <div className="mt-4 flex items-center gap-3 text-xs text-white/40">
-                <div className="h-px flex-1 bg-white/10" />
-                <span>{t('login.socialDivider')}</span>
-                <div className="h-px flex-1 bg-white/10" />
-              </div>
-            </div>
+          {!mfaChallenge && idpFirst && (
+            <ExternalIdpButtons
+              idps={idps}
+              hrefFor={(idp) => externalIdpApi.startURL(idp.code, undefined, tenantCode || undefined)}
+              dividerLabel={t('login.socialDivider')}
+            />
           )}
 
           {mfaChallenge ? (
@@ -405,36 +394,17 @@ export default function LoginPage() {
             </button>
           </form>
           ) : (
-            <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-3 text-sm text-yellow-200">
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-sm text-amber-200">
 {t('login.passwordDisabledHint')}
             </div>
           )}
 
-          {!mfaChallenge && !idpFirst && idps.length > 0 && (
-            <div className="mt-6">
-              <div className="mb-3 flex items-center gap-3 text-xs text-white/40">
-                <div className="h-px flex-1 bg-white/10" />
-                <span>{t('login.socialDivider')}</span>
-                <div className="h-px flex-1 bg-white/10" />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {idps.map((idp) => {
-                  const brand = IDP_BRAND[idp.type] ?? { bg: 'bg-white/10 hover:bg-white/20', label: idp.name }
-                  return (
-                    <a
-                      key={idp.id}
-                      href={externalIdpApi.startURL(idp.code, undefined, tenantCode || undefined)}
-                      className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-white transition-colors ${brand.bg}`}
-                    >
-                      {idp.icon ? (
-                        <img src={idp.icon} alt={idp.name} className="h-4 w-4" />
-                      ) : null}
-                      {idp.name || brand.label}
-                    </a>
-                  )
-                })}
-              </div>
-            </div>
+          {!mfaChallenge && !idpFirst && (
+            <ExternalIdpButtons
+              idps={idps}
+              hrefFor={(idp) => externalIdpApi.startURL(idp.code, undefined, tenantCode || undefined)}
+              dividerLabel={t('login.socialDivider')}
+            />
           )}
 
           <p className="mt-8 text-center text-xs text-white/55">

@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { CheckCircle2, Loader2, ShieldQuestion, XCircle } from 'lucide-react'
 import { portalApi, useTranslation } from '@mxid/shared'
+import { Button } from '@mxid/shared/ui'
 
 interface ConsentApp {
   id: string
@@ -15,6 +16,42 @@ interface ConsentApp {
 interface ScopeItem {
   scope: string
   label: string
+}
+
+// FAIL-CLOSED return_to validator — mirrors saferedirect.ValidateRelativeOrOrigin
+// (pkg/saferedirect) on the client. The legitimate return_to is always the
+// backend /protocol/oidc/authorize URL, which is same-origin with the portal.
+// An unvalidated value here is an open redirect / javascript: sink on the IdP
+// origin (e.g. /consent?return_to=https://evil or return_to=javascript:...).
+// Accepts a single-slash-rooted relative path OR an absolute http(s) URL whose
+// origin === the portal origin; everything else falls back to /apps.
+function safeReturnTo(raw: string): string {
+  const fallback = '/apps'
+  if (!raw) return fallback
+  // Reject ASCII control chars (CR/LF/TAB/NUL etc.) used for header/parser
+  // tricks. Done without a control-char regex literal to keep the source
+  // free of raw control bytes.
+  for (let i = 0; i < raw.length; i++) {
+    const code = raw.charCodeAt(i)
+    if (code < 0x20 || code === 0x7f) return fallback
+  }
+  if (raw.startsWith('//') || raw.startsWith('/\\') || raw.startsWith('\\')) return fallback
+  // Same-origin relative path.
+  if (raw.startsWith('/')) {
+    if (raw.includes('\\')) return fallback
+    return raw
+  }
+  // Absolute URL: must parse, be http(s), carry no userinfo, and share the
+  // portal's exact origin.
+  try {
+    const u = new URL(raw, window.location.origin)
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return fallback
+    if (u.username || u.password) return fallback
+    if (u.origin !== window.location.origin) return fallback
+    return u.href
+  } catch {
+    return fallback
+  }
 }
 
 // Consent screen — OIDC Core 1.0 §3.1.2.4.
@@ -31,7 +68,7 @@ export default function ConsentPage() {
   const [params] = useSearchParams()
   const appId = params.get('app_id') || ''
   const scopeQ = params.get('scope') || ''
-  const returnTo = params.get('return_to') || '/apps'
+  const returnTo = safeReturnTo(params.get('return_to') || '')
   const scopes = scopeQ.split(/[\s+]+/).filter(Boolean)
 
   const [loading, setLoading] = useState(true)
@@ -132,23 +169,12 @@ export default function ConsentPage() {
         </ul>
 
         <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={handleDeny}
-            disabled={!!submitting}
-            className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
-          >
+          <Button type="button" variant="secondary" className="flex-1" onClick={handleDeny} disabled={!!submitting}>
             {t('portal.consent.denyBtn')}
-          </button>
-          <button
-            type="button"
-            onClick={handleAllow}
-            disabled={!!submitting}
-            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-60"
-          >
-            {submitting === 'allow' && <Loader2 className="h-4 w-4 animate-spin" />}
+          </Button>
+          <Button type="button" className="flex-1" onClick={handleAllow} loading={submitting === 'allow'} disabled={!!submitting}>
             {t('portal.consent.grantBtn')}
-          </button>
+          </Button>
         </div>
       </div>
 

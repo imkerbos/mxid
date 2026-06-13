@@ -18,7 +18,7 @@ import type { Group, User, PaginatedData, GroupMember, RuleExpr, GroupRule } fro
 import axios from 'axios'
 import PageHeader from '../../components/layout/PageHeader'
 import RuleEditor from './RuleEditor'
-import { CodeField } from '../../components/ui'
+import { CodeField, pageMotion, Button } from '../../components/ui'
 import AppRolesReverseTab from './AppRolesReverseTab'
 import { toast, extractMessage } from '../../components/ui/toast'
 
@@ -310,13 +310,14 @@ export default function GroupsPage() {
     setAddingUserId(userId)
     try {
       await groupApi.addMember(memberGroup.id, userId)
+      toast.success(t('common.saveSuccess'))
       loadMembers(memberGroup.id, memberPage)
       loadData()
       setUserSearch('')
       setUserResults([])
       setShowAddMember(false)
-    } catch {
-      // ignore
+    } catch (e) {
+      toast.error(t('common.saveFailed'), extractMessage(e))
     } finally {
       setAddingUserId(null)
     }
@@ -335,18 +336,14 @@ export default function GroupsPage() {
   const memberTotalPages = Math.ceil(members.total / members.page_size) || 1
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
+    <motion.div {...pageMotion}>
       <PageHeader
         title={t('groups.title')}
         description={t('groups.subtitle')}
         actions={
-          <button
-            onClick={() => setShowCreate(true)}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-hover"
-          >
-            <Plus className="h-4 w-4" />
+          <Button onClick={() => setShowCreate(true)} icon={<Plus className="h-4 w-4" />}>
             {t('groups.create')}
-          </button>
+          </Button>
         }
       />
 
@@ -757,21 +754,12 @@ export default function GroupsPage() {
                   <RuleEditor value={createRule} onChange={setCreateRule} />
                 )}
                 <div className="flex justify-end gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowCreate(false)}
-                    className="rounded-lg border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50"
-                  >
+                  <Button type="button" variant="secondary" onClick={() => setShowCreate(false)}>
                     {t('common.cancel')}
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={creating}
-                    className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-60"
-                  >
-                    {creating && <Loader2 className="h-4 w-4 animate-spin" />}
+                  </Button>
+                  <Button type="submit" loading={creating}>
                     {t('groups.createModal.createBtn')}
-                  </button>
+                  </Button>
                 </div>
               </form>
             </motion.div>
@@ -843,21 +831,12 @@ export default function GroupsPage() {
                   </div>
                 )}
                 <div className="flex justify-end gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setEditGroup(null)}
-                    className="rounded-lg border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50"
-                  >
+                  <Button type="button" variant="secondary" onClick={() => setEditGroup(null)}>
                     {t('common.cancel')}
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={editing}
-                    className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-60"
-                  >
-                    {editing && <Loader2 className="h-4 w-4 animate-spin" />}
+                  </Button>
+                  <Button type="submit" loading={editing}>
                     {t('common.save')}
-                  </button>
+                  </Button>
                 </div>
               </form>
             </motion.div>

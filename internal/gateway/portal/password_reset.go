@@ -20,11 +20,14 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/pkg/mailer"
+	"github.com/imkerbos/mxid/pkg/ratelimit"
 	"github.com/imkerbos/mxid/pkg/response"
+	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
@@ -48,7 +51,24 @@ type PasswordResetHandler struct {
 	mailer     *mailer.Mailer
 	defaultTID int64
 	tenantByCd TenantResolver
+	// devFallback gates the dev_link response field + the link Info log on
+	// non-release mode. In release the reset link is NEVER returned in the
+	// HTTP body and never logged, so a misconfigured/failing SMTP provider
+	// can't leak the out-of-band reset secret. Set from cfg.Server.IsRelease().
+	devFallback bool
+	// limiter throttles /password/forgot per email so repeated calls can't
+	// spam reset emails. nil = no throttle. Wired via SetLimiter.
+	limiter *ratelimit.Limiter
 }
+
+// SetDevFallback toggles the non-release dev_link exposure. Kept as a setter
+// so the positional constructor signature stays stable.
+func (h *PasswordResetHandler) SetDevFallback(on bool) { h.devFallback = on }
+
+// SetLimiter wires the per-email forgot-password send throttle. nil disables
+// throttling (legacy behaviour). Kept as a setter so the positional
+// constructor signature stays stable.
+func (h *PasswordResetHandler) SetLimiter(l *ratelimit.Limiter) { h.limiter = l }
 
 // NewPasswordResetHandler builds the handler. tenantByCode may be nil —
 // the handler falls back to the default tenant.
@@ -105,7 +125,26 @@ func (h *PasswordResetHandler) forgot(c *gin.Context) {
 	email := strings.TrimSpace(strings.ToLower(req.Email))
 	resp := forgotResponse{Sent: true, TTLSeconds: pwdResetTTL}
 
+	// Per-email throttle so repeated /password/forgot calls can't spam reset
+	// emails. Checked + counted BEFORE the user lookup so existent and
+	// non-existent emails throttle identically (no enumeration leak).
+	if rle := rateLimited(c.Request.Context(), h.limiter, "pwreset:"+email); rle != nil {
+		respondRateLimited(c, rle)
+		return
+	}
+	if rle := h.limiter.RecordFailure(c.Request.Context(), "pwreset:"+email); rle != nil {
+		var rlErr *ratelimit.RateLimitError
+		if errors.As(rle, &rlErr) {
+			respondRateLimited(c, rlErr)
+			return
+		}
+	}
+
 	tenantID := h.resolveTenant(c.Request.Context(), req.Tenant)
+	// Pin the resolved tenant so the user lookups / reads below run
+	// tenant-scoped (this route is mounted on the unauthenticated public
+	// group, so nothing else sets the scope).
+	c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), tenantID))
 	userID, err := h.users.LookupByEmail(c.Request.Context(), tenantID, email)
 	if err != nil {
 		h.logger.Warn("password forgot: lookup failed",
@@ -126,7 +165,10 @@ func (h *PasswordResetHandler) forgot(c *gin.Context) {
 		response.InternalError(c, "failed to generate token")
 		return
 	}
-	if err := h.rdb.Set(c.Request.Context(), pwdResetKeyPrefix+token, userID, pwdResetTTL*1e9).Err(); err != nil {
+	// Bind both tenant and user to the token so the (tenant-less) reset call
+	// can re-establish the tenant scope before mutating the user row.
+	tokenVal := strconv.FormatInt(tenantID, 10) + ":" + strconv.FormatInt(userID, 10)
+	if err := h.rdb.Set(c.Request.Context(), pwdResetKeyPrefix+token, tokenVal, pwdResetTTL*1e9).Err(); err != nil {
 		response.InternalError(c, "failed to persist token")
 		return
 	}
@@ -155,13 +197,20 @@ func (h *PasswordResetHandler) forgot(c *gin.Context) {
 		}
 	}
 	if !smtpOK {
-		resp.DevLink = link
-		h.logger.Info("password reset link (no SMTP / fallback)",
-			zap.Int64("user_id", userID),
-			zap.String("email", email),
-			zap.String("link", link),
-			zap.Int("ttl_seconds", pwdResetTTL),
-		)
+		if h.devFallback {
+			resp.DevLink = link
+			h.logger.Info("password reset link (no SMTP / fallback)",
+				zap.Int64("user_id", userID),
+				zap.String("email", email),
+				zap.String("link", link),
+				zap.Int("ttl_seconds", pwdResetTTL),
+			)
+		} else {
+			// Release mode: never leak the reset link into the response or
+			// logs. Record only a non-sensitive warning.
+			h.logger.Warn("password reset email send failed (no dev fallback in release)",
+				zap.Int64("user_id", userID))
+		}
 	}
 	response.OK(c, resp)
 }
@@ -178,10 +227,16 @@ func (h *PasswordResetHandler) reset(c *gin.Context) {
 		return
 	}
 
-	userID, err := h.consumeToken(c.Request.Context(), req.Token)
+	tenantID, userID, err := h.consumeToken(c.Request.Context(), req.Token)
 	if err != nil {
 		response.BadRequest(c, 40002, err.Error())
 		return
+	}
+	// Re-establish the tenant scope captured at forgot-time so the password
+	// write is tenant-isolated even though the reset request itself carries
+	// no tenant.
+	if tenantID > 0 {
+		c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), tenantID))
 	}
 
 	if err := h.users.ResetPassword(c.Request.Context(), userID, req.NewPassword); err != nil {
@@ -201,19 +256,32 @@ func (h *PasswordResetHandler) reset(c *gin.Context) {
 	response.OK(c, gin.H{"reset": true})
 }
 
-// consumeToken atomically reads + deletes the user_id bound to the token.
-// Mirrors the email-verify pattern: one-shot, no replay.
-func (h *PasswordResetHandler) consumeToken(ctx context.Context, token string) (int64, error) {
+// consumeToken atomically reads + deletes the (tenant_id, user_id) pair bound
+// to the token. Mirrors the email-verify pattern: one-shot, no replay. The
+// value is "tenant:user"; a legacy bare-int value (no tenant) parses with
+// tenantID=0, in which case the caller leaves the scope unset and the
+// underlying ResetPassword still works via its explicit user id.
+func (h *PasswordResetHandler) consumeToken(ctx context.Context, token string) (tenantID, userID int64, err error) {
 	key := pwdResetKeyPrefix + token
-	val, err := h.rdb.Get(ctx, key).Int64()
+	val, err := h.rdb.Get(ctx, key).Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
-			return 0, errors.New("token invalid or expired")
+			return 0, 0, errors.New("token invalid or expired")
 		}
-		return 0, fmt.Errorf("read token: %w", err)
+		return 0, 0, fmt.Errorf("read token: %w", err)
 	}
 	_ = h.rdb.Del(ctx, key).Err()
-	return val, nil
+
+	if i := strings.IndexByte(val, ':'); i >= 0 {
+		tenantID, _ = strconv.ParseInt(val[:i], 10, 64)
+		userID, _ = strconv.ParseInt(val[i+1:], 10, 64)
+	} else {
+		userID, _ = strconv.ParseInt(val, 10, 64)
+	}
+	if userID == 0 {
+		return 0, 0, errors.New("token invalid or expired")
+	}
+	return tenantID, userID, nil
 }
 
 func (h *PasswordResetHandler) resolveTenant(ctx context.Context, code string) int64 {

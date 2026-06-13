@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/authn"
+	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/session"
 )
@@ -39,6 +40,7 @@ type SecurityHandler struct {
 	apiTokenQuerier APITokenQuerier
 	tenantID        int64
 	mfaRateLimiter  *authn.MFARateLimiter
+	bus             *event.Bus
 }
 
 // NewSecurityHandler is exported so cmd/server can build a second copy
@@ -47,7 +49,7 @@ func NewSecurityHandler(
 	namespace string,
 	user UserQuerier, sess SessionQuerier, mfa MFAQuerier, id IdentityQuerier,
 	history LoginHistoryQuerier, apiTokens APITokenQuerier, tenantID int64,
-	mfaRateLimiter *authn.MFARateLimiter,
+	mfaRateLimiter *authn.MFARateLimiter, bus *event.Bus,
 ) *SecurityHandler {
 	return &SecurityHandler{
 		namespace:       namespace,
@@ -59,7 +61,18 @@ func NewSecurityHandler(
 		apiTokenQuerier: apiTokens,
 		tenantID:        tenantID,
 		mfaRateLimiter:  mfaRateLimiter,
+		bus:             bus,
 	}
+}
+
+// publish emits a domain event for the audit trail. Best-effort: a nil bus
+// (tests) is a no-op. Actor / IP are denormalized downstream from the
+// request-scoped auditctx, so the payload only carries event-specific fields.
+func (h *SecurityHandler) publish(c *gin.Context, eventType string, payload map[string]any) {
+	if h.bus == nil {
+		return
+	}
+	h.bus.Publish(c.Request.Context(), event.Event{Type: eventType, Payload: payload})
 }
 
 // RegisterSecurityRoutes mounts the /security sub-tree onto `rg` — caller
@@ -144,6 +157,9 @@ func (h *SecurityHandler) createAPIToken(c *gin.Context) {
 		response.InternalError(c, "failed to create token")
 		return
 	}
+	h.publish(c, event.APITokenCreated, map[string]any{
+		"user_id": userID, "tenant_id": tid, "name": req.Name, "scopes": req.Scopes,
+	})
 	response.OK(c, info)
 }
 
@@ -166,6 +182,9 @@ func (h *SecurityHandler) revokeAPIToken(c *gin.Context) {
 		response.InternalError(c, "failed to revoke")
 		return
 	}
+	h.publish(c, event.APITokenRevoked, map[string]any{
+		"id": tokenID, "user_id": userID, "tenant_id": h.tenantID, "token_id": tokenID,
+	})
 	response.OK(c, gin.H{"revoked": true})
 }
 
@@ -423,6 +442,10 @@ func (h *SecurityHandler) verifyTOTP(c *gin.Context) {
 	}
 	h.mfaRateLimiter.Reset(c.Request.Context(), userID, ip)
 
+	h.publish(c, event.MFAEnabled, map[string]any{
+		"user_id": userID, "tenant_id": h.tenantID, "type": "totp",
+	})
+
 	response.OK(c, nil)
 }
 
@@ -438,6 +461,10 @@ func (h *SecurityHandler) deleteTOTP(c *gin.Context) {
 		response.InternalError(c, "failed to delete totp")
 		return
 	}
+
+	h.publish(c, event.MFADisabled, map[string]any{
+		"user_id": userID, "tenant_id": h.tenantID, "type": "totp",
+	})
 
 	response.OK(c, nil)
 }
@@ -478,7 +505,7 @@ func (h *SecurityHandler) listSessions(c *gin.Context) {
 
 // deleteSession revokes a specific session.
 func (h *SecurityHandler) deleteSession(c *gin.Context) {
-	_, ok := authn.GetUserID(c)
+	userID, ok := authn.GetUserID(c)
 	if !ok {
 		response.Unauthorized(c, 40101, "not authenticated")
 		return
@@ -494,6 +521,10 @@ func (h *SecurityHandler) deleteSession(c *gin.Context) {
 		response.InternalError(c, "failed to delete session")
 		return
 	}
+
+	h.publish(c, event.SessionKicked, map[string]any{
+		"user_id": userID, "session_id": sid, "tenant_id": h.tenantID,
+	})
 
 	response.OK(c, nil)
 }

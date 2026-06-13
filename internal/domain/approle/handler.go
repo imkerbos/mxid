@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/imkerbos/mxid/pkg/authz"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/tenantctx"
 )
@@ -36,42 +37,42 @@ func (h *Handler) Register(rg *gin.RouterGroup) {
 	// Per-app routes
 	app := rg.Group("/apps/:id/roles")
 	{
-		app.GET("", h.listRolesForApp)
-		app.POST("", h.createRoleForApp)
-		app.PUT("/:role_id", h.updateRole)
-		app.DELETE("/:role_id", h.deleteRole)
+		app.GET("", authz.Require("app.read", nil), h.listRolesForApp)
+		app.POST("", authz.Require("app.role.manage", nil), h.createRoleForApp)
+		app.PUT("/:role_id", authz.Require("app.role.manage", nil), h.updateRole)
+		app.DELETE("/:role_id", authz.Require("app.role.manage", nil), h.deleteRole)
 	}
 	appB := rg.Group("/apps/:id/role-bindings")
 	{
-		appB.GET("", h.listBindingsForApp)
-		appB.POST("", h.createBindingForApp)
-		appB.DELETE("/:binding_id", h.deleteBinding)
+		appB.GET("", authz.Require("app.read", nil), h.listBindingsForApp)
+		appB.POST("", authz.Require("app.role.manage", nil), h.createBindingForApp)
+		appB.DELETE("/:binding_id", authz.Require("app.role.manage", nil), h.deleteBinding)
 	}
 
 	// Per-app-group routes
 	grp := rg.Group("/app-groups/:id/roles")
 	{
-		grp.GET("", h.listRolesForAppGroup)
-		grp.POST("", h.createRoleForAppGroup)
-		grp.PUT("/:role_id", h.updateRole)
-		grp.DELETE("/:role_id", h.deleteRole)
+		grp.GET("", authz.Require("app.read", nil), h.listRolesForAppGroup)
+		grp.POST("", authz.Require("app.role.manage", nil), h.createRoleForAppGroup)
+		grp.PUT("/:role_id", authz.Require("app.role.manage", nil), h.updateRole)
+		grp.DELETE("/:role_id", authz.Require("app.role.manage", nil), h.deleteRole)
 	}
 	grpB := rg.Group("/app-groups/:id/role-bindings")
 	{
-		grpB.GET("", h.listBindingsForAppGroup)
-		grpB.POST("", h.createBindingForAppGroup)
-		grpB.DELETE("/:binding_id", h.deleteBinding)
+		grpB.GET("", authz.Require("app.read", nil), h.listBindingsForAppGroup)
+		grpB.POST("", authz.Require("app.role.manage", nil), h.createBindingForAppGroup)
+		grpB.DELETE("/:binding_id", authz.Require("app.role.manage", nil), h.deleteBinding)
 	}
 
 	// Reverse view: user-group sees its app role bindings.
-	rg.GET("/groups/:id/app-role-bindings", h.listBindingsForUserGroup)
-	rg.GET("/users/:id/app-role-bindings", h.listBindingsForUser)
+	rg.GET("/groups/:id/app-role-bindings", authz.Require("app.read", nil), h.listBindingsForUserGroup)
+	rg.GET("/users/:id/app-role-bindings", authz.Require("app.read", nil), h.listBindingsForUser)
 
 	// Aggregation: enumerate the role catalogs + bindings of EVERY member
 	// app in an app-group, in a single response. Used by the group's
 	// "角色管理" tab to show admins what each member app has configured
 	// without making them dive into each app individually.
-	rg.GET("/app-groups/:id/member-apps-roles", h.listMemberAppsRoles)
+	rg.GET("/app-groups/:id/member-apps-roles", authz.Require("app.read", nil), h.listMemberAppsRoles)
 }
 
 func (h *Handler) tenantID(c *gin.Context) int64 {
@@ -395,11 +396,11 @@ func (h *Handler) listBindingsForSubject(c *gin.Context, subjectType string) {
 // MemberAppRoles is one app's role catalog + binding list, used by the
 // app-group aggregation view to render a per-app summary.
 type MemberAppRoles struct {
-	AppID    int64           `json:"app_id,string"`
-	AppName  string          `json:"app_name"`
-	AppCode  string          `json:"app_code"`
-	Roles    []*AppRole      `json:"roles"`
-	Bindings []*BindingView  `json:"bindings"`
+	AppID    int64          `json:"app_id,string"`
+	AppName  string         `json:"app_name"`
+	AppCode  string         `json:"app_code"`
+	Roles    []*AppRole     `json:"roles"`
+	Bindings []*BindingView `json:"bindings"`
 }
 
 func (h *Handler) listMemberAppsRoles(c *gin.Context) {

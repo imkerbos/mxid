@@ -1,7 +1,7 @@
 // Package externalidp encapsulates third-party identity provider integrations
 // (social login + enterprise IdP). Each provider implements the Provider
 // interface and is registered into the central Registry; the gateway layer
-// dispatches /portal/auth/external/:code/login and /callback to the right
+// dispatches /api/v1/{portal,console}-public/auth/external/:code/start + /callback to the right
 // provider based on the mxid_external_idp.code field.
 package externalidp
 
@@ -61,3 +61,6 @@ type ExternalIDP struct {
 
 // TableName returns the postgres table.
 func (ExternalIDP) TableName() string { return "mxid_external_idp" }
+
+// TenantScoped marks mxid_external_idp for automatic tenant isolation.
+func (ExternalIDP) TenantScoped() {}

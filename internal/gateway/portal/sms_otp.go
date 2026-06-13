@@ -24,9 +24,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/authn"
+	"github.com/imkerbos/mxid/pkg/ratelimit"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/session"
 	"github.com/imkerbos/mxid/pkg/sms"
+	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
@@ -55,6 +57,14 @@ type SMSOTPHandler struct {
 	tenantByCd TenantResolver
 	cookieDom  string
 	cookieSec  bool
+	// devFallback gates the dev_code response field + code Info log on
+	// non-release mode. In release the OTP code is never returned or logged.
+	devFallback bool
+	// limiter caps wrong-code guesses per phone. consumeCode deliberately
+	// keeps a still-valid code alive on a typo (so the user isn't forced to
+	// resend), which without a cap leaves the 6-digit space brute-forceable
+	// within the 5-min TTL. The limiter closes that hole; nil = no cap.
+	limiter *ratelimit.Limiter
 }
 
 // SMSOTPHandlerOpts groups the dependency soup.
@@ -69,6 +79,11 @@ type SMSOTPHandlerOpts struct {
 	TenantByCode TenantResolver
 	CookieDomain string
 	CookieSecure bool
+	// DevFallback enables the non-release dev_code exposure.
+	DevFallback bool
+	// Limiter is the per-phone brute-force cap on /auth/sms/login. nil
+	// disables the cap (legacy behaviour).
+	Limiter *ratelimit.Limiter
 }
 
 func NewSMSOTPHandler(o SMSOTPHandlerOpts) *SMSOTPHandler {
@@ -81,8 +96,10 @@ func NewSMSOTPHandler(o SMSOTPHandlerOpts) *SMSOTPHandler {
 		enabled:    o.Enabled,
 		defaultTID: o.DefaultTID,
 		tenantByCd: o.TenantByCode,
-		cookieDom:  o.CookieDomain,
-		cookieSec:  o.CookieSecure,
+		cookieDom:   o.CookieDomain,
+		cookieSec:   o.CookieSecure,
+		devFallback: o.DevFallback,
+		limiter:     o.Limiter,
 	}
 }
 
@@ -129,6 +146,9 @@ func (h *SMSOTPHandler) send(c *gin.Context) {
 	}
 
 	tenantID := h.resolveTenant(c.Request.Context(), req.Tenant)
+	// Pin the resolved tenant so the user lookup runs tenant-scoped (public
+	// route, no AuthMiddleware to set the scope).
+	c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), tenantID))
 	userID, err := h.users.LookupByPhone(c.Request.Context(), tenantID, phone)
 	if err != nil {
 		h.logger.Warn("sms otp send: lookup failed", zap.String("phone", phone), zap.Error(err))
@@ -164,12 +184,17 @@ func (h *SMSOTPHandler) send(c *gin.Context) {
 		}
 	}
 	if !providerOK {
-		resp.DevCode = code
-		h.logger.Info("sms otp (no provider / fallback)",
-			zap.Int64("user_id", userID),
-			zap.String("phone", phone),
-			zap.String("code", code),
-			zap.Int("ttl_seconds", smsOTPTTL))
+		if h.devFallback {
+			resp.DevCode = code
+			h.logger.Info("sms otp (no provider / fallback)",
+				zap.Int64("user_id", userID),
+				zap.String("phone", phone),
+				zap.String("code", code),
+				zap.Int("ttl_seconds", smsOTPTTL))
+		} else {
+			h.logger.Warn("sms provider send failed (no dev fallback in release)",
+				zap.Int64("user_id", userID))
+		}
 	}
 	response.OK(c, resp)
 }
@@ -199,12 +224,33 @@ func (h *SMSOTPHandler) login(c *gin.Context) {
 	}
 	phone := strings.TrimSpace(req.Phone)
 	tenantID := h.resolveTenant(c.Request.Context(), req.Tenant)
+	// Pin the resolved tenant so the user read below runs tenant-scoped.
+	c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), tenantID))
+
+	// Per-phone brute-force cap: the OTP is only 6 digits and consumeCode keeps
+	// a wrong-guess code alive (TTL-based), so without this the code is
+	// brute-forceable within its 5-min window. Block once the phone trips.
+	if rle := rateLimited(c.Request.Context(), h.limiter, "phone:"+phone); rle != nil {
+		respondRateLimited(c, rle)
+		return
+	}
 
 	userID, err := h.consumeCode(c.Request.Context(), phone, req.Code)
 	if err != nil {
+		// Wrong/expired code — count it against the phone's budget. Tripping
+		// the cap immediately returns 429 so the attacker can't keep guessing.
+		if rle := h.limiter.RecordFailure(c.Request.Context(), "phone:"+phone); rle != nil {
+			var rlErr *ratelimit.RateLimitError
+			if errors.As(rle, &rlErr) {
+				respondRateLimited(c, rlErr)
+				return
+			}
+		}
 		response.BadRequest(c, 40002, err.Error())
 		return
 	}
+	// Correct code — clear the phone's failure budget.
+	h.limiter.Reset(c.Request.Context(), "phone:"+phone)
 
 	user, err := h.users.GetByID(c.Request.Context(), userID)
 	if err != nil {

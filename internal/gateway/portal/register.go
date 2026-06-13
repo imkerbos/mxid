@@ -46,7 +46,7 @@ func Register(
 	})
 
 	// Profile
-	registerProfileRoutes(rg, NewProfileHandler(userQ))
+	registerProfileRoutes(rg, NewProfileHandler(userQ, bus))
 
 	// Real-time event stream (SSE) — used by portal SPA to refetch /apps,
 	// /tenants etc when policy changes.
@@ -65,6 +65,7 @@ func Register(
 		consentSvc: consentSvc,
 		queryier:   consentQ,
 		tenantID:   tenantID,
+		bus:        bus,
 	})
 
 	return &Module{}
