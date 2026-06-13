@@ -80,27 +80,85 @@ The `.env.example` file lists every supported variable.
 
 Rotating `MXID_MASTER_KEY` requires re-encrypting existing settings — see [`scripts/rotate-master-key.sh`](../scripts) (TODO).
 
-## Production with Docker compose
+## Container images & versioning
 
-```bash
-git clone https://github.com/imkerbos/mxid.git
-cd mxid
-cp .env.example .env       # fill secrets + DB / Redis hosts
+Two images, published to GitHub Container Registry — prod is fully containerized
+(no host-side build, no `dist/` mounts):
 
-# Build SPAs once (or in CI). Output goes to web/apps/{console,portal}/dist.
-cd web && pnpm install && pnpm -r build && cd ..
-
-# Build backend image (or pull a tagged release).
-docker compose -f deploy/compose/docker-compose.yml up -d
+```
+ghcr.io/imkerbos/mxid       # Go backend
+ghcr.io/imkerbos/mxid-web   # nginx + both SPAs baked in
 ```
 
-The compose file mounts `deploy/nginx/prod.conf` as nginx config, and `web/apps/console/dist` + `web/apps/portal/dist` as static volumes. Edit `prod.conf`:
+Releases are tag-driven. Pushing a SemVer git tag (`vMAJOR.MINOR.PATCH`) runs
+`.github/workflows/release.yml`, which builds both images multi-arch
+(`linux/amd64` + `linux/arm64`), pushes the standardized tag set below, and cuts
+a GitHub Release. Nothing is built on `main` or PRs — CI exists only to release.
 
-- Set `server_name` to your domain.
-- Place TLS cert at `/etc/nginx/cert/server.{crt,key}` (mount as volume).
-- The `mxid_backend` upstream points at the backend container; in Kubernetes replace with the Service DNS.
+| Tag | Moves? | Use |
+|-----|--------|-----|
+| `v1.2.3` | never (immutable) | **pin this in prod** |
+| `v1.2` | latest patch of 1.2 | track patch fixes |
+| `v1` | latest minor of 1 | track a major line |
 
-Already running an ingress controller (Traefik, Caddy, ALB)? Use it to terminate TLS and forward plain HTTP to the nginx pod — drop the cert mount and the `listen 443 ssl` block.
+There is **no `latest` tag** — prod must pin an explicit version. The backend
+runs DB migrations on boot, so a moving tag would mean a surprise migration.
+
+The same identifier runs end to end: **git tag = image tag = binary version
+(`/health`, `/system/info`, console version page) = `MXID_TAG` in `.env`.** Cut
+a release:
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+## Production with Docker compose
+
+Deployment touches **one file — `.env`**. You never edit the YAML config or the
+compose files; env overrides win, and everything else (domain, SMTP, branding…)
+is set in the console after first login.
+
+```bash
+git clone https://github.com/imkerbos/mxid.git   # only for compose files + .env + certs
+cd mxid
+cp .env.example .env
+```
+
+Edit `.env` — the prod section:
+
+```ini
+# Mode: external DB (default) — or uncomment the second line for a
+# self-contained stack with containerized Postgres + Redis + volumes.
+COMPOSE_FILE=deploy/compose/docker-compose.yml
+# COMPOSE_FILE=deploy/compose/docker-compose.yml:deploy/compose/docker-compose.standalone.yml
+
+MXID_TAG=v0.1.0                                      # required — pin a release
+MXID_SERVER_ALLOWED_ORIGINS=https://id.example.com   # CORS/CSRF allow-list (boot-time)
+SERVER_NAME=id.example.com
+CERT_FILE=fullchain.pem
+KEY_FILE=privkey.pem
+# secrets: POSTGRES_PASSWORD / REDIS_PASSWORD / MXID_CRYPTO_KEY_ENCRYPTION_KEY
+```
+
+Drop your TLS cert + key into `deploy/compose/cert/` (named per `CERT_FILE` /
+`KEY_FILE`), then:
+
+```bash
+docker compose up -d          # COMPOSE_FILE from .env selects the mode
+```
+
+That's it — `docker compose` reads `COMPOSE_FILE` from `.env`, pulls the matched
+backend + web images, and starts. (Building locally instead of pulling:
+`make prod-up` / `make standalone-up`.)
+
+**Why only those env values?** `MXID_SERVER_ALLOWED_ORIGINS` is the CORS/CSRF
+allow-list — it must be known at startup because it gates who can even reach the
+console to change other settings. Everything else URL-related (issuer / portal /
+console URLs that protocol handlers use) is **set in the console** under
+*Settings → 外部 URL* and takes effect live; the YAML values are only a fallback.
+
+- TLS certs are operator-supplied, mounted from `deploy/compose/cert/`, never baked into the image.
+- Behind an existing ingress (Traefik, Caddy, ALB)? Terminate TLS there and forward plain HTTP to the web container — drop the cert mount and the `listen 443 ssl` block from `prod.conf`.
 
 ### Reverse proxy headers
 

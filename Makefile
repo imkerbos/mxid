@@ -1,6 +1,7 @@
 .PHONY: dev dev-console dev-portal dev-web dev-docker-up dev-docker-up-d dev-docker-down dev-docker-logs dev-docker-ps dev-docker-restart dev-docker-reload dev-docker-watch dev-docker-clean \
        build run test lint migrate-up migrate-down migrate-create clean deps \
-       verify verify-mod verify-vet verify-build verify-lint verify-web verify-exports smoke install-hooks
+       verify verify-mod verify-vet verify-build verify-lint verify-web verify-exports smoke install-hooks \
+       docker-build prod-up prod-down prod-logs standalone-up standalone-down standalone-logs
 
 # Variables
 APP_NAME := mxid
@@ -9,6 +10,13 @@ BUILD_DIR := bin
 CONFIG_PATH := configs
 MIGRATE_DIR := migrations
 DB_DSN ?= "postgres://postgres:12345@host.docker.internal:5432/mxid?sslmode=disable"
+
+# Build identity (stamped into the binary / image). VERSION falls back to the
+# git tag (v1.2.3) or short sha; CI passes an explicit tag.
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
+BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+IMAGE := ghcr.io/imkerbos/$(APP_NAME)
 
 # Development — Go backend (air hot reload)
 dev:
@@ -107,9 +115,34 @@ migrate-force:
 migrate-version:
 	migrate -path $(MIGRATE_DIR) -database $(DB_DSN) version
 
-# Docker — Production build
+# Docker — Production build (version stamped via build args). Builds BOTH the
+# backend and the web (nginx + baked SPAs) images, mirroring CI. No `latest`
+# tag — CI doesn't publish one, so neither do local builds.
 docker-build:
-	docker build -f deploy/dockerfile/Dockerfile -t $(APP_NAME):latest .
+	docker build -f deploy/dockerfile/Dockerfile \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg COMMIT=$(COMMIT) \
+		--build-arg BUILD_TIME=$(BUILD_TIME) \
+		-t $(IMAGE):$(VERSION) .
+	docker build -f deploy/dockerfile/Dockerfile.web \
+		-t $(IMAGE)-web:$(VERSION) .
+
+# Prod stack — external DB (host.docker.internal). MXID_TAG defaults to the
+# local VERSION so `make prod-up` builds + runs without a separate .env tag.
+prod-up:
+	MXID_TAG=$(VERSION) docker compose -f deploy/compose/docker-compose.yml up -d --build
+prod-down:
+	docker compose -f deploy/compose/docker-compose.yml down
+prod-logs:
+	docker compose -f deploy/compose/docker-compose.yml logs -f
+
+# Prod stack — self-contained (containerized Postgres + Redis + volumes).
+standalone-up:
+	MXID_TAG=$(VERSION) docker compose -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.standalone.yml up -d --build
+standalone-down:
+	docker compose -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.standalone.yml down
+standalone-logs:
+	docker compose -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.standalone.yml logs -f
 
 # Clean
 clean:

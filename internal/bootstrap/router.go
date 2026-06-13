@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/pkg/response"
+	"github.com/imkerbos/mxid/pkg/version"
 	"go.uber.org/zap"
 )
 
@@ -58,6 +59,7 @@ func InitRouter(cfg *ServerConfig, logger *zap.Logger) *gin.Engine {
 		response.OK(c, gin.H{
 			"status":  "healthy",
 			"service": "mxid",
+			"build":   version.Get(),
 		})
 	})
 

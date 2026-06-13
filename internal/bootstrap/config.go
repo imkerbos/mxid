@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -209,9 +210,11 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
 
-	// Load environment-specific overrides
-	env := v.GetString("server.mode")
-	if env != "" {
+	// Load environment-specific overlay on top of the base config.yaml.
+	// Selected by MXID_CONFIG_ENV (e.g. "prod" -> config.prod.yaml, "dev" ->
+	// config.dev.yaml), NOT by server.mode — the gin mode (debug/release) is a
+	// separate concern. A missing overlay file is fine (base config stands alone).
+	if env := os.Getenv("MXID_CONFIG_ENV"); env != "" {
 		v.SetConfigName("config." + env)
 		_ = v.MergeInConfig()
 	}
@@ -226,11 +229,33 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 
+	// List-valued keys can't ride viper's AutomaticEnv (a single env var is a
+	// scalar). Handle the one that matters for deployment explicitly:
+	// MXID_SERVER_ALLOWED_ORIGINS="https://a,https://b" → []string. This is the
+	// CORS/CSRF allow-list — the one origin setting that MUST be known at boot
+	// (it gates who may even reach the console to change other settings).
+	if raw := os.Getenv("MXID_SERVER_ALLOWED_ORIGINS"); raw != "" {
+		cfg.Server.AllowedOrigins = splitAndTrim(raw)
+	}
+
 	if err := cfg.validateSecrets(); err != nil {
 		return nil, fmt.Errorf("config secrets: %w", err)
 	}
 
 	return &cfg, nil
+}
+
+// splitAndTrim splits a comma-separated env value into a clean slice, dropping
+// empty entries and surrounding whitespace.
+func splitAndTrim(s string) []string {
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // devDefaultDBPasswords lists passwords known to ship with the example

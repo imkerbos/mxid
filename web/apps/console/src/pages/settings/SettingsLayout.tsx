@@ -3,12 +3,13 @@
 // Left rail: vertical nav grouped by category. Right pane: outlet for the
 // active child route. Pages are intentionally fine-grained (one route per
 // settings card) so each save flow stays simple.
+import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import {
   Mail, MailOpen, ShieldCheck, Palette, LogIn,
-  Settings2, MessageSquare, FileClock, Globe, Award, Link2, KeyRound, ShieldAlert,
+  Settings2, MessageSquare, FileClock, Globe, Award, Link2, KeyRound, ShieldAlert, Info,
 } from 'lucide-react'
-import { cn, useTranslation } from '@mxid/shared'
+import { cn, useTranslation, systemApi } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
 
 const buildNav = (t: (k: string) => string): Array<{
@@ -48,11 +49,26 @@ const buildNav = (t: (k: string) => string): Array<{
       { to: '/settings/license', icon: Award, label: t('settings.sections.license') },
     ],
   },
+  {
+    group: t('settings.sections.systemVersion'),
+    items: [
+      { to: '/settings/system-version', icon: Info, label: t('settings.sections.systemVersion'), hint: t('settings.sections.systemVersionHint') },
+    ],
+  },
 ]
 
 export default function SettingsLayout() {
   const { t } = useTranslation()
   const NAV = buildNav(t)
+  // Update badge: a dot on the system-version nav item when a newer release
+  // exists. Best-effort — failures (non-super_admin 403, network) leave it off.
+  const [updateAvailable, setUpdateAvailable] = useState(false)
+  useEffect(() => {
+    systemApi
+      .versionStatus()
+      .then((s) => setUpdateAvailable(!!s.update_available))
+      .catch(() => {})
+  }, [])
   return (
     <div className="space-y-6">
       <PageHeader
@@ -83,8 +99,13 @@ export default function SettingsLayout() {
                       }
                     >
                       <it.icon className="mt-0.5 h-4 w-4 shrink-0" />
-                      <div className="min-w-0">
-                        <div className="truncate font-medium">{it.label}</div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate font-medium">{it.label}</span>
+                          {it.to === '/settings/system-version' && updateAvailable && (
+                            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                          )}
+                        </div>
                         {it.hint && <div className="truncate text-[11px] text-gray-400">{it.hint}</div>}
                       </div>
                     </NavLink>

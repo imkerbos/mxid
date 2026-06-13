@@ -19,6 +19,7 @@ import AccountPage from './pages/account'
 import SettingsLayout from './pages/settings/SettingsLayout'
 import MailSMTPPage from './pages/settings/MailSMTP'
 import SecurityPage from './pages/settings/Security'
+import SystemVersionPage from './pages/settings/SystemVersion'
 import {
   BrandingPage,
   LoginMethodsPage,
@@ -121,6 +122,7 @@ export default function App() {
                   <Route path="audit-policy" element={<AuditPolicyPage />} />
                   <Route path="license" element={<LicensePage />} />
                   <Route path="external-urls" element={<ExternalURLsPage />} />
+                  <Route path="system-version" element={<SystemVersionPage />} />
                 </Route>
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Routes>
