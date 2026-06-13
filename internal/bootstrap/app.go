@@ -109,6 +109,10 @@ func NewApp(configPath string) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("init master key (set MXID_CRYPTO_KEY_ENCRYPTION_KEY to base64(32 random bytes)): %w", err)
 	}
+	// Wire the process-wide MasterKey used by crypto.Secret's driver.Valuer /
+	// sql.Scanner (and Value()/Scan() have no context to thread a key through).
+	// MUST happen before any crypto.Secret is persisted or loaded.
+	crypto.SetSecretMasterKey(masterKey)
 
 	// Init router
 	router := InitRouter(&cfg.Server, logger)

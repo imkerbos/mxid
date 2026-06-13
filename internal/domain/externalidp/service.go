@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/imkerbos/mxid/pkg/crypto"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/snowflake"
 	"github.com/imkerbos/mxid/pkg/tenantscope"
@@ -15,6 +16,81 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
+
+// encPrefix marks an encrypted config secret value. Mirrors setting.Service's
+// "enc:" convention. A value lacking this prefix on load is treated as legacy
+// plaintext (tolerant read) and re-encrypted on the next Update/save.
+const encPrefix = "enc:"
+
+// sensitiveConfigKeys maps an IdP Type → the config JSON sub-keys that hold a
+// secret and MUST be AES-encrypted at rest + masked in responses. Keep this
+// authoritative: a new secret-bearing provider field MUST be registered here
+// or it leaks plaintext into the DB and admin responses.
+var sensitiveConfigKeys = map[string][]string{
+	TypeGitHub: {"client_secret"},
+	TypeTeams:  {"client_secret"},
+	TypeLark:   {"app_secret"},
+	TypeFeishu: {"app_secret"},
+	TypeOIDC:   {"client_secret"},
+}
+
+// SecretConfigKeys returns the secret sub-keys for a provider type (used by
+// handlers to mask responses and preserve ciphertext on empty-secret updates).
+func SecretConfigKeys(idpType string) []string { return sensitiveConfigKeys[idpType] }
+
+// MaskedIDP is the response shape for admin List/Get/Create/Update. It embeds
+// the row but replaces the raw Config with a copy whose secret sub-keys are
+// stripped, and surfaces a per-key "<key>_set" boolean so the admin UI can tell
+// whether a secret is configured without ever receiving the plaintext or
+// ciphertext.
+type MaskedIDP struct {
+	*ExternalIDP
+	Config     map[string]any  `json:"config"`
+	SecretSet  map[string]bool `json:"secret_set"`
+}
+
+// MarshalJSON flattens MaskedIDP so the masked Config and SecretSet override the
+// embedded row's fields in the JSON output.
+func (m MaskedIDP) MarshalJSON() ([]byte, error) {
+	type alias ExternalIDP
+	base, err := json.Marshal((*alias)(m.ExternalIDP))
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]any
+	if err := json.Unmarshal(base, &out); err != nil {
+		return nil, err
+	}
+	out["config"] = m.Config
+	out["secret_set"] = m.SecretSet
+	return json.Marshal(out)
+}
+
+// Mask returns a MaskedIDP safe to serialize to the admin browser: the secret
+// config sub-keys are removed and replaced by a "<key>_set" sentinel. Never
+// returns plaintext OR ciphertext for a secret.
+func Mask(idp *ExternalIDP) *MaskedIDP {
+	cfg := map[string]any{}
+	if len(idp.Config) > 0 {
+		_ = json.Unmarshal(idp.Config, &cfg)
+	}
+	setMap := map[string]bool{}
+	for _, k := range sensitiveConfigKeys[idp.Type] {
+		v, ok := cfg[k].(string)
+		setMap[k] = ok && v != ""
+		delete(cfg, k)
+	}
+	return &MaskedIDP{ExternalIDP: idp, Config: cfg, SecretSet: setMap}
+}
+
+// MaskList masks a slice of IdPs for the admin list response.
+func MaskList(idps []*ExternalIDP) []*MaskedIDP {
+	out := make([]*MaskedIDP, 0, len(idps))
+	for _, idp := range idps {
+		out = append(out, Mask(idp))
+	}
+	return out
+}
 
 // Service errors.
 var (
@@ -30,19 +106,114 @@ var (
 // token as the `state` query parameter. Callback handler retrieves+deletes
 // the entry to defeat CSRF.
 type Service struct {
-	repo     Repository
-	registry *Registry
-	idGen    *snowflake.Generator
-	rdb      *redis.Client
-	eventBus *event.Bus
+	repo      Repository
+	registry  *Registry
+	idGen     *snowflake.Generator
+	rdb       *redis.Client
+	eventBus  *event.Bus
+	masterKey *crypto.MasterKey
 }
 
 // NewService builds a Service. registry defaults to DefaultRegistry.
-func NewService(repo Repository, idGen *snowflake.Generator, rdb *redis.Client, registry *Registry, eventBus *event.Bus) *Service {
+func NewService(repo Repository, idGen *snowflake.Generator, rdb *redis.Client, registry *Registry, eventBus *event.Bus, masterKey *crypto.MasterKey) *Service {
 	if registry == nil {
 		registry = DefaultRegistry
 	}
-	return &Service{repo: repo, registry: registry, idGen: idGen, rdb: rdb, eventBus: eventBus}
+	return &Service{repo: repo, registry: registry, idGen: idGen, rdb: rdb, eventBus: eventBus, masterKey: masterKey}
+}
+
+/* ──────────────── Config secret crypto ──────────────── */
+
+// encryptConfig returns a copy of the raw config JSON with its registered
+// secret sub-keys AES-encrypted (prefixed with encPrefix). Already-encrypted
+// values are left untouched so re-saving is idempotent. Mirrors
+// setting.Service.encryptSensitive.
+func (s *Service) encryptConfig(idpType string, raw []byte) ([]byte, error) {
+	keys := sensitiveConfigKeys[idpType]
+	if len(keys) == 0 || len(raw) == 0 {
+		return raw, nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, fmt.Errorf("decode config: %w", err)
+	}
+	mutated := false
+	for _, k := range keys {
+		v, ok := m[k].(string)
+		if !ok || v == "" {
+			continue
+		}
+		if strings.HasPrefix(v, encPrefix) {
+			continue // already ciphertext
+		}
+		if s.masterKey == nil {
+			// Fail closed on write: never persist a fresh plaintext secret when
+			// the key is misconfigured.
+			return nil, fmt.Errorf("encrypt config %s.%s: master key not configured", idpType, k)
+		}
+		enc, err := s.masterKey.Encrypt([]byte(v))
+		if err != nil {
+			return nil, fmt.Errorf("encrypt config %s.%s: %w", idpType, k, err)
+		}
+		m[k] = encPrefix + enc
+		mutated = true
+	}
+	if !mutated {
+		return raw, nil
+	}
+	return json.Marshal(m)
+}
+
+// decryptConfig returns a copy of the raw config JSON with its registered
+// secret sub-keys decrypted to plaintext. Tolerant read: a value lacking the
+// encPrefix is treated as legacy plaintext and passed through unchanged (it
+// gets encrypted on the next Update/save). Mirrors app_cert's Encrypted-flag
+// dual-read.
+func (s *Service) decryptConfig(idpType string, raw []byte) ([]byte, error) {
+	keys := sensitiveConfigKeys[idpType]
+	if len(keys) == 0 || len(raw) == 0 {
+		return raw, nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, fmt.Errorf("decode config: %w", err)
+	}
+	mutated := false
+	for _, k := range keys {
+		v, ok := m[k].(string)
+		if !ok || v == "" {
+			continue
+		}
+		if !strings.HasPrefix(v, encPrefix) {
+			continue // legacy plaintext — tolerant pass-through
+		}
+		if s.masterKey == nil {
+			return nil, fmt.Errorf("decrypt config %s.%s: master key not configured", idpType, k)
+		}
+		plain, err := s.masterKey.Decrypt(strings.TrimPrefix(v, encPrefix))
+		if err != nil {
+			return nil, fmt.Errorf("decrypt config %s.%s: %w", idpType, k, err)
+		}
+		m[k] = string(plain)
+		mutated = true
+	}
+	if !mutated {
+		return raw, nil
+	}
+	return json.Marshal(m)
+}
+
+// buildDecrypted clones the IdP row, decrypts its config secrets in place, and
+// builds the provider from the plaintext config. Used by login paths that
+// genuinely need the secret. The stored row's ciphertext is never mutated.
+func (s *Service) buildDecrypted(idp *ExternalIDP) (Provider, error) {
+	dec, err := s.decryptConfig(idp.Type, idp.Config)
+	if err != nil {
+		return nil, err
+	}
+	clone := *idp
+	clone.Config = datatypes.JSON(dec)
+	return s.registry.Build(&clone)
 }
 
 // publish emits an external-IdP config event. Actor / IP are denormalized
@@ -118,10 +289,18 @@ func (s *Service) Create(ctx context.Context, tenantID int64, req *CreateRequest
 		SortOrder:    req.SortOrder,
 	}
 
-	// Sanity-build the provider so misconfigured rows never land in DB.
+	// Sanity-build the provider from the plaintext config so misconfigured
+	// rows never land in DB.
 	if _, err := s.registry.Build(idp); err != nil {
 		return nil, fmt.Errorf("provider validation failed: %w", err)
 	}
+
+	// Encrypt secret config sub-keys at rest before persisting.
+	enc, err := s.encryptConfig(idp.Type, idp.Config)
+	if err != nil {
+		return nil, err
+	}
+	idp.Config = datatypes.JSON(enc)
 
 	if err := s.repo.Create(ctx, idp); err != nil {
 		return nil, err
@@ -148,8 +327,18 @@ func (s *Service) Update(ctx context.Context, id int64, req *UpdateRequest) (*Ex
 	if req.Description != nil {
 		idp.Description = req.Description
 	}
+	// idpType is the effective provider type for crypto-key lookup (Type is
+	// immutable on Update, so the stored row's Type is authoritative).
+	idpType := idp.Type
+	// storedConfig is the existing at-rest (encrypted) config, used to preserve
+	// secret sub-keys the admin left blank/masked in the PUT body.
+	storedConfig := append(datatypes.JSON(nil), idp.Config...)
 	if req.Config != nil {
-		raw, err := json.Marshal(req.Config)
+		merged, err := s.preserveSecrets(idpType, storedConfig, req.Config)
+		if err != nil {
+			return nil, err
+		}
+		raw, err := json.Marshal(merged)
 		if err != nil {
 			return nil, fmt.Errorf("marshal config: %w", err)
 		}
@@ -169,15 +358,62 @@ func (s *Service) Update(ctx context.Context, id int64, req *UpdateRequest) (*Ex
 	}
 
 	if req.Config != nil {
-		if _, err := s.registry.Build(idp); err != nil {
+		// Validate against a fully-decrypted view (preserved sub-keys may still
+		// be ciphertext from the stored row).
+		if _, err := s.buildDecrypted(idp); err != nil {
 			return nil, fmt.Errorf("provider validation failed: %w", err)
 		}
+		// Encrypt fresh plaintext secrets at rest; already-encrypted preserved
+		// values are left untouched (encryptConfig is idempotent).
+		enc, err := s.encryptConfig(idpType, idp.Config)
+		if err != nil {
+			return nil, err
+		}
+		idp.Config = datatypes.JSON(enc)
 	}
 	if err := s.repo.Update(ctx, idp); err != nil {
 		return nil, err
 	}
 	s.publish(ctx, event.IDPUpdated, idp)
 	return idp, nil
+}
+
+// preserveSecrets merges the incoming PUT config with the stored (encrypted)
+// config: for each registered secret sub-key, if the incoming value is empty or
+// the masked sentinel, the stored ciphertext is carried over; otherwise the new
+// plaintext is kept. Non-secret keys come entirely from the incoming config.
+func (s *Service) preserveSecrets(idpType string, stored []byte, incoming map[string]any) (map[string]any, error) {
+	out := make(map[string]any, len(incoming))
+	for k, v := range incoming {
+		out[k] = v
+	}
+	keys := sensitiveConfigKeys[idpType]
+	if len(keys) == 0 {
+		return out, nil
+	}
+	var storedMap map[string]any
+	if len(stored) > 0 {
+		if err := json.Unmarshal(stored, &storedMap); err != nil {
+			return nil, fmt.Errorf("decode stored config: %w", err)
+		}
+	}
+	for _, k := range keys {
+		v, _ := out[k].(string)
+		if v != "" && v != crypto.MaskedSecret {
+			continue // admin supplied a fresh secret
+		}
+		// Preserve the stored value (still ciphertext) verbatim.
+		if storedMap != nil {
+			if sv, ok := storedMap[k]; ok {
+				out[k] = sv
+				continue
+			}
+		}
+		// No stored value and none supplied → drop the empty/masked key so it
+		// doesn't persist as an empty string.
+		delete(out, k)
+	}
+	return out, nil
 }
 
 // Delete removes an IdP. Existing user_identity bindings are left in place
@@ -266,7 +502,7 @@ func (s *Service) StartLogin(ctx context.Context, tenantID int64, code, redirect
 		return "", ErrIDPDisabled
 	}
 
-	provider, err := s.registry.Build(idp)
+	provider, err := s.buildDecrypted(idp)
 	if err != nil {
 		return "", err
 	}
@@ -318,7 +554,7 @@ func (s *Service) FinishLogin(ctx context.Context, state, code string) (*Externa
 	if err != nil {
 		return nil, nil, "", err
 	}
-	provider, err := s.registry.Build(idp)
+	provider, err := s.buildDecrypted(idp)
 	if err != nil {
 		return nil, nil, "", err
 	}
