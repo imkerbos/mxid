@@ -71,6 +71,9 @@ func (User) TableName() string {
 	return "mxid_user"
 }
 
+// TenantScoped marks mxid_user for automatic tenant isolation (see pkg/tenantscope).
+func (User) TenantScoped() {}
+
 // UserDetail represents the mxid_user_detail table.
 type UserDetail struct {
 	ID         int64     `gorm:"column:id;primaryKey" json:"id"`
@@ -122,6 +125,9 @@ type UserIdentity struct {
 func (UserIdentity) TableName() string {
 	return "mxid_user_identity"
 }
+
+// TenantScoped marks mxid_user_identity for automatic tenant isolation.
+func (UserIdentity) TenantScoped() {}
 
 // UserMFA represents the mxid_user_mfa table.
 type UserMFA struct {

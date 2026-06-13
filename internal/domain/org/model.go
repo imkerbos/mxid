@@ -62,6 +62,9 @@ func (Organization) TableName() string {
 	return "mxid_organization"
 }
 
+// TenantScoped marks mxid_organization for automatic tenant isolation.
+func (Organization) TenantScoped() {}
+
 // UserOrg represents the mxid_user_org table.
 type UserOrg struct {
 	ID        int64     `gorm:"column:id;primaryKey" json:"id"`

@@ -27,6 +27,7 @@ import (
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/session"
 	"github.com/imkerbos/mxid/pkg/sms"
+	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
@@ -129,6 +130,9 @@ func (h *SMSOTPHandler) send(c *gin.Context) {
 	}
 
 	tenantID := h.resolveTenant(c.Request.Context(), req.Tenant)
+	// Pin the resolved tenant so the user lookup runs tenant-scoped (public
+	// route, no AuthMiddleware to set the scope).
+	c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), tenantID))
 	userID, err := h.users.LookupByPhone(c.Request.Context(), tenantID, phone)
 	if err != nil {
 		h.logger.Warn("sms otp send: lookup failed", zap.String("phone", phone), zap.Error(err))
@@ -199,6 +203,8 @@ func (h *SMSOTPHandler) login(c *gin.Context) {
 	}
 	phone := strings.TrimSpace(req.Phone)
 	tenantID := h.resolveTenant(c.Request.Context(), req.Tenant)
+	// Pin the resolved tenant so the user read below runs tenant-scoped.
+	c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), tenantID))
 
 	userID, err := h.consumeCode(c.Request.Context(), phone, req.Code)
 	if err != nil {

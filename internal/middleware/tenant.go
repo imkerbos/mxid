@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/pkg/authz"
+	"github.com/imkerbos/mxid/pkg/tenantscope"
 )
 
 // TenantContext reads X-Tenant-ID header and, if the caller is super_admin,
@@ -70,6 +71,12 @@ func TenantContext() gin.HandlerFunc {
 			return
 		}
 		c.Set("tenant_id", tid)
+		// Re-pin the std context to the chosen tenant so the gorm
+		// tenant-isolation plugin scopes queries to the override target
+		// rather than the super_admin's home tenant stamped by AuthMiddleware.
+		// The admin acts AS that tenant, so this is a normal tenant pin (not a
+		// cross-tenant escape).
+		c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), tid))
 		c.Next()
 	}
 }

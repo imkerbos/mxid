@@ -10,6 +10,7 @@ import (
 
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/snowflake"
+	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
@@ -251,6 +252,9 @@ type stateEntry struct {
 // (gateway) issues a 302 to the URL; the user authenticates at the IdP and
 // is bounced back to redirectURI?code=...&state=...
 func (s *Service) StartLogin(ctx context.Context, tenantID int64, code, redirectURI, finalReturnURL string) (string, error) {
+	// Pre-session flow: pin the explicit tenant so the IdP-config read is
+	// tenant-scoped under the gorm isolation plugin.
+	ctx = tenantscope.WithTenant(ctx, tenantID)
 	idp, err := s.repo.GetByCode(ctx, tenantID, code)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -304,6 +308,11 @@ func (s *Service) FinishLogin(ctx context.Context, state, code string) (*Externa
 	var entry stateEntry
 	if err := json.Unmarshal([]byte(raw), &entry); err != nil {
 		return nil, nil, "", fmt.Errorf("decode state: %w", err)
+	}
+	// The OAuth callback carries no session; the tenant was captured into the
+	// state at StartLogin. Pin it so the IdP-config read is tenant-scoped.
+	if entry.TenantID > 0 {
+		ctx = tenantscope.WithTenant(ctx, entry.TenantID)
 	}
 	idp, err := s.repo.GetByID(ctx, entry.IdpID)
 	if err != nil {

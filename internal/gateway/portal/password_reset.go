@@ -20,11 +20,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/pkg/mailer"
 	"github.com/imkerbos/mxid/pkg/response"
+	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
@@ -106,6 +108,10 @@ func (h *PasswordResetHandler) forgot(c *gin.Context) {
 	resp := forgotResponse{Sent: true, TTLSeconds: pwdResetTTL}
 
 	tenantID := h.resolveTenant(c.Request.Context(), req.Tenant)
+	// Pin the resolved tenant so the user lookups / reads below run
+	// tenant-scoped (this route is mounted on the unauthenticated public
+	// group, so nothing else sets the scope).
+	c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), tenantID))
 	userID, err := h.users.LookupByEmail(c.Request.Context(), tenantID, email)
 	if err != nil {
 		h.logger.Warn("password forgot: lookup failed",
@@ -126,7 +132,10 @@ func (h *PasswordResetHandler) forgot(c *gin.Context) {
 		response.InternalError(c, "failed to generate token")
 		return
 	}
-	if err := h.rdb.Set(c.Request.Context(), pwdResetKeyPrefix+token, userID, pwdResetTTL*1e9).Err(); err != nil {
+	// Bind both tenant and user to the token so the (tenant-less) reset call
+	// can re-establish the tenant scope before mutating the user row.
+	tokenVal := strconv.FormatInt(tenantID, 10) + ":" + strconv.FormatInt(userID, 10)
+	if err := h.rdb.Set(c.Request.Context(), pwdResetKeyPrefix+token, tokenVal, pwdResetTTL*1e9).Err(); err != nil {
 		response.InternalError(c, "failed to persist token")
 		return
 	}
@@ -178,10 +187,16 @@ func (h *PasswordResetHandler) reset(c *gin.Context) {
 		return
 	}
 
-	userID, err := h.consumeToken(c.Request.Context(), req.Token)
+	tenantID, userID, err := h.consumeToken(c.Request.Context(), req.Token)
 	if err != nil {
 		response.BadRequest(c, 40002, err.Error())
 		return
+	}
+	// Re-establish the tenant scope captured at forgot-time so the password
+	// write is tenant-isolated even though the reset request itself carries
+	// no tenant.
+	if tenantID > 0 {
+		c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), tenantID))
 	}
 
 	if err := h.users.ResetPassword(c.Request.Context(), userID, req.NewPassword); err != nil {
@@ -201,19 +216,32 @@ func (h *PasswordResetHandler) reset(c *gin.Context) {
 	response.OK(c, gin.H{"reset": true})
 }
 
-// consumeToken atomically reads + deletes the user_id bound to the token.
-// Mirrors the email-verify pattern: one-shot, no replay.
-func (h *PasswordResetHandler) consumeToken(ctx context.Context, token string) (int64, error) {
+// consumeToken atomically reads + deletes the (tenant_id, user_id) pair bound
+// to the token. Mirrors the email-verify pattern: one-shot, no replay. The
+// value is "tenant:user"; a legacy bare-int value (no tenant) parses with
+// tenantID=0, in which case the caller leaves the scope unset and the
+// underlying ResetPassword still works via its explicit user id.
+func (h *PasswordResetHandler) consumeToken(ctx context.Context, token string) (tenantID, userID int64, err error) {
 	key := pwdResetKeyPrefix + token
-	val, err := h.rdb.Get(ctx, key).Int64()
+	val, err := h.rdb.Get(ctx, key).Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
-			return 0, errors.New("token invalid or expired")
+			return 0, 0, errors.New("token invalid or expired")
 		}
-		return 0, fmt.Errorf("read token: %w", err)
+		return 0, 0, fmt.Errorf("read token: %w", err)
 	}
 	_ = h.rdb.Del(ctx, key).Err()
-	return val, nil
+
+	if i := strings.IndexByte(val, ':'); i >= 0 {
+		tenantID, _ = strconv.ParseInt(val[:i], 10, 64)
+		userID, _ = strconv.ParseInt(val[i+1:], 10, 64)
+	} else {
+		userID, _ = strconv.ParseInt(val, 10, 64)
+	}
+	if userID == 0 {
+		return 0, 0, errors.New("token invalid or expired")
+	}
+	return tenantID, userID, nil
 }
 
 func (h *PasswordResetHandler) resolveTenant(ctx context.Context, code string) int64 {

@@ -11,7 +11,19 @@ import (
 	"github.com/imkerbos/mxid/pkg/crypto"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/session"
+	"github.com/imkerbos/mxid/pkg/tenantscope"
 )
+
+// pinSessionTenant re-pins the request's std context to the resolved session's
+// tenant so the gorm tenant-isolation plugin scopes any downstream DB read.
+// These /auth/* handlers are registered before AuthMiddleware, so they do NOT
+// inherit the middleware's tenant stamp and must set it themselves from the
+// session they just validated.
+func pinSessionTenant(c *gin.Context, tenantID int64) {
+	if tenantID > 0 {
+		c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), tenantID))
+	}
+}
 
 // Cookie names per namespace.
 //
@@ -247,6 +259,11 @@ func (h *Handler) loginHandler(namespace, cookieName string) gin.HandlerFunc {
 				effectiveTenant = tid
 			}
 		}
+		// Pin the resolved tenant onto the request context so the post-login
+		// chain (conditional-access assess, remember-device, MFA-enroll check)
+		// runs tenant-scoped — this route is mounted before AuthMiddleware so
+		// nothing else sets the scope.
+		pinSessionTenant(c, effectiveTenant)
 		authReq := &AuthRequest{
 			TenantID: effectiveTenant,
 			AuthType: authType,
@@ -335,6 +352,9 @@ func (h *Handler) verifyMFAHandler(namespace, cookieName string) gin.HandlerFunc
 			h.handleAuthError(c, err)
 			return
 		}
+		// Pin the resolved tenant so the post-verify device record write is
+		// tenant-scoped (this route runs before AuthMiddleware).
+		pinSessionTenant(c, loginResp.TenantID)
 
 		h.finalizeLoginCookies(c, cookieName, loginResp, "totp", req.Remember)
 		// The user just passed MFA at login — stamp the SPA session so an
@@ -390,6 +410,7 @@ func (h *Handler) logoutHandler(namespace, cookieName string) gin.HandlerFunc {
 		if sErr == nil && sess != nil {
 			userID = sess.UserID
 			tenantID = sess.TenantID
+			pinSessionTenant(c, tenantID)
 		}
 
 		meta := LogoutMeta{TenantID: tenantID, IP: c.ClientIP(), UserAgent: c.Request.UserAgent()}
@@ -419,6 +440,7 @@ func (h *Handler) meHandler(namespace, cookieName string) gin.HandlerFunc {
 			response.Unauthorized(c, 40101, "invalid session")
 			return
 		}
+		pinSessionTenant(c, sess.TenantID)
 
 		userInfo, err := h.engine.GetCurrentUser(c.Request.Context(), sess.UserID)
 		if err != nil {
@@ -483,6 +505,7 @@ func (h *Handler) ssoHandler(targetNS, targetCookie string, requireAdmin bool, s
 			response.Unauthorized(c, 40101, "no valid session to bridge")
 			return
 		}
+		pinSessionTenant(c, src.TenantID)
 
 		if requireAdmin {
 			if h.adminCheck == nil || !h.adminCheck(c.Request.Context(), src.TenantID, src.UserID) {
@@ -532,6 +555,7 @@ func (h *Handler) stepUpHandler() gin.HandlerFunc {
 			response.Unauthorized(c, 40101, "invalid or expired session")
 			return
 		}
+		pinSessionTenant(c, sess.TenantID)
 
 		var req StepUpRequest
 		if err := c.ShouldBindJSON(&req); err != nil {

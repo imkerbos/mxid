@@ -5,6 +5,7 @@ import (
 	"github.com/imkerbos/mxid/pkg/auditctx"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/session"
+	"github.com/imkerbos/mxid/pkg/tenantscope"
 )
 
 // actorTypeForNamespace maps a session namespace to the audit actor type:
@@ -80,14 +81,20 @@ func AuthMiddleware(sessionMgr *session.Manager, namespace string) gin.HandlerFu
 		// publish audit events (via c.Request.Context()) attribute them to this
 		// caller automatically — who, IP, session — without each publisher
 		// reassembling the fields. IP / UA are the live request values.
-		c.Request = c.Request.WithContext(auditctx.With(c.Request.Context(), auditctx.Actor{
+		ctx := auditctx.With(c.Request.Context(), auditctx.Actor{
 			ActorID:   sess.UserID,
 			ActorType: actorTypeForNamespace(namespace),
 			TenantID:  sess.TenantID,
 			SessionID: sess.ID,
 			IP:        c.ClientIP(),
 			UserAgent: c.Request.UserAgent(),
-		}))
+		})
+		// Stamp the session tenant onto the std context so the gorm
+		// tenant-isolation plugin pins every tenant-scoped query to this
+		// tenant by default. A super_admin X-Tenant-ID switch (console only)
+		// overrides this downstream in middleware.TenantContext.
+		ctx = tenantscope.WithTenant(ctx, sess.TenantID)
+		c.Request = c.Request.WithContext(ctx)
 
 		c.Next()
 	}

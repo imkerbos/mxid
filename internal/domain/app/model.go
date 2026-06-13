@@ -113,6 +113,16 @@ func (App) TableName() string {
 	return "mxid_app"
 }
 
+// TenantScoped marks mxid_app for automatic tenant isolation.
+func (App) TenantScoped() {}
+
+// TenantScopePredicate keeps globally-shared apps (tenant_id IS NULL,
+// Scope=ScopeShared) visible in every tenant's catalogue. A naive
+// `tenant_id = ?` would hide them — mirrors repository_impl.go's List filter.
+func (App) TenantScopePredicate() (string, bool) {
+	return "tenant_id = ? OR tenant_id IS NULL", true
+}
+
 // AppGroup represents the mxid_app_group table. ParentID nil = top-level
 // (root) group; cycle prevention is the service layer's responsibility.
 type AppGroup struct {
@@ -131,6 +141,9 @@ type AppGroup struct {
 func (AppGroup) TableName() string {
 	return "mxid_app_group"
 }
+
+// TenantScoped marks mxid_app_group for automatic tenant isolation.
+func (AppGroup) TenantScoped() {}
 
 // AppGroupRel represents the mxid_app_group_rel table.
 type AppGroupRel struct {

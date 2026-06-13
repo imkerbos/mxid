@@ -45,6 +45,9 @@ type AppRole struct {
 
 func (AppRole) TableName() string { return "mxid_app_role" }
 
+// TenantScoped marks mxid_app_role for automatic tenant isolation.
+func (AppRole) TenantScoped() {}
+
 // Binding glues a subject (user/group/org/system-role) to an app_role.
 // Same exactly-one-of (app_id, app_group_id) invariant as AppRole.
 type Binding struct {
@@ -60,6 +63,9 @@ type Binding struct {
 }
 
 func (Binding) TableName() string { return "mxid_app_role_binding" }
+
+// TenantScoped marks mxid_app_role_binding for automatic tenant isolation.
+func (Binding) TenantScoped() {}
 
 // BindingView enriches Binding with display name+code of the subject
 // AND the bound role, for console rendering without N+1 lookups.

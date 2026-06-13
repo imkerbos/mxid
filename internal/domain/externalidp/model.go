@@ -61,3 +61,6 @@ type ExternalIDP struct {
 
 // TableName returns the postgres table.
 func (ExternalIDP) TableName() string { return "mxid_external_idp" }
+
+// TenantScoped marks mxid_external_idp for automatic tenant isolation.
+func (ExternalIDP) TenantScoped() {}

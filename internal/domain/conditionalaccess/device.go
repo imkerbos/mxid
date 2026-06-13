@@ -19,6 +19,9 @@ type KnownDevice struct {
 // TableName binds to the migration's table name.
 func (KnownDevice) TableName() string { return "mxid_known_device" }
 
+// TenantScoped marks mxid_known_device for automatic tenant isolation.
+func (KnownDevice) TenantScoped() {}
+
 // DeviceRepo persists known devices. Get returns (nil, nil) when absent.
 type DeviceRepo interface {
 	Get(ctx context.Context, userID int64, deviceID string) (*KnownDevice, error)

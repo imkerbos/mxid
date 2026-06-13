@@ -22,6 +22,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/imkerbos/mxid/internal/protocol/resolver"
 	"github.com/imkerbos/mxid/pkg/response"
+	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"github.com/imkerbos/mxid/pkg/urlswap"
 )
 
@@ -239,6 +240,11 @@ func (h *Handler) processSSO(c *gin.Context, appCode, requestID, relayState stri
 		h.redirectToLogin(c, appCode, requestID, relayState)
 		return
 	}
+
+	// Pin the SSO session's tenant so the user-identity read below is
+	// tenant-scoped under the gorm isolation plugin (protocol group has no
+	// AuthMiddleware).
+	c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), ssoSess.TenantID))
 
 	// User authenticated — build assertion
 	user, err := h.idRes.ResolveUser(c.Request.Context(), ssoSess.UserID)

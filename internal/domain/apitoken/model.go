@@ -35,6 +35,9 @@ type Token struct {
 // TableName binds to the migration's table name.
 func (Token) TableName() string { return "mxid_api_token" }
 
+// TenantScoped marks mxid_api_token for automatic tenant isolation.
+func (Token) TenantScoped() {}
+
 // IsActive reports whether the token is currently usable — not revoked and
 // not past its expiry.
 func (t *Token) IsActive(now time.Time) bool {

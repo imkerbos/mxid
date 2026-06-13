@@ -44,3 +44,7 @@ type AuditLog struct {
 func (AuditLog) TableName() string {
 	return "mxid_audit_log"
 }
+
+// TenantScoped marks mxid_audit_log for automatic tenant isolation. Reads are
+// tenant-pinned; the retention purge escapes via tenantscope.SystemContext.
+func (AuditLog) TenantScoped() {}
