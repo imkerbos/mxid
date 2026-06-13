@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/imkerbos/mxid/pkg/authz"
 	"github.com/imkerbos/mxid/pkg/pagination"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/tenantctx"
@@ -25,8 +26,8 @@ func NewHandler(svc *Service, tenantID int64) *Handler {
 func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	audit := rg.Group("/audit")
 	{
-		audit.GET("/logs", h.List)
-		audit.GET("/stats", h.GetStats)
+		audit.GET("/logs", authz.Require("audit.read", nil), h.List)
+		audit.GET("/stats", authz.Require("audit.read", nil), h.GetStats)
 	}
 }
 

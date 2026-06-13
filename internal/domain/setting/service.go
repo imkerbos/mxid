@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/imkerbos/mxid/pkg/crypto"
+	"github.com/imkerbos/mxid/pkg/event"
 	"gorm.io/gorm"
 )
 
@@ -22,10 +23,15 @@ import (
 type Service struct {
 	repo      Repository
 	masterKey *crypto.MasterKey
+	eventBus  *event.Bus
 
 	mu    sync.RWMutex
 	cache map[string]cacheEntry
 }
+
+// SetEventBus wires the event bus so settings changes emit a settings.updated
+// audit event. Optional — a nil bus disables the emission.
+func (s *Service) SetEventBus(bus *event.Bus) { s.eventBus = bus }
 
 type cacheEntry struct {
 	value     []byte
@@ -83,6 +89,17 @@ func (s *Service) Set(ctx context.Context, key string, tenantID int64, value any
 		return err
 	}
 	s.invalidate(key, tenantID)
+
+	// Emit a settings.updated audit event carrying which section changed.
+	// Actor / IP are denormalized downstream from the request-scoped auditctx;
+	// actor_id is also passed explicitly from the updatedBy argument.
+	if s.eventBus != nil {
+		payload := map[string]any{"section": key, "tenant_id": tenantID}
+		if updatedBy != nil {
+			payload["actor_id"] = *updatedBy
+		}
+		s.eventBus.Publish(ctx, event.Event{Type: event.SettingsUpdated, Payload: payload})
+	}
 	return nil
 }
 

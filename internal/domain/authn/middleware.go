@@ -2,9 +2,19 @@ package authn
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/imkerbos/mxid/pkg/auditctx"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/session"
 )
+
+// actorTypeForNamespace maps a session namespace to the audit actor type:
+// console sessions are admin operators, portal sessions are end users.
+func actorTypeForNamespace(namespace string) string {
+	if namespace == session.NamespaceConsole {
+		return auditctx.TypeAdmin
+	}
+	return auditctx.TypeUser
+}
 
 // cookieForNamespace returns the cookie name for a given session namespace.
 func cookieForNamespace(namespace string) string {
@@ -65,6 +75,19 @@ func AuthMiddleware(sessionMgr *session.Manager, namespace string) gin.HandlerFu
 		c.Set(CtxTenantID, sess.TenantID)
 		c.Set(CtxSessionID, sess.ID)
 		c.Set(CtxMFAEnrollPending, sess.MFAEnrollPending)
+
+		// Stamp the actor onto the *request* context so domain services that
+		// publish audit events (via c.Request.Context()) attribute them to this
+		// caller automatically — who, IP, session — without each publisher
+		// reassembling the fields. IP / UA are the live request values.
+		c.Request = c.Request.WithContext(auditctx.With(c.Request.Context(), auditctx.Actor{
+			ActorID:   sess.UserID,
+			ActorType: actorTypeForNamespace(namespace),
+			TenantID:  sess.TenantID,
+			SessionID: sess.ID,
+			IP:        c.ClientIP(),
+			UserAgent: c.Request.UserAgent(),
+		}))
 
 		c.Next()
 	}

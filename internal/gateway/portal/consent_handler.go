@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/authn"
 	"github.com/imkerbos/mxid/internal/domain/consent"
+	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/response"
 )
 
@@ -31,6 +32,7 @@ type consentHandler struct {
 	consentSvc *consent.Service
 	queryier   ConsentQuerier
 	tenantID   int64
+	bus        *event.Bus
 }
 
 // scopeDescriptions provides a Chinese-language label per OIDC scope. Tracked
@@ -114,6 +116,15 @@ func (h *consentHandler) grant(c *gin.Context) {
 		response.InternalError(c, "failed to record consent")
 		return
 	}
+	if h.bus != nil {
+		h.bus.Publish(c.Request.Context(), event.Event{
+			Type: event.OIDCConsentGranted,
+			Payload: map[string]any{
+				"user_id": userID, "tenant_id": h.tenantID,
+				"app_id": req.AppID, "scope": req.Scopes,
+			},
+		})
+	}
 	response.OK(c, nil)
 }
 
@@ -158,6 +169,14 @@ func (h *consentHandler) revoke(c *gin.Context) {
 	if err := h.consentSvc.Revoke(c.Request.Context(), h.tenantID, userID, appID); err != nil {
 		response.InternalError(c, "failed to revoke consent")
 		return
+	}
+	if h.bus != nil {
+		h.bus.Publish(c.Request.Context(), event.Event{
+			Type: event.OIDCConsentRevoked,
+			Payload: map[string]any{
+				"user_id": userID, "tenant_id": h.tenantID, "app_id": appID,
+			},
+		})
 	}
 	response.OK(c, nil)
 }

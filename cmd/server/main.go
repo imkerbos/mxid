@@ -18,6 +18,7 @@ import (
 	"github.com/imkerbos/mxid/internal/domain/audit"
 	"github.com/imkerbos/mxid/internal/domain/authn"
 	"github.com/imkerbos/mxid/internal/domain/consent"
+	"github.com/imkerbos/mxid/internal/domain/dashboard"
 	"github.com/imkerbos/mxid/internal/domain/externalidp"
 	_ "github.com/imkerbos/mxid/internal/domain/externalidp/providers" // register provider factories
 	"github.com/imkerbos/mxid/internal/domain/group"
@@ -87,14 +88,37 @@ var (
 )
 
 func registerModules(a *bootstrap.App) {
+	// 0a. Catch-all audit middleware. Installed on the console + portal GROUPS
+	// at the very top of registerModules — before any route is registered on
+	// them — so it sits in their handler chain. (Router-level .Use here would
+	// NOT work: the groups were created in NewApp and already snapshotted the
+	// engine's middleware slice, so a later engine.Use doesn't reach them.)
+	// The recorder resolves lazily — the audit service is constructed further
+	// down — so this closure is a no-op during the bootstrap window and the
+	// real recorder from then on. Runs after AuthMiddleware (added later in the
+	// same group chain) so the actor is already stamped into the request ctx.
+	var auditRecorder func(*gin.Context)
+	auditCatchAll := func(c *gin.Context) {
+		c.Next()
+		if auditRecorder != nil {
+			auditRecorder(c)
+		}
+	}
+	a.ConsoleGroup.Use(auditCatchAll)
+	a.PortalGroup.Use(auditCatchAll)
+
 	// 0. Settings module — runtime tunable config (SMTP, password policy,
 	// branding, etc). Initialized first so other modules can read defaults.
 	settingRepo := setting.NewRepositoryWithIDGen(a.DB, a.IDGen)
 	settingService = setting.NewService(settingRepo, a.MasterKey)
+	settingService.SetEventBus(a.EventBus)
 	mailerSvc = mailer.New(settingService)
 
+	// Build the handler now; its ROUTES are mounted later (after AuthMiddleware
+	// + authz are on the console group) so settings endpoints aren't reachable
+	// unauthenticated. The service above is constructed early because other
+	// modules read config defaults from it during bootstrap.
 	settingsHandler := settings.NewHandler(settingService, mailerSvc, a.Config.Tenant.DefaultID)
-	settingsHandler.Register(a.ConsoleGroup)
 
 	// 1. Session manager
 	sessionMgr := session.NewManager(
@@ -329,7 +353,31 @@ func registerModules(a *bootstrap.App) {
 		},
 	}))
 
+	// 4e. Deny-by-default authz gateway. Mounted AFTER AuthMiddleware + authz
+	// install (so c has user/tenant + the Service) and BEFORE the module routes,
+	// so it sits on every console request post-routing. A matched console route
+	// that declared NO permission (no authz.Require / authz.Protect) and is not
+	// on the public allow-list is flagged — root-cause guard against shipping an
+	// open admin endpoint. Runs in AUDIT-ONLY mode for now: it LOGS the offending
+	// route loudly but does not 403, so the portal-on-console self-service
+	// surfaces (profile / security / MFA / uploads / SSE) that carry their own
+	// session auth keep working until they are AllowPublic'd and the app/idp/
+	// audit modules grow their authz.Require + authz.Protect (sibling backfill).
+	// Flip AuditOnly to false once those land and the allow-list is vetted to
+	// turn on hard deny-by-default (hard mode needs mount-time authz.Protect for
+	// gated routes, since the gateway runs before each route's own Require).
+	a.ConsoleGroup.Use(authz.Gateway(authz.GatewayConfig{
+		Logger:    a.Logger,
+		AuditOnly: true,
+	}))
+
 	userModule.RegisterRoutes(a)
+
+	// Settings routes mounted here — AFTER AuthMiddleware + authz + tenant
+	// context are on the console group — so config read/write requires an
+	// authenticated admin session (previously these registered pre-auth and
+	// were reachable unauthenticated).
+	settingsHandler.Register(a.ConsoleGroup)
 
 	// 5. Register domain modules
 	orgModule := org.Register(a)
@@ -381,6 +429,18 @@ func registerModules(a *bootstrap.App) {
 		}
 	})
 	auditModule := audit.Register(a)
+	// Activate the catch-all recorder installed at the top of registerModules.
+	auditRecorder = auditModule.Service.RecordAPIRequest
+	// Denormalize ActorName for events that publish only a user_id (app.launched
+	// fires from the portal middleware context, which carries no username).
+	// Best-effort: a lookup miss leaves ActorName blank but keeps actor_id.
+	auditModule.Service.SetUserNameResolver(func(ctx context.Context, userID int64) string {
+		u, err := userModule.Repo.GetByID(ctx, userID)
+		if err != nil || u == nil {
+			return ""
+		}
+		return u.Username
+	})
 	// GeoIP enrichment for audit IP. Operator points config geoip.database_path
 	// at a MaxMind GeoLite2-City .mmdb; missing / unreadable falls back to
 	// noop so a missing licence doesn't break audit. Shared with conditional
@@ -407,6 +467,21 @@ func registerModules(a *bootstrap.App) {
 	// risks losing the window during long maintenance. Default-tenant scope
 	// because retention is a global compliance knob.
 	go runAuditRetention(a, settingService, auditModule.Repo)
+
+	// Console dashboard aggregation. Live-session gauge sums the interactive
+	// (console + portal) namespaces; the protocol SSO session is internal and
+	// not a "logged-in user" in the dashboard sense.
+	dashboardModule := dashboard.Register(a)
+	dashboardModule.Service.SetSessionCounter(func(ctx context.Context) int64 {
+		var total int64
+		for _, ns := range []string{session.NamespaceConsole, session.NamespacePortal} {
+			if n, err := sessionMgr.CountActive(ctx, ns); err == nil {
+				total += n
+			}
+		}
+		return total
+	})
+
 	consentModule := consent.Register(a)
 
 	// Cross-domain: effective roles for a user resolve THREE binding paths
@@ -435,6 +510,26 @@ func registerModules(a *bootstrap.App) {
 	)
 	authzSvc = authz.NewService(authzBindings, newAuthzOrgAncestry(orgModule))
 	wireAuthzCacheInvalidation(a, authzBindings)
+
+	// Hybrid engine: Casbin owns role→permission (+ super_admin wildcard) and
+	// is the authority consulted by Service.Check; the Go scopeCovers above
+	// still decides instance scope (org ltree / group / kind). The enforcer
+	// persists to the existing casbin_rule table and rebuilds from the
+	// mxid_role* source of truth on boot + on role/permission/super-admin
+	// mutations (wireCasbinSync). On any setup error we fall back to the
+	// legacy in-binding permission set so a Casbin hiccup never takes down
+	// the whole authz path.
+	if casbinEngine, err := authz.NewCasbinEngineWithDB(a.DB); err != nil {
+		a.Logger.Error("casbin engine init failed, using legacy perm matching: " + err.Error())
+	} else {
+		loader := newCasbinPolicyLoader(a)
+		if err := casbinEngine.Sync(context.Background(), loader); err != nil {
+			a.Logger.Error("casbin initial sync failed, using legacy perm matching: " + err.Error())
+		} else {
+			authzSvc = authzSvc.WithCasbin(casbinEngine)
+			wireCasbinSync(a, casbinEngine, loader)
+		}
+	}
 	// Tell authn /auth/me whether the caller is admin-eligible so the
 	// portal SPA renders the "switch to console" entry only for users
 	// who can actually use it.
@@ -498,6 +593,41 @@ func registerModules(a *bootstrap.App) {
 		CookieDomain: a.Config.Session.CookieDomain,
 		CookieSecure: a.Config.Session.CookieSecure,
 	})
+	// Console external-IdP login. Same OAuth dance, but gated: only an
+	// admin-authorized, non-built-in user gets a console session. The gate is
+	// the security boundary — a Lark user with no console permission, or the
+	// break-glass `admin`, is bounced back to the login page with a reason.
+	extIDPModule.MountConsolePublicRoutes(a, externalidp.ConsoleHandlerOpts{
+		Resolver:   newUserExternalResolver(userModule),
+		SessionMgr: sessionMgr,
+		TenantID:   a.Config.Tenant.DefaultID,
+		Gate: func(ctx context.Context, tenantID, userID int64) error {
+			// Break-glass guard: seeded built-in accounts never federate.
+			if u, err := userModule.Repo.GetByID(ctx, userID); err == nil && u != nil && u.IsBuiltin {
+				return fmt.Errorf("builtin account must use local login")
+			}
+			// Admin authorization: must hold at least one console permission.
+			perms, err := authzSvc.PermissionsForUser(ctx, tenantID, userID)
+			if err != nil || len(perms) == 0 {
+				return fmt.Errorf("not authorized for console")
+			}
+			return nil
+		},
+		TenantByCode: func(ctx context.Context, code string) int64 {
+			t, err := tenantModule.Service.GetByCode(ctx, code)
+			if err != nil || t == nil {
+				return 0
+			}
+			return t.ID
+		},
+		BaseURL:      envDefault("MXID_EXTERNAL_BACKEND_URL", fmt.Sprintf("http://localhost:%d", a.Config.Server.Port)),
+		ConsoleURL:   envDefault("MXID_EXTERNAL_CONSOLE_URL", "http://localhost:3500"),
+		LoginURL:     "/admin/",
+		FailureURL:   "/admin/login?err=external",
+		CookieName:   authn.CookieConsole,
+		CookieDomain: a.Config.Session.CookieDomain,
+		CookieSecure: a.Config.Session.CookieSecure,
+	})
 
 	// 6. Protocol resolvers — bridge app/user repos to protocol layer.
 	//
@@ -538,7 +668,18 @@ func registerModules(a *bootstrap.App) {
 	appRolesAdapter := &oidcAppRolesAdapter{svc: approleSvc}
 
 	// 7. Register protocol modules
-	oidcModule := oidc.Register(a.ProtocolGroup, issuer, a.Config.Server.PortalURL, a.Redis, appResolver, idResolver, sessResolver, tenantResolver, consentModule.Service, accessAdapter, appRolesAdapter, sessionMgr, a.EventBus)
+	//
+	// OIDC engine select: MXID_OIDC_ENGINE=zitadel mounts the zitadel/oidc-based
+	// provider (internal/protocol/oidcop); anything else keeps the hand-rolled
+	// engine. Both occupy /protocol/oidc, so exactly one is mounted.
+	var oidcModule *oidc.Module
+	if os.Getenv("MXID_OIDC_ENGINE") == "zitadel" {
+		if err := wireOIDCOP(a, issuer, appResolver, idResolver, sessResolver, consentModule.Service); err != nil {
+			a.Logger.Fatal("wire zitadel OIDC engine: " + err.Error())
+		}
+	} else {
+		oidcModule = oidc.Register(a.ProtocolGroup, issuer, a.Config.Server.PortalURL, a.Redis, appResolver, idResolver, sessResolver, tenantResolver, consentModule.Service, accessAdapter, appRolesAdapter, sessionMgr, a.EventBus)
+	}
 	samlModule := saml.Register(a.ProtocolGroup, issuer, a.Config.Server.PortalURL, appResolver, idResolver, sessResolver, tenantResolver)
 	casModule := cas.Register(a.ProtocolGroup, issuer, a.Config.Server.PortalURL, a.Redis, appResolver, idResolver, sessResolver, tenantResolver)
 
@@ -553,7 +694,9 @@ func registerModules(a *bootstrap.App) {
 		}
 		return urlswap.URLs{Issuer: v.IssuerURL, Portal: v.PortalURL, Console: v.ConsoleURL}
 	}
-	oidcModule.Handler.SetURLProvider(urlProvider)
+	if oidcModule != nil { // nil when the zitadel engine is active
+		oidcModule.Handler.SetURLProvider(urlProvider)
+	}
 	samlModule.Handler.SetURLProvider(urlProvider)
 	casModule.Handler.SetURLProvider(urlProvider)
 
@@ -646,11 +789,11 @@ func registerModules(a *bootstrap.App) {
 	tenantDefault := a.Config.Tenant.DefaultID
 	portal.RegisterSecurityRoutes(a.PortalGroup, portal.NewSecurityHandler(
 		session.NamespacePortal, portalUserQ, portalSessQ, portalMFAQ, portalIDQ,
-		portalLoginHistoryQ, portalAPITokenQ, tenantDefault, mfaLimiter,
+		portalLoginHistoryQ, portalAPITokenQ, tenantDefault, mfaLimiter, a.EventBus,
 	))
 	portal.RegisterSecurityRoutes(a.ConsoleGroup, portal.NewSecurityHandler(
 		session.NamespaceConsole, portalUserQ, portalSessQ, portalMFAQ, portalIDQ,
-		portalLoginHistoryQ, portalAPITokenQ, tenantDefault, mfaLimiter,
+		portalLoginHistoryQ, portalAPITokenQ, tenantDefault, mfaLimiter, a.EventBus,
 	))
 
 	// Mount the bearer middleware on /openapi/v1 so every script-facing
@@ -677,7 +820,7 @@ func registerModules(a *bootstrap.App) {
 	//     email verification from the console SPA. Verification click-back
 	//     redirect still points at the portal URL — admins clicking the
 	//     dev_link land in the portal, which is fine (single account state).
-	portal.RegisterProfileRoutes(a.ConsoleGroup, portal.NewProfileHandler(portalUserQ))
+	portal.RegisterProfileRoutes(a.ConsoleGroup, portal.NewProfileHandler(portalUserQ, a.EventBus))
 	portal.RegisterEmailVerifyRoutes(a.ConsoleGroup, portal.NewEmailVerifyHandler(
 		a.Redis, portalUserQ, a.Logger, a.Config.Server.PortalURL, mailerSvc, tenantDefault,
 	))

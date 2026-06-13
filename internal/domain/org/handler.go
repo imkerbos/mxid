@@ -109,7 +109,7 @@ func (h *Handler) Delete(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusNoContent, nil)
+	response.OK(c, nil)
 }
 
 // Move moves an organization to a new parent.
@@ -193,7 +193,7 @@ func (h *Handler) RemoveMember(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusNoContent, nil)
+	response.OK(c, nil)
 }
 
 // parseID parses an int64 ID from a URL parameter.

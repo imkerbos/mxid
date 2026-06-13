@@ -633,6 +633,10 @@ func (s *Service) CreateGroup(ctx context.Context, tenantID int64, req *AppGroup
 		return nil, fmt.Errorf("create group: %w", err)
 	}
 
+	s.eventBus.Publish(ctx, event.Event{
+		Type:    event.AppGroupCreated,
+		Payload: map[string]any{"id": group.ID, "tenant_id": group.TenantID, "name": group.Name, "code": group.Code},
+	})
 	return group, nil
 }
 
@@ -674,12 +678,17 @@ func (s *Service) UpdateGroup(ctx context.Context, id int64, req *UpdateAppGroup
 		return nil, fmt.Errorf("update group: %w", err)
 	}
 
+	s.eventBus.Publish(ctx, event.Event{
+		Type:    event.AppGroupUpdated,
+		Payload: map[string]any{"id": group.ID, "tenant_id": group.TenantID, "name": group.Name},
+	})
 	return group, nil
 }
 
 // DeleteGroup soft-deletes an app group.
 func (s *Service) DeleteGroup(ctx context.Context, id int64) error {
-	if _, err := s.repo.GetGroupByID(ctx, id); err != nil {
+	group, err := s.repo.GetGroupByID(ctx, id)
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrAppGroupNotFound
 		}
@@ -690,6 +699,10 @@ func (s *Service) DeleteGroup(ctx context.Context, id int64) error {
 		return fmt.Errorf("delete group: %w", err)
 	}
 
+	s.eventBus.Publish(ctx, event.Event{
+		Type:    event.AppGroupDeleted,
+		Payload: map[string]any{"id": group.ID, "tenant_id": group.TenantID, "name": group.Name},
+	})
 	return nil
 }
 
@@ -744,6 +757,10 @@ func (s *Service) AddAppToGroup(ctx context.Context, groupID, appID int64) error
 		return fmt.Errorf("add app to group: %w", err)
 	}
 
+	s.eventBus.Publish(ctx, event.Event{
+		Type:    event.AppGroupMemberAdded,
+		Payload: map[string]any{"id": groupID, "app_id": appID},
+	})
 	return nil
 }
 
@@ -755,6 +772,11 @@ func (s *Service) RemoveAppFromGroup(ctx context.Context, groupID, appID int64) 
 		}
 		return fmt.Errorf("remove app from group: %w", err)
 	}
+
+	s.eventBus.Publish(ctx, event.Event{
+		Type:    event.AppGroupMemberRemoved,
+		Payload: map[string]any{"id": groupID, "app_id": appID},
+	})
 	return nil
 }
 

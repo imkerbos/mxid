@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/imkerbos/mxid/pkg/authz"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/tenantctx"
 )
@@ -28,15 +29,15 @@ func NewHandler(svc *Service, r SubjectResolver, defaultTID int64) *Handler {
 func (h *Handler) Register(rg *gin.RouterGroup) {
 	app := rg.Group("/apps/:id/access-policies")
 	{
-		app.GET("", h.listForApp)
-		app.POST("", h.createForApp)
-		app.DELETE("/:policy_id", h.remove)
+		app.GET("", authz.Require("app.read", nil), h.listForApp)
+		app.POST("", authz.Require("app.access.manage", nil), h.createForApp)
+		app.DELETE("/:policy_id", authz.Require("app.access.manage", nil), h.remove)
 	}
 	grp := rg.Group("/app-groups/:id/access-policies")
 	{
-		grp.GET("", h.listForAppGroup)
-		grp.POST("", h.createForAppGroup)
-		grp.DELETE("/:policy_id", h.remove)
+		grp.GET("", authz.Require("app.read", nil), h.listForAppGroup)
+		grp.POST("", authz.Require("app.access.manage", nil), h.createForAppGroup)
+		grp.DELETE("/:policy_id", authz.Require("app.access.manage", nil), h.remove)
 	}
 }
 

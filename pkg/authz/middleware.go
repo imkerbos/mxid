@@ -87,6 +87,11 @@ type ScopeFn func(c *gin.Context) *ScopeTarget
 // and a transient failure should not silently let requests through.
 func Require(perm string, scopeFn ScopeFn) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Self-register this route into the deny-by-default gateway registry so
+		// AuditOnly logging stays accurate (hard mode relies on mount-time
+		// Protect()). Idempotent.
+		requestRegister(c.Request.Method, c.FullPath(), perm)
+		c.Set(declaredKey, true)
 		svc := FromContext(c)
 		if svc == nil {
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
@@ -132,6 +137,10 @@ func Require(perm string, scopeFn ScopeFn) gin.HandlerFunc {
 // both a manager (full perm) and a self-service caller (limited perm).
 func RequireAny(perms []string, scopeFn ScopeFn) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Self-register (perm "" — the OR-set is not a single code; the gateway
+		// only needs to know the route is protected).
+		requestRegister(c.Request.Method, c.FullPath(), "")
+		c.Set(declaredKey, true)
 		svc := FromContext(c)
 		if svc == nil {
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{

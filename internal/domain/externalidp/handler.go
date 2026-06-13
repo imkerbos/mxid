@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/imkerbos/mxid/pkg/authz"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/tenantctx"
 )
@@ -29,12 +30,12 @@ func NewAdminHandler(svc *Service, tenantID int64) *AdminHandler {
 func (h *AdminHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	g := rg.Group("/external-idps")
 	{
-		g.GET("", h.List)
-		g.GET("/types", h.ListTypes)
-		g.POST("", h.Create)
-		g.GET("/:id", h.Get)
-		g.PUT("/:id", h.Update)
-		g.DELETE("/:id", h.Delete)
+		g.GET("", authz.Require("idp.read", nil), h.List)
+		g.GET("/types", authz.Require("idp.read", nil), h.ListTypes)
+		g.POST("", authz.Require("idp.create", nil), h.Create)
+		g.GET("/:id", authz.Require("idp.read", nil), h.Get)
+		g.PUT("/:id", authz.Require("idp.update", nil), h.Update)
+		g.DELETE("/:id", authz.Require("idp.delete", nil), h.Delete)
 	}
 }
 
@@ -122,7 +123,7 @@ func (h *AdminHandler) Delete(c *gin.Context) {
 		response.InternalError(c, "")
 		return
 	}
-	c.JSON(http.StatusNoContent, nil)
+	response.OK(c, nil)
 }
 
 func parseID(c *gin.Context, name string) (int64, error) {
