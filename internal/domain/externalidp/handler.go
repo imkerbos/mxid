@@ -45,7 +45,7 @@ func (h *AdminHandler) List(c *gin.Context) {
 		response.InternalError(c, "list idps: "+err.Error())
 		return
 	}
-	response.OK(c, items)
+	response.OK(c, MaskList(items))
 }
 
 // ListTypes surfaces the provider type identifiers the build supports, so
@@ -69,7 +69,7 @@ func (h *AdminHandler) Create(c *gin.Context) {
 		response.BadRequest(c, 40002, err.Error())
 		return
 	}
-	response.Created(c, idp)
+	response.Created(c, Mask(idp))
 }
 
 func (h *AdminHandler) Get(c *gin.Context) {
@@ -87,7 +87,7 @@ func (h *AdminHandler) Get(c *gin.Context) {
 		response.InternalError(c, "")
 		return
 	}
-	response.OK(c, idp)
+	response.OK(c, Mask(idp))
 }
 
 func (h *AdminHandler) Update(c *gin.Context) {
@@ -110,7 +110,7 @@ func (h *AdminHandler) Update(c *gin.Context) {
 		response.BadRequest(c, 40002, err.Error())
 		return
 	}
-	response.OK(c, idp)
+	response.OK(c, Mask(idp))
 }
 
 func (h *AdminHandler) Delete(c *gin.Context) {

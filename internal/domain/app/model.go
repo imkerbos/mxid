@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/imkerbos/mxid/pkg/crypto"
 	"gorm.io/gorm"
 )
 
@@ -179,7 +180,10 @@ type AppAccount struct {
 	AppID      int64     `gorm:"column:app_id;not null" json:"app_id"`
 	UserID     int64     `gorm:"column:user_id;not null" json:"user_id"`
 	Account    string    `gorm:"column:account;not null;size:256" json:"account"`
-	Credential *string   `gorm:"column:credential;size:512" json:"credential"`
+	// Credential is AES-256-GCM encrypted at rest via crypto.Secret's
+	// driver.Valuer/Scanner and serializes to a masked sentinel (never the
+	// plaintext) in JSON responses. Requires crypto.SetSecretMasterKey at boot.
+	Credential crypto.Secret `gorm:"column:credential;size:512" json:"credential"`
 	CreatedAt  time.Time `gorm:"column:created_at;not null" json:"created_at"`
 	UpdatedAt  time.Time `gorm:"column:updated_at;not null" json:"updated_at"`
 }

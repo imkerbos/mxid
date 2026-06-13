@@ -17,7 +17,7 @@ type Module struct {
 // admin routes go behind the authz middleware.
 func Register(app *bootstrap.App) *Module {
 	repo := NewRepository(app.DB)
-	svc := NewService(repo, app.IDGen, app.Redis, DefaultRegistry, app.EventBus)
+	svc := NewService(repo, app.IDGen, app.Redis, DefaultRegistry, app.EventBus, app.MasterKey)
 	return &Module{Repo: repo, Service: svc}
 }
 
