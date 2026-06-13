@@ -2,6 +2,8 @@ package bootstrap
 
 import (
 	"github.com/gin-gonic/gin"
+
+	"github.com/imkerbos/mxid/pkg/ee/license"
 	"github.com/imkerbos/mxid/pkg/response"
 )
 
@@ -24,21 +26,39 @@ type SystemInfo struct {
 	ConsoleURL string `json:"console_url"`
 	// Version is the MXID build tag. Empty during dev.
 	Version string `json:"version,omitempty"`
+	// Edition is "ce" or "ee" — drives which features the frontend exposes.
+	Edition string `json:"edition"`
+	// Features lists the unlocked EE feature keys (empty in CE). The console
+	// gates EE-only UI on these.
+	Features []string `json:"features"`
 }
 
 // RegisterSystemInfo wires GET /api/v1/system/info on the root engine.
 // Intentionally NOT under /api/v1/console or /api/v1/portal because the
 // portal SPA login page needs it before any session exists.
 func RegisterSystemInfo(r *gin.Engine, cfg *ServerConfig, version string) {
-	info := SystemInfo{
+	base := SystemInfo{
 		IssuerURL:  firstNonEmpty(cfg.IssuerURL, cfg.PortalURL),
 		PortalURL:  cfg.PortalURL,
 		ConsoleURL: firstNonEmpty(cfg.ConsoleURL, cfg.PortalURL),
 		Version:    version,
 	}
 	r.GET("/api/v1/system/info", func(c *gin.Context) {
+		// Edition read live so a runtime license swap reflects without restart.
+		info := base
+		lic := license.Current()
+		info.Edition = string(lic.Edition())
+		info.Features = featureStrings(lic.EnabledFeatures())
 		response.OK(c, info)
 	})
+}
+
+func featureStrings(fs []license.Feature) []string {
+	out := make([]string, 0, len(fs))
+	for _, f := range fs {
+		out = append(out, string(f))
+	}
+	return out
 }
 
 func firstNonEmpty(vals ...string) string {

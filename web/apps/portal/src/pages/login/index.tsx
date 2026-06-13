@@ -181,7 +181,7 @@ export default function LoginPage() {
           transition={{ duration: 0.5 }}
           className="flex items-center justify-center"
         >
-          <img src={logo} alt="MXID" className="w-[520px] max-w-[80%] h-auto" />
+          <img src={bootstrap.branding.logo_url || logo} alt={bootstrap.branding.product_name || 'MXID'} className="w-[520px] max-w-[80%] h-auto" />
         </motion.div>
       </div>
 
@@ -195,12 +195,12 @@ export default function LoginPage() {
         >
           {/* Mobile logo */}
           <div className="mb-8 text-center lg:hidden">
-            <img src={logo} alt="MXID" className="mx-auto h-14 w-auto" />
+            <img src={bootstrap.branding.logo_url || logo} alt={bootstrap.branding.product_name || 'MXID'} className="mx-auto h-14 w-auto" />
           </div>
 
           <div className="mb-8">
             <h2 className="text-3xl font-semibold tracking-tight text-white">
-              {mfaChallenge ? t('login.mfa') : t('login.welcomePortal')}
+              {mfaChallenge ? t('login.mfa') : (bootstrap.branding.login_page_title || t('login.welcomePortal'))}
             </h2>
             <p className="mt-2 text-sm text-white/55">
               {mfaChallenge
@@ -407,9 +407,16 @@ export default function LoginPage() {
             />
           )}
 
-          <p className="mt-8 text-center text-xs text-white/55">
-            MXID Identity Platform
-          </p>
+          {bootstrap.branding.login_footer_html ? (
+            <div
+              className="mt-8 text-center text-xs text-white/55"
+              dangerouslySetInnerHTML={{ __html: bootstrap.branding.login_footer_html }}
+            />
+          ) : (
+            <p className="mt-8 text-center text-xs text-white/55">
+              {bootstrap.branding.product_name || 'MXID'} Identity Platform
+            </p>
+          )}
         </motion.div>
       </div>
     </div>

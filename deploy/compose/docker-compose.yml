@@ -46,6 +46,9 @@ services:
       - MXID_REDIS_PORT=${MXID_REDIS_PORT:-6379}
       - MXID_REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD required}
       - MXID_CRYPTO_KEY_ENCRYPTION_KEY=${MXID_CRYPTO_KEY_ENCRYPTION_KEY:?run openssl rand -base64 32}
+      # Enterprise license token (optional). Empty / unset → Community Edition.
+      # Can also be pasted in the console; this env wins at boot.
+      - MXID_LICENSE=${MXID_LICENSE:-}
     volumes:
       - ../../configs:/app/configs:ro
     extra_hosts:

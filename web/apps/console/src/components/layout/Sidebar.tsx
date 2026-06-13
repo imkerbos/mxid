@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { useAuthStore, authApi, cn, setActiveTenantID, useTranslation, setLanguage, SUPPORTED_LANGS } from '@mxid/shared'
+import { useAuthStore, authApi, cn, setActiveTenantID, useTranslation, setLanguage, SUPPORTED_LANGS, useBootstrap } from '@mxid/shared'
 import {
   LayoutDashboard,
   Users,
@@ -36,6 +36,7 @@ const navItemsBuild = (t: (k: string) => string) => [
 ]
 
 export default function Sidebar() {
+  const { branding } = useBootstrap()
   const { user, clear } = useAuthStore()
   const navigate = useNavigate()
   const { t, i18n } = useTranslation()
@@ -55,7 +56,7 @@ export default function Sidebar() {
     <aside className="fixed left-0 top-0 z-40 flex h-screen w-64 flex-col bg-sidebar text-white">
       {/* Logo */}
       <div className="flex h-16 items-center justify-center border-b border-white/10">
-        <img src={logo} alt="MXID" className="h-10 w-auto" />
+        <img src={branding.logo_url || logo} alt={branding.product_name || 'MXID'} className="h-10 w-auto" />
       </div>
 
       {/* Tenant switcher — full-width row under the logo, only renders

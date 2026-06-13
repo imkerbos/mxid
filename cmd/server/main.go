@@ -38,6 +38,7 @@ import (
 	"github.com/imkerbos/mxid/internal/protocol/saml"
 	"github.com/imkerbos/mxid/pkg/authz"
 	"github.com/imkerbos/mxid/pkg/crypto"
+	"github.com/imkerbos/mxid/pkg/ee/license"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/geoip"
 	"github.com/imkerbos/mxid/pkg/mailer"
@@ -118,6 +119,27 @@ func registerModules(a *bootstrap.App) {
 	settingService = setting.NewService(settingRepo, a.MasterKey)
 	settingService.SetEventBus(a.EventBus)
 	mailerSvc = mailer.New(settingService)
+
+	// Edition: verify the signed license and install the active Manager. Token
+	// comes from MXID_LICENSE (env) or, failing that, the License setting the
+	// admin pasted in the console. No / invalid / expired token → CE. The
+	// signature is checked against the embedded vendor public key, so the old
+	// admin-editable enable_enterprise boolean can no longer unlock EE.
+	licToken := os.Getenv("MXID_LICENSE")
+	if licToken == "" {
+		if lic, err := settingService.License(context.Background(), a.Config.Tenant.DefaultID); err == nil {
+			licToken = lic.Key
+		}
+	}
+	licMgr := license.Load(licToken, time.Now())
+	license.SetCurrent(licMgr)
+	if err := licMgr.LoadErr(); err != nil {
+		a.Logger.Warn("license invalid — running as Community Edition", zap.Error(err))
+	}
+	a.Logger.Info("edition resolved",
+		zap.String("edition", string(licMgr.Edition())),
+		zap.String("customer", licMgr.Customer()),
+		zap.Int("features", len(licMgr.EnabledFeatures())))
 
 	// Build the handler now; its ROUTES are mounted later (after AuthMiddleware
 	// + authz are on the console group) so settings endpoints aren't reachable

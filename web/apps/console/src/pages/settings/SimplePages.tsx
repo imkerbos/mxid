@@ -6,11 +6,13 @@
 // Why one file: keeps the routing tree clean and avoids 8 nearly-identical
 // 100-line files. Bespoke pages (MailSMTP, Security, Branding) live in
 // their own files; the rest share this generic form harness.
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Loader2, Save } from 'lucide-react'
 import {
   settingsApi,
   useTranslation,
+  useEdition,
+  cn,
   type Branding,
   type LoginMethods,
   type ProtocolDefaults,
@@ -63,12 +65,21 @@ function GenericForm<T>({
   save,
   title,
   desc,
+  locked,
+  banner,
+  onSaved,
 }: {
   rows: Row[]
   load: () => Promise<T>
   save: (v: T) => Promise<unknown>
   title: string
   desc?: string
+  // locked disables all inputs + save (e.g. an EE feature in CE).
+  locked?: boolean
+  // banner renders above the form (edition badge, upsell note, etc.).
+  banner?: ReactNode
+  // onSaved fires after a successful save (e.g. reload edition state).
+  onSaved?: () => void
 }) {
   const { t } = useTranslation()
   const [v, setV] = useState<T | null>(null)
@@ -95,6 +106,7 @@ function GenericForm<T>({
     try {
       await save(v)
       toast.success(t('settings.savedToast', { title }))
+      onSaved?.()
     } catch (e) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
       toast.error(t("common.failed"), msg)
@@ -111,7 +123,9 @@ function GenericForm<T>({
           {desc && <p className="mt-0.5 text-sm text-gray-500">{desc}</p>}
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {banner && <div className="mb-4">{banner}</div>}
+
+        <fieldset disabled={locked} className={cn('grid grid-cols-1 gap-4 md:grid-cols-2', locked && 'opacity-60')}>
           {rows.map((r) => (
             <Field key={r.key} label={r.label} hint={'hint' in r ? r.hint : undefined}>
               {r.kind === 'text' && (
@@ -166,10 +180,10 @@ function GenericForm<T>({
               )}
             </Field>
           ))}
-        </div>
+        </fieldset>
 
         <div className="mt-6 flex justify-end">
-          <Button onClick={handleSave} loading={saving} icon={<Save className="h-4 w-4" />}>
+          <Button onClick={handleSave} loading={saving} disabled={locked} icon={<Save className="h-4 w-4" />}>
             {saving ? t('common.saving') : t('common.save')}
           </Button>
         </div>
@@ -180,12 +194,26 @@ function GenericForm<T>({
 
 /* ──────────────── Per-category pages ──────────────── */
 
+// EEUpsell is the banner shown when an EE-only feature is viewed in CE.
+function EEUpsell() {
+  const { t } = useTranslation()
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+      {t('settings.eeOnly')}
+    </div>
+  )
+}
+
 export function BrandingPage() {
   const { t } = useTranslation()
+  const { has } = useEdition()
+  const unlocked = has('branding')
   return (
     <GenericForm<Branding>
       title={t('settings.branding.title')}
       desc={t('settings.branding.desc')}
+      locked={!unlocked}
+      banner={!unlocked ? <EEUpsell /> : undefined}
       rows={[
         { kind: 'text', key: 'product_name', label: t('settings.branding.productName'), placeholder: 'MXID' },
         { kind: 'text', key: 'primary_color', label: t('settings.branding.primaryColor'), placeholder: '#2563eb' },
@@ -374,18 +402,39 @@ export function LocalizationPage() {
 
 export function LicensePage() {
   const { t } = useTranslation()
+  const { features, isEE } = useEdition()
+  const [lic, setLic] = useState<License | null>(null)
+  useEffect(() => { settingsApi.getLicense().then(setLic).catch(() => {}) }, [])
+
+  // Read-only derived status — everything except the token itself is computed
+  // from the verified license, never editable.
+  const banner = (
+    <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm">
+      <div className="flex items-center gap-2">
+        <span className="text-gray-500">{t('settings.licensePage.editionLabel')}:</span>
+        <span className={cn('rounded px-2 py-0.5 text-xs font-semibold',
+          isEE ? 'bg-primary/10 text-primary' : 'bg-gray-200 text-gray-600')}>
+          {isEE ? 'Enterprise' : 'Community'}
+        </span>
+      </div>
+      {isEE && (
+        <>
+          <div><span className="text-gray-500">{t('settings.licensePage.registeredTo')}:</span> {lic?.registered_to || '—'}</div>
+          <div><span className="text-gray-500">{t('settings.licensePage.expiresAt')}:</span> {lic?.expires_at || t('settings.licensePage.perpetual')}</div>
+          <div><span className="text-gray-500">{t('settings.licensePage.features')}:</span> {features.join(', ') || '—'}</div>
+        </>
+      )}
+    </div>
+  )
+
   return (
     <GenericForm<License>
       title={t('settings.licensePage.title')}
       desc={t('settings.licensePage.desc')}
+      banner={banner}
+      onSaved={() => window.location.reload()}
       rows={[
-        { kind: 'text', key: 'key', label: t('settings.licensePage.key') },
-        { kind: 'text', key: 'registered_to', label: t('settings.licensePage.registeredTo') },
-        { kind: 'text', key: 'issued_at', label: t('settings.licensePage.issuedAt') },
-        { kind: 'text', key: 'expires_at', label: t('settings.licensePage.expiresAt') },
-        { kind: 'number', key: 'max_users', label: t('settings.licensePage.maxUsers') },
-        { kind: 'number', key: 'max_tenants', label: t('settings.licensePage.maxTenants') },
-        { kind: 'bool', key: 'enable_enterprise', label: t('settings.licensePage.enableEnterprise') },
+        { kind: 'multiline', key: 'key', label: t('settings.licensePage.key'), hint: t('settings.licensePage.keyHint'), rows: 4 },
       ]}
       load={() => settingsApi.getLicense()}
       save={(v) => settingsApi.putLicense(v)}

@@ -6,7 +6,9 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/imkerbos/mxid/internal/middleware"
 	"github.com/imkerbos/mxid/pkg/authz"
+	"github.com/imkerbos/mxid/pkg/ee/license"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/tenantctx"
 )
@@ -32,7 +34,8 @@ func (h *AdminHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	{
 		g.GET("", authz.Require("idp.read", nil), h.List)
 		g.GET("/types", authz.Require("idp.read", nil), h.ListTypes)
-		g.POST("", authz.Require("idp.create", nil), h.Create)
+		// External IdP login is an EE feature — gate creation behind the license.
+		g.POST("", authz.Require("idp.create", nil), middleware.RequireFeature(license.FeatureExternalIDP), h.Create)
 		g.GET("/:id", authz.Require("idp.read", nil), h.Get)
 		g.PUT("/:id", authz.Require("idp.update", nil), h.Update)
 		g.DELETE("/:id", authz.Require("idp.delete", nil), h.Delete)

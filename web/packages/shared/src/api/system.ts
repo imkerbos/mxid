@@ -10,6 +10,9 @@ export interface SystemInfo {
   portal_url: string
   console_url: string
   version?: string
+  // Edition gating: "ce" | "ee". features lists unlocked EE feature keys.
+  edition?: string
+  features?: string[]
 }
 
 // BuildInfo / VersionStatus mirror pkg/updatecheck on the Go side.

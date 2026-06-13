@@ -65,6 +65,17 @@ export function applyBranding(b: Bootstrap['branding']) {
     }
     style.textContent = b.custom_css
   }
+  // Favicon → configured logo. Previously the comment claimed this happened but
+  // the code never did it.
+  if (b.logo_url) {
+    let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
+    if (!link) {
+      link = document.createElement('link')
+      link.rel = 'icon'
+      document.head.appendChild(link)
+    }
+    link.href = b.logo_url
+  }
 }
 
 // useBootstrap returns the live bootstrap info + applies branding to the

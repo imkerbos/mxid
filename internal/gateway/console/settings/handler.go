@@ -8,17 +8,22 @@
 package settings
 
 import (
+	"strings"
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/setting"
+	"github.com/imkerbos/mxid/internal/middleware"
+	"github.com/imkerbos/mxid/pkg/ee/license"
 	"github.com/imkerbos/mxid/pkg/mailer"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/tenantctx"
 )
 
 type Handler struct {
-	service     *setting.Service
-	mailer      *mailer.Mailer
-	defaultTID  int64
+	service    *setting.Service
+	mailer     *mailer.Mailer
+	defaultTID int64
 }
 
 func NewHandler(svc *setting.Service, mailer *mailer.Mailer, defaultTID int64) *Handler {
@@ -43,7 +48,8 @@ func (h *Handler) Register(rg *gin.RouterGroup) {
 		g.PUT("/security", h.putSecurity)
 
 		g.GET("/branding", h.getBranding)
-		g.PUT("/branding", h.putBranding)
+		// Branding write is an EE feature; CE reads defaults but can't change them.
+		g.PUT("/branding", middleware.RequireFeature(license.FeatureBranding), h.putBranding)
 
 		g.GET("/login-methods", h.getLoginMethods)
 		g.PUT("/login-methods", h.putLoginMethods)
@@ -313,9 +319,48 @@ func (h *Handler) getLicense(c *gin.Context) {
 	v := setting.DefaultLicense()
 	h.genericGet(c, setting.KeyLicense, &v)
 }
+
+// putLicense accepts ONLY the signed token (key). Edition / customer / expiry /
+// limits are DERIVED from the verified token — never trusted from the client —
+// and the active license is hot-reloaded so gates flip without a restart. The
+// old admin-editable enable_enterprise / max_* inputs are gone: an operator can
+// no longer self-grant EE by editing fields.
 func (h *Handler) putLicense(c *gin.Context) {
-	var v setting.License
-	h.genericPut(c, setting.KeyLicense, &v)
+	var body struct {
+		Key string `json:"key"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.BadRequest(c, 40001, err.Error())
+		return
+	}
+	mgr := license.Load(strings.TrimSpace(body.Key), time.Now())
+
+	derived := setting.License{
+		Key:          strings.TrimSpace(body.Key),
+		RegisteredTo: mgr.Customer(),
+		MaxUsers:     mgr.MaxUsers(),
+		MaxTenants:   mgr.MaxTenants(),
+	}
+	if exp := mgr.ExpiresAt(); !exp.IsZero() {
+		derived.ExpiresAt = exp.Format("2006-01-02")
+	}
+	if err := h.service.Set(c.Request.Context(), setting.KeyLicense, h.tenantID(c), derived, h.userID(c)); err != nil {
+		response.InternalError(c, "")
+		return
+	}
+	license.SetCurrent(mgr)
+
+	errStr := ""
+	if e := mgr.LoadErr(); e != nil {
+		errStr = e.Error()
+	}
+	response.OK(c, gin.H{
+		"edition":  string(mgr.Edition()),
+		"valid":    mgr.IsEE(),
+		"customer": mgr.Customer(),
+		"features": mgr.EnabledFeatures(),
+		"error":    errStr,
+	})
 }
 
 func (h *Handler) getExternalURLs(c *gin.Context) {

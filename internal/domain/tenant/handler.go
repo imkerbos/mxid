@@ -6,7 +6,9 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/imkerbos/mxid/internal/middleware"
 	"github.com/imkerbos/mxid/pkg/authz"
+	"github.com/imkerbos/mxid/pkg/ee/license"
 	"github.com/imkerbos/mxid/pkg/response"
 )
 
@@ -31,7 +33,9 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 		g.GET("", h.List)
 		g.GET("/:id", h.Get)
 		// write ops gated to super_admin via tenant.manage permission.
-		g.POST("", authz.Require("tenant.manage", nil), h.Create)
+		// Creating tenants beyond the single default is an EE feature (CE is
+		// single-tenant), so the multi_tenant license gate sits on Create.
+		g.POST("", authz.Require("tenant.manage", nil), middleware.RequireFeature(license.FeatureMultiTenant), h.Create)
 		g.PUT("/:id", authz.Require("tenant.manage", nil), h.Update)
 		g.DELETE("/:id", authz.Require("tenant.manage", nil), h.Delete)
 	}
