@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -15,8 +16,14 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/imkerbos/mxid/internal/protocol/resolver"
+	"github.com/imkerbos/mxid/pkg/safehttp"
 	"github.com/redis/go-redis/v9"
 )
+
+// jwksHTTPClient is the SSRF-safe client for fetching admin-configured RP
+// jwks_uri. jwks_uri is per-app OIDC client config (arbitrary host), so it must
+// go through the IP/scheme guard. Federation is https-only by design.
+var jwksHTTPClient = safehttp.New(safehttp.WithTimeout(5 * time.Second))
 
 // ClientAssertionType is the OAuth-registered client_assertion_type value
 // for RFC 7523 JWT-bearer client authentication.
@@ -233,8 +240,11 @@ func fetchJWKSURI(ctx context.Context, uri string) (*jwksCacheEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := jwksHTTPClient.Do(req)
 	if err != nil {
+		if errors.Is(err, safehttp.ErrDisallowedAddress) || errors.Is(err, safehttp.ErrDisallowedScheme) {
+			return nil, fmt.Errorf("jwks_uri blocked by SSRF guard (target resolves to a disallowed/internal address or non-https scheme): %w", err)
+		}
 		return nil, fmt.Errorf("fetch jwks_uri: %w", err)
 	}
 	defer resp.Body.Close()

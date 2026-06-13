@@ -16,6 +16,7 @@ import (
 	"github.com/imkerbos/mxid/internal/protocol/resolver"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/response"
+	"github.com/imkerbos/mxid/pkg/safehttp"
 	"github.com/imkerbos/mxid/pkg/session"
 	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"github.com/imkerbos/mxid/pkg/urlswap"
@@ -1216,12 +1217,23 @@ func (h *Handler) sendBackchannelLogout(ctx context.Context, appID, userID int64
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := backchannelLogoutClient.Do(req)
 	if err != nil {
+		// Includes the SSRF-guard block case (backchannel_logout_uri resolving
+		// to an internal/disallowed address, or a non-https scheme). This is a
+		// best-effort notification; the caller ignores the error, but blocking
+		// here prevents the signed logout_token from being POSTed to an internal
+		// address.
 		return
 	}
 	_ = resp.Body.Close()
 }
+
+// backchannelLogoutClient is the SSRF-safe client for POSTing signed
+// logout_tokens to an admin-configured backchannel_logout_uri (per-app,
+// arbitrary host). The IP/scheme guard prevents the token from being replayed
+// to an internal address, including via redirect.
+var backchannelLogoutClient = safehttp.New(safehttp.WithTimeout(5 * time.Second))
 
 // lookupAppByID walks an app ID to its full AppConfig via the resolver.
 func (h *Handler) lookupAppByID(ctx context.Context, appID int64) *resolver.AppConfig {

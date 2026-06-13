@@ -7,11 +7,20 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/imkerbos/mxid/internal/domain/externalidp"
 )
+
+// teamsTenantRe restricts the admin-supplied tenant value to the charset
+// Microsoft actually uses ("common" | "organizations" | "consumers" |
+// "<tenant-guid>" | a verified domain like contoso.onmicrosoft.com). Crucially
+// it forbids "/", "?", "#", "@", ":" and "\" so the value can NOT break out of
+// the path segment and alter the URL authority — closing an SSRF/host-override
+// vector when the tenant is interpolated into login.microsoftonline.com/%s/...
+var teamsTenantRe = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
 
 // Microsoft Teams uses the Microsoft Identity Platform (Azure AD v2.0)
 // OAuth2/OIDC endpoints. There is no Teams-specific OAuth surface — Teams
@@ -57,6 +66,11 @@ func newTeams(idp *externalidp.ExternalIDP) (externalidp.Provider, error) {
 	}
 	if cfg.Tenant == "" {
 		cfg.Tenant = "common"
+	}
+	// The tenant is interpolated into the Microsoft endpoint path; reject any
+	// value that could alter the URL authority (SSRF hardening).
+	if !teamsTenantRe.MatchString(cfg.Tenant) {
+		return nil, fmt.Errorf("%w: tenant must match %s", externalidp.ErrInvalidConfig, teamsTenantRe.String())
 	}
 	if len(cfg.Scopes) == 0 {
 		// "User.Read" lets us call /me; openid+profile+email are required
