@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/session"
+	"github.com/imkerbos/mxid/pkg/tenantscope"
 )
 
 // ConsoleGate authorizes a resolved external identity for console access.
@@ -111,6 +112,7 @@ func (h *ConsoleHandler) list(c *gin.Context) {
 			tenantID = tid
 		}
 	}
+	c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), tenantID))
 	items, err := h.svc.ListPublic(c.Request.Context(), tenantID)
 	if err != nil {
 		response.InternalError(c, "list idps: "+err.Error())
@@ -144,6 +146,10 @@ func (h *ConsoleHandler) callback(c *gin.Context) {
 		c.Redirect(http.StatusFound, h.failureURL+"&reason="+url.QueryEscape(err.Error()))
 		return
 	}
+
+	// Pre-session OAuth callback: pin the IdP's tenant so the resolver and
+	// admin gate run tenant-scoped under the gorm isolation plugin.
+	c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), idp.TenantID))
 
 	// auto-create is forced OFF for console: an unknown identity must not
 	// silently provision an admin. No binding → ErrExternalUserNotLinked.

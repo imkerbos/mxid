@@ -41,6 +41,9 @@ func (UserGroup) TableName() string {
 	return "mxid_user_group"
 }
 
+// TenantScoped marks mxid_user_group for automatic tenant isolation.
+func (UserGroup) TenantScoped() {}
+
 // UserGroupRule represents a dynamic group's membership rule. Exactly one
 // rule per group (UNIQUE on group_id at the DB level).
 //

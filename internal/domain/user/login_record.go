@@ -32,6 +32,9 @@ func (LoginRecord) TableName() string {
 	return "mxid_login_record"
 }
 
+// TenantScoped marks mxid_login_record for automatic tenant isolation.
+func (LoginRecord) TenantScoped() {}
+
 // RecordLogin persists a single login attempt. Errors are returned but the
 // caller (authn engine) treats them as non-fatal — losing one audit row must
 // not block a legitimate login.

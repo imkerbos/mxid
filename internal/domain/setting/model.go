@@ -31,6 +31,16 @@ type Setting struct {
 
 func (Setting) TableName() string { return "mxid_setting" }
 
+// TenantScoped marks mxid_setting for automatic tenant isolation.
+func (Setting) TenantScoped() {}
+
+// TenantScopePredicate keeps the tenant_id=0 GLOBAL-default rows visible so the
+// settings fallback (tenant override -> global default) keeps working. A naive
+// `tenant_id = ?` would hide the global defaults.
+func (Setting) TenantScopePredicate() (string, bool) {
+	return "tenant_id IN (?, 0)", true
+}
+
 // Decode unmarshals the JSON value into the given target.
 func (s *Setting) Decode(target any) error {
 	return json.Unmarshal(s.Value, target)

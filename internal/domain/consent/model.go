@@ -26,3 +26,6 @@ type UserAppConsent struct {
 func (UserAppConsent) TableName() string {
 	return "mxid_user_app_consent"
 }
+
+// TenantScoped marks mxid_user_app_consent for automatic tenant isolation.
+func (UserAppConsent) TenantScoped() {}

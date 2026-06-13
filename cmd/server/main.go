@@ -42,6 +42,7 @@ import (
 	"github.com/imkerbos/mxid/pkg/mailer"
 	"github.com/imkerbos/mxid/pkg/session"
 	"github.com/imkerbos/mxid/pkg/sms"
+	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"github.com/imkerbos/mxid/pkg/urlswap"
 )
 
@@ -218,6 +219,11 @@ func registerModules(a *bootstrap.App) {
 	// global user count already meets the cap. Zero MaxUsers = unlimited
 	// (OSS / no license).
 	userModule.Service.SetLicenseQuotaCheck(func(ctx context.Context, tenantID int64) error {
+		// The global license + cross-tenant user count are deliberately
+		// platform-wide, not scoped to the creating tenant. Run them under an
+		// explicit cross-tenant escape so the isolation plugin does not narrow
+		// the count to the current tenant.
+		ctx = tenantscope.WithCrossTenant(ctx)
 		lic, err := settingService.License(ctx, a.Config.Tenant.DefaultID)
 		if err != nil || lic.MaxUsers <= 0 {
 			return nil
@@ -889,6 +895,12 @@ func buildAppResolver(appModule *app.Module, _ int64, masterKey *crypto.MasterKe
 	return resolver.NewAppResolver(
 		// GetByCode
 		func(ctx context.Context, tenantID int64, code string) (*resolver.AppConfig, error) {
+			// The protocol layer is the cross-tenant entry point: it discovers
+			// the tenant FROM the app (by globally-unique client_id / code /
+			// app_id), so app/cert resolution runs as an explicit cross-tenant
+			// read. The resolved AppConfig carries its TenantID, which the
+			// protocol handlers then use to scope downstream user/consent reads.
+			ctx = tenantscope.WithCrossTenant(ctx)
 			a, err := appModule.Repo.GetByCode(ctx, tenantID, code)
 			if err != nil {
 				return nil, err
@@ -897,6 +909,7 @@ func buildAppResolver(appModule *app.Module, _ int64, masterKey *crypto.MasterKe
 		},
 		// GetByID
 		func(ctx context.Context, appID int64) (*resolver.AppConfig, error) {
+			ctx = tenantscope.WithCrossTenant(ctx)
 			a, err := appModule.Repo.GetByID(ctx, appID)
 			if err != nil {
 				return nil, err
@@ -905,6 +918,7 @@ func buildAppResolver(appModule *app.Module, _ int64, masterKey *crypto.MasterKe
 		},
 		// GetByClientID
 		func(ctx context.Context, clientID string) (*resolver.AppConfig, error) {
+			ctx = tenantscope.WithCrossTenant(ctx)
 			a, err := appModule.Repo.GetByClientID(ctx, clientID)
 			if err != nil {
 				return nil, err
@@ -913,6 +927,7 @@ func buildAppResolver(appModule *app.Module, _ int64, masterKey *crypto.MasterKe
 		},
 		// GetCert — return the currently-active cert of the requested type.
 		func(ctx context.Context, appID int64, certType string) (*resolver.CertConfig, error) {
+			ctx = tenantscope.WithCrossTenant(ctx)
 			certs, err := appModule.Repo.ListCertsByApp(ctx, appID)
 			if err != nil {
 				return nil, err
@@ -1129,7 +1144,12 @@ func runAuditRetention(a *bootstrap.App, ss *setting.Service, repo audit.Reposit
 	// One immediate tick so a freshly-restarted server reflects the policy
 	// without a 6h delay; later ticks ride the ticker.
 	for {
-		ctx := context.Background()
+		// Background cron with no request context. The purge is a deliberate
+		// GLOBAL cross-tenant delete of old rows, so it must use an EXPLICIT
+		// system escape — otherwise the tenant-isolation plugin fails closed
+		// (or, worse, scopes the purge to tenant 0). SystemContext is the
+		// sanctioned, auditable bypass for background jobs.
+		ctx := tenantscope.SystemContext()
 		pol, err := ss.AuditPolicy(ctx, a.Config.Tenant.DefaultID)
 		if err == nil && pol.RetentionDays > 0 {
 			cutoff := time.Now().AddDate(0, 0, -pol.RetentionDays)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/imkerbos/mxid/pkg/tenantscope"
 	_ "github.com/lib/pq"
 	"go.uber.org/zap"
 	"gorm.io/driver/postgres"
@@ -38,6 +39,16 @@ func InitDatabase(cfg *DatabaseConfig, logger *zap.Logger) (*gorm.DB, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("connect database: %w", err)
+	}
+
+	// Secure-by-default multi-tenant isolation. The plugin auto-adds
+	// `WHERE tenant_id = ?` (from the request's tenantscope) to every
+	// Query/Update/Delete against a model implementing tenantscope.Tenanted,
+	// and fails closed when a tenant-scoped model is touched without a scope.
+	// Cross-tenant/system access requires an EXPLICIT escape
+	// (tenantscope.SystemContext / WithCrossTenant). See pkg/tenantscope.
+	if err := db.Use(tenantscope.NewPlugin()); err != nil {
+		return nil, fmt.Errorf("install tenantscope plugin: %w", err)
 	}
 
 	sqlDB, err := db.DB()

@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/protocol/resolver"
 	"github.com/imkerbos/mxid/pkg/response"
+	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"github.com/imkerbos/mxid/pkg/urlswap"
 )
 
@@ -113,6 +114,8 @@ func (h *Handler) login(c *gin.Context) {
 		h.redirectToLogin(c, appCode, service)
 		return
 	}
+	// Pin the SSO session's tenant so the user read is tenant-scoped.
+	c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), ssoSess.TenantID))
 
 	// User authenticated — resolve user and issue ticket
 	user, err := h.idRes.ResolveUser(c.Request.Context(), ssoSess.UserID)
@@ -274,6 +277,8 @@ func (h *Handler) doServiceValidate(c *gin.Context, includeAttributes bool) {
 		app, err := h.appRes.GetApp(c.Request.Context(), appCode)
 		if err == nil && app != nil {
 			casCfg := h.parseCASConfig(app.ProtocolConfig)
+			// Pin the ticket's tenant so the user read is tenant-scoped.
+			c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), st.TenantID))
 			user, err := h.idRes.ResolveUser(c.Request.Context(), st.UserID)
 			if err == nil {
 				attrs := h.buildAttributes(casCfg, user)

@@ -28,6 +28,7 @@ import (
 	"github.com/imkerbos/mxid/pkg/mailer"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/session"
+	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
@@ -121,6 +122,9 @@ func (h *MagicLinkHandler) send(c *gin.Context) {
 	resp := magicSendResponse{Sent: true, TTLSeconds: magicLinkTTL}
 
 	tenantID := h.resolveTenant(c.Request.Context(), req.Tenant)
+	// Pin the resolved tenant so the user lookup / read run tenant-scoped
+	// (public route, no AuthMiddleware to set the scope).
+	c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), tenantID))
 	userID, err := h.users.LookupByEmail(c.Request.Context(), tenantID, email)
 	if err != nil {
 		h.logger.Warn("magic link send: lookup failed", zap.String("email", email), zap.Error(err))

@@ -11,6 +11,7 @@ import (
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/session"
 	"github.com/imkerbos/mxid/pkg/snowflake"
+	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -138,6 +139,15 @@ func (e *Engine) Login(ctx context.Context, req *AuthRequest, namespace string) 
 	provider, ok := e.providers[req.AuthType]
 	if !ok {
 		return nil, ErrUnknownProvider
+	}
+
+	// Login runs BEFORE any session exists, so the request context carries no
+	// tenant scope. The target tenant is resolved explicitly upstream
+	// (effectiveTenant -> req.TenantID); pin it onto the context so the gorm
+	// tenant-isolation plugin can scope the user lookups (GetByUsername/Email/
+	// Phone) instead of failing closed.
+	if req.TenantID > 0 {
+		ctx = tenantscope.WithTenant(ctx, req.TenantID)
 	}
 
 	result, err := provider.Authenticate(ctx, req)
@@ -297,6 +307,12 @@ func (e *Engine) VerifyMFAChallenge(ctx context.Context, challenge, code string)
 	payload, err := e.consumeMFAChallenge(ctx, challenge)
 	if err != nil {
 		return nil, err
+	}
+
+	// Second-factor verification also runs pre-session; pin the challenge's
+	// tenant so downstream user/MFA repo reads are tenant-scoped.
+	if payload.TenantID > 0 {
+		ctx = tenantscope.WithTenant(ctx, payload.TenantID)
 	}
 
 	if err := e.mfaRateLimiter.Check(ctx, payload.UserID, payload.ClientIP); err != nil {

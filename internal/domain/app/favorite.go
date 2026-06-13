@@ -26,6 +26,9 @@ func (UserAppFavorite) TableName() string {
 	return "mxid_user_app_favorite"
 }
 
+// TenantScoped marks mxid_user_app_favorite for automatic tenant isolation.
+func (UserAppFavorite) TenantScoped() {}
+
 // FavoriteRepository abstracts the per-user pinned-app storage.
 type FavoriteRepository interface {
 	Add(ctx context.Context, fav *UserAppFavorite) error

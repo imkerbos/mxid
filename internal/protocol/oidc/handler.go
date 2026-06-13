@@ -17,6 +17,7 @@ import (
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/session"
+	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"github.com/imkerbos/mxid/pkg/urlswap"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -309,6 +310,12 @@ func (h *Handler) authorize(c *gin.Context) {
 		return
 	}
 
+	// User authenticated — pin the SSO session's tenant onto the request
+	// context so the downstream access-policy / consent / app-role reads (all
+	// tenant-scoped tables) run under the gorm tenant-isolation plugin. The
+	// protocol group has no AuthMiddleware to set this.
+	c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), ssoSess.TenantID))
+
 	// User authenticated — issue authorization code
 	scopes := parseScopes(scope)
 
@@ -576,6 +583,9 @@ func (h *Handler) tokenAuthorizationCode(c *gin.Context) {
 		h.tokenError(c, "invalid_grant", "invalid or expired authorization code")
 		return
 	}
+	// Pin the auth-code's tenant so downstream claim/user/app-role reads are
+	// tenant-scoped (protocol group has no AuthMiddleware).
+	c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), ac.TenantID))
 
 	// Validate client
 	if ac.ClientID != clientID {
@@ -749,6 +759,9 @@ func (h *Handler) tokenRefreshToken(c *gin.Context) {
 		h.tokenError(c, "invalid_grant", "invalid or expired refresh token")
 		return
 	}
+	// Pin the refresh-token's tenant so downstream claim/user/app-role reads
+	// are tenant-scoped.
+	c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), rt.TenantID))
 	if rt.ClientID != clientID {
 		h.tokenError(c, "invalid_grant", "client_id mismatch")
 		return
@@ -916,6 +929,10 @@ func (h *Handler) userinfo(c *gin.Context) {
 	if userID == 0 {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_token"})
 		return
+	}
+	// Pin the token's tenant so the claim/user reads are tenant-scoped.
+	if tid, ok := claims["tenant_id"].(float64); ok && tid > 0 {
+		c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), int64(tid)))
 	}
 
 	scopeVal, _ := claims["scope"].([]any)
