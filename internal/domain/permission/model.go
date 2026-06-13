@@ -42,6 +42,14 @@ const (
 	ScopeTypeGroup  = "group"
 )
 
+// Subject type constants for role bindings — the kind of principal a binding
+// grants the role to. Mirror the DTO oneof validation (user|group|org).
+const (
+	SubjectTypeUser  = "user"
+	SubjectTypeGroup = "group"
+	SubjectTypeOrg   = "org"
+)
+
 // RoleBinding represents the mxid_role_binding table.
 //
 // A binding pairs a role with a subject (user / group / org) and optionally

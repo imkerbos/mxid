@@ -25,12 +25,32 @@ var ErrRootOrgDelete = errors.New("root organization cannot be deleted")
 // id resolves to gorm.ErrRecordNotFound).
 var ErrOrgNotFound = errors.New("organization not found")
 
+// ErrUserNotInTenant is returned when AddMember is asked to plant a user that
+// does not exist in the caller's tenant — including a cross-tenant user id,
+// which the injected validator (backed by the tenant-scoped user repo) reports
+// as absent. Blocks the residual referenced-entity IDOR where an admin links a
+// foreign-tenant user into their own org, granting it the org's scoped access.
+var ErrUserNotInTenant = errors.New("user not found in tenant")
+
+// EntityValidator reports whether a referenced entity id exists within the
+// caller's tenant. Backed by the referent's tenant-scoped GetByID (the
+// tenantscope plugin appends tenant_id=?, so a cross-tenant id resolves to
+// not-found → false). Injected via SetUserValidator so the org service does
+// not import the user domain.
+type EntityValidator func(ctx context.Context, id int64) (bool, error)
+
 // Service handles organization business logic.
 type Service struct {
-	repo     Repository
-	idGen    *snowflake.Generator
-	eventBus *event.Bus
+	repo          Repository
+	idGen         *snowflake.Generator
+	eventBus      *event.Bus
+	userValidator EntityValidator
 }
+
+// SetUserValidator injects the tenant-scoped user existence check used by
+// AddMember to validate the request-body user id before planting a membership.
+// Wired in cmd/server/main.go once the user module exists.
+func (s *Service) SetUserValidator(v EntityValidator) { s.userValidator = v }
 
 // NewService creates a new organization service.
 func NewService(repo Repository, idGen *snowflake.Generator, eventBus *event.Bus) *Service {
@@ -96,6 +116,24 @@ func (s *Service) requireOrg(ctx context.Context, orgID int64) error {
 			return ErrOrgNotFound
 		}
 		return fmt.Errorf("get organization: %w", err)
+	}
+	return nil
+}
+
+// requireUserInTenant validates a request-body user id against the caller's
+// tenant via the injected tenant-scoped validator. A cross-tenant id resolves
+// to false → ErrUserNotInTenant. Fails closed: if no validator was wired the
+// referenced-entity guard cannot be skipped silently.
+func (s *Service) requireUserInTenant(ctx context.Context, userID int64) error {
+	if s.userValidator == nil {
+		return fmt.Errorf("org: user validator not configured")
+	}
+	ok, err := s.userValidator(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("validate user: %w", err)
+	}
+	if !ok {
+		return ErrUserNotInTenant
 	}
 	return nil
 }
@@ -178,6 +216,13 @@ func (s *Service) Move(ctx context.Context, id int64, req *MoveOrgRequest) error
 func (s *Service) AddMember(ctx context.Context, orgID int64, req *AddMemberRequest) error {
 	// Tenant-ownership guard on the parent org before planting a membership.
 	if err := s.requireOrg(ctx, orgID); err != nil {
+		return err
+	}
+	// Referenced-entity guard: the user id comes from the request body. Reject
+	// a user that is not in the caller's tenant (a cross-tenant id resolves to
+	// not-found via the tenant-scoped validator) so a foreign user cannot be
+	// planted into this org.
+	if err := s.requireUserInTenant(ctx, req.UserID); err != nil {
 		return err
 	}
 	rel := &UserOrg{

@@ -175,6 +175,10 @@ func (h *Handler) AddMember(c *gin.Context) {
 			response.NotFound(c, 40401, "organization not found")
 			return
 		}
+		if errors.Is(err, ErrUserNotInTenant) {
+			response.NotFound(c, 40402, "user not found")
+			return
+		}
 		response.InternalError(c, "failed to add member")
 		return
 	}
