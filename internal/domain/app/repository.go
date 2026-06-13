@@ -39,6 +39,7 @@ type Repository interface {
 
 	// AppAccess
 	AddAccess(ctx context.Context, access *AppAccess) error
+	GetAccessByID(ctx context.Context, id int64) (*AppAccess, error)
 	RemoveAccess(ctx context.Context, id int64) error
 	ListAccessByApp(ctx context.Context, appID int64) ([]*AppAccess, error)
 
@@ -50,6 +51,7 @@ type Repository interface {
 
 	// AppCert
 	CreateCert(ctx context.Context, cert *AppCert) error
+	GetCertByID(ctx context.Context, id int64) (*AppCert, error)
 	ListCertsByApp(ctx context.Context, appID int64) ([]*AppCert, error)
 	DeleteCert(ctx context.Context, id int64) error
 }

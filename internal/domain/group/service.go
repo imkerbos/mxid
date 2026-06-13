@@ -13,7 +13,7 @@ import (
 
 // Service errors.
 var (
-	ErrGroupNotFound  = errors.New("user group not found")
+	ErrGroupNotFound   = errors.New("user group not found")
 	ErrGroupHasMembers = errors.New("user group still has members; remove all members or pass force=true")
 )
 
@@ -79,6 +79,22 @@ func (s *Service) GetByID(ctx context.Context, id int64) (*UserGroup, error) {
 	g, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("get user group: %w", err)
+	}
+	return g, nil
+}
+
+// requireGroup fetches the parent group via the tenant-scoped repo so the
+// tenantscope plugin appends tenant_id=?. A cross-tenant groupID resolves to
+// ErrRecordNotFound, surfaced as ErrGroupNotFound. This is the parent-ownership
+// guard the tenant-less child tables (mxid_user_group_member,
+// mxid_user_group_rule) rely on, since the column plugin cannot filter them.
+func (s *Service) requireGroup(ctx context.Context, groupID int64) (*UserGroup, error) {
+	g, err := s.repo.GetByID(ctx, groupID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrGroupNotFound
+		}
+		return nil, fmt.Errorf("get group: %w", err)
 	}
 	return g, nil
 }
@@ -216,6 +232,15 @@ func (s *Service) publishMember(ctx context.Context, eventType string, tenantID,
 // AddMembers adds multiple users to a group. Users already in the group are
 // reported via the skipped slice in the returned response — never as errors.
 func (s *Service) AddMembers(ctx context.Context, groupID int64, userIDs []int64) (*BatchMembersResponse, error) {
+	// Tenant-ownership guard BEFORE any membership write — mirrors the singular
+	// AddMember, which also rejects dynamic groups.
+	g, err := s.requireGroup(ctx, groupID)
+	if err != nil {
+		return nil, err
+	}
+	if g.Type == TypeDynamic {
+		return nil, ErrGroupIsDynamic
+	}
 	members := make([]*UserGroupMember, 0, len(userIDs))
 	for _, uid := range userIDs {
 		members = append(members, &UserGroupMember{
@@ -235,13 +260,11 @@ func (s *Service) AddMembers(ctx context.Context, groupID int64, userIDs []int64
 	for _, uid := range skipped {
 		skippedSet[uid] = struct{}{}
 	}
-	if g, err := s.repo.GetByID(ctx, groupID); err == nil {
-		for _, uid := range userIDs {
-			if _, skip := skippedSet[uid]; skip {
-				continue
-			}
-			s.publishMember(ctx, event.GroupMemberAdded, g.TenantID, groupID, uid)
+	for _, uid := range userIDs {
+		if _, skip := skippedSet[uid]; skip {
+			continue
 		}
+		s.publishMember(ctx, event.GroupMemberAdded, g.TenantID, groupID, uid)
 	}
 	return &BatchMembersResponse{
 		Affected: len(userIDs) - len(skipped),
@@ -269,6 +292,11 @@ func (s *Service) RemoveMember(ctx context.Context, groupID, userID int64) error
 // RemoveMembers removes multiple users from a group. UserIDs that were not
 // members are reported via the skipped slice.
 func (s *Service) RemoveMembers(ctx context.Context, groupID int64, userIDs []int64) (*BatchMembersResponse, error) {
+	// Tenant-ownership guard BEFORE the delete.
+	g, err := s.requireGroup(ctx, groupID)
+	if err != nil {
+		return nil, err
+	}
 	skipped, err := s.repo.RemoveMembers(ctx, groupID, userIDs)
 	if err != nil {
 		return nil, fmt.Errorf("batch remove members: %w", err)
@@ -277,13 +305,11 @@ func (s *Service) RemoveMembers(ctx context.Context, groupID int64, userIDs []in
 	for _, uid := range skipped {
 		skippedSet[uid] = struct{}{}
 	}
-	if g, err := s.repo.GetByID(ctx, groupID); err == nil {
-		for _, uid := range userIDs {
-			if _, skip := skippedSet[uid]; skip {
-				continue
-			}
-			s.publishMember(ctx, event.GroupMemberRemoved, g.TenantID, groupID, uid)
+	for _, uid := range userIDs {
+		if _, skip := skippedSet[uid]; skip {
+			continue
 		}
+		s.publishMember(ctx, event.GroupMemberRemoved, g.TenantID, groupID, uid)
 	}
 	if skipped == nil {
 		skipped = []int64{}
@@ -309,6 +335,9 @@ func int64sToStrings(ids []int64) []string {
 // Empty result returns an empty (non-nil) slice so JSON encoders emit `[]`,
 // not `null`.
 func (s *Service) GetMembers(ctx context.Context, groupID int64, page, pageSize int) ([]*MemberInfo, int64, error) {
+	if _, err := s.requireGroup(ctx, groupID); err != nil {
+		return nil, 0, err
+	}
 	members, total, err := s.repo.GetMembers(ctx, groupID, page, pageSize)
 	if err != nil {
 		return nil, 0, err

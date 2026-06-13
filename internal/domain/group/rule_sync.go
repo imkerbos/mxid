@@ -13,9 +13,9 @@ import (
 
 // Rule-related service errors.
 var (
-	ErrRuleNotFound      = errors.New("group has no rule")
-	ErrGroupNotDynamic   = errors.New("group is not dynamic (set type=2 before attaching a rule)")
-	ErrGroupIsDynamic    = errors.New("dynamic groups manage members via rule; manual member ops are disabled")
+	ErrRuleNotFound    = errors.New("group has no rule")
+	ErrGroupNotDynamic = errors.New("group is not dynamic (set type=2 before attaching a rule)")
+	ErrGroupIsDynamic  = errors.New("dynamic groups manage members via rule; manual member ops are disabled")
 )
 
 // RuleQueryer abstracts the DB calls the sync engine needs. Implemented by
@@ -32,6 +32,10 @@ type RuleQueryer interface {
 
 // GetRule returns the rule attached to a group, or ErrRuleNotFound.
 func (s *Service) GetRule(ctx context.Context, groupID int64) (*UserGroupRule, error) {
+	// Tenant-ownership guard before reading the tenant-less rule row.
+	if _, err := s.requireGroup(ctx, groupID); err != nil {
+		return nil, err
+	}
 	r, err := s.repo.GetRule(ctx, groupID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -119,6 +123,12 @@ type SyncReport struct {
 // Errors during compile/evaluate are persisted to last_sync_error so the UI
 // can show the operator what's wrong without re-running.
 func (s *Service) SyncRule(ctx context.Context, groupID int64) (*SyncReport, error) {
+	// Tenant-ownership guard at the very top — before the rule row is read, so a
+	// cross-tenant groupID cannot disclose another tenant's rule expression.
+	g, err := s.requireGroup(ctx, groupID)
+	if err != nil {
+		return nil, err
+	}
 	rule, err := s.repo.GetRule(ctx, groupID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -139,11 +149,6 @@ func (s *Service) SyncRule(ctx context.Context, groupID int64) (*SyncReport, err
 	if err != nil {
 		_ = s.repo.MarkRuleSync(ctx, groupID, 0, 0, err.Error())
 		return nil, fmt.Errorf("compile rule: %w", err)
-	}
-
-	g, err := s.repo.GetByID(ctx, groupID)
-	if err != nil {
-		return nil, fmt.Errorf("get group: %w", err)
 	}
 
 	matched, err := s.repo.EvaluateRule(ctx, g.TenantID, compiled)
@@ -234,4 +239,3 @@ func buildEvaluateSQL(cr *CompiledRule) string {
 		" WHERE u.tenant_id = ? AND u.deleted_at IS NULL AND (" + cr.WhereSQL + ")"
 	return q
 }
-
