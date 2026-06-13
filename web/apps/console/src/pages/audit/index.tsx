@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Search, X, Eye } from 'lucide-react'
 import { auditApi, formatDate, useTranslation } from '@mxid/shared'
+import { pageMotion, Button } from '@mxid/shared/ui'
 import type { AuditLog, PaginatedData } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
 
@@ -11,7 +12,7 @@ function getEventTypeColor(eventType: string): { bg: string; text: string } {
   if (eventType.startsWith('app.')) return { bg: 'bg-purple-50', text: 'text-purple-700' }
   if (eventType.startsWith('role.')) return { bg: 'bg-amber-50', text: 'text-amber-700' }
   if (eventType.startsWith('group.')) return { bg: 'bg-teal-50', text: 'text-teal-700' }
-  if (eventType.startsWith('org.')) return { bg: 'bg-green-50', text: 'text-green-700' }
+  if (eventType.startsWith('org.')) return { bg: 'bg-emerald-50', text: 'text-emerald-700' }
   return { bg: 'bg-gray-50', text: 'text-gray-700' }
 }
 
@@ -185,7 +186,7 @@ export default function AuditPage() {
   const totalPages = Math.ceil(data.total / data.page_size) || 1
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
+    <motion.div {...pageMotion}>
       <PageHeader
         title={t('audit.title')}
         description={t('audit.subtitle')}
@@ -236,12 +237,9 @@ export default function AuditPage() {
             className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
         </div>
-        <button
-          onClick={handleFilter}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-hover"
-        >
+        <Button onClick={handleFilter}>
           {t('audit.filters.filterBtn')}
-        </button>
+        </Button>
       </div>
 
       {/* Table */}
@@ -321,20 +319,12 @@ export default function AuditPage() {
               {t('audit.pagingSummary', { total: data.total, page, pages: totalPages })}
             </p>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-                className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-gray-50"
-              >
+              <Button variant="secondary" size="md" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
                 {t('audit.prevPage')}
-              </button>
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
-                className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-gray-50"
-              >
+              </Button>
+              <Button variant="secondary" size="md" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>
                 {t('audit.nextPage')}
-              </button>
+              </Button>
             </div>
           </div>
         )}

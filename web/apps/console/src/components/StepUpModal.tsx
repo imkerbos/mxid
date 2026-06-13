@@ -46,7 +46,8 @@ export default function StepUpModal() {
     const p = pending.current
     pending.current = null
     if (!p) return
-    ok ? p.resolve() : p.reject()
+    if (ok) p.resolve()
+    else p.reject()
   }
 
   const submit = async () => {

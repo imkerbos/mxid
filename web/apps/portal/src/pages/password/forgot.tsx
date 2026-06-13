@@ -62,9 +62,9 @@ export default function ForgotPasswordPage() {
                 {t('portal.pwdReset.sentHint')}
               </div>
               {devLink && (
-                <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-3 text-xs">
-                  <p className="mb-1 text-yellow-200">{t('portal.pwdReset.devLinkHint')}</p>
-                  <a href={devLink} className="break-all text-yellow-100 underline">{devLink}</a>
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-xs">
+                  <p className="mb-1 text-amber-200">{t('portal.pwdReset.devLinkHint')}</p>
+                  <a href={devLink} className="break-all text-amber-100 underline">{devLink}</a>
                 </div>
               )}
               <button

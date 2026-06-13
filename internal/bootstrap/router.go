@@ -28,14 +28,26 @@ func InitRouter(cfg *ServerConfig, logger *zap.Logger) *gin.Engine {
 	// reports the real browser IP via XFF. Production should override via
 	// config to the actual edge proxy(es).
 	proxies := cfg.TrustedProxies
+	usingBroadDefault := false
 	if len(proxies) == 0 {
 		proxies = []string{
 			"127.0.0.1/32", "::1/128",
 			"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
 		}
+		usingBroadDefault = true
 	}
 	if err := r.SetTrustedProxies(proxies); err != nil {
 		logger.Warn("set trusted proxies failed", zap.Strings("cidrs", proxies), zap.Error(err))
+	}
+	// Footgun guard: the broad RFC1918 default is a dev convenience. In release
+	// it MUST be narrowed to the actual edge proxy IP(s) — otherwise on-prem
+	// intranet clients (10.x / 192.168.x) are treated as trusted proxies and
+	// their real IP is dropped, collapsing every internal user onto one bucket
+	// for rate-limit / audit / conditional-access. Warn loudly so it's caught.
+	if usingBroadDefault && cfg.Mode == "release" {
+		logger.Warn("trusted_proxies unset in release mode — using broad RFC1918 default; "+
+			"narrow server.trusted_proxies to the edge proxy IP(s) or intranet client IPs will be mis-resolved",
+			zap.Strings("default_cidrs", proxies))
 	}
 
 	// Zap-based recovery middleware

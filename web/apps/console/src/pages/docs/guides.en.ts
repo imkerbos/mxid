@@ -557,7 +557,7 @@ ${FALLBACK_BODY}`,
         title: 'Outline',
         body: `1. Lark Developer Console → create an internal app → enable the "Get user info" + "Get user identity" scopes.
 2. Copy App ID + App Secret.
-3. MXID Console → Identity sources → New → Lark / Feishu. Paste the credentials, set the redirect URI to \`{{ISSUER}}/api/v1/portal-public/external-idp/lark/callback\`.
+3. MXID Console → Identity sources → New → Lark / Feishu. Paste the credentials, set the redirect URI to \`{{ISSUER}}/api/v1/portal-public/auth/external/lark/callback\`.
 4. Save. The Lark button appears on the portal login page automatically.
 
 ${FALLBACK_BODY}`,

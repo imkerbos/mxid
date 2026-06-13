@@ -384,14 +384,16 @@ func (h *Handler) logoutHandler(namespace, cookieName string) gin.HandlerFunc {
 			return
 		}
 
-		// Get session to find user ID
+		// Get session to find user ID + tenant for a complete audit row.
 		sess, sErr := h.engine.GetSession(c.Request.Context(), namespace, sessionID)
-		var userID int64
+		var userID, tenantID int64
 		if sErr == nil && sess != nil {
 			userID = sess.UserID
+			tenantID = sess.TenantID
 		}
 
-		if err := h.engine.Logout(c.Request.Context(), namespace, sessionID, userID); err != nil {
+		meta := LogoutMeta{TenantID: tenantID, IP: c.ClientIP(), UserAgent: c.Request.UserAgent()}
+		if err := h.engine.Logout(c.Request.Context(), namespace, sessionID, userID, meta); err != nil {
 			response.InternalError(c, "logout failed")
 			return
 		}

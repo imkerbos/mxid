@@ -13,7 +13,7 @@ import { useEffect, useState } from 'react'
 import { Save, Send, Loader2 } from 'lucide-react'
 import { settingsApi, useTranslation } from '@mxid/shared'
 import type { MailSMTP } from '@mxid/shared'
-import { Field, Input, Select } from '../../components/ui'
+import { Field, Input, Select, Button } from '../../components/ui'
 import { toast } from '../../components/ui/toast'
 
 const TLS_OPTION_KEYS = [
@@ -190,14 +190,9 @@ export default function MailSMTPPage() {
         </div>
 
         <div className="mt-6 flex justify-end gap-2">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-60"
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          <Button onClick={handleSave} loading={saving} icon={<Save className="h-4 w-4" />}>
             {saving ? t('common.saving') : t('settings.smtp.saveConfig')}
-          </button>
+          </Button>
         </div>
       </section>
 
@@ -222,15 +217,17 @@ export default function MailSMTPPage() {
             placeholder={t('settings.smtp.testToPlaceholder')}
             className="flex-1"
           />
-          <button
+          <Button
             onClick={handleTest}
+            loading={testing}
             disabled={testing || !cfg.enabled}
             title={!cfg.enabled ? t('settings.smtp.mustEnableFirst') : ''}
-            className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
+            icon={<Send className="h-4 w-4" />}
+            variant="ghost"
+            className="border border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 hover:text-primary"
           >
-            {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             {testing ? t('settings.smtp.testing') : t('settings.smtp.sendTest')}
-          </button>
+          </Button>
         </div>
       </section>
     </div>

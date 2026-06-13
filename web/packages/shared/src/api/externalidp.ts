@@ -1,5 +1,14 @@
-import { client, portalClient } from './client'
+import axios from 'axios'
+import { client } from './client'
 import type { ApiResponse } from '../types'
+
+// Unauthenticated clients for the login pages' external-IdP list/start. No
+// session exists yet, so these can't go through the auth-gated `client`
+// (/api/v1/console) or portalClient (/api/v1/portal). Both portal + console
+// use a dedicated `-public` group. IDs come back as strings, so plain axios
+// is safe (no json-bigint needed).
+const consolePublicRoot = axios.create({ baseURL: '/api/v1/console-public' })
+const portalPublicRoot = axios.create({ baseURL: '/api/v1/portal-public' })
 
 // ExternalIDP — admin shape with full config + status + auto_create flags.
 export interface ExternalIDP {
@@ -40,7 +49,7 @@ export const externalIdpApi = {
   // IdPs only. Used by multi-tenant portals where each enterprise sees
   // only its own social login buttons.
   listPublic: (tenant?: string) =>
-    portalClient
+    portalPublicRoot
       .get<ApiResponse<PublicIDP[]>>('/auth/external', { params: tenant ? { tenant } : undefined })
       .then(r => r.data.data),
   // startURL returns the absolute redirect URL the browser should hit to
@@ -54,6 +63,21 @@ export const externalIdpApi = {
     if (returnTo) params.set('return_to', returnTo)
     if (tenant) params.set('tenant', tenant)
     const qs = params.toString()
-    return `/api/v1/portal/auth/external/${encodeURIComponent(code)}/start${qs ? `?${qs}` : ''}`
+    return `/api/v1/portal-public/auth/external/${encodeURIComponent(code)}/start${qs ? `?${qs}` : ''}`
+  },
+
+  // Console (public) — same shape as the portal variants but the OAuth dance
+  // lands a console session (admin-gated server-side). Used by the console
+  // login page to offer "sign in with Lark" to admins.
+  consoleListPublic: (tenant?: string) =>
+    consolePublicRoot
+      .get<ApiResponse<PublicIDP[]>>('/auth/external', { params: tenant ? { tenant } : undefined })
+      .then(r => r.data.data),
+  consoleStartURL: (code: string, returnTo?: string, tenant?: string) => {
+    const params = new URLSearchParams()
+    if (returnTo) params.set('return_to', returnTo)
+    if (tenant) params.set('tenant', tenant)
+    const qs = params.toString()
+    return `/api/v1/console-public/auth/external/${encodeURIComponent(code)}/start${qs ? `?${qs}` : ''}`
   },
 }

@@ -54,6 +54,11 @@ type User struct {
 	// Mutations MUST emit a user.super_admin.{grant,revoke} audit event
 	// and invalidate the authz cache for this user.
 	IsSuperAdmin      bool           `gorm:"column:is_super_admin;not null;default:false" json:"is_super_admin"`
+	// IsBuiltin marks a platform-seeded break-glass account (the bootstrap
+	// admin). Such accounts must authenticate locally only — console
+	// external-IdP login refuses them so the emergency path never depends on
+	// an IdP being reachable. See migration 000038.
+	IsBuiltin         bool           `gorm:"column:is_builtin;not null;default:false" json:"is_builtin"`
 	CreatedAt         time.Time      `gorm:"column:created_at;not null" json:"created_at"`
 	UpdatedAt         time.Time      `gorm:"column:updated_at;not null" json:"updated_at"`
 	CreatedBy         *int64         `gorm:"column:created_by" json:"created_by"`

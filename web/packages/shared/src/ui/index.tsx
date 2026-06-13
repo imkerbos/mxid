@@ -6,6 +6,24 @@ import { Loader2, X } from 'lucide-react'
 import { cn } from '@mxid/shared'
 import type { ReactNode, ButtonHTMLAttributes, InputHTMLAttributes, TextareaHTMLAttributes, SelectHTMLAttributes } from 'react'
 
+/* ──────────────── Motion presets ──────────────── */
+
+// Standard page-enter animation. Spread onto the page-root <motion.div> so
+// every page fades+rises identically instead of each picking its own y/duration.
+//   <motion.div {...pageMotion}>
+export const pageMotion = {
+  initial: { opacity: 0, y: 8 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.2 },
+} as const
+
+// Standard modal/dialog enter+exit (matches the shared Modal).
+export const dialogMotion = {
+  initial: { opacity: 0, scale: 0.95 },
+  animate: { opacity: 1, scale: 1 },
+  exit: { opacity: 0, scale: 0.95 },
+} as const
+
 /* ──────────────── Input / Textarea / Select base classes ──────────────── */
 
 export const INPUT_CLASS =
@@ -89,7 +107,7 @@ export function Button({
       {...rest}
       disabled={disabled || loading}
       className={cn(
-        'inline-flex shrink-0 items-center justify-center whitespace-nowrap font-medium transition-colors',
+        'inline-flex shrink-0 items-center justify-center whitespace-nowrap font-medium transition-colors disabled:cursor-not-allowed',
         SIZE_CLASS[size],
         VARIANT_CLASS[variant],
         className,

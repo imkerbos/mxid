@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { Plus, Shield, Check, Loader2, Trash2, Users, X, UserPlus } from 'lucide-react'
 import { permissionApi, formatDate, cn, useTranslation } from '@mxid/shared'
+import { pageMotion, Button } from '@mxid/shared/ui'
 import type { Role, Permission, PaginatedData, RoleBinding } from '@mxid/shared'
 import { RoleType } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
@@ -223,18 +224,14 @@ export default function PermissionsPage() {
   const totalMemberPages = Math.max(1, Math.ceil(members.total / members.page_size))
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
+    <motion.div {...pageMotion}>
       <PageHeader
         title={t('permissions.title')}
         description={t('permissions.subtitle')}
         actions={
-          <button
-            onClick={() => setShowCreate(true)}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-hover"
-          >
-            <Plus className="h-4 w-4" />
+          <Button onClick={() => setShowCreate(true)} icon={<Plus className="h-4 w-4" />}>
             {t('permissions.createRole')}
-          </button>
+          </Button>
         }
       />
 
@@ -475,7 +472,7 @@ export default function PermissionsPage() {
                                 <span className={cn(
                                   'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
                                   binding.subject_type === 'user' && 'bg-blue-50 text-blue-700',
-                                  binding.subject_type === 'group' && 'bg-green-50 text-green-700',
+                                  binding.subject_type === 'group' && 'bg-emerald-50 text-emerald-700',
                                   binding.subject_type === 'org' && 'bg-purple-50 text-purple-700',
                                 )}>
                                   {subjectTypeLabels[binding.subject_type as SubjectType] || binding.subject_type}
@@ -595,21 +592,12 @@ export default function PermissionsPage() {
                 />
               </div>
               <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowCreate(false)}
-                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50"
-                >
+                <Button type="button" variant="secondary" onClick={() => setShowCreate(false)}>
                   {t('common.cancel')}
-                </button>
-                <button
-                  type="submit"
-                  disabled={creating}
-                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-60"
-                >
-                  {creating && <Loader2 className="h-4 w-4 animate-spin" />}
+                </Button>
+                <Button type="submit" loading={creating}>
                   {t('permissions.createRoleModal.createBtn')}
-                </button>
+                </Button>
               </div>
             </form>
           </motion.div>
@@ -717,21 +705,12 @@ export default function PermissionsPage() {
                 </div>
               )}
               <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddMember(false)}
-                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50"
-                >
+                <Button type="button" variant="secondary" onClick={() => setShowAddMember(false)}>
                   {t('common.cancel')}
-                </button>
-                <button
-                  type="submit"
-                  disabled={addingMember}
-                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-60"
-                >
-                  {addingMember && <Loader2 className="h-4 w-4 animate-spin" />}
+                </Button>
+                <Button type="submit" loading={addingMember}>
                   {t('permissions.addMemberModal.addBtn')}
-                </button>
+                </Button>
               </div>
             </form>
           </motion.div>

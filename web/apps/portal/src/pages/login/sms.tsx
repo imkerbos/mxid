@@ -90,7 +90,7 @@ export default function SMSLoginPage() {
           </p>
 
           {!enabled ? (
-            <div className="mt-6 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-3 text-sm text-yellow-200">
+            <div className="mt-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-sm text-amber-200">
               {t('login.sms.disabled')}
             </div>
           ) : (
@@ -134,7 +134,7 @@ export default function SMSLoginPage() {
                 </div>
               </div>
               {sent && devCode && (
-                <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-200">
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
                   {t('login.sms.devCodeHint', { code: devCode })}
                 </div>
               )}

@@ -23,6 +23,7 @@ import {
   type ConsoleUserInfo,
   type APITokenRow,
 } from '@mxid/shared'
+import { Button } from '../../components/ui'
 import { toast } from '@mxid/shared/ui/toast'
 import type { MFAInfo, SessionInfo } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
@@ -265,15 +266,12 @@ function ProfileSection() {
                 <p className="mt-1 text-xs text-gray-400">{t('account.emailModified')}</p>
               </Field>
               <div className="flex gap-2">
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-50"
-                >
+                <Button type="submit" loading={saving}>
                   {saving ? t('common.saving') : t('common.save')}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  variant="secondary"
                   onClick={() => {
                     setEditing(false)
                     if (profile) {
@@ -281,10 +279,9 @@ function ProfileSection() {
                       setEmail(profile.email)
                     }
                   }}
-                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50"
                 >
                   {t('common.cancel')}
-                </button>
+                </Button>
               </div>
             </form>
           ) : (
@@ -300,8 +297,8 @@ function ProfileSection() {
                       className={cn(
                         'rounded-full px-2 py-0.5 text-[10px] font-medium',
                         profile.email_verified
-                          ? 'bg-green-50 text-green-600'
-                          : 'bg-yellow-50 text-yellow-700',
+                          ? 'bg-emerald-50 text-emerald-600'
+                          : 'bg-amber-50 text-amber-700',
                       )}
                     >
                       {profile.email_verified ? t('account.fields.verified') : t('account.fields.unverified')}
@@ -319,9 +316,9 @@ function ProfileSection() {
                   )}
                 </div>
                 {devLink && (
-                  <div className="mt-2 rounded-lg bg-yellow-50 px-3 py-2 text-xs text-yellow-800">
+                  <div className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
                     <p className="font-medium">{t('account.devEmailLinkTitle')}</p>
-                    <a href={devLink} className="break-all text-yellow-900 underline" target="_blank" rel="noreferrer noopener">
+                    <a href={devLink} className="break-all text-amber-900 underline" target="_blank" rel="noreferrer noopener">
                       {devLink}
                     </a>
                   </div>
@@ -451,20 +448,15 @@ function ChangePasswordSection({ totpActive }: { totpActive: boolean }) {
           </div>
         )}
         {okMsg && (
-          <div className="flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
+          <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
             <CheckCircle className="h-4 w-4" />
             {okMsg}
           </div>
         )}
         <div>
-          <button
-            type="submit"
-            disabled={saving || !oldPwd || !newPwd || !confirmPwd}
-            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+          <Button type="submit" loading={saving} disabled={saving || !oldPwd || !newPwd || !confirmPwd}>
             {saving ? t('account.pwd.submitting') : t('account.pwd.submit')}
-          </button>
+          </Button>
           <p className="mt-2 text-xs text-gray-500">
             {t('account.pwd.footnote')}
           </p>
@@ -624,7 +616,7 @@ function MFASection({
                 <span
                   className={cn(
                     'rounded-full px-2.5 py-0.5 text-xs font-medium',
-                    mfa.verified ? 'bg-green-50 text-green-600' : 'bg-yellow-50 text-yellow-600',
+                    mfa.verified ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600',
                   )}
                 >
                   {mfa.verified ? t('account.fields.verified') : t('account.fields.unverified')}
@@ -881,21 +873,12 @@ function EnrollTOTPModal({ onClose, onSuccess }: { onClose: () => void; onSucces
               />
             </div>
             <div className="flex justify-end gap-2 pt-1">
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-lg border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50"
-              >
+              <Button type="button" variant="secondary" onClick={onClose}>
                 {t('common.cancel')}
-              </button>
-              <button
-                type="submit"
-                disabled={code.length !== 6 || verifying}
-                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {verifying && <Loader2 className="h-4 w-4 animate-spin" />}
+              </Button>
+              <Button type="submit" loading={verifying} disabled={code.length !== 6 || verifying}>
                 {t('account.mfa.submit')}
-              </button>
+              </Button>
             </div>
           </form>
         )}
@@ -1066,7 +1049,7 @@ function LoginHistorySection() {
                       <span
                         className={cn(
                           'inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium',
-                          r.event_type === 'login.success' && 'bg-green-50 text-green-700',
+                          r.event_type === 'login.success' && 'bg-emerald-50 text-emerald-700',
                           r.event_type === 'login.failed' && 'bg-red-50 text-red-700',
                           r.event_type === 'logout' && 'bg-gray-100 text-gray-600',
                         )}
@@ -1189,9 +1172,9 @@ function APITokensSection() {
                     {tok.revoked_at ? (
                       <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-600">{t('common.revoked')}</span>
                     ) : tok.expires_at && new Date(tok.expires_at) < new Date() ? (
-                      <span className="rounded-full bg-yellow-50 px-2 py-0.5 text-yellow-700">{t('common.expired')}</span>
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">{t('common.expired')}</span>
                     ) : (
-                      <span className="rounded-full bg-green-50 px-2 py-0.5 text-green-700">{t('common.valid')}</span>
+                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">{t('common.valid')}</span>
                     )}
                   </td>
                   <td className="px-3 py-2 text-right">
@@ -1295,21 +1278,12 @@ function CreateAPITokenModal({
             <p className="mt-1 text-xs text-gray-400">{t('account.apiTokens.formExpiresHint')}</p>
           </Field>
           <div className="flex justify-end gap-2 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50"
-            >
+            <Button type="button" variant="secondary" onClick={onClose}>
               {t('common.cancel')}
-            </button>
-            <button
-              type="submit"
-              disabled={submitting || !name.trim()}
-              className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-50"
-            >
-              {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+            </Button>
+            <Button type="submit" loading={submitting} disabled={submitting || !name.trim()}>
               {t('common.create')}
-            </button>
+            </Button>
           </div>
         </form>
       </div>

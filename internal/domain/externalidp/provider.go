@@ -20,7 +20,7 @@ type AuthorizeRequest struct {
 	// and verified back on the callback to prevent CSRF.
 	State string
 	// RedirectURI is the absolute callback URL on MXID
-	// (e.g. https://mxid.example.com/portal/auth/external/lark/callback).
+	// (e.g. https://mxid.example.com/api/v1/portal-public/auth/external/lark/callback).
 	RedirectURI string
 	// Login hint (email/username/openid) — optional, providers ignore when absent.
 	LoginHint string
