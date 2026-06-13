@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/pkg/response"
+	"github.com/imkerbos/mxid/pkg/saferedirect"
 	"github.com/imkerbos/mxid/pkg/session"
 	"github.com/imkerbos/mxid/pkg/tenantscope"
 )
@@ -121,14 +122,27 @@ func (h *ConsoleHandler) list(c *gin.Context) {
 	response.OK(c, items)
 }
 
+// resolveReturnTo validates a user-agent-supplied return_to against the
+// console origin. FAIL-CLOSED — see PortalHandler.resolveReturnTo. This is the
+// public console-login route, so an unvalidated return_to is an open redirect
+// fired post-authentication.
+func (h *ConsoleHandler) resolveReturnTo(returnTo string) string {
+	if returnTo == "" {
+		return h.loginURL
+	}
+	safe, err := saferedirect.ValidateRelativeOrOrigin(returnTo, []string{h.consoleURL})
+	if err != nil {
+		return h.loginURL
+	}
+	if len(safe) > 0 && safe[0] == '/' {
+		return h.consoleURL + safe
+	}
+	return safe
+}
+
 func (h *ConsoleHandler) start(c *gin.Context) {
 	code := c.Param("code")
-	finalURL := c.Query("return_to")
-	if finalURL == "" {
-		finalURL = h.loginURL
-	} else if len(finalURL) > 0 && finalURL[0] == '/' {
-		finalURL = h.consoleURL + finalURL
-	}
+	finalURL := h.resolveReturnTo(c.Query("return_to"))
 	redirectURI := fmt.Sprintf("%s/api/v1/console-public/auth/external/%s/callback", h.baseURL, code)
 	authURL, err := h.svc.StartLogin(c.Request.Context(), h.tenantID, code, redirectURI, finalURL)
 	if err != nil {
@@ -196,7 +210,11 @@ func (h *ConsoleHandler) callback(c *gin.Context) {
 	}
 	c.SetCookie(h.cookieName, sess.ID, 86400, "/", h.cookieDomain, h.cookieSecure, true)
 
-	if finalURL == "" {
+	// Belt-and-suspenders: re-validate the state-carried finalURL against the
+	// console origin before the post-auth redirect.
+	if safe, err := saferedirect.ValidateRelativeOrOrigin(finalURL, []string{h.consoleURL}); err == nil {
+		finalURL = safe
+	} else {
 		finalURL = h.loginURL
 	}
 	c.Redirect(http.StatusFound, finalURL)
