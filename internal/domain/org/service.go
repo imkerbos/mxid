@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"gorm.io/gorm"
+
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/snowflake"
 )
@@ -16,6 +18,12 @@ const RootOrgID int64 = 1
 
 // ErrRootOrgDelete is returned when a caller tries to delete the seeded root.
 var ErrRootOrgDelete = errors.New("root organization cannot be deleted")
+
+// ErrOrgNotFound is returned when an organization is absent — or, because the
+// org repo is tenant-scoped by the tenantscope plugin, when the requested org
+// belongs to another tenant (the plugin appends tenant_id=?, so a cross-tenant
+// id resolves to gorm.ErrRecordNotFound).
+var ErrOrgNotFound = errors.New("organization not found")
 
 // Service handles organization business logic.
 type Service struct {
@@ -76,6 +84,20 @@ func (s *Service) GetByID(ctx context.Context, id int64) (*Organization, error) 
 		return nil, fmt.Errorf("get organization: %w", err)
 	}
 	return org, nil
+}
+
+// requireOrg fetches the parent org via the tenant-scoped repo. A cross-tenant
+// orgID resolves to ErrRecordNotFound, surfaced as ErrOrgNotFound. This is the
+// parent-ownership guard the tenant-less child table mxid_user_org (org_id)
+// relies on, since the column plugin cannot filter it.
+func (s *Service) requireOrg(ctx context.Context, orgID int64) error {
+	if _, err := s.repo.GetByID(ctx, orgID); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrOrgNotFound
+		}
+		return fmt.Errorf("get organization: %w", err)
+	}
+	return nil
 }
 
 // Update updates an existing organization.
@@ -154,6 +176,10 @@ func (s *Service) Move(ctx context.Context, id int64, req *MoveOrgRequest) error
 
 // AddMember adds a user to an organization.
 func (s *Service) AddMember(ctx context.Context, orgID int64, req *AddMemberRequest) error {
+	// Tenant-ownership guard on the parent org before planting a membership.
+	if err := s.requireOrg(ctx, orgID); err != nil {
+		return err
+	}
 	rel := &UserOrg{
 		ID:        s.idGen.Generate(),
 		UserID:    req.UserID,
@@ -170,6 +196,10 @@ func (s *Service) AddMember(ctx context.Context, orgID int64, req *AddMemberRequ
 
 // RemoveMember removes a user from an organization.
 func (s *Service) RemoveMember(ctx context.Context, userID, orgID int64) error {
+	// Tenant-ownership guard on the parent org before the delete.
+	if err := s.requireOrg(ctx, orgID); err != nil {
+		return err
+	}
 	if err := s.repo.RemoveMember(ctx, userID, orgID); err != nil {
 		return fmt.Errorf("remove member: %w", err)
 	}
@@ -203,6 +233,9 @@ func (s *Service) AncestorIDsForUser(ctx context.Context, tenantID, userID int64
 // Empty result returns an empty (non-nil) slice so JSON encoders emit `[]`,
 // not `null`.
 func (s *Service) GetMembers(ctx context.Context, orgID int64, page, pageSize int) ([]int64, int64, error) {
+	if err := s.requireOrg(ctx, orgID); err != nil {
+		return nil, 0, err
+	}
 	ids, total, err := s.repo.GetMembers(ctx, orgID, page, pageSize)
 	if err != nil {
 		return nil, 0, err

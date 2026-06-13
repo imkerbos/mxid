@@ -289,6 +289,17 @@ func (r *gormRepository) AddAccess(ctx context.Context, access *AppAccess) error
 	return nil
 }
 
+// GetAccessByID finds an access authorization by primary key. The row carries
+// no tenant_id; callers derive tenancy via the parent app (AppID) and must run
+// the tenant-scoped app GetByID before acting on it.
+func (r *gormRepository) GetAccessByID(ctx context.Context, id int64) (*AppAccess, error) {
+	var access AppAccess
+	if err := r.db.WithContext(ctx).First(&access, id).Error; err != nil {
+		return nil, err
+	}
+	return &access, nil
+}
+
 // RemoveAccess deletes an access authorization by ID.
 func (r *gormRepository) RemoveAccess(ctx context.Context, id int64) error {
 	result := r.db.WithContext(ctx).Delete(&AppAccess{}, id)
@@ -374,6 +385,17 @@ func (r *gormRepository) ListCertsByApp(ctx context.Context, appID int64) ([]*Ap
 		return nil, fmt.Errorf("list app certs: %w", err)
 	}
 	return certs, nil
+}
+
+// GetCertByID finds an app certificate by primary key. The row carries no
+// tenant_id; callers derive tenancy via the parent app (AppID) and must run the
+// tenant-scoped app GetByID before acting on it.
+func (r *gormRepository) GetCertByID(ctx context.Context, id int64) (*AppCert, error) {
+	var cert AppCert
+	if err := r.db.WithContext(ctx).First(&cert, id).Error; err != nil {
+		return nil, err
+	}
+	return &cert, nil
 }
 
 // DeleteCert deletes an app certificate by ID.

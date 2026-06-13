@@ -17,13 +17,13 @@ import (
 
 // Service errors.
 var (
-	ErrAppNotFound      = errors.New("app not found")
-	ErrAppCodeExists    = errors.New("app code already exists")
-	ErrAppGroupNotFound = errors.New("app group not found")
-	ErrGroupCodeExists  = errors.New("app group code already exists")
-	ErrAccessNotFound   = errors.New("access authorization not found")
-	ErrCertNotFound     = errors.New("certificate not found")
-	ErrAccountNotFound  = errors.New("app account not found")
+	ErrAppNotFound       = errors.New("app not found")
+	ErrAppCodeExists     = errors.New("app code already exists")
+	ErrAppGroupNotFound  = errors.New("app group not found")
+	ErrGroupCodeExists   = errors.New("app group code already exists")
+	ErrAccessNotFound    = errors.New("access authorization not found")
+	ErrCertNotFound      = errors.New("certificate not found")
+	ErrAccountNotFound   = errors.New("app account not found")
 	ErrInvalidClientType = errors.New("invalid client_type for protocol")
 )
 
@@ -228,13 +228,13 @@ func (s *Service) Create(ctx context.Context, tenantID int64, req *CreateAppRequ
 		HomeURL:         req.HomeURL,
 		IsFirstParty:    isFirstParty,
 		RequireConsent:  requireConsent,
-		ProtocolConfig: protocolConfig,
-		LoginURL:       req.LoginURL,
-		RedirectURIs:   redirectURIs,
-		LogoutURL:      req.LogoutURL,
-		AccessPolicy:   accessPolicy,
-		CreatedAt:      now,
-		UpdatedAt:      now,
+		ProtocolConfig:  protocolConfig,
+		LoginURL:        req.LoginURL,
+		RedirectURIs:    redirectURIs,
+		LogoutURL:       req.LogoutURL,
+		AccessPolicy:    accessPolicy,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 
 	if err := s.repo.Create(ctx, application); err != nil {
@@ -374,6 +374,34 @@ func (s *Service) GetByID(ctx context.Context, id int64) (*App, error) {
 		return nil, fmt.Errorf("get app: %w", err)
 	}
 	return application, nil
+}
+
+// requireApp fetches the parent app via the tenant-scoped repo so the
+// tenantscope plugin appends its predicate (tenant_id=? OR tenant_id IS NULL
+// for shared apps). A cross-tenant appID resolves to ErrRecordNotFound,
+// surfaced as ErrAppNotFound. This is the parent-ownership guard the tenant-less
+// child tables (mxid_app_access, mxid_app_cert, mxid_app_group_rel) rely on,
+// since the column plugin cannot filter them.
+func (s *Service) requireApp(ctx context.Context, appID int64) error {
+	if _, err := s.repo.GetByID(ctx, appID); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrAppNotFound
+		}
+		return fmt.Errorf("get app: %w", err)
+	}
+	return nil
+}
+
+// requireAppGroup fetches the parent app group via the tenant-scoped repo. A
+// cross-tenant groupID resolves to ErrAppGroupNotFound.
+func (s *Service) requireAppGroup(ctx context.Context, groupID int64) error {
+	if _, err := s.repo.GetGroupByID(ctx, groupID); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrAppGroupNotFound
+		}
+		return fmt.Errorf("get app group: %w", err)
+	}
+	return nil
 }
 
 // Update modifies an application's mutable fields.
@@ -717,6 +745,9 @@ func (s *Service) ListGroups(ctx context.Context, tenantID int64) ([]*AppGroup, 
 
 // ListAppsByGroup returns relation rows linking a group to its member apps.
 func (s *Service) ListAppsByGroup(ctx context.Context, groupID int64) ([]*AppGroupRel, error) {
+	if err := s.requireAppGroup(ctx, groupID); err != nil {
+		return nil, err
+	}
 	return s.repo.ListAppsByGroup(ctx, groupID)
 }
 
@@ -766,6 +797,14 @@ func (s *Service) AddAppToGroup(ctx context.Context, groupID, appID int64) error
 
 // RemoveAppFromGroup removes an app from a group.
 func (s *Service) RemoveAppFromGroup(ctx context.Context, groupID, appID int64) error {
+	// Tenant-ownership guard on both parents before the unlink — mirrors
+	// AddAppToGroup, which verifies both the group and the app exist.
+	if err := s.requireAppGroup(ctx, groupID); err != nil {
+		return err
+	}
+	if err := s.requireApp(ctx, appID); err != nil {
+		return err
+	}
 	if err := s.repo.RemoveAppFromGroup(ctx, appID, groupID); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrAppNotFound
@@ -807,8 +846,25 @@ func (s *Service) AddAccess(ctx context.Context, appID int64, req *AddAccessRequ
 	return access, nil
 }
 
-// RemoveAccess removes an access authorization.
+// RemoveAccess removes an access authorization. The request FK is the child
+// row id, so we load the access row, then run the tenant-ownership guard on its
+// parent app before deleting — a cross-tenant access id resolves to a
+// cross-tenant app that requireApp 404s.
 func (s *Service) RemoveAccess(ctx context.Context, id int64) error {
+	access, err := s.repo.GetAccessByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrAccessNotFound
+		}
+		return fmt.Errorf("get access: %w", err)
+	}
+	if err := s.requireApp(ctx, access.AppID); err != nil {
+		// Parent app not in caller's tenant — treat the access row as not found.
+		if errors.Is(err, ErrAppNotFound) {
+			return ErrAccessNotFound
+		}
+		return err
+	}
 	if err := s.repo.RemoveAccess(ctx, id); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrAccessNotFound
@@ -820,6 +876,9 @@ func (s *Service) RemoveAccess(ctx context.Context, id int64) error {
 
 // ListAccess returns all access authorizations for an app.
 func (s *Service) ListAccess(ctx context.Context, appID int64) ([]*AppAccess, error) {
+	if err := s.requireApp(ctx, appID); err != nil {
+		return nil, err
+	}
 	accesses, err := s.repo.ListAccessByApp(ctx, appID)
 	if err != nil {
 		return nil, fmt.Errorf("list access: %w", err)
@@ -851,6 +910,9 @@ func (s *Service) CreateCert(ctx context.Context, appID int64) (*AppCert, error)
 
 // ListCerts returns all certificates for an app.
 func (s *Service) ListCerts(ctx context.Context, appID int64) ([]*AppCert, error) {
+	if err := s.requireApp(ctx, appID); err != nil {
+		return nil, err
+	}
 	certs, err := s.repo.ListCertsByApp(ctx, appID)
 	if err != nil {
 		return nil, fmt.Errorf("list certs: %w", err)
@@ -858,8 +920,24 @@ func (s *Service) ListCerts(ctx context.Context, appID int64) ([]*AppCert, error
 	return certs, nil
 }
 
-// DeleteCert deletes a certificate.
+// DeleteCert deletes a certificate. The request FK is the child row id, so we
+// load the cert, then run the tenant-ownership guard on its parent app before
+// deleting — a cross-tenant cert id resolves to a cross-tenant app that
+// requireApp 404s, preventing a DoS on another tenant's signing keys.
 func (s *Service) DeleteCert(ctx context.Context, id int64) error {
+	cert, err := s.repo.GetCertByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrCertNotFound
+		}
+		return fmt.Errorf("get cert: %w", err)
+	}
+	if err := s.requireApp(ctx, cert.AppID); err != nil {
+		if errors.Is(err, ErrAppNotFound) {
+			return ErrCertNotFound
+		}
+		return err
+	}
 	if err := s.repo.DeleteCert(ctx, id); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrCertNotFound
