@@ -10,9 +10,10 @@ CREATE TABLE IF NOT EXISTS mxid_tenant (
     deleted_at  TIMESTAMPTZ
 );
 
--- Seed default tenant
+-- Seed default tenant. Display name is "MXID"; code stays "default" (the stable
+-- slug used for tenant lookups / URLs — don't rename it).
 INSERT INTO mxid_tenant (id, name, code, status, config)
-VALUES (1, 'Default', 'default', 1, '{}')
+VALUES (1, 'MXID', 'default', 1, '{}')
 ON CONFLICT (id) DO NOTHING;
 
 -- System settings table

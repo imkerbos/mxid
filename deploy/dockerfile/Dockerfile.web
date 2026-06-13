@@ -47,8 +47,9 @@ ENV SERVER_NAME=_ \
     CERT_FILE=server.crt \
     KEY_FILE=server.key
 
-# Static roots match the config (/var/www/mxid/{console,portal}).
-COPY --from=spabuild /app/web/apps/console/dist /var/www/mxid/console
-COPY --from=spabuild /app/web/apps/portal/dist /var/www/mxid/portal
+# Static layout matches prod.conf: portal at root, console under /admin/ so the
+# URL prefix maps 1:1 onto the filesystem (root, not alias).
+COPY --from=spabuild /app/web/apps/portal/dist /var/www/mxid
+COPY --from=spabuild /app/web/apps/console/dist /var/www/mxid/admin
 
 EXPOSE 80 443
