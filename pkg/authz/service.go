@@ -14,11 +14,26 @@ import (
 type Service struct {
 	bindings BindingProvider
 	orgTree  OrgAncestry
+
+	// casbin owns the role→permission catalog decision. When nil the engine
+	// falls back to the binding's own Permissions set (legacy path, used by
+	// pure-logic tests and by any deployment that hasn't wired the enforcer).
+	casbin *CasbinEngine
 }
 
-// NewService wires a Service.
+// NewService wires a Service. The role→permission decision uses the binding's
+// inlined Permissions set unless a Casbin engine is attached via WithCasbin.
 func NewService(b BindingProvider, o OrgAncestry) *Service {
 	return &Service{bindings: b, orgTree: o}
+}
+
+// WithCasbin attaches a Casbin engine as the role→permission authority. The
+// engine answers "does this binding's role hold perm in this tenant"; the Go
+// scopeCovers below still decides instance scope (org ltree / group / kind).
+// Returns the same Service for chaining.
+func (s *Service) WithCasbin(e *CasbinEngine) *Service {
+	s.casbin = e
+	return s
 }
 
 // Check is the engine's only entry point. Semantics:
@@ -50,7 +65,7 @@ func (s *Service) Check(ctx context.Context, tenantID, userID int64, perm string
 	}
 
 	for _, b := range binds {
-		if !hasPermission(b.Permissions, perm) {
+		if !s.bindingGrantsPerm(tenantID, b, perm) {
 			continue
 		}
 		ok, err := s.scopeCovers(ctx, b, target)
@@ -63,6 +78,31 @@ func (s *Service) Check(ctx context.Context, tenantID, userID int64, perm string
 		}
 	}
 	return false, nil
+}
+
+// bindingGrantsPerm decides the role→permission half of a binding match. With
+// a Casbin engine attached the decision is delegated to the enforcer
+// (Enforce(roleSubject, tenantDomain, perm)); otherwise it falls back to the
+// binding's inlined Permissions set. Both honour the "*" super-permission and
+// keep matching EXACT (no globs).
+func (s *Service) bindingGrantsPerm(tenantID int64, b EffectiveBinding, perm string) bool {
+	if s.casbin == nil {
+		return hasPermission(b.Permissions, perm)
+	}
+	return s.casbin.RoleHasPermission(tenantID, bindingRoleSubject(b), perm)
+}
+
+// bindingRoleSubject maps an EffectiveBinding to the Casbin role subject the
+// enforcer was loaded with. The super-admin binding (synthesized with
+// RoleID==0 and the "*" wildcard) maps to the synthetic super_admin role;
+// every other binding maps to its concrete role id.
+func bindingRoleSubject(b EffectiveBinding) string {
+	if b.RoleID == 0 {
+		if _, ok := b.Permissions["*"]; ok {
+			return superAdminRole
+		}
+	}
+	return roleSubject(b.RoleID)
 }
 
 // hasPermission reports whether the binding's permission set covers `perm`.

@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/protocol/saml"
+	"github.com/imkerbos/mxid/pkg/authz"
 	"github.com/imkerbos/mxid/pkg/pagination"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/tenantctx"
@@ -28,36 +29,36 @@ func NewHandler(svc *Service, tenantID int64) *Handler {
 func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	apps := rg.Group("/apps")
 	{
-		apps.GET("", h.List)
-		apps.POST("", h.Create)
-		apps.GET("/:id", h.Get)
-		apps.PUT("/:id", h.Update)
-		apps.DELETE("/:id", h.Delete)
-		apps.PUT("/:id/status", h.UpdateStatus)
-		apps.GET("/:id/config", h.GetProtocolConfig)
-		apps.PUT("/:id/config", h.UpdateProtocolConfig)
-		apps.GET("/:id/access", h.ListAccess)
-		apps.POST("/:id/access", h.AddAccess)
-		apps.DELETE("/:id/access/:aid", h.RemoveAccess)
-		apps.GET("/:id/certs", h.ListCerts)
-		apps.POST("/:id/certs", h.CreateCert)
-		apps.DELETE("/:id/certs/:cid", h.DeleteCert)
-		apps.POST("/:id/regenerate-secret", h.RegenerateClientSecret)
-		apps.POST("/:id/rotate-signing-key", h.RotateSigningKey)
-		apps.GET("/:id/quickstart/:lang", h.Quickstart)
+		apps.GET("", authz.Require("app.read", nil), h.List)
+		apps.POST("", authz.Require("app.create", nil), h.Create)
+		apps.GET("/:id", authz.Require("app.read", nil), h.Get)
+		apps.PUT("/:id", authz.Require("app.update", nil), h.Update)
+		apps.DELETE("/:id", authz.Require("app.delete", nil), h.Delete)
+		apps.PUT("/:id/status", authz.Require("app.update", nil), h.UpdateStatus)
+		apps.GET("/:id/config", authz.Require("app.read", nil), h.GetProtocolConfig)
+		apps.PUT("/:id/config", authz.Require("app.update", nil), h.UpdateProtocolConfig)
+		apps.GET("/:id/access", authz.Require("app.read", nil), h.ListAccess)
+		apps.POST("/:id/access", authz.Require("app.access.manage", nil), h.AddAccess)
+		apps.DELETE("/:id/access/:aid", authz.Require("app.access.manage", nil), h.RemoveAccess)
+		apps.GET("/:id/certs", authz.Require("app.read", nil), h.ListCerts)
+		apps.POST("/:id/certs", authz.Require("app.cert.manage", nil), h.CreateCert)
+		apps.DELETE("/:id/certs/:cid", authz.Require("app.cert.manage", nil), h.DeleteCert)
+		apps.POST("/:id/regenerate-secret", authz.Require("app.cert.manage", nil), h.RegenerateClientSecret)
+		apps.POST("/:id/rotate-signing-key", authz.Require("app.cert.manage", nil), h.RotateSigningKey)
+		apps.GET("/:id/quickstart/:lang", authz.Require("app.read", nil), h.Quickstart)
 		// SAML SP metadata one-shot import. Body is the raw XML document.
-		apps.POST("/:id/saml/import-metadata", h.ImportSAMLMetadata)
+		apps.POST("/:id/saml/import-metadata", authz.Require("app.update", nil), h.ImportSAMLMetadata)
 	}
 
 	groups := rg.Group("/app-groups")
 	{
-		groups.GET("", h.ListGroups)
-		groups.POST("", h.CreateGroup)
-		groups.PUT("/:id", h.UpdateGroup)
-		groups.DELETE("/:id", h.DeleteGroup)
-		groups.GET("/:id/apps", h.ListAppsInGroup)
-		groups.POST("/:id/apps", h.AddAppToGroup)
-		groups.DELETE("/:id/apps/:aid", h.RemoveAppFromGroup)
+		groups.GET("", authz.Require("app.read", nil), h.ListGroups)
+		groups.POST("", authz.Require("app.create", nil), h.CreateGroup)
+		groups.PUT("/:id", authz.Require("app.update", nil), h.UpdateGroup)
+		groups.DELETE("/:id", authz.Require("app.delete", nil), h.DeleteGroup)
+		groups.GET("/:id/apps", authz.Require("app.read", nil), h.ListAppsInGroup)
+		groups.POST("/:id/apps", authz.Require("app.update", nil), h.AddAppToGroup)
+		groups.DELETE("/:id/apps/:aid", authz.Require("app.update", nil), h.RemoveAppFromGroup)
 	}
 }
 

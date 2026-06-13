@@ -8,6 +8,7 @@ import (
 
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/snowflake"
+	"gorm.io/gorm"
 )
 
 // Service errors.
@@ -51,7 +52,26 @@ func (s *Service) Create(ctx context.Context, tenantID int64, req *CreateGroupRe
 		return nil, fmt.Errorf("create user group: %w", err)
 	}
 
+	s.publishGroup(ctx, event.GroupCreated, g)
 	return g, nil
+}
+
+// publishGroup emits a group lifecycle event. Actor / IP are denormalized
+// downstream from the request-scoped auditctx; the payload carries the group
+// identity that the audit resource columns render.
+func (s *Service) publishGroup(ctx context.Context, eventType string, g *UserGroup) {
+	if s.eventBus == nil {
+		return
+	}
+	s.eventBus.Publish(ctx, event.Event{
+		Type: eventType,
+		Payload: map[string]any{
+			"id":        g.ID,
+			"tenant_id": g.TenantID,
+			"name":      g.Name,
+			"code":      g.Code,
+		},
+	})
 }
 
 // GetByID retrieves a user group by ID.
@@ -81,6 +101,7 @@ func (s *Service) Update(ctx context.Context, id int64, req *UpdateGroupRequest)
 		return nil, fmt.Errorf("update user group: %w", err)
 	}
 
+	s.publishGroup(ctx, event.GroupUpdated, g)
 	return g, nil
 }
 
@@ -91,6 +112,16 @@ func (s *Service) Update(ctx context.Context, id int64, req *UpdateGroupRequest)
 // FK on mxid_user_group_member has ON DELETE CASCADE so the rows clean up
 // automatically; the flag is purely a safety gate at the API boundary.
 func (s *Service) Delete(ctx context.Context, id int64, force bool) error {
+	// Load before delete so the audit event carries the group's name/tenant.
+	// Already gone → idempotent success (preserves the pre-existing behavior
+	// where repo.Delete on a missing row was a no-op).
+	g, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return fmt.Errorf("get group for delete: %w", err)
+	}
 	count, err := s.repo.CountMembers(ctx, id)
 	if err != nil {
 		return fmt.Errorf("count members before delete: %w", err)
@@ -101,6 +132,7 @@ func (s *Service) Delete(ctx context.Context, id int64, force bool) error {
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return fmt.Errorf("delete user group: %w", err)
 	}
+	s.publishGroup(ctx, event.GroupDeleted, g)
 	return nil
 }
 

@@ -151,7 +151,7 @@ func (h *Handler) Delete(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusNoContent, nil)
+	response.OK(c, nil)
 }
 
 // GetMembers returns paginated members of a group with enriched user info.
@@ -246,7 +246,7 @@ func (h *Handler) RemoveMember(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusNoContent, nil)
+	response.OK(c, nil)
 }
 
 // BatchRemoveMembers removes many users from a group in one call. Users that
@@ -352,7 +352,7 @@ func (h *Handler) DeleteRule(c *gin.Context) {
 		response.InternalError(c, "failed to delete rule")
 		return
 	}
-	c.JSON(http.StatusNoContent, nil)
+	response.OK(c, nil)
 }
 
 // SyncRule handles POST /groups/:id/sync. Recomputes membership from the

@@ -17,7 +17,7 @@ type Module struct {
 // admin routes go behind the authz middleware.
 func Register(app *bootstrap.App) *Module {
 	repo := NewRepository(app.DB)
-	svc := NewService(repo, app.IDGen, app.Redis, DefaultRegistry)
+	svc := NewService(repo, app.IDGen, app.Redis, DefaultRegistry, app.EventBus)
 	return &Module{Repo: repo, Service: svc}
 }
 
@@ -26,13 +26,25 @@ func (m *Module) MountAdminRoutes(app *bootstrap.App, tenantID int64) {
 	NewAdminHandler(m.Service, tenantID).RegisterRoutes(app.ConsoleGroup)
 }
 
-// MountPortalRoutes attaches the public-facing portal endpoints DIRECTLY on
-// the gin engine (NOT under app.PortalGroup, which is auth-gated) so the
-// OAuth redirect handshake works for unauthenticated visitors.
+// MountPortalRoutes attaches the public-facing portal endpoints on the
+// dedicated UNAUTHENTICATED group /api/v1/portal-public (mirrors the console
+// side and the password-reset / magic-link routes) so the OAuth redirect
+// handshake works for unauthenticated visitors without relying on raw-router
+// ordering to dodge the /api/v1/portal auth middleware.
 func (m *Module) MountPortalRoutes(app *bootstrap.App, opts PortalHandlerOpts) {
 	opts.Svc = m.Service
-	publicGroup := app.Router.Group("/api/v1/portal")
+	publicGroup := app.Router.Group("/api/v1/portal-public")
 	NewPortalHandler(opts).RegisterRoutes(publicGroup)
+}
+
+// MountConsolePublicRoutes attaches the admin-console external-IdP login
+// endpoints on a dedicated UNAUTHENTICATED group (/api/v1/console-public) so
+// the OAuth handshake runs before a console session exists. The opts.Gate
+// enforces admin authorization + the break-glass (is_builtin) block.
+func (m *Module) MountConsolePublicRoutes(app *bootstrap.App, opts ConsoleHandlerOpts) {
+	opts.Svc = m.Service
+	publicGroup := app.Router.Group("/api/v1/console-public")
+	NewConsoleHandler(opts).RegisterRoutes(publicGroup)
 }
 
 var _ = session.NamespacePortal

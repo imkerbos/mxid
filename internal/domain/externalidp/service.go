@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/snowflake"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/datatypes"
@@ -32,14 +33,27 @@ type Service struct {
 	registry *Registry
 	idGen    *snowflake.Generator
 	rdb      *redis.Client
+	eventBus *event.Bus
 }
 
 // NewService builds a Service. registry defaults to DefaultRegistry.
-func NewService(repo Repository, idGen *snowflake.Generator, rdb *redis.Client, registry *Registry) *Service {
+func NewService(repo Repository, idGen *snowflake.Generator, rdb *redis.Client, registry *Registry, eventBus *event.Bus) *Service {
 	if registry == nil {
 		registry = DefaultRegistry
 	}
-	return &Service{repo: repo, registry: registry, idGen: idGen, rdb: rdb}
+	return &Service{repo: repo, registry: registry, idGen: idGen, rdb: rdb, eventBus: eventBus}
+}
+
+// publish emits an external-IdP config event. Actor / IP are denormalized
+// downstream from the request-scoped auditctx.
+func (s *Service) publish(ctx context.Context, eventType string, idp *ExternalIDP) {
+	if s.eventBus == nil {
+		return
+	}
+	s.eventBus.Publish(ctx, event.Event{
+		Type:    eventType,
+		Payload: map[string]any{"id": idp.ID, "name": idp.Name, "type": idp.Type},
+	})
 }
 
 /* ──────────────────────── CRUD ──────────────────────── */
@@ -111,6 +125,7 @@ func (s *Service) Create(ctx context.Context, tenantID int64, req *CreateRequest
 	if err := s.repo.Create(ctx, idp); err != nil {
 		return nil, err
 	}
+	s.publish(ctx, event.IDPCreated, idp)
 	return idp, nil
 }
 
@@ -160,13 +175,27 @@ func (s *Service) Update(ctx context.Context, id int64, req *UpdateRequest) (*Ex
 	if err := s.repo.Update(ctx, idp); err != nil {
 		return nil, err
 	}
+	s.publish(ctx, event.IDPUpdated, idp)
 	return idp, nil
 }
 
 // Delete removes an IdP. Existing user_identity bindings are left in place
 // so admins can audit historical links; new logins via this IdP will fail.
 func (s *Service) Delete(ctx context.Context, id int64) error {
-	return s.repo.Delete(ctx, id)
+	// Load before delete so the audit event carries the IdP name/type.
+	// Already gone → idempotent success (preserves the prior no-op behavior).
+	idp, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return err
+	}
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+	s.publish(ctx, event.IDPDeleted, idp)
+	return nil
 }
 
 // Get returns an IdP by ID.

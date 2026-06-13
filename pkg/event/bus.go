@@ -114,4 +114,31 @@ const (
 	OIDCConsentGranted    = "oidc.consent.granted"
 	OIDCConsentRevoked    = "oidc.consent.revoked"
 	OIDCBackchannelLogout = "oidc.backchannel_logout"
+
+	// Tenant lifecycle (super-admin operations).
+	TenantCreated = "tenant.created"
+	TenantUpdated = "tenant.updated"
+	TenantDeleted = "tenant.deleted"
+
+	// External IdP (inbound federation) configuration changes.
+	IDPCreated = "idp.created"
+	IDPUpdated = "idp.updated"
+	IDPDeleted = "idp.deleted"
+
+	// Application group lifecycle + membership.
+	AppGroupCreated       = "app_group.created"
+	AppGroupUpdated       = "app_group.updated"
+	AppGroupDeleted       = "app_group.deleted"
+	AppGroupMemberAdded   = "app_group.member_added"
+	AppGroupMemberRemoved = "app_group.member_removed"
+
+	// SettingsUpdated fires when an admin changes a runtime config section
+	// (security policy, branding, SMTP, login methods, MFA, …). Carries the
+	// changed `section` so the audit row reads which knob moved.
+	SettingsUpdated = "settings.updated"
+
+	// Portal self-service identity changes.
+	ProfileUpdated   = "profile.updated"
+	APITokenCreated  = "api_token.created"
+	APITokenRevoked  = "api_token.revoked"
 )
