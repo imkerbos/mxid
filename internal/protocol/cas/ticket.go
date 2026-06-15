@@ -1,0 +1,93 @@
+package cas
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"github.com/imkerbos/mxid/pkg/crypto"
+	"github.com/redis/go-redis/v9"
+)
+
+const (
+	ticketPrefix    = "mxid:cas:ticket:"
+	defaultTicketTTL = 30 * time.Second
+)
+
+// ServiceTicket represents a CAS service ticket.
+type ServiceTicket struct {
+	Ticket    string   `json:"ticket"`
+	UserID    int64    `json:"user_id"`
+	TenantID  int64    `json:"tenant_id"`
+	Service   string   `json:"service"`
+	Username  string   `json:"username"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// TicketStore manages CAS service tickets in Redis.
+type TicketStore struct {
+	rdb *redis.Client
+}
+
+// NewTicketStore creates a CAS ticket store.
+func NewTicketStore(rdb *redis.Client) *TicketStore {
+	return &TicketStore{rdb: rdb}
+}
+
+// CreateTicket generates and stores a service ticket (ST-xxx).
+func (s *TicketStore) CreateTicket(ctx context.Context, userID, tenantID int64, service, username string, ttl int) (*ServiceTicket, error) {
+	random, err := crypto.GenerateRandomString(24)
+	if err != nil {
+		return nil, fmt.Errorf("generate ticket: %w", err)
+	}
+	ticket := "ST-" + random
+
+	duration := defaultTicketTTL
+	if ttl > 0 {
+		duration = time.Duration(ttl) * time.Second
+	}
+
+	st := &ServiceTicket{
+		Ticket:    ticket,
+		UserID:    userID,
+		TenantID:  tenantID,
+		Service:   service,
+		Username:  username,
+		CreatedAt: time.Now(),
+	}
+
+	data, err := json.Marshal(st)
+	if err != nil {
+		return nil, fmt.Errorf("marshal ticket: %w", err)
+	}
+
+	key := ticketPrefix + ticket
+	if err := s.rdb.Set(ctx, key, data, duration).Err(); err != nil {
+		return nil, fmt.Errorf("store ticket: %w", err)
+	}
+
+	return st, nil
+}
+
+// ConsumeTicket retrieves and deletes a service ticket (single-use).
+func (s *TicketStore) ConsumeTicket(ctx context.Context, ticket string) (*ServiceTicket, error) {
+	key := ticketPrefix + ticket
+	data, err := s.rdb.Get(ctx, key).Bytes()
+	if err != nil {
+		if err == redis.Nil {
+			return nil, fmt.Errorf("ticket not found or expired")
+		}
+		return nil, fmt.Errorf("get ticket: %w", err)
+	}
+
+	// Delete immediately (single-use)
+	s.rdb.Del(ctx, key)
+
+	var st ServiceTicket
+	if err := json.Unmarshal(data, &st); err != nil {
+		return nil, fmt.Errorf("unmarshal ticket: %w", err)
+	}
+
+	return &st, nil
+}

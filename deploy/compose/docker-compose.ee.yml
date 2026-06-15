@@ -1,0 +1,16 @@
+# Enterprise Edition override — swaps the backend image to the EE build
+# (ghcr.io/imkerbos/mxid-ee, garble-obfuscated, private). The web image is
+# shared with CE. Activate via .env:
+#
+#   external DB:
+#     COMPOSE_FILE=deploy/compose/docker-compose.yml:deploy/compose/docker-compose.ee.yml
+#   self-contained (with containerized Postgres + Redis):
+#     COMPOSE_FILE=deploy/compose/docker-compose.yml:deploy/compose/docker-compose.standalone.yml:deploy/compose/docker-compose.ee.yml
+#
+# Then: docker compose pull && docker compose up -d
+# (EE images are pulled from GHCR — `docker login ghcr.io` first; do NOT build.)
+services:
+  mxid:
+    image: ghcr.io/imkerbos/mxid-ee:${MXID_TAG:?set MXID_TAG to a released version, e.g. v0.0.2}
+    # The EE image is built and published from the mxid-ee repo, not here.
+    build: !reset null

@@ -1,0 +1,44 @@
+---
+# ClusterIP Service — used as the routing target for API traffic and as a
+# stable upstream reference (mxid:8080) from Istio/Gateway rules.
+# The name is intentionally fixed to "mxid" (not prefixed with release name)
+# so that external routing config (nginx upstreams, VirtualService host fields)
+# can reference it by a stable name regardless of the Helm release name.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mxid
+  labels:
+    {{- include "mxid.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "mxid.backendSelectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+---
+# Headless Service — required by the StatefulSet as its governing service.
+# Provides stable DNS entries per pod: <pod-name>.mxid-headless.<namespace>.svc.cluster.local
+# The name is intentionally fixed to "mxid-headless" to match the StatefulSet's
+# serviceName field.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mxid-headless
+  labels:
+    {{- include "mxid.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    {{- include "mxid.backendSelectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP

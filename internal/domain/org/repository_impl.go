@@ -1,0 +1,230 @@
+package org
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"gorm.io/gorm"
+)
+
+type repository struct {
+	db *gorm.DB
+}
+
+// NewRepository creates a new GORM-backed organization repository.
+func NewRepository(db *gorm.DB) Repository {
+	return &repository{db: db}
+}
+
+func (r *repository) Create(ctx context.Context, org *Organization) error {
+	if err := r.db.WithContext(ctx).Create(org).Error; err != nil {
+		return fmt.Errorf("create organization: %w", err)
+	}
+	return nil
+}
+
+func (r *repository) GetByID(ctx context.Context, id int64) (*Organization, error) {
+	var org Organization
+	if err := r.db.WithContext(ctx).First(&org, "id = ?", id).Error; err != nil {
+		return nil, fmt.Errorf("get organization by id: %w", err)
+	}
+	return &org, nil
+}
+
+func (r *repository) GetByCode(ctx context.Context, tenantID int64, code string) (*Organization, error) {
+	var org Organization
+	if err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND code = ?", tenantID, code).
+		First(&org).Error; err != nil {
+		return nil, fmt.Errorf("get organization by code: %w", err)
+	}
+	return &org, nil
+}
+
+func (r *repository) Update(ctx context.Context, org *Organization) error {
+	if err := r.db.WithContext(ctx).Save(org).Error; err != nil {
+		return fmt.Errorf("update organization: %w", err)
+	}
+	return nil
+}
+
+func (r *repository) Delete(ctx context.Context, id int64) error {
+	if err := r.db.WithContext(ctx).Delete(&Organization{}, "id = ?", id).Error; err != nil {
+		return fmt.Errorf("delete organization: %w", err)
+	}
+	return nil
+}
+
+func (r *repository) GetTree(ctx context.Context, tenantID int64) ([]*Organization, error) {
+	var orgs []*Organization
+	if err := r.db.WithContext(ctx).
+		Where("tenant_id = ?", tenantID).
+		Order("path ASC, sort_order ASC").
+		Find(&orgs).Error; err != nil {
+		return nil, fmt.Errorf("get organization tree: %w", err)
+	}
+	return orgs, nil
+}
+
+func (r *repository) GetChildren(ctx context.Context, parentID int64) ([]*Organization, error) {
+	var orgs []*Organization
+	if err := r.db.WithContext(ctx).
+		Where("parent_id = ?", parentID).
+		Order("sort_order ASC").
+		Find(&orgs).Error; err != nil {
+		return nil, fmt.Errorf("get children: %w", err)
+	}
+	return orgs, nil
+}
+
+func (r *repository) GetByPath(ctx context.Context, tenantID int64, path string) ([]*Organization, error) {
+	var orgs []*Organization
+	if err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND path::text LIKE ?", tenantID, path+".%").
+		Order("path ASC").
+		Find(&orgs).Error; err != nil {
+		return nil, fmt.Errorf("get organizations by path: %w", err)
+	}
+	return orgs, nil
+}
+
+func (r *repository) Move(ctx context.Context, id int64, newParentID *int64, newPath string) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Get the current organization
+		var org Organization
+		if err := tx.First(&org, "id = ?", id).Error; err != nil {
+			return fmt.Errorf("get organization for move: %w", err)
+		}
+
+		oldPath := org.Path
+
+		// Update the organization itself
+		updates := map[string]any{
+			"parent_id": newParentID,
+			"path":      newPath,
+		}
+		if err := tx.Model(&Organization{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+			return fmt.Errorf("update organization path: %w", err)
+		}
+
+		// Update all descendant paths by replacing the old prefix with the new one
+		if err := tx.Exec(
+			"UPDATE mxid_organization SET path = CAST(? || SUBSTRING(path::text FROM ?) AS ltree) WHERE path::text LIKE ? AND id != ? AND deleted_at IS NULL",
+			newPath,
+			fmt.Sprintf("%d", len(oldPath)+1),
+			oldPath+".%",
+			id,
+		).Error; err != nil {
+			return fmt.Errorf("update descendant paths: %w", err)
+		}
+
+		return nil
+	})
+}
+
+func (r *repository) AddMember(ctx context.Context, rel *UserOrg) error {
+	if err := r.db.WithContext(ctx).Create(rel).Error; err != nil {
+		if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
+			return fmt.Errorf("user already member of organization: %w", err)
+		}
+		return fmt.Errorf("add member to organization: %w", err)
+	}
+	return nil
+}
+
+func (r *repository) RemoveMember(ctx context.Context, userID, orgID int64) error {
+	result := r.db.WithContext(ctx).
+		Where("user_id = ? AND org_id = ?", userID, orgID).
+		Delete(&UserOrg{})
+	if result.Error != nil {
+		return fmt.Errorf("remove member from organization: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("member not found in organization")
+	}
+	return nil
+}
+
+func (r *repository) GetMembers(ctx context.Context, orgID int64, page, pageSize int) ([]int64, int64, error) {
+	var total int64
+	if err := r.db.WithContext(ctx).
+		Model(&UserOrg{}).
+		Where("org_id = ?", orgID).
+		Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("count organization members: %w", err)
+	}
+
+	var rels []UserOrg
+	offset := (page - 1) * pageSize
+	if err := r.db.WithContext(ctx).
+		Where("org_id = ?", orgID).
+		Order("created_at ASC").
+		Offset(offset).
+		Limit(pageSize).
+		Find(&rels).Error; err != nil {
+		return nil, 0, fmt.Errorf("get organization members: %w", err)
+	}
+
+	userIDs := make([]int64, len(rels))
+	for i, rel := range rels {
+		userIDs[i] = rel.UserID
+	}
+	return userIDs, total, nil
+}
+
+func (r *repository) GetUserOrgs(ctx context.Context, userID int64) ([]*UserOrg, error) {
+	var rels []*UserOrg
+	if err := r.db.WithContext(ctx).
+		Where("user_id = ?", userID).
+		Find(&rels).Error; err != nil {
+		return nil, fmt.Errorf("get user organizations: %w", err)
+	}
+	return rels, nil
+}
+
+// AncestorIDsForUser returns every org_id a user belongs to, expanded along
+// the ltree path so each direct membership pulls in its ancestor chain.
+//
+// Used by the permission resolver: a user assigned to "root.eng.platform"
+// inherits role bindings on root.eng.platform, root.eng AND root.
+func (r *repository) AncestorIDsForUser(ctx context.Context, tenantID, userID int64) ([]int64, error) {
+	ids := make([]int64, 0)
+	err := r.db.WithContext(ctx).
+		Raw(`
+SELECT DISTINCT o2.id
+FROM mxid_user_org uo
+JOIN mxid_organization o1 ON o1.id = uo.org_id AND o1.deleted_at IS NULL
+JOIN mxid_organization o2 ON o1.path <@ o2.path AND o2.deleted_at IS NULL AND o2.tenant_id = ?
+WHERE uo.user_id = ?
+`, tenantID, userID).
+		Scan(&ids).Error
+	if err != nil {
+		return nil, fmt.Errorf("ancestor org ids: %w", err)
+	}
+	return ids, nil
+}
+
+// IsAncestorOrSelf reports whether `ancestor` is on the path of `descendant`,
+// inclusive. Implemented via ltree's `<@` (is-descendant-of) operator on the
+// path column — uses the GIST index created in migration 000003.
+func (r *repository) IsAncestorOrSelf(ctx context.Context, ancestor, descendant int64) (bool, error) {
+	if ancestor == descendant {
+		return true, nil
+	}
+	var n int64
+	err := r.db.WithContext(ctx).
+		Raw(`
+SELECT 1
+FROM mxid_organization d, mxid_organization a
+WHERE d.id = ? AND a.id = ?
+  AND d.path <@ a.path
+  AND d.deleted_at IS NULL AND a.deleted_at IS NULL
+LIMIT 1
+`, descendant, ancestor).
+		Scan(&n).Error
+	if err != nil {
+		return false, fmt.Errorf("is ancestor: %w", err)
+	}
+	return n == 1, nil
+}

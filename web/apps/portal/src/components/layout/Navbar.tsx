@@ -1,0 +1,164 @@
+import { useState } from 'react'
+import { NavLink, useNavigate } from 'react-router-dom'
+import { authApi, useAuthStore, cn, useTranslation, setLanguage, SUPPORTED_LANGS } from '@mxid/shared'
+import {
+  LayoutGrid,
+  UserCircle,
+  ShieldCheck,
+  LogOut,
+  Menu,
+  X,
+  Settings,
+} from 'lucide-react'
+import logo from '../../assets/logo.png'
+
+const buildNavItems = (t: (k: string) => string) => [
+  { to: '/apps', label: t('nav.myApps'), icon: LayoutGrid },
+  { to: '/profile', label: t('nav.profile'), icon: UserCircle },
+  { to: '/security', label: t('nav.security'), icon: ShieldCheck },
+]
+
+export default function Navbar() {
+  const navigate = useNavigate()
+  const { user, clear } = useAuthStore()
+  const { t, i18n } = useTranslation()
+  const navItems = buildNavItems(t)
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [loggingOut, setLoggingOut] = useState(false)
+
+  const handleLogout = async () => {
+    if (loggingOut) return
+    setLoggingOut(true)
+    try {
+      await authApi.portalLogout()
+    } catch {
+      // ignore
+    } finally {
+      clear()
+      navigate('/login', { replace: true })
+    }
+  }
+
+  return (
+    <nav className="fixed top-0 left-0 right-0 z-50 h-16 border-b border-gray-200 bg-white/80 backdrop-blur-md">
+      <div className="mx-auto flex h-full max-w-6xl items-center justify-between px-4">
+        {/* Logo */}
+        <NavLink to="/apps" className="flex items-center">
+          <img src={logo} alt="MXID" className="h-8 w-auto" />
+        </NavLink>
+
+        {/* Desktop Nav */}
+        <div className="hidden items-center gap-1 md:flex">
+          {navItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                  isActive
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
+                )
+              }
+            >
+              <item.icon className="h-4 w-4" />
+              {item.label}
+            </NavLink>
+          ))}
+        </div>
+
+        {/* User & Logout */}
+        <div className="hidden items-center gap-3 md:flex">
+          <div className="flex items-center gap-1 text-xs text-gray-500">
+            {SUPPORTED_LANGS.map((l) => (
+              <button
+                key={l}
+                onClick={() => setLanguage(l)}
+                className={cn(
+                  'rounded px-2 py-0.5 transition-colors',
+                  i18n.language === l ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-gray-100',
+                )}
+              >
+                {l === 'zh-CN' ? '中' : 'EN'}
+              </button>
+            ))}
+          </div>
+          {user?.is_admin && (
+            <a
+              href="/admin/"
+              className="flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/10"
+              title={t('nav.switchToConsole')}
+            >
+              <Settings className="h-4 w-4" />
+              {t('nav.switchToConsole')}
+            </a>
+          )}
+          <span className="text-sm text-gray-500">
+            {user?.display_name || user?.username}
+          </span>
+          <button
+            onClick={handleLogout}
+            disabled={loggingOut}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+          >
+            <LogOut className="h-4 w-4" />
+            {t('nav.logout')}
+          </button>
+        </div>
+
+        {/* Mobile menu button */}
+        <button
+          onClick={() => setMobileOpen(!mobileOpen)}
+          className="rounded-lg p-2 text-gray-600 hover:bg-gray-100 md:hidden"
+        >
+          {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </button>
+      </div>
+
+      {/* Mobile Nav */}
+      {mobileOpen && (
+        <div className="border-b border-gray-200 bg-white px-4 pb-4 md:hidden">
+          <div className="flex flex-col gap-1">
+            {navItems.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                onClick={() => setMobileOpen(false)}
+                className={({ isActive }) =>
+                  cn(
+                    'flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                    isActive
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-gray-600 hover:bg-gray-100',
+                  )
+                }
+              >
+                <item.icon className="h-4 w-4" />
+                {item.label}
+              </NavLink>
+            ))}
+            {user?.is_admin && (
+              <a
+                href="/admin/"
+                onClick={() => setMobileOpen(false)}
+                className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-primary transition-colors hover:bg-primary/10"
+              >
+                <Settings className="h-4 w-4" />
+                {t('nav.switchToConsole')}
+              </a>
+            )}
+            <button
+              onClick={handleLogout}
+              disabled={loggingOut}
+              className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+            >
+              <LogOut className="h-4 w-4" />
+              {t('nav.logout')}
+            </button>
+          </div>
+        </div>
+      )}
+    </nav>
+  )
+}

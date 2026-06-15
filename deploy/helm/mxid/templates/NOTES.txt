@@ -1,0 +1,74 @@
+MXID has been deployed!
+
+===========================================================================
+NEXT STEPS
+===========================================================================
+
+1. SET SECRETS
+   If you used secrets.create=true, make sure all required secret values are
+   set before the pods start:
+     - secrets.databasePassword        (PostgreSQL password)
+     - secrets.redisPassword           (Redis password, if auth is enabled)
+     - secrets.cryptoKeyEncryptionKey  (32-byte AES-256 KEK — never lose this)
+
+   Generate a KEK with:
+     openssl rand -base64 32
+
+   To use a pre-existing Secret instead:
+     helm upgrade {{ .Release.Name }} deploy/helm/mxid \
+       --set secrets.create=false \
+       --set secrets.existingSecret=<your-secret-name>
+
+2. CONFIGURE THE GATEWAY
+   Routing type: {{ .Values.routing.type }}
+
+{{- if eq .Values.routing.type "istio" }}
+   An Istio VirtualService has been created. Make sure the Istio Gateway
+   {{ .Values.routing.istio.gateway | quote }} exists and has a listener
+   for host {{ .Values.host | quote }}.
+{{- else if eq .Values.routing.type "gatewayapi" }}
+   A Gateway API HTTPRoute has been created. Make sure the Gateway
+   {{ .Values.routing.gatewayapi.name | quote }} exists and has a listener
+   for host {{ .Values.host | quote }}.
+{{- else if eq .Values.routing.type "ingress" }}
+   A standard Ingress has been created for host {{ .Values.host | quote }}.
+   Make sure an Ingress controller is running in the cluster.
+{{- else }}
+   No ingress resource was created (routing.type=none).
+   Expose the services manually or change routing.type and upgrade.
+{{- end }}
+
+3. ACTIVATE LICENSE (EE only)
+   If running the Enterprise Edition (edition=ee), upload your license token
+   via the admin console:
+     https://{{ .Values.host }}/admin/ → Settings → License
+
+   Without an active license the deployment runs in CE mode (100-user cap,
+   single tenant).
+
+4. UPGRADE CE → EE
+   Switch to the Enterprise Edition image at any time without data loss:
+
+     helm upgrade {{ .Release.Name }} deploy/helm/mxid \
+       --set edition=ee \
+       --set image.tag=<ee-version>
+
+5. SCALE BACKEND
+   Each backend replica receives a unique Snowflake nodeID (ordinal index).
+   Scaling up to N replicas requires N ≤ 1023 (10-bit nodeID limit).
+
+     helm upgrade {{ .Release.Name }} deploy/helm/mxid \
+       --set backend.replicaCount=3
+
+   Or enable autoscaling:
+     helm upgrade {{ .Release.Name }} deploy/helm/mxid \
+       --set backend.autoscaling.enabled=true \
+       --set backend.autoscaling.maxReplicas=5
+
+6. ACCESS THE ADMIN CONSOLE
+   https://{{ .Values.host }}/admin/
+
+   The default admin account credentials are set during first-run database
+   migration. Check the backend pod logs for the initial admin password.
+
+===========================================================================

@@ -1,0 +1,10 @@
+server:
+  mode: debug
+
+database:
+  host: host.docker.internal
+  log_level: info
+
+log:
+  level: debug
+  format: json

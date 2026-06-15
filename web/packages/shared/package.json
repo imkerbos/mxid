@@ -1,0 +1,42 @@
+{
+  "name": "@mxid/shared",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./api": "./src/api/index.ts",
+    "./hooks": "./src/hooks/index.ts",
+    "./types": "./src/types/index.ts",
+    "./utils": "./src/utils/index.ts",
+    "./ui": "./src/ui/index.tsx",
+    "./ui/toast": "./src/ui/toast.tsx"
+  },
+  "dependencies": {
+    "axios": "^1.9.0",
+    "clsx": "^2.1.1",
+    "i18next": "^26.3.1",
+    "i18next-browser-languagedetector": "^8.2.1",
+    "json-bigint": "^1.0.0",
+    "react-i18next": "^17.0.8",
+    "simple-icons": "^16.23.0",
+    "tailwind-merge": "^3.3.0",
+    "ua-parser-js": "^2.0.10",
+    "zustand": "^5.0.5"
+  },
+  "peerDependencies": {
+    "framer-motion": "^12.0.0",
+    "lucide-react": "^0.500.0",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/json-bigint": "^1.0.4",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "framer-motion": "^12.16.0",
+    "lucide-react": "^0.525.0",
+    "react": "^19.2.6"
+  }
+}

@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mxid.fullname" . }}-web-nginx
+  labels:
+    {{- include "mxid.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+data:
+  # This template is processed by the nginx docker-entrypoint envsubst mechanism.
+  # It contains NO custom ${VAR} placeholders — only standard nginx variables
+  # ($uri, $host, etc.) — so envsubst will pass them through unchanged.
+  default.conf.template: |
+    server {
+        listen 80;
+        server_name _;
+
+        root /var/www/mxid;
+        index index.html;
+
+        # Enable gzip compression
+        gzip on;
+        gzip_types text/plain text/css application/json application/javascript
+                   text/xml application/xml application/xml+rss text/javascript
+                   image/svg+xml;
+        gzip_min_length 1024;
+
+        # Security headers (TLS/HSTS is handled by the upstream Gateway)
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-XSS-Protection "1; mode=block" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+        # Admin console SPA — served under /admin/
+        location /admin/ {
+            try_files $uri $uri/ /admin/index.html;
+
+            # Long-lived cache for hashed static assets
+            location ~* ^/admin/assets/.*\.(js|css|png|jpg|svg|woff2?|ico)$ {
+                expires 1y;
+                add_header Cache-Control "public, immutable";
+            }
+        }
+
+        # Redirect bare /admin to /admin/ to keep the SPA router happy
+        location = /admin {
+            return 301 /admin/;
+        }
+
+        # Portal SPA — served at /
+        location / {
+            try_files $uri $uri/ /index.html;
+
+            # Long-lived cache for hashed static assets
+            location ~* ^/assets/.*\.(js|css|png|jpg|svg|woff2?|ico)$ {
+                expires 1y;
+                add_header Cache-Control "public, immutable";
+            }
+        }
+    }

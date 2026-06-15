@@ -1,0 +1,12 @@
+topiam/
+tmp/
+bin/
+.git/
+
+# Never copy host build artifacts into the build context — they clobber the
+# clean in-image `pnpm install` and trigger a re-install (which aborts in a
+# non-interactive build).
+**/node_modules
+web/apps/*/dist
+**/.turbo
+data/uploads/

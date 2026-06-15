@@ -1,0 +1,206 @@
+# MXID Helm Chart — default values
+# Override these in your own values file or with --set flags.
+
+# ---------------------------------------------------------------------------
+# Edition: "ce" (Community Edition, AGPL-3.0) or "ee" (Enterprise Edition).
+# Changing edition switches the backend image repository at upgrade time.
+# ---------------------------------------------------------------------------
+edition: ce
+
+# ---------------------------------------------------------------------------
+# Public hostname for the deployment (used in routing rules).
+# Example: id.example.com
+# ---------------------------------------------------------------------------
+host: id.example.com
+
+# ---------------------------------------------------------------------------
+# Image settings
+# ---------------------------------------------------------------------------
+image:
+  # Tag applied to BOTH backend and web images.
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+
+# Image pull secrets (list of secret names) — needed for private registries.
+imagePullSecrets: []
+# - name: regcred
+
+# ---------------------------------------------------------------------------
+# Backend (StatefulSet)
+# ---------------------------------------------------------------------------
+backend:
+  # Number of replicas. Each pod gets a unique Snowflake nodeID derived from
+  # its ordinal index (0, 1, 2, …), so nodeIDs are always unique across pods.
+  replicaCount: 1
+
+  # Graceful shutdown. On pod termination the kubelet sends SIGTERM while the
+  # Service/mesh endpoint is still being removed (the two happen in parallel) —
+  # preStopSleep delays SIGTERM by that many seconds so endpoint removal
+  # propagates first, avoiding dropped requests on rolling updates / scale-down.
+  # The backend then drains in-flight requests itself (10s). Set
+  # terminationGracePeriodSeconds > preStopSleep + 10s. Set preStopSleep to 0
+  # to disable the hook.
+  preStopSleep: 5
+  terminationGracePeriodSeconds: 40
+
+  # Resource requests and limits for the backend container.
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "512Mi"
+
+  # Horizontal Pod Autoscaler — scales the StatefulSet.
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+    # targetMemoryUtilizationPercentage: 80
+
+  # Extra annotations to add to the StatefulSet pods.
+  podAnnotations: {}
+
+  # Extra labels to add to the StatefulSet pods.
+  podLabels: {}
+
+  # Security context for the pod.
+  podSecurityContext: {}
+  # fsGroup: 2000
+
+  # Security context for the backend container.
+  securityContext: {}
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+  # Node selector, tolerations, and affinity.
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ---------------------------------------------------------------------------
+# Web frontend (Deployment — stateless nginx + SPA)
+# ---------------------------------------------------------------------------
+web:
+  replicaCount: 1
+
+  # Graceful shutdown — same rationale as backend.preStopSleep above. nginx
+  # serves short static requests, so a smaller grace period is fine.
+  preStopSleep: 5
+  terminationGracePeriodSeconds: 30
+
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "200m"
+      memory: "128Mi"
+
+  podAnnotations: {}
+  podLabels: {}
+  podSecurityContext: {}
+  securityContext: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ---------------------------------------------------------------------------
+# Application configuration — non-sensitive env vars (go into a ConfigMap)
+# ---------------------------------------------------------------------------
+config:
+  # Server mode: "release" for production, "debug" for development.
+  serverMode: release
+
+  # Comma-separated list of allowed CORS origins for the portal and console.
+  # Example: "https://id.example.com"
+  allowedOrigins: ""
+
+# ---------------------------------------------------------------------------
+# Database (external — use RDS / CloudSQL / managed PostgreSQL in production)
+# ---------------------------------------------------------------------------
+database:
+  host: "postgres"          # hostname or IP of the PostgreSQL server
+  port: "5432"
+  name: "mxid"
+  user: "mxid"
+  # password: see secrets section below
+
+# ---------------------------------------------------------------------------
+# Redis (external — use ElastiCache / MemoryStore / managed Redis in production)
+# ---------------------------------------------------------------------------
+redis:
+  host: "redis"             # hostname or IP of the Redis server
+  port: "6379"
+  # password: see secrets section below
+
+# ---------------------------------------------------------------------------
+# Secrets
+#
+# Option A (create: true): the chart creates a Secret from the values below.
+#   IMPORTANT: never commit real secrets into values files tracked by git.
+#   Use --set, sealed-secrets, external-secrets-operator, or Vault instead.
+#
+# Option B (create: false): provide an existing Secret name via existingSecret.
+#   The Secret must contain these keys:
+#     MXID_DATABASE_PASSWORD
+#     MXID_REDIS_PASSWORD
+#     MXID_CRYPTO_KEY_ENCRYPTION_KEY
+# ---------------------------------------------------------------------------
+secrets:
+  create: true
+
+  # Reference to a pre-existing Secret (used when create: false).
+  existingSecret: ""
+
+  # MUST set — database password.
+  databasePassword: ""
+
+  # MUST set — Redis password (leave empty if Redis has no auth).
+  redisPassword: ""
+
+  # MUST set — 32-byte AES-256 master key encryption key (KEK).
+  # Generate with: openssl rand -base64 32
+  cryptoKeyEncryptionKey: ""
+
+# ---------------------------------------------------------------------------
+# Ingress / routing
+#
+# type: istio       — Istio VirtualService (networking.istio.io/v1beta1)
+#       gatewayapi  — Gateway API HTTPRoute (gateway.networking.k8s.io/v1)
+#       ingress     — Standard Kubernetes Ingress
+#       none        — No ingress resource created
+# ---------------------------------------------------------------------------
+routing:
+  type: istio
+
+  # --- Istio settings (used when type=istio) ---
+  istio:
+    # Reference to the existing Istio Gateway.
+    # May include a namespace prefix, e.g. "istio-system/mxid-gateway".
+    gateway: "istio-system/mxid-gateway"
+
+  # --- Gateway API settings (used when type=gatewayapi) ---
+  gatewayapi:
+    # Name of the existing Gateway resource.
+    name: "mxid-gateway"
+    # Namespace of the Gateway (leave empty for same namespace as the chart).
+    namespace: ""
+    # Optional sectionName if the Gateway has multiple listeners.
+    sectionName: ""
+
+  # --- Standard Ingress settings (used when type=ingress) ---
+  ingress:
+    className: ""
+    annotations: {}
+    # Example annotations:
+    #   nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    #   cert-manager.io/cluster-issuer: "letsencrypt-prod"   # auto-issue + renew TLS
+    tls:
+      # Enable HTTPS. With cert-manager (annotation above) the named secret is
+      # created + renewed automatically; otherwise create it yourself:
+      #   kubectl create secret tls mxid-tls --cert=fullchain.pem --key=privkey.pem
+      enabled: false
+      secretName: "mxid-tls"

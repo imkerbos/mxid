@@ -1,0 +1,15 @@
+# Pin the patch version to satisfy go.mod's `go 1.25.11` directive (the floating
+# 1.25-alpine tag can lag a patch behind, which breaks air's in-container build).
+FROM golang:1.25.11-alpine
+
+RUN apk add --no-cache git && \
+    go install github.com/air-verse/air@v1.61.7
+
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+CMD ["air", "-c", ".air.toml"]
