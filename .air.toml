@@ -1,0 +1,41 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  bin = "./tmp/mxid"
+  cmd = "go build -o ./tmp/mxid ./cmd/server"
+  delay = 1000
+  exclude_dir = ["tmp", "vendor", "web", "node_modules", "deploy", "docs", "migrations", "bin", "topiam"]
+  exclude_file = []
+  exclude_regex = ["_test.go"]
+  exclude_unchanged = false
+  follow_symlink = false
+  full_bin = "./tmp/mxid -config configs"
+  include_dir = []
+  include_ext = ["go", "yaml", "yml"]
+  kill_delay = "0s"
+  log = "build-errors.log"
+  poll = true
+  poll_interval = 500
+  rerun = false
+  rerun_delay = 500
+  send_interrupt = true
+  stop_on_error = true
+
+[color]
+  app = ""
+  build = "yellow"
+  main = "magenta"
+  runner = "green"
+  watcher = "cyan"
+
+[log]
+  main_only = false
+  time = false
+
+[misc]
+  clean_on_exit = true
+
+[screen]
+  clear_on_rebuild = false
+  keep_scroll = true

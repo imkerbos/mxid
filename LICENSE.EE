@@ -1,0 +1,59 @@
+MXID Enterprise Edition License
+
+Copyright (c) 2026 MatrixPlus. All rights reserved.
+
+This license governs the MXID Enterprise Edition ("EE") — the `mxid-ee`
+distribution and any features gated behind a valid MXID enterprise license
+(collectively, the "Enterprise Software"). It does NOT apply to the MXID
+Community Edition, which is licensed separately under the GNU Affero General
+Public License v3.0 (see the LICENSE file).
+
+1. DEFINITIONS
+   "Licensor" means MatrixPlus.
+   "Licensee" means the individual or legal entity that has obtained a valid,
+   current MXID enterprise license key from the Licensor or an authorized
+   reseller.
+   "Enterprise License" means a signed license token issued by the Licensor that
+   enables the Enterprise Software.
+
+2. GRANT
+   Subject to a valid Enterprise License and payment of the applicable fees, the
+   Licensor grants the Licensee a non-exclusive, non-transferable, non-
+   sublicensable right to install and use the Enterprise Software for the
+   Licensee's internal business purposes, for the term and within the limits
+   (users, tenants, features, expiry) encoded in the Enterprise License.
+
+3. RESTRICTIONS
+   The Licensee shall NOT, except as expressly permitted by this license or by
+   mandatory law:
+   (a) use the Enterprise Software without a valid, current Enterprise License;
+   (b) copy, distribute, sublicense, sell, rent, lease, or host the Enterprise
+       Software for third parties (including SaaS / managed-service offerings)
+       except as agreed in writing;
+   (c) modify, reverse-engineer, decompile, or disassemble the Enterprise
+       Software, or circumvent, disable, or tamper with any license verification,
+       feature gating, or usage limit;
+   (d) remove or alter any proprietary notices.
+
+4. OWNERSHIP
+   The Enterprise Software is licensed, not sold. The Licensor retains all right,
+   title, and interest, including all intellectual property rights.
+
+5. TERM & TERMINATION
+   This license is effective for the term of the Enterprise License. On expiry or
+   termination, the right to use the Enterprise Software ends; the instance falls
+   back to Community Edition limits. The Licensor may terminate on material breach
+   (including Section 3) that is not cured within 30 days of notice.
+
+6. WARRANTY DISCLAIMER & LIABILITY
+   THE ENTERPRISE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. TO
+   THE MAXIMUM EXTENT PERMITTED BY LAW, THE LICENSOR SHALL NOT BE LIABLE FOR ANY
+   INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES ARISING FROM THE USE OF THE
+   ENTERPRISE SOFTWARE.
+
+7. CONTACT
+   To obtain an Enterprise License or for licensing questions, contact MatrixPlus.
+
+This is a summary commercial license template and not legal advice; the
+definitive terms are those in the signed commercial agreement between the
+Licensor and the Licensee.

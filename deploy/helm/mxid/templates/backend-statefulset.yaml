@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "mxid.fullname" . }}
+  labels:
+    {{- include "mxid.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  # serviceName must match the headless Service name for stable pod DNS.
+  serviceName: mxid-headless
+  replicas: {{ .Values.backend.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "mxid.backendSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "mxid.backendSelectorLabels" . | nindent 8 }}
+        app.kubernetes.io/version: {{ .Values.image.tag | default .Chart.AppVersion | quote }}
+        {{- with .Values.backend.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        # Roll pods when the ConfigMap changes (checksum annotation).
+        checksum/configmap: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.backend.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      terminationGracePeriodSeconds: {{ .Values.backend.terminationGracePeriodSeconds }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: backend
+          image: {{ include "mxid.backendImage" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Override the default CMD to inject a unique Snowflake nodeID derived
+          # from the pod ordinal. HOSTNAME is set by Kubernetes to the pod name
+          # (e.g. release-mxid-0); ${HOSTNAME##*-} strips everything up to the
+          # last '-', leaving the ordinal (0, 1, 2, …).
+          command:
+            - sh
+            - -c
+            - |
+              export MXID_SNOWFLAKE_NODE_ID=${HOSTNAME##*-}
+              exec ./mxid -config configs
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          # Non-sensitive configuration from ConfigMap
+          envFrom:
+            - configMapRef:
+                name: {{ include "mxid.fullname" . }}
+          # Sensitive configuration from Secret (individual keys to avoid
+          # accidental exposure of other keys if the Secret grows)
+          env:
+            - name: MXID_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "mxid.secretName" . }}
+                  key: MXID_DATABASE_PASSWORD
+            - name: MXID_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "mxid.secretName" . }}
+                  key: MXID_REDIS_PASSWORD
+            - name: MXID_CRYPTO_KEY_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "mxid.secretName" . }}
+                  key: MXID_CRYPTO_KEY_ENCRYPTION_KEY
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          {{- if gt (int .Values.backend.preStopSleep) 0 }}
+          # Delay SIGTERM so Service/mesh endpoint removal propagates before the
+          # process drains — prevents dropped requests on rollout / scale-down.
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep {{ .Values.backend.preStopSleep }}"]
+          {{- end }}
+          {{- with .Values.backend.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.backend.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.backend.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  # No volumeClaimTemplates — the backend is stateless (data lives in PostgreSQL
+  # and Redis; no local disk state).

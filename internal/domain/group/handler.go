@@ -1,0 +1,432 @@
+package group
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"strconv"
+
+	"github.com/gin-gonic/gin"
+	"github.com/imkerbos/mxid/pkg/idstr"
+	"github.com/imkerbos/mxid/pkg/pagination"
+	"github.com/imkerbos/mxid/pkg/response"
+	"github.com/imkerbos/mxid/pkg/tenantctx"
+)
+
+// Handler handles HTTP requests for user groups.
+type Handler struct {
+	service  *Service
+	tenantID int64
+}
+
+// NewHandler creates a new user group handler.
+func NewHandler(service *Service, tenantID int64) *Handler {
+	return &Handler{
+		service:  service,
+		tenantID: tenantID,
+	}
+}
+
+// List returns paginated user groups.
+func (h *Handler) List(c *gin.Context) {
+	p := pagination.Parse(c)
+	keyword := c.Query("keyword")
+	groups, total, err := h.service.List(c.Request.Context(), tenantctx.FromContext(c, h.tenantID), keyword, p.Page, p.PageSize)
+	if err != nil {
+		response.InternalError(c, "failed to list user groups")
+		return
+	}
+
+	response.Paginated(c, groups, total, p.Page, p.PageSize)
+}
+
+// ListByUser returns every group the given user belongs to.
+//
+// Routed as GET /users/:id/groups in the user-scoped section of the API so
+// callers don't need to know which domain owns the join. The frontend uses
+// this on the user detail page.
+func (h *Handler) ListByUser(c *gin.Context) {
+	userID, err := parseID(c, "id")
+	if err != nil {
+		response.BadRequest(c, 40002, "invalid user id")
+		return
+	}
+
+	groups, err := h.service.ListByUserID(c.Request.Context(), tenantctx.FromContext(c, h.tenantID), userID)
+	if err != nil {
+		response.InternalError(c, "failed to list groups for user")
+		return
+	}
+
+	response.OK(c, groups)
+}
+
+// Create creates a new user group.
+func (h *Handler) Create(c *gin.Context) {
+	var req CreateGroupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, 40001, "invalid request: "+err.Error())
+		return
+	}
+
+	g, err := h.service.Create(c.Request.Context(), tenantctx.FromContext(c, h.tenantID), &req)
+	if err != nil {
+		response.InternalError(c, "failed to create user group")
+		return
+	}
+
+	response.Created(c, ToGroupResponse(g, 0))
+}
+
+// Get retrieves a single user group by ID.
+func (h *Handler) Get(c *gin.Context) {
+	id, err := parseID(c, "id")
+	if err != nil {
+		response.BadRequest(c, 40002, "invalid group id")
+		return
+	}
+
+	g, err := h.service.GetByID(c.Request.Context(), id)
+	if err != nil {
+		response.NotFound(c, 40401, "user group not found")
+		return
+	}
+
+	count, err := h.service.CountMembers(c.Request.Context(), g.ID)
+	if err != nil {
+		response.InternalError(c, "failed to count members")
+		return
+	}
+
+	response.OK(c, ToGroupResponse(g, count))
+}
+
+// Update updates a user group.
+func (h *Handler) Update(c *gin.Context) {
+	id, err := parseID(c, "id")
+	if err != nil {
+		response.BadRequest(c, 40002, "invalid group id")
+		return
+	}
+
+	var req UpdateGroupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, 40001, "invalid request: "+err.Error())
+		return
+	}
+
+	g, err := h.service.Update(c.Request.Context(), id, &req)
+	if err != nil {
+		response.InternalError(c, "failed to update user group")
+		return
+	}
+
+	count, err := h.service.CountMembers(c.Request.Context(), g.ID)
+	if err != nil {
+		response.InternalError(c, "failed to count members")
+		return
+	}
+
+	response.OK(c, ToGroupResponse(g, count))
+}
+
+// Delete soft-deletes a user group. Pass ?force=true to delete a group that
+// still has members (members are cascaded via the FK ON DELETE CASCADE).
+func (h *Handler) Delete(c *gin.Context) {
+	id, err := parseID(c, "id")
+	if err != nil {
+		response.BadRequest(c, 40002, "invalid group id")
+		return
+	}
+
+	force := c.Query("force") == "true"
+
+	if err := h.service.Delete(c.Request.Context(), id, force); err != nil {
+		if errors.Is(err, ErrGroupHasMembers) {
+			response.Error(c, http.StatusConflict, 40901, err.Error(), "")
+			return
+		}
+		response.InternalError(c, "failed to delete user group")
+		return
+	}
+
+	response.OK(c, nil)
+}
+
+// GetMembers returns paginated members of a group with enriched user info.
+func (h *Handler) GetMembers(c *gin.Context) {
+	id, err := parseID(c, "id")
+	if err != nil {
+		response.BadRequest(c, 40002, "invalid group id")
+		return
+	}
+
+	p := pagination.Parse(c)
+	members, total, err := h.service.GetMembers(c.Request.Context(), id, p.Page, p.PageSize)
+	if err != nil {
+		if errors.Is(err, ErrGroupNotFound) {
+			response.NotFound(c, 40401, "user group not found")
+			return
+		}
+		response.InternalError(c, "failed to get group members")
+		return
+	}
+
+	response.Paginated(c, members, total, p.Page, p.PageSize)
+}
+
+// AddMember adds a user to a group.
+func (h *Handler) AddMember(c *gin.Context) {
+	id, err := parseID(c, "id")
+	if err != nil {
+		response.BadRequest(c, 40002, "invalid group id")
+		return
+	}
+
+	var req AddMemberRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, 40001, "invalid request: "+err.Error())
+		return
+	}
+
+	if err := h.service.AddMember(c.Request.Context(), id, &req); err != nil {
+		if errors.Is(err, ErrGroupIsDynamic) {
+			response.Error(c, http.StatusConflict, 40902, err.Error(), "")
+			return
+		}
+		if errors.Is(err, ErrUserNotInTenant) {
+			response.NotFound(c, 40402, "user not found")
+			return
+		}
+		response.InternalError(c, "failed to add member")
+		return
+	}
+
+	response.Created(c, nil)
+}
+
+// BatchAddMembers adds many users to a group in one call. Users that already
+// belong appear in `skipped`, not as failures.
+func (h *Handler) BatchAddMembers(c *gin.Context) {
+	id, err := parseID(c, "id")
+	if err != nil {
+		response.BadRequest(c, 40002, "invalid group id")
+		return
+	}
+
+	var req BatchMembersRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, 40001, "invalid request: "+err.Error())
+		return
+	}
+	userIDs, err := idstr.ParseList(req.UserIDs)
+	if err != nil {
+		response.BadRequest(c, 40003, err.Error())
+		return
+	}
+
+	res, err := h.service.AddMembers(c.Request.Context(), id, userIDs)
+	if err != nil {
+		if errors.Is(err, ErrGroupNotFound) {
+			response.NotFound(c, 40401, "user group not found")
+			return
+		}
+		if errors.Is(err, ErrGroupIsDynamic) {
+			response.Error(c, http.StatusConflict, 40902, err.Error(), "")
+			return
+		}
+		if errors.Is(err, ErrUserNotInTenant) {
+			response.NotFound(c, 40402, "user not found")
+			return
+		}
+		response.InternalError(c, "failed to add members")
+		return
+	}
+
+	response.OK(c, res)
+}
+
+// RemoveMember removes a user from a group.
+func (h *Handler) RemoveMember(c *gin.Context) {
+	groupID, err := parseID(c, "id")
+	if err != nil {
+		response.BadRequest(c, 40002, "invalid group id")
+		return
+	}
+
+	userID, err := parseID(c, "uid")
+	if err != nil {
+		response.BadRequest(c, 40003, "invalid user id")
+		return
+	}
+
+	if err := h.service.RemoveMember(c.Request.Context(), groupID, userID); err != nil {
+		response.InternalError(c, "failed to remove member")
+		return
+	}
+
+	response.OK(c, nil)
+}
+
+// BatchRemoveMembers removes many users from a group in one call. Users that
+// were not members appear in `skipped`.
+func (h *Handler) BatchRemoveMembers(c *gin.Context) {
+	id, err := parseID(c, "id")
+	if err != nil {
+		response.BadRequest(c, 40002, "invalid group id")
+		return
+	}
+
+	var req BatchMembersRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, 40001, "invalid request: "+err.Error())
+		return
+	}
+	userIDs, err := idstr.ParseList(req.UserIDs)
+	if err != nil {
+		response.BadRequest(c, 40003, err.Error())
+		return
+	}
+
+	res, err := h.service.RemoveMembers(c.Request.Context(), id, userIDs)
+	if err != nil {
+		if errors.Is(err, ErrGroupNotFound) {
+			response.NotFound(c, 40401, "user group not found")
+			return
+		}
+		response.InternalError(c, "failed to remove members")
+		return
+	}
+
+	response.OK(c, res)
+}
+
+// parseID parses an int64 ID from a URL parameter.
+func parseID(c *gin.Context, param string) (int64, error) {
+	return strconv.ParseInt(c.Param(param), 10, 64)
+}
+
+// GetRule handles GET /groups/:id/rule. 404 when the group has no rule
+// (a static group, or a dynamic group whose rule was just removed).
+func (h *Handler) GetRule(c *gin.Context) {
+	id, err := parseID(c, "id")
+	if err != nil {
+		response.BadRequest(c, 40002, "invalid group id")
+		return
+	}
+	rule, err := h.service.GetRule(c.Request.Context(), id)
+	if err != nil {
+		if errors.Is(err, ErrRuleNotFound) {
+			response.NotFound(c, 40401, "no rule attached")
+			return
+		}
+		if errors.Is(err, ErrGroupNotFound) {
+			response.NotFound(c, 40401, "user group not found")
+			return
+		}
+		response.InternalError(c, "failed to get rule")
+		return
+	}
+	resp, err := toRuleResponse(rule)
+	if err != nil {
+		response.InternalError(c, "failed to decode rule: "+err.Error())
+		return
+	}
+	response.OK(c, resp)
+}
+
+// UpsertRule handles PUT /groups/:id/rule. Validates the rule, persists it,
+// flips the group to dynamic, and runs an initial sync.
+func (h *Handler) UpsertRule(c *gin.Context) {
+	id, err := parseID(c, "id")
+	if err != nil {
+		response.BadRequest(c, 40002, "invalid group id")
+		return
+	}
+	var body json.RawMessage
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.BadRequest(c, 40001, "invalid rule body: "+err.Error())
+		return
+	}
+	expr, err := ValidateRule(body)
+	if err != nil {
+		response.BadRequest(c, 40003, err.Error())
+		return
+	}
+	rule, err := h.service.UpsertRule(c.Request.Context(), id, expr)
+	if err != nil {
+		// Initial sync failures still saved the rule; return 207-ish payload.
+		response.InternalError(c, "")
+		return
+	}
+	resp, derr := toRuleResponse(rule)
+	if derr != nil {
+		response.InternalError(c, "failed to decode rule: "+derr.Error())
+		return
+	}
+	response.OK(c, resp)
+}
+
+// DeleteRule handles DELETE /groups/:id/rule. Removes the rule and flips
+// the group back to static. Existing members are preserved.
+func (h *Handler) DeleteRule(c *gin.Context) {
+	id, err := parseID(c, "id")
+	if err != nil {
+		response.BadRequest(c, 40002, "invalid group id")
+		return
+	}
+	if err := h.service.DeleteRule(c.Request.Context(), id); err != nil {
+		response.InternalError(c, "failed to delete rule")
+		return
+	}
+	response.OK(c, nil)
+}
+
+// SyncRule handles POST /groups/:id/sync. Recomputes membership from the
+// attached rule. Returns a report with how many users were added/removed.
+func (h *Handler) SyncRule(c *gin.Context) {
+	id, err := parseID(c, "id")
+	if err != nil {
+		response.BadRequest(c, 40002, "invalid group id")
+		return
+	}
+	report, err := h.service.SyncRule(c.Request.Context(), id)
+	if err != nil {
+		if errors.Is(err, ErrRuleNotFound) {
+			response.NotFound(c, 40401, "no rule attached")
+			return
+		}
+		if errors.Is(err, ErrGroupNotFound) {
+			response.NotFound(c, 40401, "user group not found")
+			return
+		}
+		response.BadRequest(c, 40003, err.Error())
+		return
+	}
+	response.OK(c, report)
+}
+
+// RuleFields handles GET /groups/rule-fields. Returns the allow-list of
+// fields and their permitted comparison operators so the frontend rule
+// editor knows what to render in the dropdowns.
+func (h *Handler) RuleFields(c *gin.Context) {
+	response.OK(c, AllowedRuleFields())
+}
+
+// toRuleResponse decodes a stored UserGroupRule into the API view.
+func toRuleResponse(rule *UserGroupRule) (*RuleResponse, error) {
+	var expr RuleExpr
+	if err := json.Unmarshal(rule.Expr, &expr); err != nil {
+		return nil, fmt.Errorf("unmarshal rule: %w", err)
+	}
+	return &RuleResponse{
+		GroupID:         rule.GroupID,
+		Expr:            expr,
+		Status:          rule.Status,
+		LastSyncAt:      rule.LastSyncAt,
+		LastSyncAdded:   rule.LastSyncAdded,
+		LastSyncRemoved: rule.LastSyncRemoved,
+		LastSyncError:   rule.LastSyncError,
+	}, nil
+}

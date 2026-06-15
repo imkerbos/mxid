@@ -1,0 +1,10 @@
+-- Intentionally empty.
+--
+-- This slot previously seeded demo tenants (SolidLeisure / MatrixPlus) plus
+-- dev-scenario fixups. Demo/seed data must NOT ship in the migration chain that
+-- runs in production — a fresh prod DB should contain only the Default tenant
+-- (seeded in 000001). The version number is kept (not deleted) so already-
+-- migrated databases stay consistent; the demo rows are removed by .down.sql.
+--
+-- Need demo tenants for local testing? Seed them outside migrations
+-- (e.g. a dev-only script), never here.

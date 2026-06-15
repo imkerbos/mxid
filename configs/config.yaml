@@ -1,0 +1,102 @@
+server:
+  port: 10050
+  mode: debug # debug/release
+  # Issuer URL — externally reachable root for protocol endpoints (OIDC iss,
+  # SAML EntityID, CAS root). Prod: same as portal_url (single-domain).
+  # Dev: backend port directly.
+  issuer_url: "http://localhost:10050"
+  # Portal SPA base URL — backend redirects login / consent flows here.
+  # Dev: Vite split port. Prod: same origin as issuer (nginx routes /login).
+  portal_url: "http://localhost:3501"
+  # Console SPA base URL — only used by docs page to render endpoints.
+  # Dev: Vite split port for console. Prod: same as issuer_url + /admin path.
+  console_url: "http://localhost:3500"
+  # Front-end origins permitted to call the backend with credentials. Drives
+  # both CORS Access-Control-Allow-Origin and CSRF Origin/Referer matching.
+  # The origins of issuer_url / portal_url / console_url below are trusted
+  # automatically, so you usually only list extra hosts here. Empty = localhost
+  # dev defaults. Single nginx origin (:3500 serves portal + /admin console and
+  # proxies /api to the backend), so only :3500 is needed per host.
+  allowed_origins:
+    - "http://localhost:3500"
+    - "http://127.0.0.1:3500"
+    # LAN-IP demo host (SPs reach the IdP via this address, so the browser
+    # loads the portal/console from it too).
+    - "http://192.168.254.200:3500"
+
+database:
+  host: host.docker.internal
+  port: 5432
+  name: mxid
+  user: postgres
+  # Secret — never committed. Injected via MXID_DATABASE_PASSWORD (.env in dev,
+  # secret manager in prod). See .env.example.
+  password: ""
+  max_open_conns: 50
+  max_idle_conns: 10
+  log_level: info # silent/error/warn/info
+
+redis:
+  host: host.docker.internal
+  port: 6379
+  db: 0
+  # Secret — never committed. Injected via MXID_REDIS_PASSWORD.
+  password: ""
+  pool_size: 20
+
+# NOTE: idle_timeout / absolute_timeout here are only a LAST-RESORT fallback
+# used if the DB security.policy is unreadable. The authoritative values live in
+# the DB (security.policy → session, editable in the console Security settings
+# page); DefaultSecurityPolicy seeds them (idle 8h / absolute 24h). Editing the
+# two timeouts below has no effect while the DB is reachable.
+session:
+  idle_timeout: 8h
+  absolute_timeout: 24h
+  cookie_secure: false
+  cookie_domain: ""
+
+# Fallback only — authoritative in DB (security.policy, console Security page).
+# Seeded by DefaultSecurityPolicy; edits here are inert while the DB is reachable.
+security:
+  password:
+    min_length: 8
+    require_uppercase: true
+    require_lowercase: true
+    require_number: true
+    require_special: false
+    history_count: 5
+    expire_days: 90
+    expire_warn_days: 7
+  login:
+    max_failed_attempts: 5
+    lockout_duration: 15m
+    captcha_after_failures: 3
+  rate_limit:
+    login: "5/m"
+    api: "100/m"
+
+# OIDC token TTLs are authoritative in DB (protocol.defaults, console settings);
+# these seed the fallback. signing_algorithm is bootstrap-static.
+jwt:
+  signing_algorithm: RS256
+  access_token_ttl: 15m
+  refresh_token_ttl: 168h # 7 days
+
+tenant:
+  default_id: 1
+
+crypto:
+  # Base64-encoded 32-byte AES-256 master key. Encrypts OIDC signing private
+  # keys at rest and is the root of trust — NEVER committed. Injected via
+  # MXID_CRYPTO_KEY_ENCRYPTION_KEY (.env in dev, secret manager in prod).
+  # Generate: openssl rand -base64 32
+  key_encryption_key: ""
+
+log:
+  level: info # debug/info/warn/error
+  format: json # json/text
+  output: stdout # stdout/file
+  file_path: logs/mxid.log
+
+snowflake:
+  node_id: 1
