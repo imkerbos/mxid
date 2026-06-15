@@ -1,0 +1,68 @@
+{{- if eq .Values.routing.type "ingress" }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "mxid.fullname" . }}
+  labels:
+    {{- include "mxid.labels" . | nindent 4 }}
+  {{- with .Values.routing.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.routing.ingress.className }}
+  ingressClassName: {{ .Values.routing.ingress.className | quote }}
+  {{- end }}
+  {{- if .Values.routing.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.host | quote }}
+      secretName: {{ .Values.routing.ingress.tls.secretName | quote }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.host | quote }}
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: mxid
+                port:
+                  number: 8080
+          - path: /protocol
+            pathType: Prefix
+            backend:
+              service:
+                name: mxid
+                port:
+                  number: 8080
+          - path: /static
+            pathType: Prefix
+            backend:
+              service:
+                name: mxid
+                port:
+                  number: 8080
+          - path: /openapi
+            pathType: Prefix
+            backend:
+              service:
+                name: mxid
+                port:
+                  number: 8080
+          - path: /health
+            pathType: Exact
+            backend:
+              service:
+                name: mxid
+                port:
+                  number: 8080
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: mxid-web
+                port:
+                  number: 80
+{{- end }}

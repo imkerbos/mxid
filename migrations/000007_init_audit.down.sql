@@ -1,0 +1,1 @@
+DROP TABLE IF EXISTS mxid_audit_log CASCADE;

@@ -1,0 +1,26 @@
+server:
+  port: 8080
+  mode: release
+  # Single-domain prod: nginx upstreams /protocol /api /login /consent /admin
+  # to the backend; / serves portal SPA build; /admin/ serves console build.
+  # All three URLs collapse to the same origin.
+  issuer_url: "https://id.example.com"
+  portal_url: "https://id.example.com"
+  console_url: "https://id.example.com/admin"
+  # Production: exact origins of the portal + console. Must include scheme,
+  # host, and (non-standard) port. Wildcards are not supported.
+  allowed_origins:
+    - "https://id.example.com"
+
+database:
+  host: localhost
+  log_level: warn
+  max_open_conns: 100
+  max_idle_conns: 20
+
+session:
+  cookie_secure: true
+
+log:
+  level: info
+  format: json

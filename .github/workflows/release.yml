@@ -1,0 +1,103 @@
+# Release pipeline — fires ONLY on a SemVer tag push (v1.2.3). Builds the two
+# multi-arch images (backend + web), pushes them to GHCR with standardized tags,
+# and cuts a GitHub Release so the in-console update check has something to find.
+#
+# Nothing runs on main / PRs / branch pushes — local `make verify` covers those.
+# To cut a release:
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# Images (tag scheme documented in docs/DEPLOYMENT.md):
+#   ghcr.io/imkerbos/mxid       — Go backend
+#   ghcr.io/imkerbos/mxid-web   — nginx + baked SPAs
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write   # create the GitHub Release
+  packages: write   # push images to GHCR
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: backend
+            image: ghcr.io/imkerbos/mxid
+            dockerfile: deploy/dockerfile/Dockerfile
+          - name: web
+            image: ghcr.io/imkerbos/mxid-web
+            dockerfile: deploy/dockerfile/Dockerfile.web
+    steps:
+      - uses: actions/checkout@v4
+
+      # Build identity stamped into the backend binary (-> /health, /system/info,
+      # the console version page). Short SHA + UTC build time, computed once.
+      - name: Compute build vars
+        id: vars
+        run: |
+          echo "commit=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Standardized tag set, derived from the git tag:
+      #   v1.2.3 (immutable — pin this in prod), v1.2, v1.
+      # NO `latest` — prod must pin an explicit version (the app migrates the DB
+      # on boot, so a moving tag = a surprise migration). flavor.latest=false
+      # disables the action's default latest tag. The `v` prefix is kept so
+      # image tag == git tag == binary version == MXID_TAG — one identifier.
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ matrix.image }}
+          flavor: |
+            latest=false
+          tags: |
+            type=semver,pattern=v{{version}}
+            type=semver,pattern=v{{major}}.{{minor}}
+            type=semver,pattern=v{{major}}
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Both Dockerfiles declare these ARGs; only the backend bakes them into
+          # the binary, the web image just records them as build metadata.
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            COMMIT=${{ steps.vars.outputs.commit }}
+            BUILD_TIME=${{ steps.vars.outputs.build_time }}
+
+  release:
+    needs: images
+    runs-on: ubuntu-latest
+    steps:
+      # The GitHub Release is what GET /repos/imkerbos/mxid/releases/latest
+      # returns — without it the in-console update check never sees a new version.
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true

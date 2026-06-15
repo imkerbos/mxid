@@ -1,0 +1,72 @@
+{{- if eq .Values.routing.type "istio" }}
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: {{ include "mxid.fullname" . }}
+  labels:
+    {{- include "mxid.labels" . | nindent 4 }}
+spec:
+  # Reference to the existing Istio Gateway (not created by this chart).
+  # Set routing.istio.gateway in values — may include a namespace prefix,
+  # e.g. "istio-system/mxid-gateway".
+  gateways:
+    - {{ .Values.routing.istio.gateway | quote }}
+  hosts:
+    - {{ .Values.host | quote }}
+  http:
+    # Backend API routes — matched first (more specific prefixes)
+    - match:
+        - uri:
+            prefix: /api
+      route:
+        - destination:
+            host: mxid
+            port:
+              number: 8080
+
+    - match:
+        - uri:
+            prefix: /protocol
+      route:
+        - destination:
+            host: mxid
+            port:
+              number: 8080
+
+    - match:
+        - uri:
+            prefix: /static
+      route:
+        - destination:
+            host: mxid
+            port:
+              number: 8080
+
+    - match:
+        - uri:
+            prefix: /openapi
+      route:
+        - destination:
+            host: mxid
+            port:
+              number: 8080
+
+    - match:
+        - uri:
+            exact: /health
+      route:
+        - destination:
+            host: mxid
+            port:
+              number: 8080
+
+    # Catch-all — serve the web SPA for all other paths
+    - match:
+        - uri:
+            prefix: /
+      route:
+        - destination:
+            host: mxid-web
+            port:
+              number: 80
+{{- end }}

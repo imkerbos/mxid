@@ -1,0 +1,59 @@
+# Standalone OVERRIDE — layer on top of docker-compose.yml to run a fully
+# self-contained stack with containerized Postgres + Redis (persistent volumes),
+# for single-host deploys with no external database.
+#
+# Activate via .env (then just `docker compose up -d`):
+#   COMPOSE_FILE=deploy/compose/docker-compose.yml:deploy/compose/docker-compose.standalone.yml
+#
+# This file only adds the DB services + points the app at them; everything else
+# comes from the base file.
+
+services:
+  mxid:
+    # Talk to the in-stack DB/Redis by service name, and wait for them to be
+    # healthy before booting (the app runs migrations on startup).
+    environment:
+      - MXID_DATABASE_HOST=postgres
+      - MXID_REDIS_HOST=redis
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: mxid-postgres
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-mxid}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-mxid}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks: [mxid]
+
+  redis:
+    image: redis:7-alpine
+    container_name: mxid-redis
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD required}", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+    networks: [mxid]
+
+volumes:
+  pgdata:
+  redisdata:

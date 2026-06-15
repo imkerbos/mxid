@@ -1,0 +1,40 @@
+run:
+  timeout: 5m
+  tests: false
+
+linters:
+  disable-all: true
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - ineffassign
+    - unused
+    - exhaustruct
+
+linters-settings:
+  govet:
+    enable:
+      - nilness
+  exhaustruct:
+    # Only enforce on dependency-wiring structs in cmd/server. Missing a
+    # field here = runtime nil-deref. exhaustruct uses fully-qualified
+    # type names: <module path>.<TypeName>.
+    include:
+      - 'github.com/imkerbos/mxid/cmd/server\.authzBindingProvider$'
+      - 'github.com/imkerbos/mxid/cmd/server\.permissionGroupLookupAdapter$'
+      - 'github.com/imkerbos/mxid/cmd/server\.permissionOrgLookupAdapter$'
+      - 'github.com/imkerbos/mxid/cmd/server\.authzOrgAncestry$'
+      - 'github.com/imkerbos/mxid/cmd/server\.userMFAVerifierAdapter$'
+      - 'github.com/imkerbos/mxid/cmd/server\.userLoginRecorderAdapter$'
+      - 'github.com/imkerbos/mxid/cmd/server\.userExternalResolver$'
+      - 'github.com/imkerbos/mxid/cmd/server\.dbTenantResolver$'
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  exclude-rules:
+    - path: _test\.go$
+      linters:
+        - errcheck
+        - exhaustruct

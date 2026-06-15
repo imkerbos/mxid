@@ -1,0 +1,89 @@
+# MXID production stack — base file (app + containerized web edge).
+#
+# Everything deployment-specific comes from .env; you never edit this file or
+# the YAML config. Mode is selected by COMPOSE_FILE in .env:
+#
+#   external DB (default):
+#     COMPOSE_FILE=deploy/compose/docker-compose.yml
+#   self-contained (adds containerized Postgres + Redis + volumes):
+#     COMPOSE_FILE=deploy/compose/docker-compose.yml:deploy/compose/docker-compose.standalone.yml
+#
+# Then always just:  docker compose up -d
+#
+# This base file assumes an EXTERNAL Postgres/Redis reachable at
+# host.docker.internal (override the host via MXID_DATABASE_HOST / MXID_REDIS_HOST).
+name: mxid-prod
+
+services:
+  mxid:
+    # MXID_TAG is required — pin an explicit released version (e.g. v0.1.0).
+    # No `latest`: this service runs DB migrations on boot, so a surprise image
+    # bump means a surprise migration. CI never publishes a `latest` tag.
+    image: ghcr.io/imkerbos/mxid:${MXID_TAG:?set MXID_TAG to a released version, e.g. v0.1.0}
+    build:
+      context: ../..
+      dockerfile: deploy/dockerfile/Dockerfile
+      args:
+        VERSION: ${MXID_TAG}
+    container_name: mxid
+    ports:
+      - "8080:8080"
+    environment:
+      # config.prod.yaml is only a fallback template — every deploy value is an
+      # env override here (MXID_ prefix wins over the YAML).
+      - MXID_CONFIG_ENV=prod
+      - MXID_SERVER_PORT=8080
+      - MXID_SERVER_MODE=release
+      # CORS/CSRF allow-list — the one origin value that MUST be set at boot
+      # (it gates who can even reach the console). Comma-separate multiple.
+      - MXID_SERVER_ALLOWED_ORIGINS=${MXID_SERVER_ALLOWED_ORIGINS:?set to your portal/console origin(s), e.g. https://id.example.com}
+      - MXID_DATABASE_HOST=${MXID_DATABASE_HOST:-host.docker.internal}
+      - MXID_DATABASE_PORT=${MXID_DATABASE_PORT:-5432}
+      - MXID_DATABASE_NAME=${POSTGRES_DB:-mxid}
+      - MXID_DATABASE_USER=${POSTGRES_USER:-postgres}
+      - MXID_DATABASE_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
+      - MXID_REDIS_HOST=${MXID_REDIS_HOST:-host.docker.internal}
+      - MXID_REDIS_PORT=${MXID_REDIS_PORT:-6379}
+      - MXID_REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD required}
+      - MXID_CRYPTO_KEY_ENCRYPTION_KEY=${MXID_CRYPTO_KEY_ENCRYPTION_KEY:?run openssl rand -base64 32}
+    volumes:
+      - ../../configs:/app/configs:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks: [mxid]
+
+  nginx:
+    # Fully containerized edge: SPAs + nginx config baked into the image
+    # (deploy/dockerfile/Dockerfile.web). Only TLS certs are mounted. The cert
+    # filenames + server_name are env-substituted into the config at startup.
+    image: ghcr.io/imkerbos/mxid-web:${MXID_TAG:?set MXID_TAG to a released version, e.g. v0.1.0}
+    build:
+      context: ../..
+      dockerfile: deploy/dockerfile/Dockerfile.web
+    container_name: mxid-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - SERVER_NAME=${SERVER_NAME:-_}
+      - CERT_FILE=${CERT_FILE:-server.crt}
+      - KEY_FILE=${KEY_FILE:-server.key}
+    volumes:
+      - ./cert:/etc/nginx/cert:ro          # put your CERT_FILE + KEY_FILE here
+      - ./acme:/var/www/acme               # Let's Encrypt webroot (optional)
+    depends_on:
+      mxid:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [mxid]
+
+networks:
+  mxid:
+    driver: bridge
