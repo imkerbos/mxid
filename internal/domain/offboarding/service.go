@@ -38,18 +38,28 @@ type UserLookup interface {
 	Lookup(ctx context.Context, userID int64) (username string, tenantID int64, err error)
 }
 
+// LogoutNotifier proactively notifies the apps a user is logged into to drop
+// their session (OIDC back-channel logout). Optional — nil skips the step.
+// Called BEFORE sessions are killed, since the notification targets are
+// derived from the user's still-live SSO sessions.
+type LogoutNotifier interface {
+	NotifyLogout(ctx context.Context, userID int64)
+}
+
 // Service performs the one-click offboard.
 type Service struct {
 	disabler UserDisabler
 	sessions SessionKiller
 	lookup   UserLookup
+	logout   LogoutNotifier
 	eventBus *event.Bus
 	logger   *zap.Logger
 }
 
-// NewService wires the offboarding orchestrator.
-func NewService(disabler UserDisabler, sessions SessionKiller, lookup UserLookup, eventBus *event.Bus, logger *zap.Logger) *Service {
-	return &Service{disabler: disabler, sessions: sessions, lookup: lookup, eventBus: eventBus, logger: logger}
+// NewService wires the offboarding orchestrator. logout may be nil (skips
+// back-channel notification).
+func NewService(disabler UserDisabler, sessions SessionKiller, lookup UserLookup, logout LogoutNotifier, eventBus *event.Bus, logger *zap.Logger) *Service {
+	return &Service{disabler: disabler, sessions: sessions, lookup: lookup, logout: logout, eventBus: eventBus, logger: logger}
 }
 
 // Offboard performs the L1 access cutoff for a departing user as one admin
@@ -67,6 +77,13 @@ func NewService(disabler UserDisabler, sessions SessionKiller, lookup UserLookup
 func (s *Service) Offboard(ctx context.Context, userID int64) error {
 	if err := s.disabler.Disable(ctx, userID); err != nil {
 		return fmt.Errorf("disable user: %w", err)
+	}
+
+	// Notify participating apps to drop the user's session BEFORE killing the
+	// MXID sessions — the notification targets are derived from the live SSO
+	// sessions. Best-effort; never blocks or fails the offboard.
+	if s.logout != nil {
+		s.logout.NotifyLogout(ctx, userID)
 	}
 
 	killed, err := s.sessions.KillAllByUser(ctx, userID)

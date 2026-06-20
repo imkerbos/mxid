@@ -37,6 +37,10 @@ func (fakeLookup) Lookup(_ context.Context, _ int64) (string, int64, error) {
 	return "alice", 100, nil
 }
 
+type fakeNotifier struct{ called bool }
+
+func (f *fakeNotifier) NotifyLogout(_ context.Context, _ int64) { f.called = true }
+
 func newBus(t *testing.T) (*event.Bus, *[]event.Event) {
 	t.Helper()
 	bus := event.NewBus(zap.NewNop())
@@ -52,8 +56,9 @@ func newBus(t *testing.T) (*event.Bus, *[]event.Event) {
 func TestOffboard_DisablesKillsAndAudits(t *testing.T) {
 	d := &fakeDisabler{}
 	k := &fakeKiller{killed: 3}
+	n := &fakeNotifier{}
 	bus, _ := newBus(t)
-	svc := NewService(d, k, fakeLookup{}, bus, zap.NewNop())
+	svc := NewService(d, k, fakeLookup{}, n, bus, zap.NewNop())
 
 	if err := svc.Offboard(context.Background(), 42); err != nil {
 		t.Fatalf("Offboard() error = %v", err)
@@ -64,13 +69,17 @@ func TestOffboard_DisablesKillsAndAudits(t *testing.T) {
 	if !k.called {
 		t.Error("expected sessions to be killed")
 	}
+	if !n.called {
+		t.Error("expected apps to be notified (back-channel logout)")
+	}
 }
 
 func TestOffboard_DisableFailureAborts(t *testing.T) {
 	d := &fakeDisabler{err: errors.New("db down")}
 	k := &fakeKiller{}
+	n := &fakeNotifier{}
 	bus, _ := newBus(t)
-	svc := NewService(d, k, fakeLookup{}, bus, zap.NewNop())
+	svc := NewService(d, k, fakeLookup{}, n, bus, zap.NewNop())
 
 	if err := svc.Offboard(context.Background(), 42); err == nil {
 		t.Fatal("expected error when disable fails")
@@ -78,13 +87,16 @@ func TestOffboard_DisableFailureAborts(t *testing.T) {
 	if k.called {
 		t.Error("must not kill sessions when disable failed — account still active")
 	}
+	if n.called {
+		t.Error("must not notify apps when disable failed")
+	}
 }
 
 func TestOffboard_SessionKillFailureIsNonFatal(t *testing.T) {
 	d := &fakeDisabler{}
 	k := &fakeKiller{err: errors.New("redis hiccup")}
 	bus, _ := newBus(t)
-	svc := NewService(d, k, fakeLookup{}, bus, zap.NewNop())
+	svc := NewService(d, k, fakeLookup{}, &fakeNotifier{}, bus, zap.NewNop())
 
 	// Account is already disabled — a session-store error must not fail the
 	// offboard.

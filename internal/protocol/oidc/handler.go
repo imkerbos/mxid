@@ -1168,6 +1168,46 @@ func (h *Handler) isAllowedPostLogoutRedirect(c *gin.Context, clientID string, s
 	return false
 }
 
+// LogoutUserBackchannel fans out a back-channel logout to every RP the user
+// has an active protocol SSO session with — used by offboarding to proactively
+// drop the departing user's session inside each participating app.
+//
+// Must be called BEFORE the user's protocol sessions are killed: the per-RP
+// app sets are keyed by SSO session id, which we derive from the user's live
+// protocol sessions. The collection (session + app-set reads) runs
+// synchronously so it sees the data before the kill; the actual logout_token
+// POSTs are dispatched on a detached goroutine so a slow RP never blocks the
+// offboard. Best-effort — apps that don't implement back-channel logout, or
+// that we can't reach, fall through to failing closed on their next token
+// validation.
+func (h *Handler) LogoutUserBackchannel(ctx context.Context, userID int64) {
+	protoSessions, err := h.sessionMgr.ListByUser(ctx, session.NamespaceProtocol, userID)
+	if err != nil || len(protoSessions) == 0 {
+		return
+	}
+	type target struct {
+		sid    string
+		appIDs []int64
+	}
+	var targets []target
+	for _, s := range protoSessions {
+		// Consume-once read of the SSO session's participating apps. Done now,
+		// before the session is killed, so the set is still present.
+		appIDs, _ := h.store.ListSSOApps(ctx, s.ID)
+		if len(appIDs) > 0 {
+			targets = append(targets, target{sid: s.ID, appIDs: appIDs})
+		}
+	}
+	if len(targets) == 0 {
+		return
+	}
+	go func() {
+		for _, t := range targets {
+			h.fanOutBackchannelLogout(t.appIDs, userID, t.sid)
+		}
+	}()
+}
+
 // fanOutBackchannelLogout posts a signed logout_token to every RP's
 // configured backchannel_logout_uri. Detached from the request context so
 // per-RP latency does not block the user; uses a fresh context with a
