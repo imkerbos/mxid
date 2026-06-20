@@ -1,6 +1,10 @@
 package app
 
-import "testing"
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+)
 
 func TestToTemplateListItems(t *testing.T) {
 	in := []Template{{
@@ -14,5 +18,12 @@ func TestToTemplateListItems(t *testing.T) {
 	}
 	if out[0].Key != "feishu" || out[0].Protocol != "oidc" || out[0].Category != "collaboration" {
 		t.Fatalf("unexpected item: %+v", out[0])
+	}
+	b, err := json.Marshal(out[0])
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(b), "doc_md") || strings.Contains(string(b), "SHOULD NOT LEAK") {
+		t.Fatalf("detail-only field leaked into list item: %s", b)
 	}
 }
