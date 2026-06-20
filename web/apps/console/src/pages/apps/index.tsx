@@ -590,8 +590,10 @@ export default function AppsPage() {
         ...f,
         protocol: tpl.protocol,
         client_type: tpl.client_type,
-        // name/code stay user-entered; suggest name if empty
-        name: f.name || tpl.name,
+        // Picking a template sets the app name to the template name so the
+        // name follows the chosen template (incl. when switching templates).
+        // The user can still edit it afterwards.
+        name: tpl.name,
       }))
     } catch {
       toast.error(t('apps.templates.loadFailed'))
@@ -621,11 +623,6 @@ export default function AppsPage() {
         // Validate + fold template field values into their targets
         for (const fld of activeTemplate.fields ?? []) {
           const raw = (tplFieldValues[fld.key] ?? '').trim()
-          if (fld.required && !raw) {
-            toast.error(t('apps.templates.fieldRequired', { label: fld.label }))
-            setCreating(false)
-            return
-          }
           if (!raw) continue
           if (fld.target === 'redirect_uris') {
             redirectURIs = raw.split(/[\n,]/).map((s) => s.trim()).filter(Boolean)
@@ -904,7 +901,7 @@ export default function AppsPage() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl"
+            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl"
           >
             <h3 className="mb-4 text-lg font-semibold">{t('apps.createModal.title')}</h3>
             <form onSubmit={handleCreate} className="space-y-4">
@@ -912,17 +909,17 @@ export default function AppsPage() {
               {!activeTemplate ? (
                 <div className="space-y-3">
                   <div className="text-sm font-medium text-gray-700">{t('apps.templates.pick')}</div>
-                  <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto">
+                  <div className="grid grid-cols-3 gap-2 max-h-80 overflow-y-auto">
                     {templates.map((tpl) => (
                       <button
                         key={tpl.key}
                         type="button"
                         onClick={() => handlePickTemplate(tpl.key)}
-                        className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-left hover:border-blue-400"
+                        className="flex items-center gap-3 rounded-lg border border-gray-200 px-3 py-2.5 text-left hover:border-blue-400 hover:bg-blue-50/30"
                       >
-                        <AppIcon value={tpl.icon} fallbackName={tpl.name} size={24} />
-                        <div>
-                          <div className="text-sm font-medium">{tpl.name}</div>
+                        <AppIcon value={tpl.icon} fallbackName={tpl.name} size={32} />
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-medium">{tpl.name}</div>
                           <div className="text-xs text-gray-400">{protocolLabel(tpl.protocol)}</div>
                         </div>
                       </button>
