@@ -816,10 +816,6 @@ export default {
           p3ValidateURL: 'Service Validate (CAS 3.0)',
           hint: 'SPs usually only need the Server URL; the CAS client library appends the standard paths per CAS protocol.',
         },
-        jwt: {
-          warning: 'JWT uses a static shared secret / algorithm configured under the Protocol tab.',
-          hint: 'Secret + algorithm are not surfaced here to avoid confusion with SAML/OIDC credential concepts.',
-        },
       },
     },
     secretReveal: {

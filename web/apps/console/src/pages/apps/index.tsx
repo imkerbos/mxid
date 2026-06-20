@@ -19,8 +19,6 @@ const protocolColors: Record<string, string> = {
   oidc: 'bg-blue-100 text-blue-700',
   saml: 'bg-purple-100 text-purple-700',
   cas: 'bg-teal-100 text-teal-700',
-  jwt: 'bg-amber-100 text-amber-700',
-  form: 'bg-gray-100 text-gray-700',
 }
 
 // ---------------------------------------------------------------------------
@@ -206,16 +204,6 @@ const protocolConfigFields: Record<string, ConfigField[]> = {
     { key: 'ticket_ttl', label: 'Ticket TTL (sec)', type: 'text', placeholder: '30', coerce: 'int' },
     { key: 'attribute_mapping', label: 'Attribute Mapping (JSON)', type: 'textarea', placeholder: '{"username":"uid","email":"mail","display_name":"displayName","phone":"telephoneNumber"}', coerce: 'json' },
     { key: 'renew_enabled', label: 'Force Re-authentication', type: 'text', placeholder: 'false', coerce: 'bool' },
-  ],
-  jwt: [
-    { key: 'secret', label: 'Secret', type: 'text', placeholder: 'your-jwt-secret' },
-    { key: 'algorithm', label: 'Algorithm', type: 'text', placeholder: 'HS256' },
-    { key: 'expiry', label: 'Expiry (seconds)', type: 'text', placeholder: '3600' },
-  ],
-  form: [
-    { key: 'login_url', label: 'Login URL', type: 'text', placeholder: 'https://app.example.com/login' },
-    { key: 'username_field', label: 'Username Field', type: 'text', placeholder: 'username' },
-    { key: 'password_field', label: 'Password Field', type: 'text', placeholder: 'password' },
   ],
 }
 
@@ -887,8 +875,6 @@ export default function AppsPage() {
                   <option value="oidc">OIDC</option>
                   <option value="saml">SAML 2.0</option>
                   <option value="cas">CAS 3.0</option>
-                  <option value="jwt">JWT</option>
-                  <option value="form">FORM</option>
                 </select>
               </div>
 
@@ -1295,8 +1281,6 @@ export default function AppsPage() {
                         OIDC → client creds + discovery + JWKS
                         SAML → IdP entity + metadata XML + SSO/SLO + signing cert
                         CAS  → CAS server URL + validate URL
-                        JWT  → static secret + algorithm
-                        FORM → nothing
                     */}
                     {detailTab === 'credentials' && (
                       <CredentialsTab app={detailApp} onRotateSecret={() => handleRotateSecret(detailApp)} />
@@ -1463,17 +1447,6 @@ function CredentialsTab({
         <CopyField label={t('apps.detail.credentials.cas.validateURL')} value={`${baseURL}/serviceValidate`} />
         <CopyField label={t('apps.detail.credentials.cas.p3ValidateURL')} value={`${baseURL}/p3/serviceValidate`} />
         <p className="text-xs text-gray-500">{t('apps.detail.credentials.cas.hint')}</p>
-      </div>
-    )
-  }
-
-  if (app.protocol === 'jwt') {
-    return (
-      <div className="space-y-6">
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-          <p className="text-sm text-amber-700">{t('apps.detail.credentials.jwt.warning')}</p>
-        </div>
-        <p className="text-sm text-gray-500">{t('apps.detail.credentials.jwt.hint')}</p>
       </div>
     )
   }

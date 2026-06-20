@@ -13,8 +13,6 @@ const (
 	ProtocolOIDC = "oidc"
 	ProtocolSAML = "saml"
 	ProtocolCAS  = "cas"
-	ProtocolJWT  = "jwt"
-	ProtocolFORM = "form"
 )
 
 // Access policy constants.
