@@ -14,15 +14,29 @@ type Module struct {
 	Handler *Handler
 }
 
+// LogoutNotifierFunc adapts a plain function to the LogoutNotifier interface,
+// so callers can pass e.g. the OIDC handler's LogoutUserBackchannel method
+// directly. A nil func is a no-op.
+type LogoutNotifierFunc func(ctx context.Context, userID int64)
+
+// NotifyLogout implements LogoutNotifier.
+func (f LogoutNotifierFunc) NotifyLogout(ctx context.Context, userID int64) {
+	if f != nil {
+		f(ctx, userID)
+	}
+}
+
 // Register builds the offboarding orchestrator from the already-constructed
-// user service and session manager, plus the shared event bus / logger. Route
-// registration is deferred (see RegisterRoutes) until the console group's
-// middleware chain (auth + step-up + authz) is in place.
-func Register(app *bootstrap.App, userSvc *user.Service, sessionMgr *session.Manager) *Module {
+// user service and session manager, plus the shared event bus / logger and an
+// optional back-channel logout notifier (pass nil to skip). Route registration
+// is deferred (see RegisterRoutes) until the console group's middleware chain
+// (auth + step-up + authz) is in place.
+func Register(app *bootstrap.App, userSvc *user.Service, sessionMgr *session.Manager, logout LogoutNotifier) *Module {
 	svc := NewService(
 		&userDisabler{svc: userSvc},
 		&sessionKiller{mgr: sessionMgr},
 		&userLookup{svc: userSvc},
+		logout,
 		app.EventBus,
 		app.Logger,
 	)
