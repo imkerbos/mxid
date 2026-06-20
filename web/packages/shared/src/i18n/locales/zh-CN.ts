@@ -819,10 +819,6 @@ export default {
           p3ValidateURL: 'Service Validate (CAS 3.0)',
           hint: 'SP 通常只填 Server URL；登录/校验路径由 CAS 客户端按 CAS 协议拼接。',
         },
-        jwt: {
-          warning: 'JWT 协议使用静态共享密钥/算法，在协议配置 tab 内维护。',
-          hint: '密钥和算法不在认证信息这里展示，避免与 SAML/OIDC 凭证概念混淆。',
-        },
       },
     },
     secretReveal: {
