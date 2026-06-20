@@ -521,7 +521,11 @@ func (h *Handler) ListTemplates(c *gin.Context) {
 func (h *Handler) GetTemplate(c *gin.Context) {
 	tpl, err := GetTemplate(c.Param("key"))
 	if err != nil {
-		response.NotFound(c, 40401, "template not found")
+		if errors.Is(err, ErrTemplateNotFound) {
+			response.NotFound(c, 40407, "template not found")
+			return
+		}
+		response.InternalError(c, err.Error())
 		return
 	}
 	response.OK(c, tpl)
