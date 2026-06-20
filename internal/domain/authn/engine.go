@@ -634,6 +634,10 @@ func (e *Engine) publishLoginEvent(ctx context.Context, result *AuthResult, req 
 		case AuthMFARequired:
 			reason = "mfa required"
 		}
+		// Carry the reason into the audit detail too — previously it was only
+		// fed to the login recorder, leaving every login.failed audit row with
+		// a blank reason (can't tell "account disabled" from "wrong password").
+		payload["reason"] = reason
 	}
 
 	e.eventBus.Publish(ctx, event.Event{
