@@ -617,7 +617,7 @@ export default function AppsPage() {
       let redirectURIs: string[] = createForm.redirect_uris.split(/[\n,]/).map((s) => s.trim()).filter(Boolean)
       let homeUrl = createForm.home_url
 
-      if (activeTemplate) {
+      if (activeTemplate?.key) {
         // Validate + fold template field values into their targets
         for (const fld of activeTemplate.fields ?? []) {
           const raw = (tplFieldValues[fld.key] ?? '').trim()
@@ -643,7 +643,7 @@ export default function AppsPage() {
       // Determine the final protocol_config to send:
       // - When a template is active: use tplProtocolConfig (seeded from defaults + fields)
       // - When no template (blank/OIDC form): use the existing OIDC-default builder
-      const protocolConfig: Record<string, unknown> | undefined = activeTemplate
+      const protocolConfig: Record<string, unknown> | undefined = activeTemplate?.key
         ? (Object.keys(tplProtocolConfig).length > 0 ? tplProtocolConfig : undefined)
         : createForm.protocol === 'oidc'
           ? {
