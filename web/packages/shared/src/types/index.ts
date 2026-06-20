@@ -434,6 +434,4 @@ export const AppProtocol = {
   OIDC: 'oidc',
   SAML: 'saml',
   CAS: 'cas',
-  JWT: 'jwt',
-  FORM: 'form',
 } as const

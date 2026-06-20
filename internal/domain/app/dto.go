@@ -18,7 +18,7 @@ import (
 type CreateAppRequest struct {
 	Name            string         `json:"name" binding:"required,max=128"`
 	Code            string         `json:"code" binding:"required,max=64"`
-	Protocol        string         `json:"protocol" binding:"required,oneof=oidc saml cas jwt form"`
+	Protocol        string         `json:"protocol" binding:"required,oneof=oidc saml cas"`
 	ClientType      string         `json:"client_type" binding:"omitempty,oneof=web_app spa native m2m"`
 	Scope           *int           `json:"scope" binding:"omitempty,oneof=1 2"`
 	SubjectStrategy *string        `json:"subject_strategy" binding:"omitempty,oneof=username username_suffixed email persistent_id pairwise"`
