@@ -27,20 +27,24 @@ func (f LogoutNotifierFunc) NotifyLogout(ctx context.Context, userID int64) {
 }
 
 // Register builds the offboarding orchestrator from the already-constructed
-// user service and session manager, plus the shared event bus / logger and an
-// optional back-channel logout notifier (pass nil to skip). Route registration
-// is deferred (see RegisterRoutes) until the console group's middleware chain
-// (auth + step-up + authz) is in place.
-func Register(app *bootstrap.App, userSvc *user.Service, sessionMgr *session.Manager, logout LogoutNotifier) *Module {
+// user service and session manager, plus the shared event bus / logger, an
+// optional back-channel logout notifier and an optional app-footprint source
+// (pass nil to skip either). Route registration is deferred (see
+// RegisterRoutes) until the console group's middleware chain (auth + step-up +
+// authz) is in place.
+func Register(app *bootstrap.App, userSvc *user.Service, sessionMgr *session.Manager, logout LogoutNotifier, footprint AppFootprint) *Module {
 	svc := NewService(
 		&userDisabler{svc: userSvc},
 		&sessionKiller{mgr: sessionMgr},
 		&userLookup{svc: userSvc},
 		logout,
+		footprint,
+		NewRepository(app.DB),
+		app.IDGen,
 		app.EventBus,
 		app.Logger,
 	)
-	return &Module{Service: svc, Handler: NewHandler(svc)}
+	return &Module{Service: svc, Handler: NewHandler(svc, app.Config.Tenant.DefaultID)}
 }
 
 // RegisterRoutes mounts the offboarding routes on the console group. Must be

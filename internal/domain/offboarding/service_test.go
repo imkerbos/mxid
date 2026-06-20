@@ -58,9 +58,9 @@ func TestOffboard_DisablesKillsAndAudits(t *testing.T) {
 	k := &fakeKiller{killed: 3}
 	n := &fakeNotifier{}
 	bus, _ := newBus(t)
-	svc := NewService(d, k, fakeLookup{}, n, bus, zap.NewNop())
+	svc := NewService(d, k, fakeLookup{}, n, nil, nil, nil, bus, zap.NewNop())
 
-	if err := svc.Offboard(context.Background(), 42); err != nil {
+	if err := svc.Offboard(context.Background(), 42, 1); err != nil {
 		t.Fatalf("Offboard() error = %v", err)
 	}
 	if !d.called {
@@ -79,9 +79,9 @@ func TestOffboard_DisableFailureAborts(t *testing.T) {
 	k := &fakeKiller{}
 	n := &fakeNotifier{}
 	bus, _ := newBus(t)
-	svc := NewService(d, k, fakeLookup{}, n, bus, zap.NewNop())
+	svc := NewService(d, k, fakeLookup{}, n, nil, nil, nil, bus, zap.NewNop())
 
-	if err := svc.Offboard(context.Background(), 42); err == nil {
+	if err := svc.Offboard(context.Background(), 42, 1); err == nil {
 		t.Fatal("expected error when disable fails")
 	}
 	if k.called {
@@ -96,11 +96,11 @@ func TestOffboard_SessionKillFailureIsNonFatal(t *testing.T) {
 	d := &fakeDisabler{}
 	k := &fakeKiller{err: errors.New("redis hiccup")}
 	bus, _ := newBus(t)
-	svc := NewService(d, k, fakeLookup{}, &fakeNotifier{}, bus, zap.NewNop())
+	svc := NewService(d, k, fakeLookup{}, &fakeNotifier{}, nil, nil, nil, bus, zap.NewNop())
 
 	// Account is already disabled — a session-store error must not fail the
 	// offboard.
-	if err := svc.Offboard(context.Background(), 42); err != nil {
+	if err := svc.Offboard(context.Background(), 42, 1); err != nil {
 		t.Fatalf("Offboard() should tolerate session-kill failure, got %v", err)
 	}
 }

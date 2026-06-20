@@ -848,7 +848,8 @@ func registerModules(a *bootstrap.App) {
 	if oidcModule != nil {
 		offboardLogout = offboarding.LogoutNotifierFunc(oidcModule.Handler.LogoutUserBackchannel)
 	}
-	offboarding.Register(a, userModule.Service, sessionMgr, offboardLogout).RegisterRoutes(a)
+	offboardFP := offboardFootprint{access: accessSvc, apps: appModule.Service}
+	offboarding.Register(a, userModule.Service, sessionMgr, offboardLogout, offboardFP).RegisterRoutes(a)
 
 	// Runtime URL provider — admin-configurable external URLs. Empty
 	// fields fall through to the bootstrap config (i.e. the static
