@@ -18,6 +18,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/imkerbos/mxid/pkg/event"
+	"github.com/imkerbos/mxid/pkg/snowflake"
 )
 
 // UserDisabler sets a user's account status to disabled. Injected so the
@@ -46,20 +47,64 @@ type LogoutNotifier interface {
 	NotifyLogout(ctx context.Context, userID int64)
 }
 
-// Service performs the one-click offboard.
-type Service struct {
-	disabler UserDisabler
-	sessions SessionKiller
-	lookup   UserLookup
-	logout   LogoutNotifier
-	eventBus *event.Bus
-	logger   *zap.Logger
+// AppRef is one app in a user's footprint, denormalized into a review item so
+// the checklist survives later renames/deletes of the app.
+type AppRef struct {
+	ID   int64
+	Name string
+	Code string
+	Tier string // L1 / L2 / L3
 }
 
-// NewService wires the offboarding orchestrator. logout may be nil (skips
-// back-channel notification).
-func NewService(disabler UserDisabler, sessions SessionKiller, lookup UserLookup, logout LogoutNotifier, eventBus *event.Bus, logger *zap.Logger) *Service {
-	return &Service{disabler: disabler, sessions: sessions, lookup: lookup, logout: logout, eventBus: eventBus, logger: logger}
+// AppFootprint returns the apps a user could reach, to seed the offboarding
+// review checklist. Optional — nil produces a task with no items.
+type AppFootprint interface {
+	ForUser(ctx context.Context, userID, tenantID int64) ([]AppRef, error)
+}
+
+// Service performs the one-click offboard.
+type Service struct {
+	disabler  UserDisabler
+	sessions  SessionKiller
+	lookup    UserLookup
+	logout    LogoutNotifier
+	footprint AppFootprint
+	repo      Repository
+	idGen     *snowflake.Generator
+	eventBus  *event.Bus
+	logger    *zap.Logger
+}
+
+// NewService wires the offboarding orchestrator. logout / footprint / repo /
+// idGen may be nil — the offboard still disables + kills sessions, it just
+// skips notification and/or the review-checklist record.
+func NewService(disabler UserDisabler, sessions SessionKiller, lookup UserLookup, logout LogoutNotifier, footprint AppFootprint, repo Repository, idGen *snowflake.Generator, eventBus *event.Bus, logger *zap.Logger) *Service {
+	return &Service{disabler: disabler, sessions: sessions, lookup: lookup, logout: logout, footprint: footprint, repo: repo, idGen: idGen, eventBus: eventBus, logger: logger}
+}
+
+// ListTasks / ListItems / MarkItemDone expose the review trail to the console.
+func (s *Service) ListTasks(ctx context.Context, tenantID int64, limit, offset int) ([]*Task, int64, error) {
+	if s.repo == nil {
+		return nil, 0, nil
+	}
+	return s.repo.ListTasks(ctx, tenantID, limit, offset)
+}
+
+// ListItems returns a task's review items.
+func (s *Service) ListItems(ctx context.Context, tenantID, taskID int64) ([]*Item, error) {
+	if s.repo == nil {
+		return nil, nil
+	}
+	return s.repo.ListItems(ctx, tenantID, taskID)
+}
+
+// MarkItemDone ticks off one app in the review checklist.
+func (s *Service) MarkItemDone(ctx context.Context, tenantID, itemID, actorID int64) error {
+	if s.repo == nil {
+		return nil
+	}
+	_, err := s.repo.MarkItemDone(ctx, tenantID, itemID, actorID)
+	return err
 }
 
 // Offboard performs the L1 access cutoff for a departing user as one admin
@@ -73,8 +118,12 @@ func NewService(disabler UserDisabler, sessions SessionKiller, lookup UserLookup
 //
 // Session kill is best-effort: the account is already disabled (the
 // security-critical step), so a session-store hiccup must not fail the
-// offboard — it is logged instead. Emits user.offboarded for the audit trail.
-func (s *Service) Offboard(ctx context.Context, userID int64) error {
+// offboard — it is logged instead. After the cutoff it records a review task
+// listing every app the user could reach, so an admin has a checklist to
+// confirm downstream cleanup. Emits user.offboarded for the audit trail.
+//
+// actorID is the admin performing the offboard (for created_by / audit).
+func (s *Service) Offboard(ctx context.Context, userID, actorID int64) error {
 	if err := s.disabler.Disable(ctx, userID); err != nil {
 		return fmt.Errorf("disable user: %w", err)
 	}
@@ -93,6 +142,56 @@ func (s *Service) Offboard(ctx context.Context, userID int64) error {
 	}
 
 	username, tenantID, _ := s.lookup.Lookup(ctx, userID)
+
+	// Record the review checklist: one item per app in the user's footprint.
+	// Best-effort — a record-write failure must not undo the access cutoff,
+	// which already happened. Logged so the missing checklist is visible.
+	if s.repo != nil && s.idGen != nil {
+		task := &Task{
+			ID:             s.idGen.Generate(),
+			TenantID:       tenantID,
+			UserID:         userID,
+			Username:       username,
+			Status:         TaskStatusOpen,
+			SessionsKilled: killed,
+		}
+		if actorID > 0 {
+			task.CreatedBy = &actorID
+		}
+		var items []*Item
+		if s.footprint != nil {
+			refs, ferr := s.footprint.ForUser(ctx, userID, tenantID)
+			if ferr != nil {
+				s.logger.Warn("offboard: compute app footprint failed",
+					zap.Int64("user_id", userID), zap.Error(ferr))
+			}
+			for _, r := range refs {
+				tier := r.Tier
+				if tier == "" {
+					tier = TierL1
+				}
+				items = append(items, &Item{
+					ID:       s.idGen.Generate(),
+					TaskID:   task.ID,
+					TenantID: tenantID,
+					AppID:    r.ID,
+					AppName:  r.Name,
+					AppCode:  r.Code,
+					Tier:     tier,
+					Status:   ItemStatusPending,
+				})
+			}
+		}
+		task.ItemCount = len(items)
+		if len(items) == 0 {
+			task.Status = TaskStatusResolved // nothing to review
+		}
+		if cerr := s.repo.CreateTaskWithItems(ctx, task, items); cerr != nil {
+			s.logger.Warn("offboard: write review task failed",
+				zap.Int64("user_id", userID), zap.Error(cerr))
+		}
+	}
+
 	s.eventBus.Publish(ctx, event.Event{
 		Type: event.UserOffboarded,
 		Payload: map[string]any{
