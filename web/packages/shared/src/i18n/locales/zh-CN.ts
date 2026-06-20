@@ -726,7 +726,6 @@ export default {
       blank: '或空白创建',
       change: '更换模板',
       loadFailed: '加载模板失败',
-      fieldRequired: '{{label}} 不能为空',
     },
     createModal: {
       title: '新建应用',
@@ -1066,6 +1065,7 @@ export default {
       startDate: '开始时间',
       endDate: '结束时间',
       filterBtn: '筛选',
+      hideApi: '隐藏 API 噪音',
     },
     cols: {
       time: '时间',
