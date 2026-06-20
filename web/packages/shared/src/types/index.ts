@@ -441,7 +441,6 @@ export interface AppTemplateField {
   label: string
   type: 'text' | 'textarea'
   placeholder?: string
-  required?: boolean
   target: string // "redirect_uris" | "home_url" | "protocol_config.<name>"
 }
 

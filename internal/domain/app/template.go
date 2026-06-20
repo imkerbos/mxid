@@ -23,7 +23,6 @@ type TemplateField struct {
 	Label       string `json:"label"`
 	Type        string `json:"type"` // "text" | "textarea"
 	Placeholder string `json:"placeholder,omitempty"`
-	Required    bool   `json:"required,omitempty"`
 	// Target tells the wizard where the value goes:
 	//   "redirect_uris"           -> top-level redirect URIs (newline/comma split)
 	//   "home_url"                -> top-level home URL
