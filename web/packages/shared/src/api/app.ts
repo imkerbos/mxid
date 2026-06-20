@@ -1,5 +1,5 @@
 import { client } from './client'
-import type { ApiResponse, PaginatedData, App, AppGroup, AppAccess, AppCert } from '../types'
+import type { ApiResponse, PaginatedData, App, AppGroup, AppAccess, AppCert, AppTemplate, AppTemplateListItem } from '../types'
 
 export const appApi = {
   list: (params: Record<string, unknown>) =>
@@ -22,6 +22,10 @@ export const appApi = {
     client.post<ApiResponse<{ client_secret: string }>>(`/apps/${id}/regenerate-secret`).then(r => r.data.data),
   quickstart: (id: string, lang: string) =>
     client.get<ApiResponse<{ language: string; sample: string }>>(`/apps/${id}/quickstart/${lang}`).then(r => r.data.data),
+  listTemplates: () =>
+    client.get<ApiResponse<AppTemplateListItem[]>>('/app-templates').then(r => r.data.data),
+  getTemplate: (key: string) =>
+    client.get<ApiResponse<AppTemplate>>(`/app-templates/${key}`).then(r => r.data.data),
 
   // Access policy bindings
   listAccess: (id: string) =>
