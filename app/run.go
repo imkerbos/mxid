@@ -488,11 +488,6 @@ func registerModules(a *bootstrap.App) {
 
 	userModule.RegisterRoutes(a)
 
-	// One-click offboarding (L1 access cutoff): disable account + kill all
-	// sessions. Registered after the console middleware chain so it inherits
-	// step-up MFA + authz, same as the user routes it sits beside.
-	offboarding.Register(a, userModule.Service, sessionMgr).RegisterRoutes(a)
-
 	// Settings routes mounted here — AFTER AuthMiddleware + authz + tenant
 	// context are on the console group — so config read/write requires an
 	// authenticated admin session (previously these registered pre-auth and
@@ -842,6 +837,18 @@ func registerModules(a *bootstrap.App) {
 	}
 	samlModule := saml.Register(a.ProtocolGroup, issuer, a.Config.Server.PortalURL, appResolver, idResolver, sessResolver, tenantResolver)
 	casModule := cas.Register(a.ProtocolGroup, issuer, a.Config.Server.PortalURL, a.Redis, appResolver, idResolver, sessResolver, tenantResolver)
+
+	// One-click offboarding (L1 access cutoff): disable account + back-channel
+	// logout the user's apps + kill all sessions. Wired here (after oidc) so it
+	// can borrow the OIDC handler's back-channel fan-out; the notifier is nil
+	// under the zitadel engine, which degrades to disable + session-kill.
+	// Registered on the console group, which already carries the step-up MFA +
+	// authz middleware chain.
+	var offboardLogout offboarding.LogoutNotifier
+	if oidcModule != nil {
+		offboardLogout = offboarding.LogoutNotifierFunc(oidcModule.Handler.LogoutUserBackchannel)
+	}
+	offboarding.Register(a, userModule.Service, sessionMgr, offboardLogout).RegisterRoutes(a)
 
 	// Runtime URL provider — admin-configurable external URLs. Empty
 	// fields fall through to the bootstrap config (i.e. the static
