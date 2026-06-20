@@ -723,7 +723,6 @@ export default {
       blank: 'Or start from blank',
       change: 'Change template',
       loadFailed: 'Failed to load template',
-      fieldRequired: '{{label}} is required',
     },
     createModal: {
       title: 'Create application',
@@ -1063,6 +1062,7 @@ export default {
       startDate: 'Start date',
       endDate: 'End date',
       filterBtn: 'Filter',
+      hideApi: 'Hide API noise',
     },
     cols: {
       time: 'Time',
