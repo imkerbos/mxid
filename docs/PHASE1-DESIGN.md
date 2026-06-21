@@ -238,3 +238,13 @@ worker(轮询):
   - 删空目录 `internal/protocol/{jwt,form}`。
   - 验证:`go build ./...` ✅ + console `tsc --noEmit` ✅。**未提交**(待用户指示)。
   - 如未来要做 M2M,走 OIDC `client_credentials`(已实现),不复活独立 jwt 协议。
+
+## 实现状态(2026-06,已落地)
+P1.1 + P1.2 均已实现:
+- **P1.1 模板市场(CE)** ✅ —— `internal/domain/app/templates/*.json`(go:embed)+ 控制台模板选择器 + 品牌图标。
+- **P1.2 L1 一键离职(CE)** ✅ —— `internal/domain/offboarding`:禁用 + 撤会话(三命名空间)+ OIDC 刷新拒发(禁用用户)+ back-channel 扇出 + `user.offboarded` 审计 + 控制台「一键离职」按钮。
+- **P1.2 L3 复核清单 + Webhook(CE)** ✅ —— `mxid_offboarding_task/item` + 控制台「离职复核」面板 + 签名 webhook(系统设置可配),投递走 outbox。
+- **P1.2 outbox 地基(CE)** ✅ —— `internal/outbox`(`mxid_outbox`,`SKIP LOCKED` worker + 退避 + 死信)。
+- **P1.2 L2 SCIM 停用(EE)** ✅ —— per-app 供应配置(`mxid_app_provisioning`,CE,默认关)+ `mxid-ee/features/scim` 连接器(SCIM 2.0 `PATCH active=false`,`license` 门控 `scim`,经 registry seam `OutboxRegister`/`ProvisioningConfig` 接入)。
+  - **覆盖面注意**:通用 SCIM2 连接器主要吃**国际 SaaS(多为企业档)**;**国产飞书/钉钉/企微不走标准 SCIM**,需后续各写**私有 deprovision 适配器**(复用同一 outbox + Connector 接口)。
+- **CE/EE 协同开发**:两仓置于容器目录 `mxid/{mxid,mxid-ee}`,EE 经 `replace => ../mxid` 实时联动(未用 go.work —— 本机 go 1.25.5 与 pin 的 1.25.11 冲突)。
