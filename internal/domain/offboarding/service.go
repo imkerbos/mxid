@@ -33,10 +33,22 @@ type SessionKiller interface {
 	KillAllByUser(ctx context.Context, userID int64) (int, error)
 }
 
-// UserLookup resolves minimal identity (username + tenant) for audit
-// labelling, so the trail names who was offboarded rather than a bare id.
+// UserLookup resolves minimal identity (username + email + tenant) for audit
+// labelling and downstream-account matching (SCIM deprovision matches by email).
 type UserLookup interface {
-	Lookup(ctx context.Context, userID int64) (username string, tenantID int64, err error)
+	Lookup(ctx context.Context, userID int64) (username, email string, tenantID int64, err error)
+}
+
+// ScimKind is the outbox message kind for L2 downstream-account deprovisioning.
+// The handler lives ONLY in the EE binary (license-gated scim); CE enqueues it
+// only for apps whose provisioning is enabled AND whose SCIM connector is built
+// into the running binary, so a CE binary never produces an orphan message.
+const ScimKind = "offboarding.scim"
+
+// DeprovisionEnqueuer durably queues a downstream-account deprovision (L2).
+// Optional — nil skips it. Enqueue rides the outbox so it survives a crash.
+type DeprovisionEnqueuer interface {
+	Enqueue(ctx context.Context, tenantID, appID, userID int64, username, email string) error
 }
 
 // LogoutNotifier proactively notifies the apps a user is logged into to drop
@@ -91,11 +103,16 @@ type Service struct {
 	logout    LogoutNotifier
 	footprint AppFootprint
 	repo      Repository
-	idGen     *snowflake.Generator
-	webhook   WebhookDispatcher
-	eventBus  *event.Bus
-	logger    *zap.Logger
+	idGen       *snowflake.Generator
+	webhook     WebhookDispatcher
+	deprovision DeprovisionEnqueuer
+	eventBus    *event.Bus
+	logger      *zap.Logger
 }
+
+// SetDeprovisionEnqueuer wires the optional L2 downstream-deprovision enqueuer
+// (set after construction so the constructor stays stable).
+func (s *Service) SetDeprovisionEnqueuer(d DeprovisionEnqueuer) { s.deprovision = d }
 
 // SetWebhookDispatcher wires the optional offboarding webhook (set after
 // construction so the long constructor stays stable).
@@ -167,7 +184,7 @@ func (s *Service) Offboard(ctx context.Context, userID, actorID int64) error {
 			zap.Int64("user_id", userID), zap.Error(err))
 	}
 
-	username, tenantID, _ := s.lookup.Lookup(ctx, userID)
+	username, email, tenantID, _ := s.lookup.Lookup(ctx, userID)
 
 	// Record the review checklist: one item per app in the user's footprint.
 	// Best-effort — a record-write failure must not undo the access cutoff,
@@ -216,18 +233,35 @@ func (s *Service) Offboard(ctx context.Context, userID, actorID int64) error {
 		if cerr := s.repo.CreateTaskWithItems(ctx, task, items); cerr != nil {
 			s.logger.Warn("offboard: write review task failed",
 				zap.Int64("user_id", userID), zap.Error(cerr))
-		} else if s.webhook != nil && s.webhook.Enabled(ctx, tenantID) {
-			// Durable webhook to the customer's IT/HR system. Rides the outbox,
-			// so it survives a crash and retries. Enqueued only after the task
-			// is written so a delivery always has a matching review record.
-			if werr := s.webhook.Enqueue(ctx, tenantID, WebhookPayload{
-				TaskID:   task.ID,
-				UserID:   userID,
-				Username: username,
-				Apps:     refs,
-			}); werr != nil {
-				s.logger.Warn("offboard: enqueue webhook failed",
-					zap.Int64("user_id", userID), zap.Error(werr))
+		} else {
+			if s.webhook != nil && s.webhook.Enabled(ctx, tenantID) {
+				// Durable webhook to the customer's IT/HR system. Rides the
+				// outbox, so it survives a crash and retries. Enqueued only after
+				// the task is written so a delivery always has a matching record.
+				if werr := s.webhook.Enqueue(ctx, tenantID, WebhookPayload{
+					TaskID:   task.ID,
+					UserID:   userID,
+					Username: username,
+					Apps:     refs,
+				}); werr != nil {
+					s.logger.Warn("offboard: enqueue webhook failed",
+						zap.Int64("user_id", userID), zap.Error(werr))
+				}
+			}
+			// L2: for every app the footprint classified as needing a downstream
+			// deprovision (provisioning enabled + SCIM connector built in),
+			// enqueue a durable deprovision job. The handler is EE-only; CE marks
+			// no item L2, so this loop is inert in a CE binary.
+			if s.deprovision != nil {
+				for _, r := range refs {
+					if r.Tier != TierL2 {
+						continue
+					}
+					if derr := s.deprovision.Enqueue(ctx, tenantID, r.ID, userID, username, email); derr != nil {
+						s.logger.Warn("offboard: enqueue deprovision failed",
+							zap.Int64("user_id", userID), zap.Int64("app_id", r.ID), zap.Error(derr))
+					}
+				}
 			}
 		}
 	}

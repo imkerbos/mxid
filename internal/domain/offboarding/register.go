@@ -90,10 +90,13 @@ func (a *sessionKiller) KillAllByUser(ctx context.Context, userID int64) (int, e
 
 type userLookup struct{ svc *user.Service }
 
-func (a *userLookup) Lookup(ctx context.Context, userID int64) (string, int64, error) {
+func (a *userLookup) Lookup(ctx context.Context, userID int64) (username, email string, tenantID int64, err error) {
 	u, err := a.svc.GetByID(ctx, userID)
 	if err != nil {
-		return "", 0, err
+		return "", "", 0, err
 	}
-	return u.Username, u.TenantID, nil
+	if u.Email != nil {
+		email = *u.Email
+	}
+	return u.Username, email, u.TenantID, nil
 }
