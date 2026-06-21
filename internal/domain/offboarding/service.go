@@ -47,13 +47,34 @@ type LogoutNotifier interface {
 	NotifyLogout(ctx context.Context, userID int64)
 }
 
+// WebhookKind is the outbox message kind for offboarding webhook deliveries.
+const WebhookKind = "offboarding.webhook"
+
 // AppRef is one app in a user's footprint, denormalized into a review item so
 // the checklist survives later renames/deletes of the app.
 type AppRef struct {
-	ID   int64
-	Name string
-	Code string
-	Tier string // L1 / L2 / L3
+	ID   int64  `json:"id,string"`
+	Name string `json:"name"`
+	Code string `json:"code"`
+	Tier string `json:"tier"`
+}
+
+// WebhookPayload is the body delivered to a customer's IT/HR system when a user
+// is offboarded — enough for them to open work orders for the apps MXID's SSO
+// cutoff can't reach.
+type WebhookPayload struct {
+	TaskID   int64    `json:"task_id,string"`
+	UserID   int64    `json:"user_id,string"`
+	Username string   `json:"username"`
+	Apps     []AppRef `json:"apps"`
+}
+
+// WebhookDispatcher gates + durably queues the offboarding webhook. Optional —
+// nil (or disabled) skips it. Enqueue rides the transactional outbox so the
+// notification survives a crash.
+type WebhookDispatcher interface {
+	Enabled(ctx context.Context, tenantID int64) bool
+	Enqueue(ctx context.Context, tenantID int64, payload WebhookPayload) error
 }
 
 // AppFootprint returns the apps a user could reach, to seed the offboarding
@@ -71,9 +92,14 @@ type Service struct {
 	footprint AppFootprint
 	repo      Repository
 	idGen     *snowflake.Generator
+	webhook   WebhookDispatcher
 	eventBus  *event.Bus
 	logger    *zap.Logger
 }
+
+// SetWebhookDispatcher wires the optional offboarding webhook (set after
+// construction so the long constructor stays stable).
+func (s *Service) SetWebhookDispatcher(d WebhookDispatcher) { s.webhook = d }
 
 // NewService wires the offboarding orchestrator. logout / footprint / repo /
 // idGen may be nil — the offboard still disables + kills sessions, it just
@@ -159,17 +185,18 @@ func (s *Service) Offboard(ctx context.Context, userID, actorID int64) error {
 			task.CreatedBy = &actorID
 		}
 		var items []*Item
+		var refs []AppRef
 		if s.footprint != nil {
-			refs, ferr := s.footprint.ForUser(ctx, userID, tenantID)
+			fps, ferr := s.footprint.ForUser(ctx, userID, tenantID)
 			if ferr != nil {
 				s.logger.Warn("offboard: compute app footprint failed",
 					zap.Int64("user_id", userID), zap.Error(ferr))
 			}
-			for _, r := range refs {
-				tier := r.Tier
-				if tier == "" {
-					tier = TierL1
+			for _, r := range fps {
+				if r.Tier == "" {
+					r.Tier = TierL1
 				}
+				refs = append(refs, r)
 				items = append(items, &Item{
 					ID:       s.idGen.Generate(),
 					TaskID:   task.ID,
@@ -177,7 +204,7 @@ func (s *Service) Offboard(ctx context.Context, userID, actorID int64) error {
 					AppID:    r.ID,
 					AppName:  r.Name,
 					AppCode:  r.Code,
-					Tier:     tier,
+					Tier:     r.Tier,
 					Status:   ItemStatusPending,
 				})
 			}
@@ -189,6 +216,19 @@ func (s *Service) Offboard(ctx context.Context, userID, actorID int64) error {
 		if cerr := s.repo.CreateTaskWithItems(ctx, task, items); cerr != nil {
 			s.logger.Warn("offboard: write review task failed",
 				zap.Int64("user_id", userID), zap.Error(cerr))
+		} else if s.webhook != nil && s.webhook.Enabled(ctx, tenantID) {
+			// Durable webhook to the customer's IT/HR system. Rides the outbox,
+			// so it survives a crash and retries. Enqueued only after the task
+			// is written so a delivery always has a matching review record.
+			if werr := s.webhook.Enqueue(ctx, tenantID, WebhookPayload{
+				TaskID:   task.ID,
+				UserID:   userID,
+				Username: username,
+				Apps:     refs,
+			}); werr != nil {
+				s.logger.Warn("offboard: enqueue webhook failed",
+					zap.Int64("user_id", userID), zap.Error(werr))
+			}
 		}
 	}
 

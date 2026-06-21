@@ -36,5 +36,5 @@ export type {
   MailSMTP, MailTemplate, MailTemplates,
   SecurityPolicy, Branding, LoginMethods,
   ProtocolDefaults, SMS, AuditPolicy, Localization, License, ExternalURLs,
-  MFAMode, MFAPolicy, ConditionalAccess,
+  MFAMode, MFAPolicy, ConditionalAccess, OffboardingWebhook,
 } from './settings'

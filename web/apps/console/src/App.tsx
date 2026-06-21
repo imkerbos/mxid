@@ -27,6 +27,7 @@ import {
   ProtocolDefaultsPage,
   SMSPage,
   AuditPolicyPage,
+  OffboardingWebhookPage,
   MFAPolicyPage,
   ConditionalAccessPage,
   LocalizationPage,
@@ -122,6 +123,7 @@ export default function App() {
                   <Route path="branding" element={<BrandingPage />} />
                   <Route path="localization" element={<LocalizationPage />} />
                   <Route path="audit-policy" element={<AuditPolicyPage />} />
+                  <Route path="offboarding-webhook" element={<OffboardingWebhookPage />} />
                   <Route path="license" element={<LicensePage />} />
                   <Route path="external-urls" element={<ExternalURLsPage />} />
                   <Route path="system-version" element={<SystemVersionPage />} />

@@ -1369,6 +1369,7 @@ export default {
       branding: 'Branding',
       localization: 'Localization',
       auditPolicy: 'Audit policy',
+      offboardingWebhook: 'Offboarding webhook',
       license: 'License',
       externalUrls: 'External URLs',
       externalUrlsHint: 'Canonical URLs protocol handlers redirect to',
@@ -1524,6 +1525,15 @@ export default {
       onNewDevice: 'Require MFA from a new device',
       window: 'Impossible-travel window (minutes)',
       windowHint: 'A login from a different country within this many minutes of the last is treated as impossible travel. Default 60.',
+    },
+    offboardingWebhook: {
+      title: 'Offboarding webhook',
+      desc: 'On offboard, POST a signed notification (with the list of apps to close) to a customer IT/HR/ITSM system. Delivery is outbox-backed — retried, never dropped.',
+      enabled: 'Enabled',
+      url: 'Webhook URL',
+      secret: 'Signing secret',
+      secretHint: 'Signs the body with HMAC-SHA256 (X-MXID-Signature header) so the receiver can verify authenticity',
+      secretSet: 'Set (leave blank to keep)',
     },
     auditPolicy: {
       title: 'Audit policy',
