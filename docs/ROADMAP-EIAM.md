@@ -15,8 +15,8 @@
 
 | # | 缺口 | 工业级标杆 | 影响 | ROI |
 |---|------|-----------|------|-----|
-| G1 | 应用接入模板市场 | Okta/MaxKey 数百模板 | 接入成本高,运维劝退 | 高 |
-| G2 | 出站供应 / SCIM push | Okta provisioning | 离职账号清理靠人工 | 高 |
+| G1 | 应用接入模板市场 ✅ 已实现 | Okta/MaxKey 数百模板 | 接入成本高,运维劝退 | 高 |
+| G2 | 出站供应 / SCIM push ✅ 已实现(离职销户 L1/L3 CE + L2 SCIM EE) | Okta provisioning | 离职账号清理靠人工 | 高 |
 | G3 | 身份编排 / 认证流引擎 | Keycloak Auth Flows | 认证逻辑写死,无风险驱动 | 高 |
 | G4 | 合规治理(access review/报表) | Okta/SailPoint | 过不了大客户合规 | 高 |
 | G5 | 分级管理 + 审批工作流 | 所有工业平台 | 无委派管理,无自助申请 | 中 |
