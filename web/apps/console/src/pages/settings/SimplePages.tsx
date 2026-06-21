@@ -18,6 +18,7 @@ import {
   type ProtocolDefaults,
   type SMS,
   type AuditPolicy,
+  type OffboardingWebhook,
   type MFAPolicy,
   type ConditionalAccess,
   type Localization,
@@ -323,6 +324,28 @@ export function AuditPolicyPage() {
       ]}
       load={() => settingsApi.getAuditPolicy()}
       save={(v) => settingsApi.putAuditPolicy(v)}
+    />
+  )
+}
+
+export function OffboardingWebhookPage() {
+  const { t } = useTranslation()
+  const [secretSet, setSecretSet] = useState(false)
+  return (
+    <GenericForm<OffboardingWebhook>
+      title={t('settings.offboardingWebhook.title')}
+      desc={t('settings.offboardingWebhook.desc')}
+      rows={[
+        { kind: 'bool', key: 'enabled', label: t('settings.offboardingWebhook.enabled') },
+        { kind: 'text', key: 'url', label: t('settings.offboardingWebhook.url'), placeholder: 'https://itsm.example.com/hooks/offboard' },
+        { kind: 'text', key: 'secret', label: t('settings.offboardingWebhook.secret'), hint: secretSet ? t('settings.offboardingWebhook.secretSet') : t('settings.offboardingWebhook.secretHint') },
+      ]}
+      load={async () => {
+        const r = await settingsApi.getOffboardingWebhook()
+        setSecretSet(r.secret_set)
+        return r.config
+      }}
+      save={(v) => settingsApi.putOffboardingWebhook(v)}
     />
   )
 }

@@ -1372,6 +1372,7 @@ export default {
       branding: '品牌定制',
       localization: '本地化',
       auditPolicy: '审计策略',
+      offboardingWebhook: '离职 Webhook',
       license: '许可信息',
       externalUrls: '外部 URL',
       externalUrlsHint: '协议跳转用的对外域名/IP',
@@ -1527,6 +1528,15 @@ export default {
       onNewDevice: '新设备强制 MFA',
       window: '不可能旅行窗口(分钟)',
       windowHint: '距上次登录该分钟数内从不同国家登录视为不可能旅行。默认 60。',
+    },
+    offboardingWebhook: {
+      title: '离职 Webhook',
+      desc: '员工离职时,向客户 IT/HR/ITSM 系统推送带签名的通知(含需关闭账号的应用清单),投递经过 outbox 持久化重试不丢',
+      enabled: '启用',
+      url: 'Webhook 地址',
+      secret: '签名密钥',
+      secretHint: '用于 HMAC-SHA256 签名 (X-MXID-Signature 头),接收方据此校验真伪',
+      secretSet: '已设置 (留空保持不变)',
     },
     auditPolicy: {
       title: '审计策略',

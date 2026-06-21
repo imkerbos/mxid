@@ -600,9 +600,12 @@ func registerModules(a *bootstrap.App) {
 
 	// Transactional outbox worker — durable at-least-once delivery for side
 	// effects that must survive a crash (offboarding webhooks, later L2 SCIM
-	// pushes). Starts here and polls; consumers register handlers + enqueue
-	// messages. Idle until a consumer is wired.
-	outboxWorker := outbox.NewWorker(outbox.NewRepository(a.DB, a.IDGen), a.Logger)
+	// pushes). Producers enqueue onto outboxRepo; the worker dispatches by
+	// kind. The offboarding webhook handler is registered here; offboarding
+	// (wired below) gets outboxRepo to enqueue.
+	outboxRepo := outbox.NewRepository(a.DB, a.IDGen)
+	outboxWorker := outbox.NewWorker(outboxRepo, a.Logger)
+	outboxWorker.Register(offboarding.WebhookKind, newOffboardingWebhookHandler(settingService))
 	go outboxWorker.Run(context.Background())
 
 	// Console dashboard aggregation. Live-session gauge sums the interactive
@@ -857,7 +860,9 @@ func registerModules(a *bootstrap.App) {
 		offboardLogout = offboarding.LogoutNotifierFunc(oidcModule.Handler.LogoutUserBackchannel)
 	}
 	offboardFP := offboardFootprint{access: accessSvc, apps: appModule.Service}
-	offboarding.Register(a, userModule.Service, sessionMgr, offboardLogout, offboardFP).RegisterRoutes(a)
+	offboardMod := offboarding.Register(a, userModule.Service, sessionMgr, offboardLogout, offboardFP)
+	offboardMod.Service.SetWebhookDispatcher(offboardWebhookDispatcher{settings: settingService, outbox: outboxRepo})
+	offboardMod.RegisterRoutes(a)
 
 	// Runtime URL provider — admin-configurable external URLs. Empty
 	// fields fall through to the bootstrap config (i.e. the static
