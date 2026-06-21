@@ -25,6 +25,7 @@ import (
 	"github.com/imkerbos/mxid/internal/domain/org"
 	"github.com/imkerbos/mxid/internal/domain/permission"
 	"github.com/imkerbos/mxid/internal/domain/platformconfig"
+	"github.com/imkerbos/mxid/internal/domain/provisioning"
 	"github.com/imkerbos/mxid/internal/domain/setting"
 	"github.com/imkerbos/mxid/internal/domain/tenant"
 	"github.com/imkerbos/mxid/internal/domain/upload"
@@ -606,7 +607,13 @@ func registerModules(a *bootstrap.App) {
 	outboxRepo := outbox.NewRepository(a.DB, a.IDGen)
 	outboxWorker := outbox.NewWorker(outboxRepo, a.Logger)
 	outboxWorker.Register(offboarding.WebhookKind, newOffboardingWebhookHandler(settingService))
-	go outboxWorker.Run(context.Background())
+	// Worker is STARTED after RunInit (below) so EE features (e.g. the SCIM
+	// deprovision handler) can register their kinds first — Register must not
+	// race Run.
+
+	// Per-app outbound provisioning config (L2). Schema + CRUD are CE; the SCIM
+	// connector that consumes it is EE, handed the decrypted read via the seam.
+	provisioningModule := provisioning.Register(a)
 
 	// Console dashboard aggregation. Live-session gauge sums the interactive
 	// (console + portal) namespaces; the protocol SSO session is internal and
@@ -745,9 +752,25 @@ func registerModules(a *bootstrap.App) {
 			}
 			return urls.IssuerURL, urls.PortalURL, urls.ConsoleURL
 		},
+		// Let an EE feature bind a durable outbox handler. The neutral
+		// payload-bytes signature is adapted onto the concrete outbox.Handler so
+		// the EE module needs no CE internal type.
+		OutboxRegister: func(kind string, h registry.OutboxHandler) {
+			outboxWorker.Register(kind, func(ctx context.Context, msg *outbox.Message) error {
+				return h(ctx, msg.Payload)
+			})
+		},
+		// Decrypted per-app provisioning config read, for the EE SCIM connector.
+		ProvisioningConfig: provisioningModule.Service.Resolved,
 	}); err != nil {
 		a.Logger.Fatal("init EE features", zap.Error(err))
 	}
+
+	// EE handlers (if any) are now registered — start the outbox worker.
+	go outboxWorker.Run(context.Background())
+
+	// Mount the per-app provisioning config API on the console group.
+	provisioningModule.RegisterRoutes(a)
 
 	// 6. Protocol resolvers — bridge app/user repos to protocol layer.
 	//
@@ -859,9 +882,10 @@ func registerModules(a *bootstrap.App) {
 	if oidcModule != nil {
 		offboardLogout = offboarding.LogoutNotifierFunc(oidcModule.Handler.LogoutUserBackchannel)
 	}
-	offboardFP := offboardFootprint{access: accessSvc, apps: appModule.Service}
+	offboardFP := offboardFootprint{access: accessSvc, apps: appModule.Service, provisioning: provisioningModule.Service}
 	offboardMod := offboarding.Register(a, userModule.Service, sessionMgr, offboardLogout, offboardFP)
 	offboardMod.Service.SetWebhookDispatcher(offboardWebhookDispatcher{settings: settingService, outbox: outboxRepo})
+	offboardMod.Service.SetDeprovisionEnqueuer(offboardDeprovisionEnqueuer{outbox: outboxRepo})
 	offboardMod.RegisterRoutes(a)
 
 	// Runtime URL provider — admin-configurable external URLs. Empty

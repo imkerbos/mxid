@@ -33,8 +33,8 @@ func (f *fakeKiller) KillAllByUser(_ context.Context, _ int64) (int, error) {
 
 type fakeLookup struct{}
 
-func (fakeLookup) Lookup(_ context.Context, _ int64) (string, int64, error) {
-	return "alice", 100, nil
+func (fakeLookup) Lookup(_ context.Context, _ int64) (string, string, int64, error) {
+	return "alice", "alice@example.com", 100, nil
 }
 
 type fakeNotifier struct{ called bool }
