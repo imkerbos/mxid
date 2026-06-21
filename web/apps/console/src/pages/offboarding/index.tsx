@@ -18,13 +18,16 @@ export default function OffboardingPage() {
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<string | null>(null)
 
+  const [error, setError] = useState<string | null>(null)
+
   const load = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       const res = await offboardingApi.listTasks(1, 50)
       setTasks(res.items ?? [])
-    } catch {
-      // ignore
+    } catch (e) {
+      setError(extractMessage(e))
     } finally {
       setLoading(false)
     }
@@ -36,11 +39,21 @@ export default function OffboardingPage() {
 
   return (
     <motion.div {...pageMotion}>
-      <PageHeader title={t('offboarding.title')} description={t('offboarding.subtitle')} />
+      <div className="flex items-start justify-between">
+        <PageHeader title={t('offboarding.title')} description={t('offboarding.subtitle')} />
+        <button
+          onClick={load}
+          className="mt-1 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+        >
+          {t('common.refresh')}
+        </button>
+      </div>
 
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
         {loading ? (
           <div className="px-6 py-10 text-center text-sm text-gray-400">{t('common.loading')}</div>
+        ) : error ? (
+          <div className="px-6 py-12 text-center text-sm text-red-500">{error}</div>
         ) : tasks.length === 0 ? (
           <div className="px-6 py-12 text-center text-sm text-gray-400">{t('offboarding.empty')}</div>
         ) : (
