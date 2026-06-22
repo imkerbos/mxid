@@ -1,7 +1,7 @@
--- Remove auditor->audit.read binding added by this migration (4000+200=4200).
--- The auditor role (id=4) and audit.read permission (id=200) pre-date this
--- migration and are NOT dropped here.
-DELETE FROM mxid_role_permission WHERE id IN (904500021, 904500022, 4200);
+-- Delete role_permission rows created by this migration's up.sql.
+-- NOTE: id=4200 (auditor role 4 -> audit.read permission 200) belongs to
+-- migration 000016 and must NOT be deleted here (it is idempotent in our up.sql).
+DELETE FROM mxid_role_permission WHERE id IN (904500021, 904500022);
 DELETE FROM mxid_role WHERE id IN (904500011, 904500012);
 DELETE FROM mxid_permission WHERE id IN (904500001, 904500002, 904500003);
 DROP TABLE IF EXISTS mxid_access_request;
