@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { authApi, useAuthStore, cn, useTranslation, setLanguage, SUPPORTED_LANGS } from '@mxid/shared'
+import { authApi, useAuthStore, cn, useTranslation, setLanguage, SUPPORTED_LANGS, useEdition } from '@mxid/shared'
 import {
   LayoutGrid,
   UserCircle,
   ShieldCheck,
+  KeyRound,
   LogOut,
   Menu,
   X,
@@ -12,17 +13,21 @@ import {
 } from 'lucide-react'
 import logo from '../../assets/logo.png'
 
-const buildNavItems = (t: (k: string) => string) => [
+const buildNavItems = (t: (k: string) => string, hasConditionalAccess: boolean) => [
   { to: '/apps', label: t('nav.myApps'), icon: LayoutGrid },
   { to: '/profile', label: t('nav.profile'), icon: UserCircle },
   { to: '/security', label: t('nav.security'), icon: ShieldCheck },
+  ...(hasConditionalAccess
+    ? [{ to: '/access-requests', label: t('nav.accessRequests'), icon: KeyRound }]
+    : []),
 ]
 
 export default function Navbar() {
   const navigate = useNavigate()
   const { user, clear } = useAuthStore()
   const { t, i18n } = useTranslation()
-  const navItems = buildNavItems(t)
+  const edition = useEdition()
+  const navItems = buildNavItems(t, edition.has('conditional_access'))
   const [mobileOpen, setMobileOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
 
