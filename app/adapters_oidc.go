@@ -10,9 +10,23 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/bootstrap"
+	appdomain "github.com/imkerbos/mxid/internal/domain/app"
 	"github.com/imkerbos/mxid/internal/domain/appaccess"
 	"github.com/imkerbos/mxid/internal/domain/approle"
 )
+
+// appProtocolResolver adapts the app domain service to access.ProtocolResolver:
+// given an app id, it returns the app's SSO protocol ("oidc"|"saml"|"cas") so
+// the CompositeTerminator can pick the matching downstream-logout handler.
+type appProtocolResolver struct{ svc *appdomain.Service }
+
+func (r appProtocolResolver) ProtocolForApp(ctx context.Context, appID int64) (string, error) {
+	application, err := r.svc.GetByID(ctx, appID)
+	if err != nil {
+		return "", err
+	}
+	return application.Protocol, nil
+}
 
 type oidcAccessAdapter struct{ svc *appaccess.Service }
 
