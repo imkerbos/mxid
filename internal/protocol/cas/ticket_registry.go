@@ -16,14 +16,20 @@ type CASServiceRef struct {
 	Ticket     string `json:"ticket"`
 }
 
+// casSLORegistryTTL is the fixed TTL for service-registry entries.
+// It must outlive the longest possible JIT grant (max 7 days) so that a
+// later expiry or revocation can still find the service URL and send the
+// SLO back-channel logout. Derived from ticket TTL would be wrong: the
+// service-ticket TTL is O(seconds) while the session/grant can be 7 days.
+const casSLORegistryTTL = 8 * 24 * time.Hour
+
 // ServiceRegistry persists a per-user-per-app set of CAS services that
 // a user has authenticated to. Task L5 reads this set to fan-out SLO
 // logout requests.
 //
 // Storage: Redis SET keyed mxid:cas:svc:<userID>:<appID>.
 // Each member is a JSON-encoded CASServiceRef. TTL on the set is
-// refreshed on every RecordService call (sliding window via the
-// last-recorded ticket's TTL).
+// refreshed on every RecordService call.
 type ServiceRegistry struct {
 	rdb *redis.Client
 }
