@@ -813,42 +813,10 @@ func registerModules(a *bootstrap.App) {
 
 	// 6.8. JIT privileged access (temporary, time-bound role elevation).
 	//
-	// Runtime-gated by the conditional_access feature inside Register* (no
-	// edition branch here — the schema is foundational/grandfathered, only the
-	// capability is licence-gated). The service invalidates the requester's
-	// authz binding cache (authzBindings) on approve/revoke/expire so the
-	// elevated role goes live (and dies) without a re-login. NoopTerminator is a
-	// placeholder until the downstream-logout plan lands a real terminator.
-	accessJITRepo := access.NewRepository(a.DB, a.IDGen)
-	accessJITSvc := access.NewServiceWithLogger(
-		accessJITRepo,
-		a.IDGen,
-		a.EventBus,
-		authzBindings, // *authz.CachedBindingProvider implements Invalidate(ctx,tid,uid) error
-		newAccessSubjectMatcher(a),
-		access.NoopTerminator(),
-		a.Logger,
-	)
-	accessJITHandler := access.NewHandler(accessJITSvc, a.Config.Tenant.DefaultID)
-	accessJITHandler.RegisterConsole(a.ConsoleGroup)
-	accessJITHandler.RegisterPortal(a.PortalGroup)
-
-	// Sweeper: end grants whose expires_at has passed (cache-bust + audit
-	// event). context.Background() — there is no app lifecycle context.
-	access.StartSweeper(context.Background(), accessJITSvc, accessJITRepo, 30*time.Second, a.Logger)
-
-	// Audit subscriptions — defense-in-depth over the catch-all RecordAPIRequest.
-	// The access.* payloads self-describe via resource_type/resource_id, so the
-	// payload-driven ResourceEventHandler attributes them correctly; the actor /
-	// ip come from auditctx (request-fired events) or fall back to system (the
-	// sweeper-fired access.grant.expired).
-	for _, et := range []string{
-		access.EventRequestCreated, access.EventRequestApproved, access.EventRequestRejected,
-		access.EventRequestCancelled, access.EventGrantActivated, access.EventGrantExpired,
-		access.EventGrantRevoked,
-	} {
-		a.EventBus.Subscribe(et, auditModule.Service.ResourceEventHandler(et, "access_request"))
-	}
+	// Constructed below, AFTER the OIDC/SAML/CAS protocol handlers exist, so the
+	// access service can be wired with a real CompositeTerminator that forces a
+	// downstream session logout on grant revoke/expiry. See "JIT access service"
+	// after the protocol-module registration.
 
 	// 6.7. Referenced-entity tenant validators (Phase 2.6).
 	//
@@ -944,6 +912,61 @@ func registerModules(a *bootstrap.App) {
 	}
 	samlModule.Handler.SetURLProvider(urlProvider)
 	casModule.Handler.SetURLProvider(urlProvider)
+
+	// JIT access service (deferred from §6.8 until the protocol handlers exist).
+	//
+	// Runtime-gated by the conditional_access feature inside Register* (no
+	// edition branch here — the schema is foundational/grandfathered, only the
+	// capability is licence-gated). The service invalidates the requester's
+	// authz binding cache (authzBindings) on approve/revoke/expire so the
+	// elevated role goes live (and dies) without a re-login, and now also drives
+	// a CompositeTerminator that forces a downstream session logout per app
+	// protocol (OIDC back-channel / SAML IdP-initiated / CAS SLO) so the elevated
+	// role can't outlive the grant inside the app's own session.
+	//
+	// The OIDC dispatcher is a closure because oidcModule is nil under the
+	// zitadel engine (MXID_OIDC_ENGINE=zitadel); it degrades to a no-op there.
+	oidcLogout := func(ctx context.Context, userID, appID int64) {}
+	if oidcModule != nil {
+		oidcLogout = oidcModule.Handler.LogoutUserAppBackchannel
+	}
+	accessTerminator := access.NewCompositeTerminator(
+		appProtocolResolver{svc: appModule.Service},
+		oidcLogout,
+		samlModule.Handler.IdPInitiatedLogout,
+		casModule.Handler.SingleLogout,
+		a.Logger,
+	)
+	accessJITRepo := access.NewRepository(a.DB, a.IDGen)
+	accessJITSvc := access.NewServiceWithLogger(
+		accessJITRepo,
+		a.IDGen,
+		a.EventBus,
+		authzBindings, // *authz.CachedBindingProvider implements Invalidate(ctx,tid,uid) error
+		newAccessSubjectMatcher(a),
+		accessTerminator,
+		a.Logger,
+	)
+	accessJITHandler := access.NewHandler(accessJITSvc, a.Config.Tenant.DefaultID)
+	accessJITHandler.RegisterConsole(a.ConsoleGroup)
+	accessJITHandler.RegisterPortal(a.PortalGroup)
+
+	// Sweeper: end grants whose expires_at has passed (cache-bust + audit
+	// event). context.Background() — there is no app lifecycle context.
+	access.StartSweeper(context.Background(), accessJITSvc, accessJITRepo, 30*time.Second, a.Logger)
+
+	// Audit subscriptions — defense-in-depth over the catch-all RecordAPIRequest.
+	// The access.* payloads self-describe via resource_type/resource_id, so the
+	// payload-driven ResourceEventHandler attributes them correctly; the actor /
+	// ip come from auditctx (request-fired events) or fall back to system (the
+	// sweeper-fired access.grant.expired).
+	for _, et := range []string{
+		access.EventRequestCreated, access.EventRequestApproved, access.EventRequestRejected,
+		access.EventRequestCancelled, access.EventGrantActivated, access.EventGrantExpired,
+		access.EventGrantRevoked,
+	} {
+		a.EventBus.Subscribe(et, auditModule.Service.ResourceEventHandler(et, "access_request"))
+	}
 
 	// 8. Register portal gateway (user-facing API)
 	portalUserQ := buildPortalUserQuerier(userModule)
