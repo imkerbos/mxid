@@ -366,6 +366,45 @@ func (s *Service) handleResourceEvent(eventType, resourceType string) event.Hand
 	}
 }
 
+// ResourceEventHandler returns a public event handler for domain events whose
+// payload self-describes its subject via "resource_type" / "resource_id" keys
+// (e.g. the JIT access.* lifecycle events). Unlike handleResourceEvent, it does
+// not need the resource type baked in at subscribe time — it reads it from the
+// payload, falling back to defaultResourceType when absent. Exposed so callers
+// in app/run.go can wire domain events (e.g. access.*) onto the audit log
+// without audit importing those domain packages. Actor identity / IP are filled
+// by enrich() from the request-scoped auditctx; sweeper-fired events with no
+// caller fall back to actor_type=system.
+func (s *Service) ResourceEventHandler(eventType, defaultResourceType string) event.Handler {
+	return func(ctx context.Context, evt event.Event) {
+		payload := s.toMap(evt.Payload)
+
+		rt := s.toString(payload["resource_type"])
+		if rt == "" {
+			rt = defaultResourceType
+		}
+		rid := s.toInt64(payload["resource_id"])
+		if rid == 0 {
+			rid = s.toInt64(payload["id"])
+		}
+
+		log := &AuditLog{
+			ID:           s.idGen.Generate(),
+			TenantID:     s.toInt64OrDefault(payload["tenant_id"], s.tenantID),
+			EventType:    eventType,
+			EventStatus:  EventStatusSuccess,
+			ResourceType: &rt,
+			ResourceID:   int64Ptr(rid),
+			Detail:       s.marshalDetailFor(eventType, payload),
+			CreatedAt:    time.Now(),
+		}
+		if name := s.toString(payload["name"]); name != "" {
+			log.ResourceName = &name
+		}
+		s.createLog(ctx, log)
+	}
+}
+
 // handleAppOwnedEvent records a change to a resource that may belong to either
 // an app or an app-group (app roles, role bindings, access policies). The
 // resource_type / resource_id are picked from whichever parent id the payload
