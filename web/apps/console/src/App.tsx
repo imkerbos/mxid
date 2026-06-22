@@ -22,6 +22,7 @@ import SettingsLayout from './pages/settings/SettingsLayout'
 import MailSMTPPage from './pages/settings/MailSMTP'
 import SecurityPage from './pages/settings/Security'
 import SystemVersionPage from './pages/settings/SystemVersion'
+import AccessEligibilityPage from './pages/settings/AccessEligibility'
 import {
   BrandingPage,
   LoginMethodsPage,
@@ -129,6 +130,7 @@ export default function App() {
                   <Route path="license" element={<LicensePage />} />
                   <Route path="external-urls" element={<ExternalURLsPage />} />
                   <Route path="system-version" element={<SystemVersionPage />} />
+                  <Route path="access-eligibility" element={<AccessEligibilityPage />} />
                 </Route>
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Routes>
