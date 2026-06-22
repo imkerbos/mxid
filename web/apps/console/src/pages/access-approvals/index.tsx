@@ -41,7 +41,8 @@ export default function AccessApprovalsPage() {
   }
 
   const handleReject = async (id: string) => {
-    const reason = window.prompt(t('approvals.rejectReason')) ?? ''
+    const reason = window.prompt(t('approvals.rejectReason'))
+    if (reason === null) return // user cancelled — abort the reject
     try {
       await accessApprovalApi.reject(id, reason)
       toast.success(t('approvals.rejected'))
