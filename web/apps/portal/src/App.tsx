@@ -9,6 +9,7 @@ import AppsPage from './pages/apps'
 import ConsentPage from './pages/consent'
 import ProfilePage from './pages/profile'
 import SecurityPage from './pages/security'
+import AccessRequestsPage from './pages/access-requests'
 import NoAccessPage from './pages/no-access'
 import ForgotPasswordPage from './pages/password/forgot'
 import ResetPasswordPage from './pages/password/reset'
@@ -147,6 +148,7 @@ export default function App() {
         <Route path="consent" element={<ConsentPage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="security" element={<SecurityPage />} />
+        <Route path="access-requests" element={<AccessRequestsPage />} />
       </Route>
       <Route
         path="/login/magic-link"
