@@ -55,6 +55,33 @@ func (m *accessMatcher) UserHasRole(ctx context.Context, userID, roleID int64) (
 	return n > 0, err
 }
 
+// accessSubjectMatcher adapts *accessMatcher (UserInGroup/UserInOrg/UserHasRole
+// returning (bool, error), tenant-agnostic) to the JIT access package's
+// access.SubjectMatcher interface (tenant-scoped, error-swallowing bool). The
+// underlying membership tables are not tenant-partitioned in CE, so tenantID is
+// accepted for interface compatibility but not used in the lookup; a lookup
+// error is treated as "no match" (fail-closed), matching the appaccess posture.
+type accessSubjectMatcher struct{ m *accessMatcher }
+
+func newAccessSubjectMatcher(app *bootstrap.App) *accessSubjectMatcher {
+	return &accessSubjectMatcher{m: newAccessMatcher(app)}
+}
+
+func (a *accessSubjectMatcher) UserInGroup(ctx context.Context, _ /*tenantID*/, userID, groupID int64) bool {
+	ok, err := a.m.UserInGroup(ctx, userID, groupID)
+	return err == nil && ok
+}
+
+func (a *accessSubjectMatcher) UserInOrg(ctx context.Context, _ /*tenantID*/, userID, orgID int64) bool {
+	ok, err := a.m.UserInOrg(ctx, userID, orgID)
+	return err == nil && ok
+}
+
+func (a *accessSubjectMatcher) UserHasRole(ctx context.Context, _ /*tenantID*/, userID, roleID int64) bool {
+	ok, err := a.m.UserHasRole(ctx, userID, roleID)
+	return err == nil && ok
+}
+
 type appLabelResolver struct{ app *bootstrap.App }
 
 func newAppLabelResolver(app *bootstrap.App) *appLabelResolver { return &appLabelResolver{app: app} }
