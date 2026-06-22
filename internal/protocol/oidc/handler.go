@@ -1244,10 +1244,11 @@ func (h *Handler) LogoutUserAppBackchannel(ctx context.Context, userID, appID in
 	var targets []target
 
 	for _, s := range protoSessions {
-		// Read (and consume) the SSO-app tracking set for this session.
-		// ListSSOApps removes the Redis key as a side effect — consistent with
-		// how LogoutUserBackchannel drains the sets before they are cleaned up.
-		appIDs, _ := h.store.ListSSOApps(ctx, s.ID)
+		// Non-destructive read: we only want to check membership and send a
+		// logout_token to the single target app. The session's tracking set must
+		// remain intact so a subsequent full logout (LogoutUserBackchannel /
+		// endSession) can still fan out to all other participating RPs.
+		appIDs, _ := h.store.PeekSSOApps(ctx, s.ID)
 		for _, a := range appIDs {
 			if a == appID {
 				targets = append(targets, target{sid: s.ID})
