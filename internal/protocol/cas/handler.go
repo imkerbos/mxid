@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/protocol/resolver"
@@ -276,21 +275,20 @@ func (h *Handler) doServiceValidate(c *gin.Context, includeAttributes bool) {
 	appCode := c.Param("app_code")
 	app, appErr := h.appRes.GetApp(c.Request.Context(), appCode)
 
+	// Parse app protocol config once; reused for registry TTL and attributes.
+	var casCfg *CASConfig
+	if appErr == nil && app != nil {
+		casCfg = h.parseCASConfig(app.ProtocolConfig)
+	}
+
 	// Record the validated service in the per-user registry so L5 (SLO) can
 	// fan-out back-channel logout to every service the user authenticated to.
+	// Use a fixed TTL (casSLORegistryTTL = 8d) instead of deriving from the
+	// service-ticket TTL: the ticket TTL is O(seconds) but a JIT grant can
+	// live up to 7 days, and we must be able to find the service at SLO time.
 	// Best-effort: a registry failure must not break the ticket validation.
-	if h.serviceRegistry != nil && appErr == nil && app != nil {
-		casCfg := h.parseCASConfig(app.ProtocolConfig)
-		ttl := time.Duration(casCfg.TicketTTL) * time.Second
-		if ttl <= 0 {
-			ttl = defaultTicketTTL
-		}
-		// Use a generous multiplier so the registry entry outlives the ticket
-		// itself — SLO needs it to be present at logout time, which may be
-		// much later than ticket validation.
-		const sloTTLMultiplier = 24 * time.Hour / time.Second
-		sloTTL := ttl * sloTTLMultiplier
-		_ = h.serviceRegistry.RecordService(c.Request.Context(), st.UserID, app.ID, service, ticket, sloTTL)
+	if h.serviceRegistry != nil && casCfg != nil {
+		_ = h.serviceRegistry.RecordService(c.Request.Context(), st.UserID, app.ID, service, ticket, casSLORegistryTTL)
 	}
 
 	success := &AuthenticationSuccess{
@@ -298,8 +296,7 @@ func (h *Handler) doServiceValidate(c *gin.Context, includeAttributes bool) {
 	}
 
 	// CAS 3.0: include user attributes
-	if includeAttributes && appErr == nil && app != nil {
-		casCfg := h.parseCASConfig(app.ProtocolConfig)
+	if includeAttributes && casCfg != nil {
 		// Pin the ticket's tenant so the user read is tenant-scoped.
 		c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), st.TenantID))
 		user, err := h.idRes.ResolveUser(c.Request.Context(), st.UserID)
