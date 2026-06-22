@@ -219,6 +219,61 @@ func TestLogoutUserAppBackchannel_NoSessions(t *testing.T) {
 	}
 }
 
+// TestLogoutUserAppBackchannel_DoesNotDestroySessionTracking is the regression
+// test for the bug where LogoutUserAppBackchannel consumed (deleted) the
+// SSO-app tracking set via the destructive ListSSOApps, preventing a
+// subsequent full LogoutUserBackchannel from reaching the other RPs.
+//
+// Scenario:
+//  1. User has one SSO session with appA and appB both tracked.
+//  2. JIT per-app logout fires for appA → sends logout_token to appA only.
+//  3. Full offboarding logout fires for the same user → MUST still deliver
+//     a logout_token to appB (tracking set must still be present).
+func TestLogoutUserAppBackchannel_DoesNotDestroySessionTracking(t *testing.T) {
+	h, sm, store, rpA, rpB, appA, appB := setupBackchannelHarness(t)
+
+	ctx := context.Background()
+	userID := int64(5003)
+
+	sess, err := sm.Create(ctx, session.NamespaceProtocol, userID, 1, "127.0.0.1", "test-ua", "password")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	sessionTTL := 30 * time.Minute
+	if err := store.TrackSSOApp(ctx, sess.ID, appA, sessionTTL); err != nil {
+		t.Fatalf("track appA: %v", err)
+	}
+	if err := store.TrackSSOApp(ctx, sess.ID, appB, sessionTTL); err != nil {
+		t.Fatalf("track appB: %v", err)
+	}
+
+	// Step 1: JIT per-app logout for appA only.
+	h.LogoutUserAppBackchannel(ctx, userID, appA)
+	waitAsync()
+
+	if n := rpA.hits.Load(); n != 1 {
+		t.Errorf("after JIT logout: appA RP want 1 hit, got %d", n)
+	}
+	if n := rpB.hits.Load(); n != 0 {
+		t.Errorf("after JIT logout: appB RP want 0 hits, got %d", n)
+	}
+
+	// Step 2: Full offboarding logout — must still reach appB.
+	h.LogoutUserBackchannel(ctx, userID)
+	waitAsync()
+
+	// appA gets a second hit (full logout fans out to all tracked apps).
+	if n := rpA.hits.Load(); n < 1 {
+		t.Errorf("after full logout: appA RP want >=1 hit, got %d", n)
+	}
+	// The critical assertion: appB must have received exactly one logout_token
+	// from the full logout. If the JIT path had consumed (deleted) the tracking
+	// set, this would be 0, proving the regression.
+	if n := rpB.hits.Load(); n != 1 {
+		t.Errorf("after full logout: appB RP want 1 hit (regression: JIT path must not consume the tracking set), got %d", n)
+	}
+}
+
 // TestLogoutUserAppBackchannel_AppNotInSession verifies no logout is sent when
 // the target appID was not among the apps tracked on the user's session (e.g.
 // the user never authenticated to that app in this session).
