@@ -330,3 +330,106 @@ func TestListRequestsByStatus(t *testing.T) {
 		t.Fatal("ListRequestsByRequester returned empty")
 	}
 }
+
+// ─── App-target helpers ───────────────────────────────────────────────────────
+
+// seedApp inserts a minimal mxid_app row (protocol='saml' satisfies the
+// chk_app_secret_presence CHECK constraint which only requires a secret for
+// non-SAML protocols) and returns its id.
+func seedApp(t *testing.T, db *gorm.DB, tenantID int64) int64 {
+	t.Helper()
+	id := accessNextID()
+	code := fmt.Sprintf("jit-test-app-%d", id)
+	if err := db.Exec(`
+		INSERT INTO mxid_app (id, tenant_id, name, code, protocol, status, created_at, updated_at)
+		VALUES (?, ?, ?, ?, 'saml', 1, NOW(), NOW())`,
+		id, tenantID, code, code).Error; err != nil {
+		t.Fatalf("seed app: %v", err)
+	}
+	return id
+}
+
+// seedAppRole inserts a minimal mxid_app_role row and returns its id.
+func seedAppRole(t *testing.T, db *gorm.DB, tenantID, appID int64) int64 {
+	t.Helper()
+	id := accessNextID()
+	code := fmt.Sprintf("jit-test-approle-%d", id)
+	if err := db.Exec(`
+		INSERT INTO mxid_app_role (id, app_id, tenant_id, code, name, is_default, sort_order, created_at)
+		VALUES (?, ?, ?, ?, ?, FALSE, 0, NOW())`,
+		id, appID, tenantID, code, code).Error; err != nil {
+		t.Fatalf("seed app role: %v", err)
+	}
+	return id
+}
+
+// TestApproveAndGrant_InsertsAppBinding verifies that ApproveAndGrant atomically
+// marks the request approved and inserts a time-bound row in mxid_app_role_binding
+// when TargetKind == TargetApp — the primary SSO app-role elevation path.
+func TestApproveAndGrant_InsertsAppBinding(t *testing.T) {
+	repo, db, idGen, tenantID := setupAccessRepo(t)
+	appID := seedApp(t, db, tenantID)
+	appRoleID := seedAppRole(t, db, tenantID, appID)
+
+	// Seed an eligibility row linked to the app role so the FK is satisfied.
+	eligID := accessNextID()
+	if err := db.Exec(`
+		INSERT INTO mxid_access_eligibility
+			(id, tenant_id, target_kind, role_id, requester_subject_type, requester_subject_id,
+			 allowed_durations, max_duration_seconds, approver_subject_type, approver_subject_id,
+			 require_justification, require_stepup, status, created_at, updated_at)
+		VALUES (?, ?, 'app', ?, 'any', 0, '[3600]', 3600, 'auto', 0, FALSE, FALSE, 1, NOW(), NOW())`,
+		eligID, tenantID, appRoleID).Error; err != nil {
+		t.Fatalf("seed app eligibility: %v", err)
+	}
+
+	req := &Request{
+		ID:               idGen.Generate(),
+		TenantID:         tenantID,
+		RequesterID:      7001,
+		EligibilityID:    eligID,
+		TargetKind:       TargetApp,
+		RoleID:           appRoleID,
+		AppID:            &appID,
+		RequestedSeconds: 3600,
+		Status:           StatusPending,
+	}
+	if err := repo.CreateRequest(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+
+	bindingID := idGen.Generate()
+	exp := time.Now().Add(time.Hour)
+	if err := repo.ApproveAndGrant(context.Background(), req, 9002, exp, bindingID); err != nil {
+		t.Fatalf("ApproveAndGrant (app target): %v", err)
+	}
+
+	// Request must be marked approved with binding_id set.
+	got, err := repo.GetRequest(context.Background(), req.ID, tenantID)
+	if err != nil {
+		t.Fatalf("GetRequest after approve: %v", err)
+	}
+	if got.Status != StatusApproved {
+		t.Fatalf("want status=%s, got %s", StatusApproved, got.Status)
+	}
+	if got.BindingID == nil || *got.BindingID != bindingID {
+		t.Fatalf("request not linked to binding: binding_id=%v", got.BindingID)
+	}
+
+	// A time-bound row must exist in mxid_app_role_binding with all expected columns.
+	var n int64
+	db.Raw(`
+		SELECT count(*) FROM mxid_app_role_binding
+		WHERE id = ?
+		  AND subject_type = 'user'
+		  AND subject_id = ?
+		  AND app_role_id = ?
+		  AND app_id = ?
+		  AND status = 1
+		  AND expires_at IS NOT NULL
+		  AND grant_id = ?`,
+		bindingID, req.RequesterID, appRoleID, appID, req.ID).Scan(&n)
+	if n != 1 {
+		t.Fatalf("expected 1 time-bound app-role binding, got %d", n)
+	}
+}

@@ -223,7 +223,8 @@ WHERE id = ? AND tenant_id = ?`,
 // EndGrant runs in ONE transaction:
 //  1. Hard-DELETE the binding row from the correct table.
 //  2. UPDATE the request to finalStatus.
-func (r *repo) EndGrant(ctx context.Context, req *Request, finalStatus string, _ int) error {
+func (r *repo) EndGrant(ctx context.Context, req *Request, finalStatus string, bindingStatus int) error {
+	// bindingStatus is ignored under the current hard-delete strategy; retained for a future soft-delete path.
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if req.BindingID != nil {
 			table := r.bindingTable(req.TargetKind)
