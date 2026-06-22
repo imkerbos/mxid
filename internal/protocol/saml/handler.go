@@ -24,6 +24,7 @@ import (
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"github.com/imkerbos/mxid/pkg/urlswap"
+	"go.uber.org/zap"
 )
 
 // Handler serves SAML protocol endpoints.
@@ -36,6 +37,18 @@ type Handler struct {
 	sessRes     resolver.SessionResolver
 	tenantRes   resolver.TenantResolver
 	sessionIdx  *SessionIndexStore
+	logger      *zap.Logger
+	// backchannelClient overrides the package-level SSRF-safe
+	// samlBackchannelClient when non-nil. Used in tests so an httptest SP on
+	// loopback can receive IdP-initiated LogoutRequests; production always uses
+	// the SSRF-safe client.
+	backchannelClient httpDoer
+}
+
+// httpDoer is the minimal HTTP interface used by IdP-initiated SLO so tests can
+// substitute a plain http.Client while production uses the SSRF-safe client.
+type httpDoer interface {
+	Do(*http.Request) (*http.Response, error)
 }
 
 // SetURLProvider wires the runtime URL lookup. nil = stick with the
@@ -61,9 +74,13 @@ func NewHandler(
 	sessRes resolver.SessionResolver,
 	tenantRes resolver.TenantResolver,
 	sessionIdx *SessionIndexStore,
+	logger *zap.Logger,
 ) *Handler {
 	if portalURL == "" {
 		portalURL = issuer
+	}
+	if logger == nil {
+		logger = zap.NewNop()
 	}
 	return &Handler{
 		issuer:     issuer,
@@ -73,6 +90,7 @@ func NewHandler(
 		sessRes:    sessRes,
 		tenantRes:  tenantRes,
 		sessionIdx: sessionIdx,
+		logger:     logger,
 	}
 }
 
@@ -381,8 +399,11 @@ func (h *Handler) emitCrewjamResponse(c *gin.Context, appCode string, appID, use
 			SPEntityID:   samlCfg.SPEntityID,
 		}
 		if rerr := h.sessionIdx.Record(c.Request.Context(), userID, appID, ref, sessionTTL); rerr != nil {
-			// Log but do not abort — SSO must succeed even if the index store is down.
-			_ = rerr
+			// Log but do not abort — SSO must succeed even if the index store is
+			// down. The only cost is that IdP-initiated SLO can't reach this
+			// session later.
+			h.logger.Warn("saml: record session index failed",
+				zap.Int64("user_id", userID), zap.Int64("app_id", appID), zap.Error(rerr))
 		}
 	}
 
