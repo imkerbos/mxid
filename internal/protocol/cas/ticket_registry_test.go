@@ -57,6 +57,16 @@ func TestServiceRegistry_MultipleServices(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("want 2 services, got %d: %+v", len(got), got)
 	}
+	// Verify both expected ServiceURLs are present (not just the count).
+	urlSet := make(map[string]bool, len(got))
+	for _, s := range got {
+		urlSet[s.ServiceURL] = true
+	}
+	for _, want := range []string{"https://app1.example/cas", "https://app2.example/cas"} {
+		if !urlSet[want] {
+			t.Errorf("expected service URL %q not found in result: %+v", want, got)
+		}
+	}
 }
 
 func TestServiceRegistry_Clear(t *testing.T) {
