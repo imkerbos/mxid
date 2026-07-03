@@ -397,6 +397,13 @@ func (h *Handler) emitCrewjamResponse(c *gin.Context, appCode string, appID, use
 			SessionIndex: session.Index,
 			NameID:       session.NameID,
 			SPEntityID:   samlCfg.SPEntityID,
+			// Captured from the crewjam Session actually used to build this
+			// assertion (session.NameIDFormat, set a few lines above from
+			// samlCfg.NameIDFormat at assertion time) rather than re-read from
+			// config later at SLO time, so a config change between SSO and
+			// logout can't desync the LogoutRequest's NameID format from what
+			// the SP was actually given.
+			NameIDFormat: session.NameIDFormat,
 		}
 		if rerr := h.sessionIdx.Record(c.Request.Context(), userID, appID, ref, sessionTTL); rerr != nil {
 			// Log but do not abort — SSO must succeed even if the index store is

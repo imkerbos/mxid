@@ -66,7 +66,13 @@ func (h *Handler) IdPInitiatedLogout(ctx context.Context, userID, appID int64) {
 	doer := h.doer()
 
 	for _, ref := range refs {
-		target, berr := buildLogoutRequestRedirect(cfg.SLOURL, issuer, ref.NameID, cfg.NameIDFormat, ref.SessionIndex, key)
+		nameIDFormat := ref.NameIDFormat
+		if nameIDFormat == "" {
+			// Older ref recorded before NameIDFormat was captured per-session;
+			// fall back to the app's current config default.
+			nameIDFormat = cfg.NameIDFormat
+		}
+		target, berr := buildLogoutRequestRedirect(cfg.SLOURL, issuer, ref.NameID, nameIDFormat, ref.SessionIndex, key)
 		if berr != nil {
 			h.logger.Warn("saml jit logout: build LogoutRequest failed",
 				zap.Int64("app_id", appID), zap.Error(berr))

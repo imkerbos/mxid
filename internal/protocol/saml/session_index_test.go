@@ -21,13 +21,16 @@ func miniredisClient(t *testing.T) *redis.Client {
 
 func TestSessionIndexStore_RecordGet(t *testing.T) {
 	s := NewSessionIndexStore(miniredisClient(t))
-	ref := SAMLSessionRef{SessionIndex: "idx-1", NameID: "user@x", SPEntityID: "sp-entity"}
+	ref := SAMLSessionRef{SessionIndex: "idx-1", NameID: "user@x", SPEntityID: "sp-entity", NameIDFormat: NameIDEmail}
 	if err := s.Record(context.Background(), 5001, 1001, ref, time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	got, err := s.Get(context.Background(), 5001, 1001)
 	if err != nil || len(got) != 1 || got[0].SessionIndex != "idx-1" {
 		t.Fatalf("want stored ref, got %+v err=%v", got, err)
+	}
+	if got[0].NameIDFormat != NameIDEmail {
+		t.Fatalf("want NameIDFormat round-tripped, got %q", got[0].NameIDFormat)
 	}
 }
 
@@ -60,10 +63,16 @@ func TestSessionIndexStore_Delete(t *testing.T) {
 	}
 }
 
-func TestSessionIndexStore_Overwrite(t *testing.T) {
+// TestSessionIndexStore_MultipleSessionsAccumulate verifies that recording
+// more than one session ref for the same (userID, appID) — e.g. the user
+// signed in to the same app from two browsers/devices — accumulates in the
+// set rather than the second Record overwriting the first. This is the core
+// multi-session fix: IdP-initiated SLO must be able to terminate every active
+// SAML session at the SP, not just the most recently recorded one.
+func TestSessionIndexStore_MultipleSessionsAccumulate(t *testing.T) {
 	s := NewSessionIndexStore(miniredisClient(t))
-	ref1 := SAMLSessionRef{SessionIndex: "idx-old", NameID: "user@z", SPEntityID: "sp"}
-	ref2 := SAMLSessionRef{SessionIndex: "idx-new", NameID: "user@z", SPEntityID: "sp"}
+	ref1 := SAMLSessionRef{SessionIndex: "idx-old", NameID: "user@z", SPEntityID: "sp", NameIDFormat: NameIDEmail}
+	ref2 := SAMLSessionRef{SessionIndex: "idx-new", NameID: "user@z", SPEntityID: "sp", NameIDFormat: NameIDEmail}
 	if err := s.Record(context.Background(), 6001, 2001, ref1, time.Hour); err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +80,50 @@ func TestSessionIndexStore_Overwrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := s.Get(context.Background(), 6001, 2001)
-	if err != nil || len(got) != 1 || got[0].SessionIndex != "idx-new" {
-		t.Fatalf("want overwritten ref, got %+v err=%v", got, err)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("want both refs accumulated, got %d: %+v", len(got), got)
+	}
+	seen := map[string]bool{}
+	for _, r := range got {
+		seen[r.SessionIndex] = true
+	}
+	if !seen["idx-old"] || !seen["idx-new"] {
+		t.Fatalf("want both idx-old and idx-new present, got %+v", got)
+	}
+
+	// Delete clears the whole set, not just one member.
+	if err := s.Delete(context.Background(), 6001, 2001); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.Get(context.Background(), 6001, 2001)
+	if err != nil {
+		t.Fatalf("get after delete: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected empty after delete, got %+v", got)
+	}
+}
+
+// TestSessionIndexStore_DuplicateRecordDedups verifies that recording the
+// identical ref twice does not create two entries — the Redis SET naturally
+// de-dups identical JSON members.
+func TestSessionIndexStore_DuplicateRecordDedups(t *testing.T) {
+	s := NewSessionIndexStore(miniredisClient(t))
+	ref := SAMLSessionRef{SessionIndex: "idx-dup", NameID: "user@dup", SPEntityID: "sp", NameIDFormat: NameIDEmail}
+	if err := s.Record(context.Background(), 7001, 3001, ref, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Record(context.Background(), 7001, 3001, ref, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Get(context.Background(), 7001, 3001)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("want de-duped to 1 ref, got %d: %+v", len(got), got)
 	}
 }
