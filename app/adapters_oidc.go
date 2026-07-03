@@ -56,7 +56,7 @@ func (m *accessMatcher) UserInGroup(ctx context.Context, userID, groupID int64) 
 }
 
 func (m *accessMatcher) UserInOrg(ctx context.Context, userID, orgID int64) (bool, error) {
-	const q = `SELECT COUNT(*) FROM mxid_user_org uo INNER JOIN mxid_org o ON o.id = uo.org_id AND o.deleted_at IS NULL WHERE uo.user_id = ? AND (o.id = ? OR o.path <@ (SELECT path FROM mxid_org WHERE id = ?))`
+	const q = `SELECT COUNT(*) FROM mxid_user_org uo INNER JOIN mxid_organization o ON o.id = uo.org_id AND o.deleted_at IS NULL WHERE uo.user_id = ? AND (o.id = ? OR o.path <@ (SELECT path FROM mxid_organization WHERE id = ?))`
 	var n int64
 	err := m.app.DB.WithContext(ctx).Raw(q, userID, orgID, orgID).Scan(&n).Error
 	return n > 0, err
