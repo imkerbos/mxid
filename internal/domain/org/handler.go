@@ -45,6 +45,10 @@ func (h *Handler) Create(c *gin.Context) {
 
 	org, err := h.service.Create(c.Request.Context(), tenantctx.FromContext(c, h.tenantID), &req)
 	if err != nil {
+		if errors.Is(err, ErrOrgNotFound) {
+			response.NotFound(c, 40404, "parent organization not found")
+			return
+		}
 		response.InternalError(c, "failed to create organization", err)
 		return
 	}
@@ -85,6 +89,10 @@ func (h *Handler) Update(c *gin.Context) {
 
 	org, err := h.service.Update(c.Request.Context(), id, &req)
 	if err != nil {
+		if errors.Is(err, ErrOrgNotFound) {
+			response.NotFound(c, 40401, "organization not found")
+			return
+		}
 		response.InternalError(c, "failed to update organization", err)
 		return
 	}
@@ -127,6 +135,12 @@ func (h *Handler) Move(c *gin.Context) {
 	}
 
 	if err := h.service.Move(c.Request.Context(), id, &req); err != nil {
+		if errors.Is(err, ErrOrgNotFound) {
+			// Service can't discriminate which lookup missed (the org being
+			// moved, or the new parent) — both collapse to ErrOrgNotFound.
+			response.NotFound(c, 40401, "organization or parent organization not found")
+			return
+		}
 		response.InternalError(c, "failed to move organization", err)
 		return
 	}
