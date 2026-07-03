@@ -143,7 +143,7 @@ func (h *Handler) metadata(c *gin.Context) {
 	_, cert, err := h.loadKeyAndCert(c.Request.Context(), app.ID)
 	if err != nil {
 		h.logger.Error("saml metadata: load signing cert failed", zap.Int64("app_id", app.ID), zap.Error(err))
-		response.InternalError(c, "failed to load signing certificate")
+		response.InternalError(c, "failed to load signing certificate", err)
 		return
 	}
 
@@ -151,14 +151,14 @@ func (h *Handler) metadata(c *gin.Context) {
 	idp, err := h.newIDP(c, appCode, samlCfg, nil, cert)
 	if err != nil {
 		h.logger.Error("saml metadata: build idp failed", zap.String("app_code", appCode), zap.Error(err))
-		response.InternalError(c, "failed to build SAML metadata")
+		response.InternalError(c, "failed to build SAML metadata", err)
 		return
 	}
 
 	out, err := xml.MarshalIndent(idp.Metadata(), "", "  ")
 	if err != nil {
 		h.logger.Error("saml metadata: marshal failed", zap.String("app_code", appCode), zap.Error(err))
-		response.InternalError(c, "marshal metadata")
+		response.InternalError(c, "marshal metadata", err)
 		return
 	}
 	c.Data(http.StatusOK, "application/xml", append([]byte(xml.Header), out...))
@@ -285,7 +285,7 @@ func (h *Handler) processSSO(c *gin.Context, appCode, requestID, relayState stri
 	if err != nil {
 		h.logger.Error("saml sso: resolve user identity failed",
 			zap.String("app_code", appCode), zap.Int64("user_id", ssoSess.UserID), zap.Error(err))
-		response.InternalError(c, "failed to resolve user identity")
+		response.InternalError(c, "failed to resolve user identity", err)
 		return
 	}
 
@@ -331,13 +331,13 @@ func (h *Handler) emitCrewjamResponse(c *gin.Context, appCode string, appID, use
 	key, cert, err := h.loadKeyAndCert(c.Request.Context(), appID)
 	if err != nil {
 		h.logger.Error("saml sso: load signing key failed", zap.Int64("app_id", appID), zap.Error(err))
-		response.InternalError(c, "failed to load signing key")
+		response.InternalError(c, "failed to load signing key", err)
 		return
 	}
 	idp, err := h.newIDP(c, appCode, samlCfg, key, cert)
 	if err != nil {
 		h.logger.Error("saml sso: build idp failed", zap.String("app_code", appCode), zap.Int64("app_id", appID), zap.Error(err))
-		response.InternalError(c, "failed to build SAML identity provider")
+		response.InternalError(c, "failed to build SAML identity provider", err)
 		return
 	}
 
@@ -376,7 +376,7 @@ func (h *Handler) emitCrewjamResponse(c *gin.Context, appCode string, appID, use
 			h.logger.Error("saml sso (idp-initiated): resolve sp metadata failed",
 				zap.String("app_code", appCode), zap.Int64("app_id", appID),
 				zap.String("sp_entity_id", samlCfg.SPEntityID), zap.Error(err))
-			response.InternalError(c, "failed to resolve service provider metadata")
+			response.InternalError(c, "failed to resolve service provider metadata", err)
 			return
 		}
 		for di := range req.ServiceProviderMetadata.SPSSODescriptors {
@@ -409,7 +409,7 @@ func (h *Handler) emitCrewjamResponse(c *gin.Context, appCode string, appID, use
 	if err := (crewjam.DefaultAssertionMaker{}).MakeAssertion(req, session); err != nil {
 		h.logger.Error("saml sso: make assertion failed",
 			zap.String("app_code", appCode), zap.Int64("app_id", appID), zap.Error(err))
-		response.InternalError(c, "failed to build SAML assertion")
+		response.InternalError(c, "failed to build SAML assertion", err)
 		return
 	}
 
@@ -444,7 +444,7 @@ func (h *Handler) emitCrewjamResponse(c *gin.Context, appCode string, appID, use
 	if err := req.WriteResponse(c.Writer); err != nil {
 		h.logger.Error("saml sso: write saml response failed",
 			zap.String("app_code", appCode), zap.Int64("app_id", appID), zap.Error(err))
-		response.InternalError(c, "failed to write SAML response")
+		response.InternalError(c, "failed to write SAML response", err)
 		return
 	}
 }

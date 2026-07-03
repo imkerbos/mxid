@@ -112,7 +112,7 @@ func StepUpMiddleware(d StepUpDeps) gin.HandlerFunc {
 
 		enrolled, err := d.HasMFA(ctx, userID)
 		if err != nil {
-			response.InternalError(c, "mfa status check failed")
+			response.InternalError(c, "mfa status check failed", err)
 			c.Abort()
 			return
 		}

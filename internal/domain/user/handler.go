@@ -554,6 +554,6 @@ func (h *Handler) handleServiceError(c *gin.Context, err error) {
 	case errors.Is(err, ErrLastSuperAdmin):
 		response.Error(c, http.StatusConflict, 40904, err.Error(), "")
 	default:
-		response.InternalError(c, "internal server error")
+		response.InternalError(c, "internal server error", err)
 	}
 }

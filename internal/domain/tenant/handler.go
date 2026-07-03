@@ -44,7 +44,7 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 func (h *Handler) List(c *gin.Context) {
 	items, err := h.svc.List(c.Request.Context())
 	if err != nil {
-		response.InternalError(c, "list tenants: "+err.Error())
+		response.InternalError(c, "list tenants: "+err.Error(), err)
 		return
 	}
 	response.OK(c, items)
@@ -62,7 +62,7 @@ func (h *Handler) Get(c *gin.Context) {
 			response.NotFound(c, 40401, err.Error())
 			return
 		}
-		response.InternalError(c, "")
+		response.InternalError(c, "", err)
 		return
 	}
 	response.OK(c, t)
@@ -107,7 +107,7 @@ func (h *Handler) Update(c *gin.Context) {
 			response.NotFound(c, 40401, err.Error())
 			return
 		}
-		response.InternalError(c, "")
+		response.InternalError(c, "", err)
 		return
 	}
 	response.OK(c, t)

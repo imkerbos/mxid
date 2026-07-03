@@ -51,7 +51,7 @@ func (h *Handler) Overview(c *gin.Context) {
 
 	ov, err := h.svc.Overview(c.Request.Context(), h.resolveTenant(c), rangeDays)
 	if err != nil {
-		response.InternalError(c, "failed to build dashboard overview")
+		response.InternalError(c, "failed to build dashboard overview", err)
 		return
 	}
 	response.OK(c, ov)
@@ -73,7 +73,7 @@ func (h *Handler) Export(c *gin.Context) {
 
 	rows, err := h.svc.ExportAudit(c.Request.Context(), h.resolveTenant(c), since)
 	if err != nil {
-		response.InternalError(c, "failed to export audit log")
+		response.InternalError(c, "failed to export audit log", err)
 		return
 	}
 

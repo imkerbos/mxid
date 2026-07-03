@@ -69,7 +69,7 @@ func (h *Handler) ListTasks(c *gin.Context) {
 	}
 	tasks, total, err := h.svc.ListTasks(c.Request.Context(), tenantID, limit, (page-1)*limit)
 	if err != nil {
-		response.InternalError(c, "list offboarding tasks failed")
+		response.InternalError(c, "list offboarding tasks failed", err)
 		return
 	}
 	response.OK(c, gin.H{"items": tasks, "total": total, "page": page, "page_size": limit})
@@ -85,7 +85,7 @@ func (h *Handler) ListItems(c *gin.Context) {
 	tenantID := tenantctx.FromContext(c, h.tenantID)
 	items, err := h.svc.ListItems(c.Request.Context(), tenantID, taskID)
 	if err != nil {
-		response.InternalError(c, "list offboarding items failed")
+		response.InternalError(c, "list offboarding items failed", err)
 		return
 	}
 	response.OK(c, gin.H{"items": items})
@@ -100,7 +100,7 @@ func (h *Handler) MarkItemDone(c *gin.Context) {
 	}
 	tenantID := tenantctx.FromContext(c, h.tenantID)
 	if err := h.svc.MarkItemDone(c.Request.Context(), tenantID, itemID, actorID(c)); err != nil {
-		response.InternalError(c, "mark item done failed")
+		response.InternalError(c, "mark item done failed", err)
 		return
 	}
 	response.OK(c, gin.H{"done": true})

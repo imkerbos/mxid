@@ -65,7 +65,7 @@ func (h *Handler) List(c *gin.Context) {
 
 	logs, total, err := h.svc.List(c.Request.Context(), params)
 	if err != nil {
-		response.InternalError(c, "failed to list audit logs")
+		response.InternalError(c, "failed to list audit logs", err)
 		return
 	}
 
@@ -97,7 +97,7 @@ func (h *Handler) GetStats(c *gin.Context) {
 
 	stats, err := h.svc.GetStats(c.Request.Context(), tenantctx.FromContext(c, h.tenantID), start, end)
 	if err != nil {
-		response.InternalError(c, "failed to get audit stats")
+		response.InternalError(c, "failed to get audit stats", err)
 		return
 	}
 
