@@ -120,12 +120,14 @@ func TestSweepOnce_ExpiresDueGrants(t *testing.T) {
 		t.Fatalf("seed expired approved request: %v", err)
 	}
 
-	// Insert a console binding row so EndGrant can delete it.
+	// Insert a console binding row so EndGrant can delete it. Note:
+	// mxid_role_binding has NO tenant_id column — tenancy is derived via
+	// role_id -> mxid_role.tenant_id.
 	if err := db.Exec(`
 		INSERT INTO mxid_role_binding
-			(id, tenant_id, role_id, subject_type, subject_id, expires_at, status, created_at)
-		VALUES (?, ?, ?, 'user', 5010, ?, 1, NOW())`,
-		bindID, tenantID, roleID, past).Error; err != nil {
+			(id, role_id, subject_type, subject_id, expires_at, status, created_at)
+		VALUES (?, ?, 'user', 5010, ?, 1, NOW())`,
+		bindID, roleID, past).Error; err != nil {
 		t.Fatalf("seed binding: %v", err)
 	}
 
