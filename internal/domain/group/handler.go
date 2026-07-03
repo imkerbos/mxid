@@ -270,6 +270,10 @@ func (h *Handler) RemoveMember(c *gin.Context) {
 	}
 
 	if err := h.service.RemoveMember(c.Request.Context(), groupID, userID); err != nil {
+		if errors.Is(err, ErrGroupNotFound) {
+			response.NotFound(c, 40401, "user group not found")
+			return
+		}
 		if errors.Is(err, ErrGroupIsDynamic) {
 			response.Error(c, http.StatusConflict, 40902, err.Error(), "")
 			return
