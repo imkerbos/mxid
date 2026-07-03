@@ -10,7 +10,7 @@ import { appRoleApi, appApi, appGroupApi, useTranslation } from '@mxid/shared'
 import type {
   ReverseAppRoleBinding, AppRole, App as AppT, AppGroup,
 } from '@mxid/shared'
-import { Field, Select, Button, Tag } from '../../components/ui'
+import { Field, Select, Button, Tag, ConfirmDialog } from '../../components/ui'
 import { toast } from '../../components/ui/toast'
 
 export default function AppRolesReverseTab({ groupId }: { groupId: string }) {
@@ -18,6 +18,8 @@ export default function AppRolesReverseTab({ groupId }: { groupId: string }) {
   const [list, setList] = useState<ReverseAppRoleBinding[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
+  const [delBinding, setDelBinding] = useState<ReverseAppRoleBinding | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -33,15 +35,20 @@ export default function AppRolesReverseTab({ groupId }: { groupId: string }) {
 
   useEffect(() => { reload() }, [reload])
 
-  const handleDelete = async (b: ReverseAppRoleBinding) => {
-    if (!confirm(t('groupAppRoles.confirmRemove', { target: b.target_name, role: b.role_name }))) return
+  const confirmDelete = async () => {
+    const b = delBinding
+    if (!b) return
+    setDeleting(true)
     try {
       await appRoleApi.deleteBinding(b.target_type, b.target_id, b.id)
+      setDelBinding(null)
       toast.success(t("common.success"))
       reload()
     } catch (e) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
       toast.error(t("common.failed"), msg)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -69,7 +76,7 @@ export default function AppRolesReverseTab({ groupId }: { groupId: string }) {
       ) : (
         <div className="space-y-2">
           {list.map((b) => (
-            <BindingRow key={b.id} binding={b} onDelete={handleDelete} />
+            <BindingRow key={b.id} binding={b} onDelete={setDelBinding} />
           ))}
         </div>
       )}
@@ -81,6 +88,14 @@ export default function AppRolesReverseTab({ groupId }: { groupId: string }) {
           onSaved={() => { setShowAdd(false); reload() }}
         />
       )}
+
+      <ConfirmDialog
+        open={!!delBinding}
+        title={t('groupAppRoles.confirmRemove', { target: delBinding?.target_name ?? '', role: delBinding?.role_name ?? '' })}
+        loading={deleting}
+        onConfirm={confirmDelete}
+        onCancel={() => setDelBinding(null)}
+      />
     </div>
   )
 }

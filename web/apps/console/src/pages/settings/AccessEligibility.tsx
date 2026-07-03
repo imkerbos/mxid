@@ -26,7 +26,7 @@ import type {
   Role,
   User,
 } from '@mxid/shared'
-import { pageMotion, Button, Field, Select } from '@mxid/shared/ui'
+import { pageMotion, Button, Field, Select, ConfirmDialog } from '@mxid/shared/ui'
 import { toast, extractMessage } from '../../components/ui/toast'
 
 const ALL_DURATIONS = [3600, 14400, 86400, 259200, 604800] as const
@@ -61,6 +61,8 @@ export default function AccessEligibilityPage() {
   // Non-null while editing an existing row — the same form section below is
   // reused for both create and edit; submit() branches on this id.
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [delId, setDelId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   // Option lists for the dropdown pickers below. Each is fetched lazily,
   // only once the form actually needs it, and cached for the session.
@@ -257,14 +259,19 @@ export default function AccessEligibilityPage() {
     }
   }
 
-  const remove = async (id: string) => {
-    if (!confirm(t('eligibility.confirmDelete'))) return
+  const confirmRemove = async () => {
+    const id = delId
+    if (!id) return
+    setDeleting(true)
     try {
       await accessApprovalApi.deleteEligibility(id)
+      setDelId(null)
       toast.success(t('eligibility.deleted'))
       void load()
     } catch (e) {
       toast.error(t('eligibility.deleteFailed'), extractMessage(e))
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -641,7 +648,7 @@ export default function AccessEligibilityPage() {
                         <Button
                           size="sm"
                           variant="danger"
-                          onClick={() => void remove(row.id)}
+                          onClick={() => setDelId(row.id)}
                         >
                           {t('common.delete')}
                         </Button>
@@ -654,6 +661,15 @@ export default function AccessEligibilityPage() {
           </table>
         </div>
       </section>
+
+      <ConfirmDialog
+        open={!!delId}
+        title={t('eligibility.confirmDelete')}
+        desc={t('common.cantUndo')}
+        loading={deleting}
+        onConfirm={confirmRemove}
+        onCancel={() => setDelId(null)}
+      />
     </motion.div>
   )
 }
