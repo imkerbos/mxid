@@ -118,6 +118,10 @@ func (h *Handler) Update(c *gin.Context) {
 
 	g, err := h.service.Update(c.Request.Context(), id, &req)
 	if err != nil {
+		if errors.Is(err, ErrGroupNotFound) {
+			response.NotFound(c, 40401, "user group not found")
+			return
+		}
 		response.InternalError(c, "failed to update user group", err)
 		return
 	}
@@ -191,6 +195,10 @@ func (h *Handler) AddMember(c *gin.Context) {
 	}
 
 	if err := h.service.AddMember(c.Request.Context(), id, &req); err != nil {
+		if errors.Is(err, ErrGroupNotFound) {
+			response.NotFound(c, 40401, "user group not found")
+			return
+		}
 		if errors.Is(err, ErrGroupIsDynamic) {
 			response.Error(c, http.StatusConflict, 40902, err.Error(), "")
 			return
@@ -360,6 +368,10 @@ func (h *Handler) UpsertRule(c *gin.Context) {
 	}
 	rule, err := h.service.UpsertRule(c.Request.Context(), id, expr)
 	if err != nil {
+		if errors.Is(err, ErrGroupNotFound) {
+			response.NotFound(c, 40401, "user group not found")
+			return
+		}
 		// Initial sync failures still saved the rule; return 207-ish payload.
 		response.InternalError(c, "", err)
 		return
@@ -381,6 +393,10 @@ func (h *Handler) DeleteRule(c *gin.Context) {
 		return
 	}
 	if err := h.service.DeleteRule(c.Request.Context(), id); err != nil {
+		if errors.Is(err, ErrGroupNotFound) {
+			response.NotFound(c, 40401, "user group not found")
+			return
+		}
 		response.InternalError(c, "failed to delete rule", err)
 		return
 	}

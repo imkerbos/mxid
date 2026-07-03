@@ -139,9 +139,9 @@ func (s *Service) requireGroup(ctx context.Context, groupID int64) (*UserGroup, 
 
 // Update updates an existing user group.
 func (s *Service) Update(ctx context.Context, id int64, req *UpdateGroupRequest) (*UserGroup, error) {
-	g, err := s.repo.GetByID(ctx, id)
+	g, err := s.requireGroup(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("get user group for update: %w", err)
+		return nil, err
 	}
 
 	g.Name = req.Name
@@ -231,9 +231,9 @@ func (s *Service) ListByUserID(ctx context.Context, tenantID, userID int64) ([]*
 // AddMember adds a user to a group. Refuses if the group is dynamic — those
 // memberships are owned by the sync engine.
 func (s *Service) AddMember(ctx context.Context, groupID int64, req *AddMemberRequest) error {
-	g, err := s.repo.GetByID(ctx, groupID)
+	g, err := s.requireGroup(ctx, groupID)
 	if err != nil {
-		return fmt.Errorf("get group: %w", err)
+		return err
 	}
 	if g.Type == TypeDynamic {
 		return ErrGroupIsDynamic

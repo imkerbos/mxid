@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/imkerbos/mxid/internal/domain/user"
 	"github.com/imkerbos/mxid/pkg/mailer"
 	"github.com/imkerbos/mxid/pkg/ratelimit"
 	"github.com/imkerbos/mxid/pkg/response"
@@ -240,13 +241,19 @@ func (h *PasswordResetHandler) reset(c *gin.Context) {
 	}
 
 	if err := h.users.ResetPassword(c.Request.Context(), userID, req.NewPassword); err != nil {
-		// Map common policy errors to a 400 with the underlying message so
-		// the UI can render "password reused" / "doesn't meet policy" hints
-		// directly. Anything else stays a 500.
-		msg := err.Error()
+		// Discriminate on the real sentinels (not a string-match heuristic,
+		// which could misclassify an unrelated error as "password" and mask
+		// a genuine 500, or vice versa). The token was already consumed by
+		// this point, so a stale user (deleted between forgot and reset)
+		// reads to the caller the same as an invalid/expired token — it
+		// carries no more information than that already.
 		switch {
-		case strings.Contains(msg, "password"):
-			response.BadRequest(c, 40003, msg)
+		case errors.Is(err, user.ErrUserNotFound):
+			response.BadRequest(c, 40002, "token invalid or expired")
+		case errors.Is(err, user.ErrWeakPassword):
+			response.BadRequest(c, 40004, err.Error())
+		case errors.Is(err, user.ErrPasswordReused):
+			response.BadRequest(c, 40003, err.Error())
 		default:
 			response.InternalError(c, "failed to reset password", err)
 		}
