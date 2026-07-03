@@ -545,6 +545,8 @@ func (h *Handler) handleServiceError(c *gin.Context, err error) {
 		response.Error(c, http.StatusConflict, 40903, err.Error(), "")
 	case errors.Is(err, ErrInvalidPassword):
 		response.BadRequest(c, 40002, err.Error())
+	case errors.Is(err, ErrWeakPassword):
+		response.BadRequest(c, 40004, err.Error())
 	case errors.Is(err, ErrPasswordReused):
 		response.BadRequest(c, 40003, err.Error())
 	case errors.Is(err, ErrLicenseQuotaExceeded):
