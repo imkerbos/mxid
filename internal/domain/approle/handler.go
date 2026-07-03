@@ -98,7 +98,7 @@ func (h *Handler) listRolesForApp(c *gin.Context) {
 	}
 	rows, err := h.service.ListRoles(c.Request.Context(), OwnerApp, id, h.tenantID(c))
 	if err != nil {
-		response.InternalError(c, "")
+		response.InternalError(c, "", err)
 		return
 	}
 	response.OK(c, rows)
@@ -112,7 +112,7 @@ func (h *Handler) listRolesForAppGroup(c *gin.Context) {
 	}
 	rows, err := h.service.ListRoles(c.Request.Context(), OwnerAppGroup, id, h.tenantID(c))
 	if err != nil {
-		response.InternalError(c, "")
+		response.InternalError(c, "", err)
 		return
 	}
 	response.OK(c, rows)
@@ -222,7 +222,7 @@ func (h *Handler) deleteRole(c *gin.Context) {
 		return
 	}
 	if err := h.service.DeleteRole(c.Request.Context(), roleID, h.tenantID(c)); err != nil {
-		response.InternalError(c, "")
+		response.InternalError(c, "", err)
 		return
 	}
 	response.OK(c, gin.H{"deleted": true})
@@ -245,7 +245,7 @@ func (h *Handler) listBindings(c *gin.Context, owner Owner) {
 	}
 	bindings, err := h.service.ListBindings(c.Request.Context(), owner, id, h.tenantID(c))
 	if err != nil {
-		response.InternalError(c, "")
+		response.InternalError(c, "", err)
 		return
 	}
 	roles, _ := h.service.ListRoles(c.Request.Context(), owner, id, h.tenantID(c))
@@ -333,7 +333,7 @@ func (h *Handler) deleteBinding(c *gin.Context) {
 		return
 	}
 	if err := h.service.DeleteBinding(c.Request.Context(), bindingID, h.tenantID(c)); err != nil {
-		response.InternalError(c, "")
+		response.InternalError(c, "", err)
 		return
 	}
 	response.OK(c, gin.H{"deleted": true})
@@ -365,7 +365,7 @@ func (h *Handler) listBindingsForSubject(c *gin.Context, subjectType string) {
 	}
 	bindings, err := h.service.ListBindingsBySubject(c.Request.Context(), subjectType, id, h.tenantID(c))
 	if err != nil {
-		response.InternalError(c, "")
+		response.InternalError(c, "", err)
 		return
 	}
 	views := make([]*ReverseBindingView, 0, len(bindings))
@@ -411,7 +411,7 @@ func (h *Handler) listMemberAppsRoles(c *gin.Context) {
 	}
 	appIDs, err := h.service.MemberAppIDs(c.Request.Context(), groupID)
 	if err != nil {
-		response.InternalError(c, "")
+		response.InternalError(c, "", err)
 		return
 	}
 	tid := h.tenantID(c)

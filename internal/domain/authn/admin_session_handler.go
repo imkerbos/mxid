@@ -124,7 +124,7 @@ func (h *AdminSessionHandler) revokeOne(c *gin.Context) {
 		return
 	}
 	if err := h.sessionMgr.Delete(c.Request.Context(), ns, sid); err != nil {
-		response.InternalError(c, "delete session: "+err.Error())
+		response.InternalError(c, "delete session: "+err.Error(), err)
 		return
 	}
 	c.JSON(http.StatusNoContent, nil)

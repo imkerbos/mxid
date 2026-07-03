@@ -149,7 +149,7 @@ func (h *Handler) listEligibility(c *gin.Context) {
 	// h.svc.repo is unexported but handler is in the same package — compiles cleanly.
 	rows, err := h.svc.repo.ListEligibility(c.Request.Context(), h.tenantID(c))
 	if err != nil {
-		response.InternalError(c, "list eligibility failed")
+		response.InternalError(c, "list eligibility failed", err)
 		return
 	}
 	response.OK(c, rows)
@@ -158,7 +158,7 @@ func (h *Handler) listEligibility(c *gin.Context) {
 func (h *Handler) deleteEligibility(c *gin.Context) {
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err := h.svc.repo.DeleteEligibility(c.Request.Context(), id, h.tenantID(c)); err != nil {
-		response.InternalError(c, "delete failed")
+		response.InternalError(c, "delete failed", err)
 		return
 	}
 	response.NoContent(c)
@@ -168,7 +168,7 @@ func (h *Handler) listRequests(c *gin.Context) {
 	status := c.DefaultQuery("status", StatusPending)
 	rows, err := h.svc.repo.ListRequestsByStatus(c.Request.Context(), h.tenantID(c), status)
 	if err != nil {
-		response.InternalError(c, "list requests failed")
+		response.InternalError(c, "list requests failed", err)
 		return
 	}
 	response.OK(c, rows)
@@ -203,7 +203,7 @@ func (h *Handler) approve(c *gin.Context) {
 		}
 		enrolled, mfaErr := h.stepUp.HasMFA(ctx, h.userID(c))
 		if mfaErr != nil {
-			response.InternalError(c, "mfa status check failed")
+			response.InternalError(c, "mfa status check failed", mfaErr)
 			return
 		}
 		if !enrolled {
@@ -247,7 +247,7 @@ func (h *Handler) revoke(c *gin.Context) {
 func (h *Handler) myEligibilities(c *gin.Context) {
 	rows, err := h.svc.ListEligibilityForRequester(c.Request.Context(), h.tenantID(c), h.userID(c))
 	if err != nil {
-		response.InternalError(c, "list failed")
+		response.InternalError(c, "list failed", err)
 		return
 	}
 	response.OK(c, rows)
@@ -256,7 +256,7 @@ func (h *Handler) myEligibilities(c *gin.Context) {
 func (h *Handler) myRequests(c *gin.Context) {
 	rows, err := h.svc.repo.ListRequestsByRequester(c.Request.Context(), h.userID(c), h.tenantID(c))
 	if err != nil {
-		response.InternalError(c, "list failed")
+		response.InternalError(c, "list failed", err)
 		return
 	}
 	response.OK(c, rows)

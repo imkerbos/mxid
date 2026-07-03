@@ -34,7 +34,7 @@ func (h *Handler) List(c *gin.Context) {
 	keyword := c.Query("keyword")
 	groups, total, err := h.service.List(c.Request.Context(), tenantctx.FromContext(c, h.tenantID), keyword, p.Page, p.PageSize)
 	if err != nil {
-		response.InternalError(c, "failed to list user groups")
+		response.InternalError(c, "failed to list user groups", err)
 		return
 	}
 
@@ -55,7 +55,7 @@ func (h *Handler) ListByUser(c *gin.Context) {
 
 	groups, err := h.service.ListByUserID(c.Request.Context(), tenantctx.FromContext(c, h.tenantID), userID)
 	if err != nil {
-		response.InternalError(c, "failed to list groups for user")
+		response.InternalError(c, "failed to list groups for user", err)
 		return
 	}
 
@@ -72,7 +72,7 @@ func (h *Handler) Create(c *gin.Context) {
 
 	g, err := h.service.Create(c.Request.Context(), tenantctx.FromContext(c, h.tenantID), &req)
 	if err != nil {
-		response.InternalError(c, "failed to create user group")
+		response.InternalError(c, "failed to create user group", err)
 		return
 	}
 
@@ -95,7 +95,7 @@ func (h *Handler) Get(c *gin.Context) {
 
 	count, err := h.service.CountMembers(c.Request.Context(), g.ID)
 	if err != nil {
-		response.InternalError(c, "failed to count members")
+		response.InternalError(c, "failed to count members", err)
 		return
 	}
 
@@ -118,13 +118,13 @@ func (h *Handler) Update(c *gin.Context) {
 
 	g, err := h.service.Update(c.Request.Context(), id, &req)
 	if err != nil {
-		response.InternalError(c, "failed to update user group")
+		response.InternalError(c, "failed to update user group", err)
 		return
 	}
 
 	count, err := h.service.CountMembers(c.Request.Context(), g.ID)
 	if err != nil {
-		response.InternalError(c, "failed to count members")
+		response.InternalError(c, "failed to count members", err)
 		return
 	}
 
@@ -147,7 +147,7 @@ func (h *Handler) Delete(c *gin.Context) {
 			response.Error(c, http.StatusConflict, 40901, err.Error(), "")
 			return
 		}
-		response.InternalError(c, "failed to delete user group")
+		response.InternalError(c, "failed to delete user group", err)
 		return
 	}
 
@@ -169,7 +169,7 @@ func (h *Handler) GetMembers(c *gin.Context) {
 			response.NotFound(c, 40401, "user group not found")
 			return
 		}
-		response.InternalError(c, "failed to get group members")
+		response.InternalError(c, "failed to get group members", err)
 		return
 	}
 
@@ -199,7 +199,7 @@ func (h *Handler) AddMember(c *gin.Context) {
 			response.NotFound(c, 40402, "user not found")
 			return
 		}
-		response.InternalError(c, "failed to add member")
+		response.InternalError(c, "failed to add member", err)
 		return
 	}
 
@@ -240,7 +240,7 @@ func (h *Handler) BatchAddMembers(c *gin.Context) {
 			response.NotFound(c, 40402, "user not found")
 			return
 		}
-		response.InternalError(c, "failed to add members")
+		response.InternalError(c, "failed to add members", err)
 		return
 	}
 
@@ -299,7 +299,7 @@ func (h *Handler) BatchRemoveMembers(c *gin.Context) {
 			response.NotFound(c, 40401, "user group not found")
 			return
 		}
-		response.InternalError(c, "failed to remove members")
+		response.InternalError(c, "failed to remove members", err)
 		return
 	}
 
@@ -329,12 +329,12 @@ func (h *Handler) GetRule(c *gin.Context) {
 			response.NotFound(c, 40401, "user group not found")
 			return
 		}
-		response.InternalError(c, "failed to get rule")
+		response.InternalError(c, "failed to get rule", err)
 		return
 	}
 	resp, err := toRuleResponse(rule)
 	if err != nil {
-		response.InternalError(c, "failed to decode rule: "+err.Error())
+		response.InternalError(c, "failed to decode rule: "+err.Error(), err)
 		return
 	}
 	response.OK(c, resp)
@@ -361,12 +361,12 @@ func (h *Handler) UpsertRule(c *gin.Context) {
 	rule, err := h.service.UpsertRule(c.Request.Context(), id, expr)
 	if err != nil {
 		// Initial sync failures still saved the rule; return 207-ish payload.
-		response.InternalError(c, "")
+		response.InternalError(c, "", err)
 		return
 	}
 	resp, derr := toRuleResponse(rule)
 	if derr != nil {
-		response.InternalError(c, "failed to decode rule: "+derr.Error())
+		response.InternalError(c, "failed to decode rule: "+derr.Error(), derr)
 		return
 	}
 	response.OK(c, resp)
@@ -381,7 +381,7 @@ func (h *Handler) DeleteRule(c *gin.Context) {
 		return
 	}
 	if err := h.service.DeleteRule(c.Request.Context(), id); err != nil {
-		response.InternalError(c, "failed to delete rule")
+		response.InternalError(c, "failed to delete rule", err)
 		return
 	}
 	response.OK(c, nil)

@@ -64,7 +64,7 @@ func (h *Handler) listForApp(c *gin.Context) {
 	}
 	rows, err := h.service.ListOwnByApp(c.Request.Context(), appID, h.tenantID(c))
 	if err != nil {
-		response.InternalError(c, "")
+		response.InternalError(c, "", err)
 		return
 	}
 	response.OK(c, h.toViews(c, rows))
@@ -106,7 +106,7 @@ func (h *Handler) listForAppGroup(c *gin.Context) {
 	}
 	rows, err := h.service.ListByAppGroup(c.Request.Context(), groupID, h.tenantID(c))
 	if err != nil {
-		response.InternalError(c, "")
+		response.InternalError(c, "", err)
 		return
 	}
 	response.OK(c, h.toViews(c, rows))
@@ -153,7 +153,7 @@ func (h *Handler) remove(c *gin.Context) {
 		return
 	}
 	if err := h.service.DeletePolicy(c.Request.Context(), policyID, h.tenantID(c)); err != nil {
-		response.InternalError(c, "")
+		response.InternalError(c, "", err)
 		return
 	}
 	response.OK(c, gin.H{"deleted": true})
