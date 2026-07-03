@@ -75,14 +75,14 @@ var detailSchemas = map[string]detailSchema{
 	event.LoginRisk:    {allow: []string{"user_id", "tenant_id", "ip", "user_agent", "reasons"}},
 	event.Logout:       {allow: []string{"user_id", "tenant_id", "session_id", "ip", "user_agent"}},
 
-	event.UserCreated:         {allow: []string{"user_id", "tenant_id", "username", "email", "display_name", "actor_id"}},
-	event.UserUpdated:         {allow: []string{"user_id", "tenant_id", "actor_id", "fields"}},
-	event.UserDeleted:         {allow: []string{"user_id", "tenant_id", "username", "actor_id"}},
-	event.UserLocked:          {allow: []string{"user_id", "tenant_id", "actor_id", "reason"}},
-	event.UserUnlocked:        {allow: []string{"user_id", "tenant_id", "actor_id"}},
-	event.UserPasswordChanged: {allow: []string{"user_id", "tenant_id", "actor_id", "method"}},
-	event.UserPIIView:         {allow: []string{"user_id", "target_id", "tenant_id", "fields"}},
-	event.UserSuperAdminGrant: {allow: []string{"user_id", "target_id", "tenant_id", "username"}},
+	event.UserCreated:          {allow: []string{"user_id", "tenant_id", "username", "email", "display_name", "actor_id"}},
+	event.UserUpdated:          {allow: []string{"user_id", "tenant_id", "actor_id", "fields"}},
+	event.UserDeleted:          {allow: []string{"user_id", "tenant_id", "username", "actor_id"}},
+	event.UserLocked:           {allow: []string{"user_id", "tenant_id", "actor_id", "reason"}},
+	event.UserUnlocked:         {allow: []string{"user_id", "tenant_id", "actor_id"}},
+	event.UserPasswordChanged:  {allow: []string{"user_id", "tenant_id", "actor_id", "method"}},
+	event.UserPIIView:          {allow: []string{"user_id", "target_id", "tenant_id", "fields"}},
+	event.UserSuperAdminGrant:  {allow: []string{"user_id", "target_id", "tenant_id", "username"}},
 	event.UserSuperAdminRevoke: {allow: []string{"user_id", "target_id", "tenant_id", "username"}},
 	event.UserOffboarded:       {allow: []string{"user_id", "tenant_id", "username", "actor_id", "sessions_killed"}},
 
@@ -146,6 +146,17 @@ var detailSchemas = map[string]detailSchema{
 	event.OIDCConsentGranted:    {allow: []string{"user_id", "tenant_id", "client_id", "app_id", "scope"}},
 	event.OIDCConsentRevoked:    {allow: []string{"user_id", "tenant_id", "client_id", "app_id", "actor_id"}},
 	event.OIDCBackchannelLogout: {allow: []string{"user_id", "tenant_id", "client_id", "app_id", "session_id"}},
+
+	// JIT privileged-access (temporary elevation) lifecycle. Literal event_type
+	// strings (not the access package consts) to keep audit free of a domain
+	// import; they mirror internal/domain/access/events.go.
+	"access.request.created":   {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "actor_id", "target_kind", "role_id", "app_id", "expires_at"}},
+	"access.request.approved":  {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "actor_id", "target_kind", "role_id", "app_id", "expires_at"}},
+	"access.request.rejected":  {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "actor_id", "target_kind", "role_id", "app_id"}},
+	"access.request.cancelled": {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "actor_id", "target_kind", "role_id", "app_id"}},
+	"access.grant.activated":   {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "actor_id", "target_kind", "role_id", "app_id", "expires_at"}},
+	"access.grant.expired":     {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "actor_id", "target_kind", "role_id", "app_id", "expires_at"}},
+	"access.grant.revoked":     {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "actor_id", "target_kind", "role_id", "app_id"}},
 }
 
 // projectDetail picks the schema-allowed subset of payload for the given

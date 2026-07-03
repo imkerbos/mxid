@@ -46,9 +46,40 @@ func (s *Store) TrackSSOApp(ctx context.Context, ssoSID string, appID int64, ttl
 	return err
 }
 
+// PeekSSOApps returns the app IDs an SSO session authenticated against WITHOUT
+// removing the tracking set. Use this for per-app JIT logout paths that must
+// inspect the set but leave it intact so a subsequent full logout
+// (LogoutUserBackchannel / endSession) can still fan out to all participating
+// RPs. Contrast with ListSSOApps which is destructive (consume-once).
+func (s *Store) PeekSSOApps(ctx context.Context, ssoSID string) ([]int64, error) {
+	if ssoSID == "" {
+		return nil, nil
+	}
+	key := ssoAppsPrefix + ssoSID
+	members, err := s.rdb.SMembers(ctx, key).Result()
+	if err != nil {
+		if err == redis.Nil {
+			return nil, nil
+		}
+		return nil, err
+	}
+	ids := make([]int64, 0, len(members))
+	for _, m := range members {
+		var id int64
+		_, _ = fmt.Sscanf(m, "%d", &id)
+		if id != 0 {
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
+}
+
 // ListSSOApps returns the app IDs an SSO session authenticated against, then
-// removes the tracking set. Called by end-session to drive back-channel
-// logout notifications.
+// removes the tracking set. DESTRUCTIVE: the Redis key is deleted after the
+// read. Called by end-session / offboarding (LogoutUserBackchannel) to drive
+// back-channel logout fan-out — those paths do not need the set to survive
+// because the session itself is being torn down. For non-terminal per-app
+// JIT logout, use PeekSSOApps instead.
 func (s *Store) ListSSOApps(ctx context.Context, ssoSID string) ([]int64, error) {
 	if ssoSID == "" {
 		return nil, nil

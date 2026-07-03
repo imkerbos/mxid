@@ -3,6 +3,7 @@ package authz
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 // Service answers "may this user perform this permission on this target?".
@@ -64,7 +65,16 @@ func (s *Service) Check(ctx context.Context, tenantID, userID int64, perm string
 		return false, fmt.Errorf("load effective bindings: %w", err)
 	}
 
+	now := time.Now()
 	for _, b := range binds {
+		// Final enforcement of time-bound (JIT) grant expiry. The DB resolver
+		// and cache-serialization carry ExpiresAt through, but cached decisions
+		// can lag the actual TTL by up to the sweeper interval (~30s). Skipping
+		// expired bindings here makes expiry immediate regardless of cache/
+		// sweeper timing. A nil ExpiresAt is a permanent binding — honor it.
+		if b.ExpiresAt != nil && b.ExpiresAt.Before(now) {
+			continue
+		}
 		if !s.bindingGrantsPerm(tenantID, b, perm) {
 			continue
 		}

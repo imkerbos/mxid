@@ -13,18 +13,32 @@ import (
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"github.com/imkerbos/mxid/pkg/urlswap"
+	"go.uber.org/zap"
 )
+
+// httpDoer is the minimal HTTP interface used by SingleLogout so tests can
+// substitute a plain http.Client while production always uses the SSRF-safe
+// casLogoutClient package var.
+type httpDoer interface {
+	Do(*http.Request) (*http.Response, error)
+}
 
 // Handler serves CAS protocol endpoints.
 type Handler struct {
-	issuer      string
-	portalURL   string
-	urlProvider urlswap.Provider
-	appRes      resolver.AppResolver
-	idRes       resolver.IdentityResolver
-	sessRes     resolver.SessionResolver
-	tenantRes   resolver.TenantResolver
-	store       *TicketStore
+	issuer          string
+	portalURL       string
+	urlProvider     urlswap.Provider
+	appRes          resolver.AppResolver
+	idRes           resolver.IdentityResolver
+	sessRes         resolver.SessionResolver
+	tenantRes       resolver.TenantResolver
+	store           *TicketStore
+	serviceRegistry *ServiceRegistry
+	logger          *zap.Logger
+	// backchannelClient overrides the package-level casLogoutClient when
+	// non-nil. Used in tests so an httptest SP on loopback can receive SLO
+	// POSTs; production always uses the SSRF-safe client.
+	backchannelClient httpDoer
 }
 
 // SetURLProvider installs the runtime URL lookup. nil = stick with
@@ -49,15 +63,22 @@ func NewHandler(
 	sessRes resolver.SessionResolver,
 	tenantRes resolver.TenantResolver,
 	store *TicketStore,
+	serviceRegistry *ServiceRegistry,
+	logger *zap.Logger,
 ) *Handler {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
 	return &Handler{
-		issuer:    issuer,
-		portalURL: portalURL,
-		appRes:    appRes,
-		idRes:     idRes,
-		sessRes:   sessRes,
-		tenantRes: tenantRes,
-		store:     store,
+		issuer:          issuer,
+		portalURL:       portalURL,
+		appRes:          appRes,
+		idRes:           idRes,
+		sessRes:         sessRes,
+		tenantRes:       tenantRes,
+		store:           store,
+		serviceRegistry: serviceRegistry,
+		logger:          logger,
 	}
 }
 
@@ -267,36 +288,56 @@ func (h *Handler) doServiceValidate(c *gin.Context, includeAttributes bool) {
 		return
 	}
 
+	// Resolve the app to get its numeric ID for the service registry.
+	// appCode is always present on this route (/:app_code/serviceValidate).
+	appCode := c.Param("app_code")
+	app, appErr := h.appRes.GetApp(c.Request.Context(), appCode)
+
+	// Parse app protocol config once; reused for registry TTL and attributes.
+	var casCfg *CASConfig
+	if appErr == nil && app != nil {
+		casCfg = h.parseCASConfig(app.ProtocolConfig)
+	}
+
+	// Record the validated service in the per-user registry so L5 (SLO) can
+	// fan-out back-channel logout to every service the user authenticated to.
+	// Use a fixed TTL (casSLORegistryTTL = 8d) instead of deriving from the
+	// service-ticket TTL: the ticket TTL is O(seconds) but a JIT grant can
+	// live up to 7 days, and we must be able to find the service at SLO time.
+	// Best-effort: a registry failure must not break the ticket validation.
+	if h.serviceRegistry != nil && casCfg != nil {
+		_ = h.serviceRegistry.RecordService(c.Request.Context(), st.UserID, app.ID, service, ticket, casSLORegistryTTL)
+	}
+
 	success := &AuthenticationSuccess{
 		User: st.Username,
 	}
 
 	// CAS 3.0: include user attributes
-	if includeAttributes {
-		appCode := c.Param("app_code")
-		app, err := h.appRes.GetApp(c.Request.Context(), appCode)
-		if err == nil && app != nil {
-			casCfg := h.parseCASConfig(app.ProtocolConfig)
-			// Pin the ticket's tenant so the user read is tenant-scoped.
-			c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), st.TenantID))
-			user, err := h.idRes.ResolveUser(c.Request.Context(), st.UserID)
-			if err == nil {
-				attrs := h.buildAttributes(casCfg, user)
-				// Inject tenant_code so consumers can disambiguate users
-				// from different tenants when this is a shared app.
-				if h.tenantRes != nil && user.TenantID > 0 {
-					if tc, _ := h.tenantRes.GetTenantCode(c.Request.Context(), user.TenantID); tc != "" {
-						attrs.Items = append(attrs.Items, AttributeItem{
-							Name:  "tenant_code",
-							Value: tc,
-						})
-					}
-				}
-				if len(attrs.Items) > 0 {
-					success.Attributes = attrs
+	if includeAttributes && casCfg != nil {
+		// Pin the ticket's tenant so the user read is tenant-scoped.
+		c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), st.TenantID))
+		user, err := h.idRes.ResolveUser(c.Request.Context(), st.UserID)
+		if err == nil {
+			attrs := h.buildAttributes(casCfg, user)
+			// Inject tenant_code so consumers can disambiguate users
+			// from different tenants when this is a shared app.
+			if h.tenantRes != nil && user.TenantID > 0 {
+				if tc, _ := h.tenantRes.GetTenantCode(c.Request.Context(), user.TenantID); tc != "" {
+					attrs.Items = append(attrs.Items, AttributeItem{
+						Name:  "tenant_code",
+						Value: tc,
+					})
 				}
 			}
+			if len(attrs.Items) > 0 {
+				success.Attributes = attrs
+			}
 		}
+	} else if includeAttributes {
+		// appErr != nil or app == nil — attributes silently omitted; ticket
+		// validation itself still succeeds.
+		_ = appErr
 	}
 
 	resp := &ServiceResponse{
