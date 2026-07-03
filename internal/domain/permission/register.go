@@ -40,7 +40,7 @@ func RegisterEffectiveRolesRoute(app *bootstrap.App, svc *Service, groups GroupL
 		}
 		items, err := svc.EffectiveRolesForUser(c.Request.Context(), tenantID, uid, groups, orgs)
 		if err != nil {
-			response.InternalError(c, "list effective roles: "+err.Error())
+			response.InternalError(c, "list effective roles: "+err.Error(), err)
 			return
 		}
 		response.OK(c, items)

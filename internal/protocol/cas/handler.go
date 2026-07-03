@@ -141,7 +141,7 @@ func (h *Handler) login(c *gin.Context) {
 	// User authenticated — resolve user and issue ticket
 	user, err := h.idRes.ResolveUser(c.Request.Context(), ssoSess.UserID)
 	if err != nil {
-		response.InternalError(c, "failed to resolve user")
+		response.InternalError(c, "failed to resolve user", err)
 		return
 	}
 
@@ -174,7 +174,7 @@ func (h *Handler) login(c *gin.Context) {
 		casCfg.TicketTTL,
 	)
 	if err != nil {
-		response.InternalError(c, "failed to create service ticket")
+		response.InternalError(c, "failed to create service ticket", err)
 		return
 	}
 

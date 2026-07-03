@@ -1020,7 +1020,7 @@ func (h *Handler) userinfo(c *gin.Context) {
 func (h *Handler) jwks(c *gin.Context) {
 	certs, err := h.appRes.ListAllActiveSigningCerts(c.Request.Context())
 	if err != nil {
-		response.InternalError(c, "failed to load jwks")
+		response.InternalError(c, "failed to load jwks", err)
 		return
 	}
 	keys := make([]gin.H, 0, len(certs))

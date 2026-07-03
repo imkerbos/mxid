@@ -221,7 +221,7 @@ func (h *Handler) captchaHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		captcha, err := h.captchaSvc.Generate()
 		if err != nil {
-			response.InternalError(c, "failed to generate captcha")
+			response.InternalError(c, "failed to generate captcha", err)
 			return
 		}
 		response.OK(c, captcha)
@@ -463,7 +463,7 @@ func (h *Handler) logoutHandler(namespace, cookieName string) gin.HandlerFunc {
 
 		meta := LogoutMeta{TenantID: tenantID, IP: c.ClientIP(), UserAgent: c.Request.UserAgent()}
 		if err := h.engine.Logout(c.Request.Context(), namespace, sessionID, userID, meta); err != nil {
-			response.InternalError(c, "logout failed")
+			response.InternalError(c, "logout failed", err)
 			return
 		}
 
@@ -512,7 +512,7 @@ func (h *Handler) meHandler(namespace, cookieName string) gin.HandlerFunc {
 
 		userInfo, err := h.engine.GetCurrentUser(c.Request.Context(), sess.UserID)
 		if err != nil {
-			response.InternalError(c, "failed to get user info")
+			response.InternalError(c, "failed to get user info", err)
 			return
 		}
 
@@ -592,7 +592,7 @@ func (h *Handler) ssoHandler(targetNS, targetCookie string, requireAdmin bool, s
 			src.AuthType,
 		)
 		if err != nil {
-			response.InternalError(c, "failed to establish session")
+			response.InternalError(c, "failed to establish session", err)
 			return
 		}
 
@@ -637,7 +637,7 @@ func (h *Handler) stepUpHandler() gin.HandlerFunc {
 		}
 
 		if err := h.engine.SessionManager().MarkMFAVerified(c.Request.Context(), session.NamespaceConsole, sid); err != nil {
-			response.InternalError(c, "failed to record mfa verification")
+			response.InternalError(c, "failed to record mfa verification", err)
 			return
 		}
 		response.OK(c, nil)
@@ -762,11 +762,11 @@ func (h *Handler) handleAuthError(c *gin.Context, err error) {
 		}
 		response.Error(c, http.StatusTooManyRequests, 42901, "mfa rate limited", err.Error())
 	case errors.Is(err, ErrMFANotConfigured):
-		response.InternalError(c, "mfa not configured")
+		response.InternalError(c, "mfa not configured", err)
 	case errors.Is(err, ErrUnknownProvider):
 		response.BadRequest(c, 40002, "unsupported auth type")
 	default:
-		response.InternalError(c, "authentication error")
+		response.InternalError(c, "authentication error", err)
 	}
 }
 

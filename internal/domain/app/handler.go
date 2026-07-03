@@ -525,7 +525,7 @@ func (h *Handler) GetTemplate(c *gin.Context) {
 			response.NotFound(c, 40407, "template not found")
 			return
 		}
-		response.InternalError(c, err.Error())
+		response.InternalError(c, err.Error(), err)
 		return
 	}
 	response.OK(c, tpl)
@@ -553,7 +553,7 @@ func (h *Handler) handleServiceError(c *gin.Context, err error) {
 	case errors.Is(err, ErrInvalidClientType):
 		response.BadRequest(c, 40010, err.Error())
 	default:
-		response.InternalError(c, "internal server error")
+		response.InternalError(c, "internal server error", err)
 	}
 }
 

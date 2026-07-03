@@ -56,7 +56,7 @@ func (h *Handler) Get(c *gin.Context) {
 	}
 	v, err := h.svc.Get(c.Request.Context(), appID)
 	if err != nil {
-		response.InternalError(c, "load provisioning config failed")
+		response.InternalError(c, "load provisioning config failed", err)
 		return
 	}
 	response.OK(c, v)
@@ -89,7 +89,7 @@ func (h *Handler) Put(c *gin.Context) {
 		BaseURL:   req.BaseURL,
 		Token:     req.Token,
 	}); err != nil {
-		response.InternalError(c, "save provisioning config failed")
+		response.InternalError(c, "save provisioning config failed", err)
 		return
 	}
 	response.OK(c, gin.H{"saved": true})

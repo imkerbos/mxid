@@ -29,7 +29,7 @@ func NewHandler(service *Service, tenantID int64) *Handler {
 func (h *Handler) GetTree(c *gin.Context) {
 	tree, err := h.service.GetTree(c.Request.Context(), tenantctx.FromContext(c, h.tenantID))
 	if err != nil {
-		response.InternalError(c, "failed to get organization tree")
+		response.InternalError(c, "failed to get organization tree", err)
 		return
 	}
 	response.OK(c, tree)
@@ -45,7 +45,7 @@ func (h *Handler) Create(c *gin.Context) {
 
 	org, err := h.service.Create(c.Request.Context(), tenantctx.FromContext(c, h.tenantID), &req)
 	if err != nil {
-		response.InternalError(c, "failed to create organization")
+		response.InternalError(c, "failed to create organization", err)
 		return
 	}
 
@@ -85,7 +85,7 @@ func (h *Handler) Update(c *gin.Context) {
 
 	org, err := h.service.Update(c.Request.Context(), id, &req)
 	if err != nil {
-		response.InternalError(c, "failed to update organization")
+		response.InternalError(c, "failed to update organization", err)
 		return
 	}
 
@@ -105,7 +105,7 @@ func (h *Handler) Delete(c *gin.Context) {
 			response.Error(c, http.StatusForbidden, 40301, err.Error(), "")
 			return
 		}
-		response.InternalError(c, "failed to delete organization")
+		response.InternalError(c, "failed to delete organization", err)
 		return
 	}
 
@@ -127,7 +127,7 @@ func (h *Handler) Move(c *gin.Context) {
 	}
 
 	if err := h.service.Move(c.Request.Context(), id, &req); err != nil {
-		response.InternalError(c, "failed to move organization")
+		response.InternalError(c, "failed to move organization", err)
 		return
 	}
 
@@ -149,7 +149,7 @@ func (h *Handler) GetMembers(c *gin.Context) {
 			response.NotFound(c, 40401, "organization not found")
 			return
 		}
-		response.InternalError(c, "failed to get organization members")
+		response.InternalError(c, "failed to get organization members", err)
 		return
 	}
 
@@ -179,7 +179,7 @@ func (h *Handler) AddMember(c *gin.Context) {
 			response.NotFound(c, 40402, "user not found")
 			return
 		}
-		response.InternalError(c, "failed to add member")
+		response.InternalError(c, "failed to add member", err)
 		return
 	}
 
@@ -205,7 +205,7 @@ func (h *Handler) RemoveMember(c *gin.Context) {
 			response.NotFound(c, 40401, "organization not found")
 			return
 		}
-		response.InternalError(c, "failed to remove member")
+		response.InternalError(c, "failed to remove member", err)
 		return
 	}
 
