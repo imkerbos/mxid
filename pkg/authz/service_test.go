@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 )
 
 // stubProvider lets each test fully script the binding set returned by the
@@ -188,6 +189,43 @@ func TestPermissionsForUser_UnionsAcrossBindings(t *testing.T) {
 		if _, ok := perms[want]; !ok {
 			t.Errorf("missing permission %q in %v", want, perms)
 		}
+	}
+}
+
+func TestCheck_ExpiredBindingIsNotGranted(t *testing.T) {
+	past := time.Now().Add(-1 * time.Minute)
+	future := time.Now().Add(1 * time.Hour)
+
+	// Past-expiry binding must be skipped in the decision loop even when the
+	// (faked) provider/cache still returns it — this is the final enforcement
+	// layer against cache/sweeper lag on JIT temporary grants.
+	expired := newSvc([]EffectiveBinding{{
+		Permissions: map[string]struct{}{"console.read": {}},
+		ScopeType:   ScopeGlobal,
+		ExpiresAt:   &past,
+	}}, nil)
+	if ok, err := expired.Check(context.Background(), 1, 1, "console.read", nil); ok || err != nil {
+		t.Errorf("expired binding must NOT be granted, got ok=%v err=%v", ok, err)
+	}
+
+	// nil ExpiresAt = permanent binding → must still be granted.
+	permanent := newSvc([]EffectiveBinding{{
+		Permissions: map[string]struct{}{"console.read": {}},
+		ScopeType:   ScopeGlobal,
+		ExpiresAt:   nil,
+	}}, nil)
+	if ok, err := permanent.Check(context.Background(), 1, 1, "console.read", nil); !ok || err != nil {
+		t.Errorf("permanent (nil-expiry) binding must be granted, got ok=%v err=%v", ok, err)
+	}
+
+	// Future ExpiresAt = still-valid JIT grant → must be granted.
+	valid := newSvc([]EffectiveBinding{{
+		Permissions: map[string]struct{}{"console.read": {}},
+		ScopeType:   ScopeGlobal,
+		ExpiresAt:   &future,
+	}}, nil)
+	if ok, err := valid.Check(context.Background(), 1, 1, "console.read", nil); !ok || err != nil {
+		t.Errorf("future-expiry binding must be granted, got ok=%v err=%v", ok, err)
 	}
 }
 

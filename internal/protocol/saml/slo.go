@@ -61,7 +61,22 @@ func buildLogoutResponseRedirect(destination, issuer, inResponseTo, relayState s
 		return "", fmt.Errorf("marshal LogoutResponse: %w", err)
 	}
 
-	// DEFLATE (raw, no zlib header) + base64 — HTTP-Redirect binding.
+	q, err := signRedirectQuery("SAMLResponse", xmlBytes, relayState, key)
+	if err != nil {
+		return "", err
+	}
+
+	sep := "?"
+	if strings.Contains(destination, "?") {
+		sep = "&"
+	}
+	return destination + sep + q, nil
+}
+
+// deflateBase64 applies the HTTP-Redirect binding payload encoding: raw DEFLATE
+// (no zlib header) followed by standard base64. Shared by the LogoutResponse and
+// LogoutRequest redirect builders.
+func deflateBase64(xmlBytes []byte) (string, error) {
 	var deflated bytes.Buffer
 	fw, _ := flate.NewWriter(&deflated, flate.DefaultCompression)
 	if _, err := fw.Write(xmlBytes); err != nil {
@@ -70,13 +85,23 @@ func buildLogoutResponseRedirect(destination, issuer, inResponseTo, relayState s
 	if err := fw.Close(); err != nil {
 		return "", err
 	}
-	samlResponse := base64.StdEncoding.EncodeToString(deflated.Bytes())
+	return base64.StdEncoding.EncodeToString(deflated.Bytes()), nil
+}
 
-	// Octet string to sign, in the exact order the binding mandates:
-	// SAMLResponse, RelayState (if present), SigAlg — each individually
-	// URL-encoded. The SP recomputes this string to verify, so order and
-	// encoding must match byte-for-byte.
-	q := "SAMLResponse=" + url.QueryEscape(samlResponse)
+// signRedirectQuery builds the signed HTTP-Redirect binding query string for a
+// SAML message. paramName is "SAMLResponse" (IdP answering an SP) or
+// "SAMLRequest" (IdP-initiated LogoutRequest). Per SAML bindings §3.4.4.1 the
+// RSA-SHA256 signature covers the URL-encoded octet string {paramName,
+// RelayState?, SigAlg} in that exact order — NOT an enveloped XML signature — so
+// the SP can recompute it byte-for-byte. The returned query already includes the
+// trailing Signature param.
+func signRedirectQuery(paramName string, xmlBytes []byte, relayState string, key *rsa.PrivateKey) (string, error) {
+	encoded, err := deflateBase64(xmlBytes)
+	if err != nil {
+		return "", err
+	}
+
+	q := paramName + "=" + url.QueryEscape(encoded)
 	if relayState != "" {
 		q += "&RelayState=" + url.QueryEscape(relayState)
 	}
@@ -85,9 +110,52 @@ func buildLogoutResponseRedirect(destination, issuer, inResponseTo, relayState s
 	sum := sha256.Sum256([]byte(q))
 	sig, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, sum[:])
 	if err != nil {
-		return "", fmt.Errorf("sign LogoutResponse: %w", err)
+		return "", fmt.Errorf("sign %s: %w", paramName, err)
 	}
 	q += "&Signature=" + url.QueryEscape(base64.StdEncoding.EncodeToString(sig))
+	return q, nil
+}
+
+// buildLogoutRequestRedirect assembles an IdP-initiated SAML LogoutRequest and
+// returns the SP SLO URL carrying the HTTP-Redirect binding query (SAMLRequest +
+// SigAlg + Signature). It addresses one specific SP session via NameID +
+// SessionIndex (captured at SSO time and stored in the SessionIndexStore).
+//
+// crewjam/saml models only the SP side of SLO, so — as with the LogoutResponse
+// builder above — the LogoutRequest XML is hand-built from its schema type and
+// signed via the redirect-binding query signature rather than an enveloped XML
+// signature.
+func buildLogoutRequestRedirect(destination, issuer, nameID, nameIDFormat, sessionIndex string, key *rsa.PrivateKey) (string, error) {
+	if nameIDFormat == "" {
+		nameIDFormat = NameIDEmail
+	}
+	req := crewjam.LogoutRequest{
+		ID:           fmt.Sprintf("id-%s", randomHex(20)),
+		Version:      "2.0",
+		IssueInstant: time.Now().UTC(),
+		Destination:  destination,
+		Issuer: &crewjam.Issuer{
+			Format: "urn:oasis:names:tc:SAML:2.0:nameid-format:entity",
+			Value:  issuer,
+		},
+		NameID: &crewjam.NameID{
+			Format: nameIDFormat,
+			Value:  nameID,
+		},
+		SessionIndex: &crewjam.SessionIndex{Value: sessionIndex},
+	}
+
+	doc := etree.NewDocument()
+	doc.SetRoot(req.Element())
+	xmlBytes, err := doc.WriteToBytes()
+	if err != nil {
+		return "", fmt.Errorf("marshal LogoutRequest: %w", err)
+	}
+
+	q, err := signRedirectQuery("SAMLRequest", xmlBytes, "", key)
+	if err != nil {
+		return "", err
+	}
 
 	sep := "?"
 	if strings.Contains(destination, "?") {

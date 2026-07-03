@@ -13,6 +13,7 @@ import AppsPage from './pages/apps'
 import IDPsPage from './pages/idps'
 import TenantsPage from './pages/tenants'
 import PermissionsPage from './pages/permissions'
+import AccessApprovalsPage from './pages/access-approvals'
 import AuditPage from './pages/audit'
 import OffboardingPage from './pages/offboarding'
 import DocsPage from './pages/docs'
@@ -21,6 +22,7 @@ import SettingsLayout from './pages/settings/SettingsLayout'
 import MailSMTPPage from './pages/settings/MailSMTP'
 import SecurityPage from './pages/settings/Security'
 import SystemVersionPage from './pages/settings/SystemVersion'
+import AccessEligibilityPage from './pages/settings/AccessEligibility'
 import {
   BrandingPage,
   LoginMethodsPage,
@@ -106,6 +108,7 @@ export default function App() {
                 <Route path="/idps" element={<IDPsPage />} />
                 <Route path="/tenants" element={<TenantsPage />} />
                 <Route path="/permissions" element={<PermissionsPage />} />
+                <Route path="/access-approvals" element={<AccessApprovalsPage />} />
                 <Route path="/audit" element={<AuditPage />} />
                 <Route path="/offboarding" element={<OffboardingPage />} />
                 <Route path="/docs" element={<DocsPage />} />
@@ -127,6 +130,7 @@ export default function App() {
                   <Route path="license" element={<LicensePage />} />
                   <Route path="external-urls" element={<ExternalURLsPage />} />
                   <Route path="system-version" element={<SystemVersionPage />} />
+                  <Route path="access-eligibility" element={<AccessEligibilityPage />} />
                 </Route>
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Routes>
