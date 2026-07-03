@@ -13,7 +13,7 @@ import type {
   AppRole, AppRoleBinding, AppRoleSubjectType, AppRoleOwner,
   Group, User as UserT, OrgNode, Role,
 } from '@mxid/shared'
-import { Field, Input, Select, Button, Textarea } from '../../components/ui'
+import { Field, Input, Select, Button, Textarea, ConfirmDialog } from '../../components/ui'
 import { toast, extractMessage } from '../../components/ui/toast'
 
 export default function AppRolesTab({
@@ -30,6 +30,10 @@ export default function AppRolesTab({
   const [showRoleForm, setShowRoleForm] = useState(false)
   const [editingRole, setEditingRole] = useState<AppRole | null>(null)
   const [showBindForm, setShowBindForm] = useState(false)
+  const [delRole, setDelRole] = useState<AppRole | null>(null)
+  const [deletingRole, setDeletingRole] = useState(false)
+  const [delBinding, setDelBinding] = useState<AppRoleBinding | null>(null)
+  const [deletingBinding, setDeletingBinding] = useState(false)
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -51,25 +55,35 @@ export default function AppRolesTab({
     reload()
   }, [reload])
 
-  const handleDeleteRole = async (r: AppRole) => {
-    if (!confirm(t('apps.roles.confirmDeleteRole', { name: r.name, code: r.code }))) return
+  const confirmDeleteRole = async () => {
+    const r = delRole
+    if (!r) return
+    setDeletingRole(true)
     try {
       await appRoleApi.deleteRole(owner, ownerId, r.id)
+      setDelRole(null)
       toast.success(t("common.success"))
       reload()
     } catch (e) {
       toast.error(t("common.failed"), extractMessage(e))
+    } finally {
+      setDeletingRole(false)
     }
   }
 
-  const handleDeleteBinding = async (b: AppRoleBinding) => {
-    if (!confirm(t('apps.roles.confirmDeleteBinding'))) return
+  const confirmDeleteBinding = async () => {
+    const b = delBinding
+    if (!b) return
+    setDeletingBinding(true)
     try {
       await appRoleApi.deleteBinding(owner, ownerId, b.id)
+      setDelBinding(null)
       toast.success(t("common.success"))
       reload()
     } catch (e) {
       toast.error(t("common.failed"), extractMessage(e))
+    } finally {
+      setDeletingBinding(false)
     }
   }
 
@@ -125,7 +139,7 @@ export default function AppRolesTab({
                   <button onClick={() => { setEditingRole(r); setShowRoleForm(true) }} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title={t('common.edit')}>
                     <Edit2 className="h-3.5 w-3.5" />
                   </button>
-                  <button onClick={() => handleDeleteRole(r)} className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-500" title={t('common.delete')}>
+                  <button onClick={() => setDelRole(r)} className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-500" title={t('common.delete')}>
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -152,7 +166,7 @@ export default function AppRolesTab({
         ) : (
           <div className="space-y-2">
             {bindings.map((b) => (
-              <BindingRow key={b.id} binding={b} onDelete={handleDeleteBinding} />
+              <BindingRow key={b.id} binding={b} onDelete={setDelBinding} />
             ))}
           </div>
         )}
@@ -176,6 +190,22 @@ export default function AppRolesTab({
           onSaved={() => { setShowBindForm(false); reload() }}
         />
       )}
+
+      <ConfirmDialog
+        open={!!delRole}
+        title={t('apps.roles.confirmDeleteRole', { name: delRole?.name ?? '', code: delRole?.code ?? '' })}
+        desc={t('common.cantUndo')}
+        loading={deletingRole}
+        onConfirm={confirmDeleteRole}
+        onCancel={() => setDelRole(null)}
+      />
+      <ConfirmDialog
+        open={!!delBinding}
+        title={t('apps.roles.confirmDeleteBinding')}
+        loading={deletingBinding}
+        onConfirm={confirmDeleteBinding}
+        onCancel={() => setDelBinding(null)}
+      />
     </div>
   )
 }

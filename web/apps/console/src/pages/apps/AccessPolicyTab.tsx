@@ -10,7 +10,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Plus, Trash2, Loader2, ShieldCheck, ShieldOff, Globe2, UsersRound, User, Building2, Crown } from 'lucide-react'
 import { appAccessApi, groupApi, userApi, orgApi, permissionApi, cn, useTranslation } from '@mxid/shared'
 import type { AccessPolicy, AccessSubjectType, AccessEffect, AccessOwner, Group, User as UserT, OrgNode, Role } from '@mxid/shared'
-import { Field, Select, Button, Tag } from '../../components/ui'
+import { Field, Select, Button, Tag, ConfirmDialog } from '../../components/ui'
 import { toast } from '../../components/ui/toast'
 
 export default function AccessPolicyTab({
@@ -24,6 +24,8 @@ export default function AccessPolicyTab({
   const [list, setList] = useState<AccessPolicy[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
+  const [delPolicy, setDelPolicy] = useState<AccessPolicy | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -41,15 +43,20 @@ export default function AccessPolicyTab({
     reload()
   }, [reload])
 
-  const handleDelete = async (p: AccessPolicy) => {
-    if (!confirm(t('apps.access.confirmDelete', { label: policyLabel(p, t) }))) return
+  const confirmDelete = async () => {
+    const p = delPolicy
+    if (!p) return
+    setDeleting(true)
     try {
       await appAccessApi.remove(owner, ownerId, p.id)
+      setDelPolicy(null)
       toast.success(t("common.success"))
       reload()
     } catch (e) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
       toast.error(t("common.failed"), msg)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -85,7 +92,7 @@ export default function AccessPolicyTab({
       ) : (
         <div className="space-y-2">
           {list.map((p) => (
-            <PolicyRow key={p.id} policy={p} onDelete={handleDelete} />
+            <PolicyRow key={p.id} policy={p} onDelete={setDelPolicy} />
           ))}
         </div>
       )}
@@ -101,6 +108,14 @@ export default function AccessPolicyTab({
           }}
         />
       )}
+
+      <ConfirmDialog
+        open={!!delPolicy}
+        title={t('apps.access.confirmDelete', { label: delPolicy ? policyLabel(delPolicy, t) : '' })}
+        loading={deleting}
+        onConfirm={confirmDelete}
+        onCancel={() => setDelPolicy(null)}
+      />
     </div>
   )
 }

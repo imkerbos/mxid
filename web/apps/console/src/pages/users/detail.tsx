@@ -38,7 +38,7 @@ import type {
 } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
 import { useTabParam } from '../../hooks/useTabParam'
-import { Field, pageMotion, Button } from '../../components/ui'
+import { Field, pageMotion, Button, ConfirmDialog } from '../../components/ui'
 import { toast, extractMessage } from '../../components/ui/toast'
 
 type Tab = 'basic' | 'detail' | 'groups' | 'roles' | 'identities' | 'mfa' | 'sessions' | 'history'
@@ -522,6 +522,7 @@ function IdentitiesTab({ userID }: { userID: string }) {
   const [items, setItems] = useState<UserIdentity[]>([])
   const [loading, setLoading] = useState(true)
   const [removingID, setRemovingID] = useState<string | null>(null)
+  const [delIdentity, setDelIdentity] = useState<UserIdentity | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -537,8 +538,10 @@ function IdentitiesTab({ userID }: { userID: string }) {
     load()
   }, [load])
 
-  const unbind = async (it: UserIdentity) => {
-    if (!confirm(t('users.detail.identitiesTab.confirmUnbind', { provider: it.provider_type }))) return
+  const confirmUnbind = async () => {
+    const it = delIdentity
+    if (!it) return
+    setDelIdentity(null)
     setRemovingID(it.id)
     try {
       await userApi.unbindIdentity(userID, it.id)
@@ -572,7 +575,7 @@ function IdentitiesTab({ userID }: { userID: string }) {
             <p className="mt-0.5 text-xs text-gray-400">{t('users.detail.identitiesTab.boundAt', { date: formatDate(it.created_at) })}</p>
           </div>
           <button
-            onClick={() => unbind(it)}
+            onClick={() => setDelIdentity(it)}
             disabled={removingID === it.id}
             className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-gray-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
           >
@@ -581,6 +584,14 @@ function IdentitiesTab({ userID }: { userID: string }) {
           </button>
         </div>
       ))}
+
+      <ConfirmDialog
+        open={!!delIdentity}
+        title={t('users.detail.identitiesTab.confirmUnbind', { provider: delIdentity?.provider_type ?? '' })}
+        loading={removingID === delIdentity?.id}
+        onConfirm={confirmUnbind}
+        onCancel={() => setDelIdentity(null)}
+      />
     </div>
   )
 }
@@ -592,6 +603,7 @@ function MFATab({ userID }: { userID: string }) {
   const [items, setItems] = useState<UserMFA[]>([])
   const [loading, setLoading] = useState(true)
   const [removing, setRemoving] = useState<string | null>(null)
+  const [delMfa, setDelMfa] = useState<UserMFA | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -607,8 +619,10 @@ function MFATab({ userID }: { userID: string }) {
     load()
   }, [load])
 
-  const remove = async (m: UserMFA) => {
-    if (!confirm(t('users.detail.mfaTab.confirmRemove', { type: m.type.toUpperCase() }))) return
+  const confirmRemove = async () => {
+    const m = delMfa
+    if (!m) return
+    setDelMfa(null)
     setRemoving(m.type)
     try {
       await userApi.deleteMFA(userID, m.type)
@@ -645,7 +659,7 @@ function MFATab({ userID }: { userID: string }) {
             </div>
           </div>
           <button
-            onClick={() => remove(m)}
+            onClick={() => setDelMfa(m)}
             disabled={removing === m.type}
             className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-gray-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
           >
@@ -654,6 +668,14 @@ function MFATab({ userID }: { userID: string }) {
           </button>
         </div>
       ))}
+
+      <ConfirmDialog
+        open={!!delMfa}
+        title={t('users.detail.mfaTab.confirmRemove', { type: delMfa?.type.toUpperCase() ?? '' })}
+        loading={removing === delMfa?.type}
+        onConfirm={confirmRemove}
+        onCancel={() => setDelMfa(null)}
+      />
     </div>
   )
 }
@@ -723,8 +745,9 @@ function LockButton({ userID, onDone }: { userID: string; onDone: () => void }) 
 function UnlockButton({ userID, onDone }: { userID: string; onDone: () => void }) {
   const { t } = useTranslation()
   const [busy, setBusy] = useState(false)
-  const submit = async () => {
-    if (!confirm(t('users.detail.unlock.confirm'))) return
+  const [confirming, setConfirming] = useState(false)
+  const doUnlock = async () => {
+    setConfirming(false)
     setBusy(true)
     try {
       await userApi.unlock(userID)
@@ -734,14 +757,24 @@ function UnlockButton({ userID, onDone }: { userID: string; onDone: () => void }
     }
   }
   return (
-    <button
-      onClick={submit}
-      disabled={busy}
-      className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
-    >
-      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <LockOpen className="h-4 w-4" />}
-      {t('users.detail.unlock.button')}
-    </button>
+    <>
+      <button
+        onClick={() => setConfirming(true)}
+        disabled={busy}
+        className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+      >
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <LockOpen className="h-4 w-4" />}
+        {t('users.detail.unlock.button')}
+      </button>
+      <ConfirmDialog
+        open={confirming}
+        title={t('users.detail.unlock.confirm')}
+        danger={false}
+        loading={busy}
+        onConfirm={doUnlock}
+        onCancel={() => setConfirming(false)}
+      />
+    </>
   )
 }
 
@@ -856,6 +889,8 @@ function SessionsTab({ userID }: { userID: string }) {
   const [loading, setLoading] = useState(true)
   const [revoking, setRevoking] = useState<string | null>(null)
   const [revokingAll, setRevokingAll] = useState(false)
+  const [delSession, setDelSession] = useState<UserSession | null>(null)
+  const [showRevokeAll, setShowRevokeAll] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -871,8 +906,10 @@ function SessionsTab({ userID }: { userID: string }) {
     load()
   }, [load])
 
-  const revokeOne = async (s: UserSession) => {
-    if (!confirm(t('users.detail.sessionsTab.confirmRevokeOne', { namespace: s.namespace }))) return
+  const confirmRevokeOne = async () => {
+    const s = delSession
+    if (!s) return
+    setDelSession(null)
     setRevoking(s.id)
     try {
       await userApi.revokeSession(userID, s.namespace, s.id)
@@ -882,8 +919,8 @@ function SessionsTab({ userID }: { userID: string }) {
     }
   }
 
-  const revokeAll = async () => {
-    if (!confirm(t('users.detail.sessionsTab.confirmRevokeAll'))) return
+  const confirmRevokeAll = async () => {
+    setShowRevokeAll(false)
     setRevokingAll(true)
     try {
       await userApi.revokeAllSessions(userID)
@@ -899,7 +936,7 @@ function SessionsTab({ userID }: { userID: string }) {
     <div className="space-y-3">
       <div className="flex justify-end">
         <button
-          onClick={revokeAll}
+          onClick={() => setShowRevokeAll(true)}
           disabled={revokingAll}
           className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-60"
         >
@@ -922,7 +959,7 @@ function SessionsTab({ userID }: { userID: string }) {
               </p>
             </div>
             <button
-              onClick={() => revokeOne(s)}
+              onClick={() => setDelSession(s)}
               disabled={revoking === s.id}
               className="ml-3 inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-gray-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
             >
@@ -932,6 +969,21 @@ function SessionsTab({ userID }: { userID: string }) {
           </div>
         </div>
       ))}
+
+      <ConfirmDialog
+        open={!!delSession}
+        title={t('users.detail.sessionsTab.confirmRevokeOne', { namespace: delSession?.namespace ?? '' })}
+        loading={revoking === delSession?.id}
+        onConfirm={confirmRevokeOne}
+        onCancel={() => setDelSession(null)}
+      />
+      <ConfirmDialog
+        open={showRevokeAll}
+        title={t('users.detail.sessionsTab.confirmRevokeAll')}
+        loading={revokingAll}
+        onConfirm={confirmRevokeAll}
+        onCancel={() => setShowRevokeAll(false)}
+      />
     </div>
   )
 }

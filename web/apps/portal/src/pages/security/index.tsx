@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { motion } from 'framer-motion'
 import QRCode from 'qrcode'
 import { portalApi, formatDate, cn, parseUserAgent, useTranslation } from '@mxid/shared'
-import { Button } from '@mxid/shared/ui'
+import { Button, ConfirmDialog } from '@mxid/shared/ui'
 import { toast } from '@mxid/shared/ui/toast'
 import type { MFAInfo, SessionInfo } from '@mxid/shared'
 import {
@@ -175,6 +175,7 @@ function ChangePasswordSection() {
 function MFASection() {
   const { t } = useTranslation()
   const [mfaList, setMfaList] = useState<MFAInfo[]>([])
+  const [showDisable, setShowDisable] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [enrollOpen, setEnrollOpen] = useState(false)
@@ -199,7 +200,7 @@ function MFASection() {
   const totpActive = !!totp?.verified
 
   const handleDisableTOTP = async () => {
-    if (!confirm(t('account.mfa.disableConfirm'))) return
+    setShowDisable(false)
     try {
       await portalApi.deleteTOTP()
       toast.success(t('account.mfa.disabled'))
@@ -274,7 +275,7 @@ function MFASection() {
                 </span>
                 {mfa.type === 'totp' && mfa.verified && (
                   <button
-                    onClick={handleDisableTOTP}
+                    onClick={() => setShowDisable(true)}
                     className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50"
                   >
                     <Trash2 className="h-3.5 w-3.5" /> {t('account.mfa.disable')}
@@ -295,6 +296,13 @@ function MFASection() {
           }}
         />
       )}
+
+      <ConfirmDialog
+        open={showDisable}
+        title={t('account.mfa.disableConfirm')}
+        onConfirm={handleDisableTOTP}
+        onCancel={() => setShowDisable(false)}
+      />
     </SectionCard>
   )
 }
