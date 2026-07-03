@@ -324,9 +324,9 @@ func (s *Service) AddMembers(ctx context.Context, groupID int64, userIDs []int64
 // RemoveMember removes a user from a group. Refuses on dynamic groups —
 // adjust the rule instead.
 func (s *Service) RemoveMember(ctx context.Context, groupID, userID int64) error {
-	g, err := s.repo.GetByID(ctx, groupID)
+	g, err := s.requireGroup(ctx, groupID)
 	if err != nil {
-		return fmt.Errorf("get group: %w", err)
+		return err
 	}
 	if g.Type == TypeDynamic {
 		return ErrGroupIsDynamic
