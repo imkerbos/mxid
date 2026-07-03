@@ -189,16 +189,22 @@ func (c *fakeCache) invalidatedFor(userID int64) bool {
 	return false
 }
 
-// fakePublisher records published event types; satisfies EventPublisher.
+// fakePublisher records published event types and payloads; satisfies EventPublisher.
 type fakePublisher struct {
-	mu     sync.Mutex
-	events []string
+	mu       sync.Mutex
+	events   []string
+	payloads []map[string]any
 }
 
 func (p *fakePublisher) Publish(_ context.Context, evt event.Event) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.events = append(p.events, evt.Type)
+	if m, ok := evt.Payload.(map[string]any); ok {
+		p.payloads = append(p.payloads, m)
+	} else {
+		p.payloads = append(p.payloads, nil)
+	}
 }
 
 func (p *fakePublisher) published(eventType string) bool {
@@ -210,6 +216,19 @@ func (p *fakePublisher) published(eventType string) bool {
 		}
 	}
 	return false
+}
+
+// payloadFor returns the payload of the last published event matching
+// eventType, or nil if it was never published.
+func (p *fakePublisher) payloadFor(eventType string) map[string]any {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for i := len(p.events) - 1; i >= 0; i-- {
+		if p.events[i] == eventType {
+			return p.payloads[i]
+		}
+	}
+	return nil
 }
 
 // fakeMatcher always returns true (any user is eligible for any subject type).
@@ -371,6 +390,40 @@ func TestApprove_InsertsGrantInvalidatesCacheAndAudits(t *testing.T) {
 	}
 	if !fakes.bus.published(EventRequestApproved) || !fakes.bus.published(EventGrantActivated) {
 		t.Fatalf("approve/activate events not published; got=%v", fakes.bus.events)
+	}
+}
+
+// TestPublish_PayloadHasNoAmbiguousActorID asserts the access event payloads
+// never carry a misleading "actor_id" key. The audit row's actor COLUMN is
+// owned exclusively by the audit subsystem's enrich() (the request-scoped
+// caller: approver / admin / system) — a payload "actor_id" naming the
+// requester instead would contradict that column. requester_id is the
+// beneficiary; grant.activated additionally names the approver explicitly
+// via approver_id, never via the ambiguous actor_id key.
+func TestPublish_PayloadHasNoAmbiguousActorID(t *testing.T) {
+	s, fakes := newServiceWithFakes(t)
+	req := mustCreateRequest(t, s, 3600)
+	out, err := s.Approve(testCtx, testTenant, req.ID, testApprover, "ok")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, eventType := range []string{EventRequestCreated, EventRequestApproved, EventGrantActivated} {
+		payload := fakes.bus.payloadFor(eventType)
+		if payload == nil {
+			t.Fatalf("no payload captured for %s", eventType)
+		}
+		if _, ok := payload["actor_id"]; ok {
+			t.Errorf("%s payload must not contain ambiguous actor_id key: %v", eventType, payload)
+		}
+		if got, ok := payload["requester_id"]; !ok || got != out.RequesterID {
+			t.Errorf("%s payload requester_id = %v, want %d", eventType, got, out.RequesterID)
+		}
+	}
+
+	activated := fakes.bus.payloadFor(EventGrantActivated)
+	if got, ok := activated["approver_id"]; !ok || got != testApprover {
+		t.Errorf("grant.activated payload approver_id = %v, want %d", got, testApprover)
 	}
 }
 

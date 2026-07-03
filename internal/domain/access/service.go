@@ -223,7 +223,7 @@ func (s *Service) CreateRequest(ctx context.Context, tenantID, requesterID int64
 	if err := s.repo.CreateRequest(ctx, req); err != nil {
 		return nil, err
 	}
-	s.publish(ctx, EventRequestCreated, req, requesterID)
+	s.publish(ctx, EventRequestCreated, req, nil)
 
 	// Auto-approval: skip the approval queue entirely.
 	if elig.ApproverSubjectType == ApproverAuto {
@@ -267,8 +267,14 @@ func (s *Service) Approve(ctx context.Context, tenantID, requestID, approverID i
 		)
 	}
 
-	s.publish(ctx, EventRequestApproved, req, approverID)
-	s.publish(ctx, EventGrantActivated, req, req.RequesterID)
+	s.publish(ctx, EventRequestApproved, req, nil)
+	// The grant-activated detail records the approver explicitly: the actor
+	// column (via audit enrich) already reflects the approver from the
+	// request-scoped auditctx, but a named approver_id key keeps the detail
+	// self-describing without relying on the caller cross-referencing the
+	// column. requester_id (already in the base payload) is the beneficiary,
+	// not the actor — the two must never collapse into one ambiguous key.
+	s.publish(ctx, EventGrantActivated, req, map[string]any{"approver_id": approverID})
 	return req, nil
 }
 
@@ -284,7 +290,7 @@ func (s *Service) Reject(ctx context.Context, tenantID, requestID, approverID in
 	if err := s.repo.UpdateRequestStatus(ctx, requestID, tenantID, StatusRejected, reason, &approverID); err != nil {
 		return err
 	}
-	s.publish(ctx, EventRequestRejected, req, approverID)
+	s.publish(ctx, EventRequestRejected, req, nil)
 	return nil
 }
 
@@ -303,7 +309,7 @@ func (s *Service) Cancel(ctx context.Context, tenantID, requestID, requesterID i
 	if err := s.repo.UpdateRequestStatus(ctx, requestID, tenantID, StatusCancelled, "", nil); err != nil {
 		return err
 	}
-	s.publish(ctx, EventRequestCancelled, req, requesterID)
+	s.publish(ctx, EventRequestCancelled, req, nil)
 	return nil
 }
 
@@ -330,7 +336,7 @@ func (s *Service) Revoke(ctx context.Context, tenantID, requestID, actorID int64
 		)
 	}
 
-	s.publish(ctx, EventGrantRevoked, req, actorID)
+	s.publish(ctx, EventGrantRevoked, req, nil)
 	s.terminateIfApp(ctx, req)
 	return nil
 }
@@ -351,7 +357,7 @@ func (s *Service) Expire(ctx context.Context, req *Request) error {
 		)
 	}
 
-	s.publish(ctx, EventGrantExpired, req, req.RequesterID)
+	s.publish(ctx, EventGrantExpired, req, nil)
 	s.terminateIfApp(ctx, req)
 	return nil
 }
@@ -367,24 +373,37 @@ func (s *Service) terminateIfApp(ctx context.Context, req *Request) {
 	}
 }
 
-func (s *Service) publish(ctx context.Context, eventType string, req *Request, actorID int64) {
+// publish emits a domain event for the access request lifecycle. The base
+// payload never carries an "actor_id" key: the audit row's actor COLUMN is
+// owned exclusively by the audit subsystem's enrich() (from the request-scoped
+// auditctx — the approver for an approval, an admin for a revoke, "system"
+// for the sweeper's expire). "requester_id" names the SUBJECT/beneficiary
+// whose access is affected — never the actor, even though it happens to be
+// the same person for self-service events like create/cancel. Callers that
+// need a distinct acting identity recorded in the detail (e.g. which approver
+// activated a grant) pass it via extra using an explicit, unambiguous key
+// such as "approver_id" — never the reused, self-contradictory "actor_id".
+func (s *Service) publish(ctx context.Context, eventType string, req *Request, extra map[string]any) {
 	if s.busAdp == nil {
 		return
 	}
+	payload := map[string]any{
+		"resource_type": "access_request",
+		"resource_id":   req.ID,
+		"tenant_id":     req.TenantID,
+		"request_id":    req.ID,
+		"requester_id":  req.RequesterID,
+		"target_kind":   req.TargetKind,
+		"role_id":       req.RoleID,
+		"app_id":        req.AppID,
+		"expires_at":    req.ExpiresAt,
+	}
+	for k, v := range extra {
+		payload[k] = v
+	}
 	s.busAdp.Publish(ctx, event.Event{
-		Type: eventType,
-		Payload: map[string]any{
-			"resource_type": "access_request",
-			"resource_id":   req.ID,
-			"tenant_id":     req.TenantID,
-			"request_id":    req.ID,
-			"requester_id":  req.RequesterID,
-			"actor_id":      actorID,
-			"target_kind":   req.TargetKind,
-			"role_id":       req.RoleID,
-			"app_id":        req.AppID,
-			"expires_at":    req.ExpiresAt,
-		},
+		Type:    eventType,
+		Payload: payload,
 	})
 }
 
