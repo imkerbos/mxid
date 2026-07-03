@@ -66,9 +66,9 @@ func (s *Service) Create(ctx context.Context, tenantID int64, req *CreateOrgRequ
 	// Build path based on parent
 	path := req.Code
 	if req.ParentID != nil {
-		parent, err := s.repo.GetByID(ctx, *req.ParentID)
+		parent, err := s.fetchOrg(ctx, *req.ParentID)
 		if err != nil {
-			return nil, fmt.Errorf("get parent organization: %w", err)
+			return nil, err
 		}
 		path = parent.Path + "." + req.Code
 	}
@@ -106,18 +106,27 @@ func (s *Service) GetByID(ctx context.Context, id int64) (*Organization, error) 
 	return org, nil
 }
 
+// fetchOrg fetches an org via the tenant-scoped repo. A cross-tenant orgID
+// resolves to ErrRecordNotFound, surfaced as ErrOrgNotFound so handlers can
+// errors.Is-discriminate it into a 404 instead of falling through to 500.
+func (s *Service) fetchOrg(ctx context.Context, orgID int64) (*Organization, error) {
+	org, err := s.repo.GetByID(ctx, orgID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrOrgNotFound
+		}
+		return nil, fmt.Errorf("get organization: %w", err)
+	}
+	return org, nil
+}
+
 // requireOrg fetches the parent org via the tenant-scoped repo. A cross-tenant
 // orgID resolves to ErrRecordNotFound, surfaced as ErrOrgNotFound. This is the
 // parent-ownership guard the tenant-less child table mxid_user_org (org_id)
 // relies on, since the column plugin cannot filter it.
 func (s *Service) requireOrg(ctx context.Context, orgID int64) error {
-	if _, err := s.repo.GetByID(ctx, orgID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrOrgNotFound
-		}
-		return fmt.Errorf("get organization: %w", err)
-	}
-	return nil
+	_, err := s.fetchOrg(ctx, orgID)
+	return err
 }
 
 // requireUserInTenant validates a request-body user id against the caller's
@@ -140,9 +149,9 @@ func (s *Service) requireUserInTenant(ctx context.Context, userID int64) error {
 
 // Update updates an existing organization.
 func (s *Service) Update(ctx context.Context, id int64, req *UpdateOrgRequest) (*Organization, error) {
-	org, err := s.repo.GetByID(ctx, id)
+	org, err := s.fetchOrg(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("get organization for update: %w", err)
+		return nil, err
 	}
 
 	org.Name = req.Name
@@ -190,17 +199,17 @@ func (s *Service) GetTree(ctx context.Context, tenantID int64) ([]*OrgResponse, 
 
 // Move moves an organization to a new parent, recalculating paths.
 func (s *Service) Move(ctx context.Context, id int64, req *MoveOrgRequest) error {
-	org, err := s.repo.GetByID(ctx, id)
+	org, err := s.fetchOrg(ctx, id)
 	if err != nil {
-		return fmt.Errorf("get organization for move: %w", err)
+		return err
 	}
 
 	// Build new path
 	newPath := org.Code
 	if req.ParentID != nil {
-		parent, err := s.repo.GetByID(ctx, *req.ParentID)
+		parent, err := s.fetchOrg(ctx, *req.ParentID)
 		if err != nil {
-			return fmt.Errorf("get new parent organization: %w", err)
+			return err
 		}
 		newPath = parent.Path + "." + org.Code
 	}

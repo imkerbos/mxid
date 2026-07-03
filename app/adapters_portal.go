@@ -69,6 +69,13 @@ func (a *portalUserQuerierAdapter) GetDetail(ctx context.Context, userID int64) 
 	}, nil
 }
 
+// UpdateProfile writes the mutable self-service profile fields directly via
+// the repo (bypassing user.Service.Update, which also handles admin-only
+// fields like status). It still has to replicate Update's email/phone
+// uniqueness checks below — otherwise a duplicate would hit the DB's unique
+// constraint and surface as a raw, undiscriminated error (500) instead of
+// the same ErrEmailExists/ErrPhoneExists 409 the console admin-edit path
+// reports.
 func (a *portalUserQuerierAdapter) UpdateProfile(ctx context.Context, userID int64, displayName, phone, email string) error {
 	u, err := a.userModule.Repo.GetByID(ctx, userID)
 	if err != nil {
@@ -78,16 +85,32 @@ func (a *portalUserQuerierAdapter) UpdateProfile(ctx context.Context, userID int
 		u.DisplayName = &displayName
 	}
 	pCopy := phone
-	u.Phone = &pCopy
+	newPhone := &pCopy
 	if phone == "" {
-		u.Phone = nil
+		newPhone = nil
 	}
+	if !equalStringPtr(u.Phone, newPhone) && newPhone != nil {
+		if _, err := a.userModule.Repo.GetByPhone(ctx, u.TenantID, *newPhone); err == nil {
+			return user.ErrPhoneExists
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("check phone: %w", err)
+		}
+	}
+	u.Phone = newPhone
+
 	eCopy := email
 	newEmail := &eCopy
 	if email == "" {
 		newEmail = nil
 	}
 	emailChanged := !equalStringPtr(u.Email, newEmail)
+	if emailChanged && newEmail != nil {
+		if _, err := a.userModule.Repo.GetByEmail(ctx, u.TenantID, *newEmail); err == nil {
+			return user.ErrEmailExists
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("check email: %w", err)
+		}
+	}
 	u.Email = newEmail
 	if emailChanged {
 		u.EmailVerified = false

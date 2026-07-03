@@ -50,9 +50,9 @@ func (s *Service) GetRule(ctx context.Context, groupID int64) (*UserGroupRule, e
 // to type=dynamic so existing members are no longer manually editable. The
 // initial sync runs immediately so the UI sees populated members on save.
 func (s *Service) UpsertRule(ctx context.Context, groupID int64, expr *RuleExpr) (*UserGroupRule, error) {
-	g, err := s.repo.GetByID(ctx, groupID)
+	g, err := s.requireGroup(ctx, groupID)
 	if err != nil {
-		return nil, fmt.Errorf("get group: %w", err)
+		return nil, err
 	}
 
 	raw, err := json.Marshal(expr)
@@ -89,9 +89,9 @@ func (s *Service) UpsertRule(ctx context.Context, groupID int64, expr *RuleExpr)
 // DeleteRule removes a group's rule and flips it back to type=static.
 // Existing members are kept so the operator can prune manually if desired.
 func (s *Service) DeleteRule(ctx context.Context, groupID int64) error {
-	g, err := s.repo.GetByID(ctx, groupID)
+	g, err := s.requireGroup(ctx, groupID)
 	if err != nil {
-		return fmt.Errorf("get group: %w", err)
+		return err
 	}
 	if err := s.repo.DeleteRule(ctx, groupID); err != nil {
 		return fmt.Errorf("delete rule: %w", err)

@@ -1,8 +1,11 @@
 package portal
 
 import (
+	"errors"
+
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/authn"
+	"github.com/imkerbos/mxid/internal/domain/user"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/response"
 )
@@ -108,6 +111,14 @@ func (h *ProfileHandler) updateProfile(c *gin.Context) {
 	}
 
 	if err := h.userQuerier.UpdateProfile(c.Request.Context(), userID, req.DisplayName, req.Phone, req.Email); err != nil {
+		if errors.Is(err, user.ErrEmailExists) {
+			response.Conflict(c, 40902, err.Error())
+			return
+		}
+		if errors.Is(err, user.ErrPhoneExists) {
+			response.Conflict(c, 40903, err.Error())
+			return
+		}
 		response.InternalError(c, "failed to update profile", err)
 		return
 	}
