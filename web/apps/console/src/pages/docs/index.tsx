@@ -253,18 +253,18 @@ function GuideView({
         </div>
       </header>
 
-      <div className="space-y-1 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+      <div className="space-y-1 rounded-lg border border-info/20 bg-info/10 px-3 py-2 text-xs text-ink">
         <div>
-          <span className="inline-block w-20 font-mono text-blue-700/80">{'{{ISSUER}}'}</span>
-          <code className="rounded bg-white px-1.5 py-0.5 font-mono">{issuer}</code>
+          <span className="inline-block w-20 font-mono text-info">{'{{ISSUER}}'}</span>
+          <code className="rounded bg-surface px-1.5 py-0.5 font-mono">{issuer}</code>
         </div>
         <div>
-          <span className="inline-block w-20 font-mono text-blue-700/80">{'{{PORTAL}}'}</span>
-          <code className="rounded bg-white px-1.5 py-0.5 font-mono">{portal}</code>
+          <span className="inline-block w-20 font-mono text-info">{'{{PORTAL}}'}</span>
+          <code className="rounded bg-surface px-1.5 py-0.5 font-mono">{portal}</code>
         </div>
         <div>
-          <span className="inline-block w-20 font-mono text-blue-700/80">{'{{CONSOLE}}'}</span>
-          <code className="rounded bg-white px-1.5 py-0.5 font-mono">{consoleURL}</code>
+          <span className="inline-block w-20 font-mono text-info">{'{{CONSOLE}}'}</span>
+          <code className="rounded bg-surface px-1.5 py-0.5 font-mono">{consoleURL}</code>
         </div>
       </div>
 
@@ -281,9 +281,9 @@ function GuideView({
       </section>
 
       {guide.notes && guide.notes.length > 0 && (
-        <section className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-4">
-          <h3 className="text-sm font-semibold text-amber-900">{t('docs.notes')}</h3>
-          <ul className="space-y-1 text-sm text-amber-800">
+        <section className="space-y-2 rounded-lg border border-warning/20 bg-warning/10 p-4">
+          <h3 className="text-sm font-semibold text-warning">{t('docs.notes')}</h3>
+          <ul className="space-y-1 text-sm text-muted">
             {guide.notes.map((n, i) => (
               <li key={i} className="flex gap-2">
                 <span className="select-none">•</span>
