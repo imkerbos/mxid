@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"go.uber.org/zap"
 )
 
@@ -30,14 +31,21 @@ func StartSweeper(ctx context.Context, svc *Service, repo Repository, interval t
 // and skipped so one bad grant cannot block the rest. Returns the count of
 // successfully expired grants.
 func sweepOnce(ctx context.Context, svc *Service, repo Repository, logger *zap.Logger) int {
-	due, err := repo.ListDueGrants(ctx)
+	// Cross-tenant background job: list due grants across ALL tenants under a
+	// system scope (the ONLY sanctioned way for a context-less goroutine to
+	// touch tenant-scoped tables — otherwise the tenantscope plugin fail-closes).
+	sysCtx := tenantscope.WithSystem(ctx)
+	due, err := repo.ListDueGrants(sysCtx)
 	if err != nil {
 		logger.Error("sweep: list due grants failed", zap.Error(err))
 		return 0
 	}
 	n := 0
 	for _, req := range due {
-		if err := svc.Expire(ctx, req); err != nil {
+		// Expire each grant pinned to its own tenant so writes + audit land on
+		// the correct tenant.
+		reqCtx := tenantscope.WithTenant(ctx, req.TenantID)
+		if err := svc.Expire(reqCtx, req); err != nil {
 			logger.Error("sweep: expire failed",
 				zap.Int64("request_id", req.ID),
 				zap.Int64("tenant_id", req.TenantID),
