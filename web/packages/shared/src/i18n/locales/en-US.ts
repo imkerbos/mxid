@@ -922,6 +922,7 @@ export default {
   idps: {
     title: 'Identity Providers',
     subtitle: 'Manage external IdPs (Lark, Microsoft Teams, etc.)',
+    eeOnly: 'External identity providers are an Enterprise (EE) feature, not enabled in this edition.',
     create: 'Create IdP',
     type: 'Type',
     enabled: 'Enabled',

@@ -23,14 +23,18 @@ import TenantSwitcher from './TenantSwitcher'
 // navItemsBuild resolves to live translated labels each render — keeps
 // the sidebar in sync when the user picks a different language without
 // a full reload.
-const navItemsBuild = (t: (k: string) => string, hasConditionalAccess: boolean) => [
+const navItemsBuild = (t: (k: string) => string, hasConditionalAccess: boolean, hasExternalIdp: boolean) => [
   { to: '/dashboard', icon: LayoutDashboard, label: t('nav.dashboard') },
   { to: '/tenants', icon: Building, label: t('nav.tenants') },
   { to: '/users', icon: Users, label: t('nav.users') },
   { to: '/orgs', icon: Building2, label: t('nav.orgs') },
   { to: '/groups', icon: UsersRound, label: t('nav.groups') },
   { to: '/apps', icon: AppWindow, label: t('nav.apps') },
-  { to: '/idps', icon: Plug, label: t('nav.idps') },
+  // External IdP is an EE code-separated feature — its routes are absent from
+  // the CE binary, so only surface the nav item when the license enables it.
+  ...(hasExternalIdp
+    ? [{ to: '/idps', icon: Plug, label: t('nav.idps') }]
+    : []),
   { to: '/permissions', icon: Shield, label: t('nav.permissions') },
   ...(hasConditionalAccess
     ? [{ to: '/access-approvals', icon: CheckSquare, label: t('nav.accessApprovals') }]
@@ -47,7 +51,7 @@ export default function Sidebar() {
   const navigate = useNavigate()
   const { t, i18n } = useTranslation()
   const edition = useEdition()
-  const navItems = navItemsBuild(t, edition.has('conditional_access'))
+  const navItems = navItemsBuild(t, edition.has('conditional_access'), edition.has('external_idp'))
 
   const handleLogout = async () => {
     try {

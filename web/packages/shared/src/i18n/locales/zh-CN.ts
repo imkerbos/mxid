@@ -925,6 +925,7 @@ export default {
   idps: {
     title: '身份源',
     subtitle: '管理外部 IdP（飞书/Lark/Microsoft Teams 等）',
+    eeOnly: '外部身份源是企业版（EE）功能,当前版本未启用。',
     create: '新建身份源',
     type: '类型',
     enabled: '已启用',
