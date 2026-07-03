@@ -4,7 +4,21 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
+
+// logger is the package-level zap logger used by InternalError to record the
+// real cause of a 500 without ever leaking it to the client. Nil until
+// SetLogger is called during bootstrap — InternalError degrades gracefully
+// (no logging) if it's never wired.
+var logger *zap.Logger
+
+// SetLogger wires the process-wide zap logger for this package. Called once
+// during bootstrap, right after the logger is constructed. Safe to call with
+// nil (equivalent to leaving logging disabled).
+func SetLogger(l *zap.Logger) {
+	logger = l
+}
 
 // Response is the unified API response structure.
 type Response struct {
@@ -95,11 +109,30 @@ func NoContent(c *gin.Context) {
 }
 
 // InternalError sends a 500 error. Default message is intentionally
-// generic — callers MUST NOT pass raw err.Error() (leaks internals);
-// log the real error via zap and pass a user-safe label here.
-func InternalError(c *gin.Context, message string) {
+// generic — callers MUST NOT pass raw err.Error() (leaks internals); pass a
+// user-safe label as message.
+//
+// The optional cause is the real underlying error. When provided (and a
+// logger has been wired via SetLogger), it is logged at ERROR level with
+// request context — the HTTP response body is unaffected and never contains
+// cause.Error(). This is how a 500 stops being silent: the client still sees
+// only the generic message + code 50001, but the server log carries the
+// root cause for debugging.
+func InternalError(c *gin.Context, message string, cause ...error) {
 	if message == "" {
 		message = "internal server error"
+	}
+	if logger != nil && len(cause) > 0 && cause[0] != nil {
+		fields := []zap.Field{
+			zap.String("message", message),
+			zap.Error(cause[0]),
+			zap.String("method", c.Request.Method),
+			zap.String("path", c.Request.URL.Path),
+		}
+		if requestID, exists := c.Get("request_id"); exists {
+			fields = append(fields, zap.Any("request_id", requestID))
+		}
+		logger.Error("internal server error", fields...)
 	}
 	Error(c, http.StatusInternalServerError, 50001, message, "")
 }
