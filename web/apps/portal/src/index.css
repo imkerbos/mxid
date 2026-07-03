@@ -144,3 +144,49 @@ body {
 .dark main [class~="text-sky-700"] { color: rgb(var(--info)) !important; }
 .dark main [class~="text-purple-700"],
 .dark main [class~="text-purple-600"] { color: rgb(168 85 247) !important; }
+
+/* 存量彩色 callout 盒(bg-*-50 + text-*-800/900 + border-*-100/200)压成 tint. 见 console. */
+.dark main [class~="bg-blue-50"],
+.dark main [class~="bg-sky-50"],
+.dark main [class~="bg-indigo-50"] { background-color: rgb(var(--info) / 0.1) !important; }
+.dark main [class~="bg-emerald-50"],
+.dark main [class~="bg-green-50"],
+.dark main [class~="bg-teal-50"] { background-color: rgb(var(--success) / 0.1) !important; }
+.dark main [class~="bg-amber-50"],
+.dark main [class~="bg-yellow-50"],
+.dark main [class~="bg-orange-50"] { background-color: rgb(var(--warning) / 0.1) !important; }
+.dark main [class~="bg-red-50"],
+.dark main [class~="bg-rose-50"] { background-color: rgb(var(--danger) / 0.1) !important; }
+.dark main [class~="bg-purple-50"],
+.dark main [class~="bg-violet-50"] { background-color: rgb(147 51 234 / 0.12) !important; }
+
+.dark main [class~="text-blue-900"],
+.dark main [class~="text-blue-800"],
+.dark main [class~="text-sky-900"],
+.dark main [class~="text-indigo-900"] { color: rgb(var(--info)) !important; }
+.dark main [class~="text-emerald-900"],
+.dark main [class~="text-emerald-800"],
+.dark main [class~="text-green-900"],
+.dark main [class~="text-green-800"] { color: rgb(var(--success)) !important; }
+.dark main [class~="text-amber-900"],
+.dark main [class~="text-amber-800"],
+.dark main [class~="text-yellow-900"],
+.dark main [class~="text-yellow-800"] { color: rgb(var(--warning)) !important; }
+.dark main [class~="text-red-900"],
+.dark main [class~="text-red-800"],
+.dark main [class~="text-rose-900"] { color: rgb(var(--danger)) !important; }
+
+.dark main [class~="border-blue-100"],
+.dark main [class~="border-blue-200"],
+.dark main [class~="border-sky-100"],
+.dark main [class~="border-indigo-100"] { border-color: rgb(var(--info) / 0.3) !important; }
+.dark main [class~="border-emerald-100"],
+.dark main [class~="border-emerald-200"],
+.dark main [class~="border-green-100"],
+.dark main [class~="border-green-200"] { border-color: rgb(var(--success) / 0.3) !important; }
+.dark main [class~="border-amber-100"],
+.dark main [class~="border-amber-200"],
+.dark main [class~="border-yellow-200"] { border-color: rgb(var(--warning) / 0.3) !important; }
+.dark main [class~="border-red-100"],
+.dark main [class~="border-red-200"],
+.dark main [class~="border-rose-200"] { border-color: rgb(var(--danger) / 0.3) !important; }
