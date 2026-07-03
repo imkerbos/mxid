@@ -43,11 +43,13 @@ func decodeSAMLRedirectParam(t *testing.T, v string) string {
 }
 
 // recordingSP stands in for a SAML SP's SLO endpoint. It counts requests and
-// remembers the query params of the most recent one.
+// remembers the query params of every request received (in arrival order),
+// including the most recent one for convenience.
 type recordingSP struct {
 	srv      *httptest.Server
 	count    int64
 	mu       sync.Mutex
+	all      []url.Values
 	lastQuer url.Values
 }
 
@@ -66,6 +68,16 @@ func (r *recordingSP) lastParam(name string) string {
 	return r.lastQuer.Get(name)
 }
 
+// allRequests returns a snapshot of every request's query params, in the
+// order they were received.
+func (r *recordingSP) allRequests() []url.Values {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]url.Values, len(r.all))
+	copy(out, r.all)
+	return out
+}
+
 func newRecordingSP(t *testing.T) *recordingSP {
 	t.Helper()
 	sp := &recordingSP{}
@@ -73,6 +85,7 @@ func newRecordingSP(t *testing.T) *recordingSP {
 		atomic.AddInt64(&sp.count, 1)
 		sp.mu.Lock()
 		sp.lastQuer = req.URL.Query()
+		sp.all = append(sp.all, req.URL.Query())
 		sp.mu.Unlock()
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -196,5 +209,61 @@ func TestIdPInitiatedLogout_HitsSPWithSignedRequest(t *testing.T) {
 	}
 	if len(refs) != 0 {
 		t.Fatalf("session index should be deleted after logout, got %d refs", len(refs))
+	}
+}
+
+// TestIdPInitiatedLogout_MultipleSessions verifies the multi-session SLO fix:
+// when a user has two concurrent SAML sessions to the same app (e.g. two
+// browsers), both must be terminated — the SP must receive one signed
+// LogoutRequest per SessionIndex, not just the most-recently recorded one.
+func TestIdPInitiatedLogout_MultipleSessions(t *testing.T) {
+	h, idxStore, sp := setupSAMLLogoutHarness(t)
+	userID, appID := int64(5002), int64(1001)
+
+	if err := idxStore.Record(context.Background(), userID, appID,
+		SAMLSessionRef{SessionIndex: "idx-a", NameID: "u@x", SPEntityID: "sp", NameIDFormat: NameIDEmail}, time.Hour); err != nil {
+		t.Fatalf("record ref A: %v", err)
+	}
+	if err := idxStore.Record(context.Background(), userID, appID,
+		SAMLSessionRef{SessionIndex: "idx-b", NameID: "u@x", SPEntityID: "sp", NameIDFormat: NameIDEmail}, time.Hour); err != nil {
+		t.Fatalf("record ref B: %v", err)
+	}
+
+	h.IdPInitiatedLogout(context.Background(), userID, appID)
+	waitAsync()
+
+	if sp.hits() != 2 {
+		t.Fatalf("SP SLO endpoint should receive 2 LogoutRequests (one per session), got %d", sp.hits())
+	}
+
+	// Each request must carry its own distinct SessionIndex.
+	seenIdx := map[string]bool{}
+	for _, q := range sp.allRequests() {
+		if !q.Has("SAMLRequest") || !q.Has("Signature") || !q.Has("SigAlg") {
+			t.Fatalf("LogoutRequest missing a required redirect-binding param: %v", q)
+		}
+		xmlStr := decodeSAMLRedirectParam(t, q.Get("SAMLRequest"))
+		if !strings.Contains(xmlStr, "LogoutRequest") {
+			t.Fatalf("expected <LogoutRequest> in decoded XML, got:\n%s", xmlStr)
+		}
+		switch {
+		case strings.Contains(xmlStr, "idx-a"):
+			seenIdx["idx-a"] = true
+		case strings.Contains(xmlStr, "idx-b"):
+			seenIdx["idx-b"] = true
+		}
+	}
+	if !seenIdx["idx-a"] || !seenIdx["idx-b"] {
+		t.Fatalf("want both SessionIndex idx-a and idx-b sent, got %+v", seenIdx)
+	}
+
+	// Both refs must be dropped from the index in a single Delete once
+	// dispatch is done.
+	refs, err := idxStore.Get(context.Background(), userID, appID)
+	if err != nil {
+		t.Fatalf("get after logout: %v", err)
+	}
+	if len(refs) != 0 {
+		t.Fatalf("session index should be fully cleared after logout, got %d refs", len(refs))
 	}
 }
