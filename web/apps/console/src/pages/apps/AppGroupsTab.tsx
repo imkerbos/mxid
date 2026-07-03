@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Pencil, Trash2, Loader2, X, LayoutGrid } from 'lucide-react'
 import { appApi, appGroupApi, cn, useTranslation } from '@mxid/shared'
 import type { App, AppGroup } from '@mxid/shared'
-import { Field, CodeField, Button } from '../../components/ui'
+import { Field, CodeField, Button, ConfirmDialog } from '../../components/ui'
 import AccessPolicyTab from './AccessPolicyTab'
 import AppRolesTab from './AppRolesTab'
 import AppGroupRolesAggregated from './AppGroupRolesAggregated'
@@ -19,6 +19,8 @@ export default function AppGroupsTab() {
   const [groups, setGroups] = useState<AppGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<AppGroup | null>(null)
+  const [delGroup, setDelGroup] = useState<AppGroup | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   // create/edit modal
   const [editing, setEditing] = useState<AppGroup | null>(null)
@@ -91,15 +93,20 @@ export default function AppGroupsTab() {
     }
   }
 
-  const remove = async (g: AppGroup) => {
-    if (!confirm(t('apps.appGroups.delete', { name: g.name }))) return
+  const confirmRemove = async () => {
+    const g = delGroup
+    if (!g) return
+    setDeleting(true)
     try {
       await appGroupApi.delete(g.id)
       if (selected?.id === g.id) setSelected(null)
+      setDelGroup(null)
       await load()
       toast.success(t("common.success"))
     } catch (e) {
       toast.error(t("common.failed"), extractMessage(e))
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -149,7 +156,7 @@ export default function AppGroupsTab() {
           <GroupDetail
             group={selected}
             onEdit={() => openEdit(selected)}
-            onDelete={() => remove(selected)}
+            onDelete={() => setDelGroup(selected)}
             onMutated={load}
           />
         ) : (
@@ -213,6 +220,15 @@ export default function AppGroupsTab() {
           </div>
         )}
       </AnimatePresence>
+
+      <ConfirmDialog
+        open={!!delGroup}
+        title={t('apps.appGroups.delete', { name: delGroup?.name ?? '' })}
+        desc={t('common.cantUndo')}
+        loading={deleting}
+        onConfirm={confirmRemove}
+        onCancel={() => setDelGroup(null)}
+      />
     </div>
   )
 }
