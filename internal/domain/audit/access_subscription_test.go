@@ -43,7 +43,6 @@ func TestResourceEventHandler_AccessPayloadMapping(t *testing.T) {
 			"resource_type": "access_request",
 			"resource_id":   int64(777),
 			"tenant_id":     int64(9),
-			"actor_id":      int64(5),
 			"requester_id":  int64(6),
 			"role_id":       int64(123),
 		},
@@ -72,6 +71,14 @@ func TestResourceEventHandler_AccessPayloadMapping(t *testing.T) {
 	detail := decode(t, got.Detail)
 	if _, ok := detail["role_id"]; !ok {
 		t.Errorf("detail missing role_id: %v", detail)
+	}
+	if _, ok := detail["requester_id"]; !ok {
+		t.Errorf("detail missing requester_id: %v", detail)
+	}
+	// The actor COLUMN is owned by enrich(); the detail must never carry a
+	// competing "actor_id" that could disagree with it (see schema.go).
+	if _, ok := detail["actor_id"]; ok {
+		t.Errorf("detail must not carry ambiguous actor_id: %v", detail)
 	}
 }
 

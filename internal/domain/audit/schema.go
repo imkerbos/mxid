@@ -150,13 +150,21 @@ var detailSchemas = map[string]detailSchema{
 	// JIT privileged-access (temporary elevation) lifecycle. Literal event_type
 	// strings (not the access package consts) to keep audit free of a domain
 	// import; they mirror internal/domain/access/events.go.
-	"access.request.created":   {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "actor_id", "target_kind", "role_id", "app_id", "expires_at"}},
-	"access.request.approved":  {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "actor_id", "target_kind", "role_id", "app_id", "expires_at"}},
-	"access.request.rejected":  {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "actor_id", "target_kind", "role_id", "app_id"}},
-	"access.request.cancelled": {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "actor_id", "target_kind", "role_id", "app_id"}},
-	"access.grant.activated":   {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "actor_id", "target_kind", "role_id", "app_id", "expires_at"}},
-	"access.grant.expired":     {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "actor_id", "target_kind", "role_id", "app_id", "expires_at"}},
-	"access.grant.revoked":     {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "actor_id", "target_kind", "role_id", "app_id"}},
+	//
+	// No "actor_id" here on purpose: the audit row's actor COLUMN is owned by
+	// enrich() (the request-scoped auditctx caller — approver / admin /
+	// system). "requester_id" is the SUBJECT/beneficiary whose access is
+	// affected, never the actor; a payload "actor_id" would just restate a
+	// different person under the column's name and contradict it. Where a
+	// distinct acting identity is worth recording in detail, it uses an
+	// explicit key like "approver_id" (see access.grant.activated).
+	"access.request.created":   {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "target_kind", "role_id", "app_id", "expires_at"}},
+	"access.request.approved":  {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "target_kind", "role_id", "app_id", "expires_at"}},
+	"access.request.rejected":  {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "target_kind", "role_id", "app_id"}},
+	"access.request.cancelled": {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "target_kind", "role_id", "app_id"}},
+	"access.grant.activated":   {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "approver_id", "target_kind", "role_id", "app_id", "expires_at"}},
+	"access.grant.expired":     {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "target_kind", "role_id", "app_id", "expires_at"}},
+	"access.grant.revoked":     {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "target_kind", "role_id", "app_id"}},
 }
 
 // projectDetail picks the schema-allowed subset of payload for the given
