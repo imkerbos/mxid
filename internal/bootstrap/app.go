@@ -14,6 +14,7 @@ import (
 	"github.com/imkerbos/mxid/internal/middleware"
 	"github.com/imkerbos/mxid/pkg/crypto"
 	"github.com/imkerbos/mxid/pkg/event"
+	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/snowflake"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -77,6 +78,9 @@ func NewApp(configPath string) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("init logger: %w", err)
 	}
+	// Wire pkg/response's package logger so InternalError can log the real
+	// cause of a 500 (never sent to the client) instead of swallowing it.
+	response.SetLogger(logger)
 
 	// Init database
 	db, err := InitDatabase(&cfg.Database, logger)
