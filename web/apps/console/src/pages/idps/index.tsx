@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Plus, Pencil, Trash2, Plug, Power } from 'lucide-react'
-import { externalIdpApi, cn, useTranslation } from '@mxid/shared'
+import { externalIdpApi, cn, useTranslation, useEdition } from '@mxid/shared'
 import type { ExternalIDP } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
 import { Field, Button, Tag, EmptyState, LoadingState, Card, ConfirmDialog, Modal, pageMotion } from '../../components/ui'
@@ -47,6 +47,11 @@ function useProviderLabel() {
 
 export default function IDPsPage() {
   const { t } = useTranslation()
+  const edition = useEdition()
+  // External IdP is EE-only (code-separated: its API routes don't exist in the
+  // CE binary). Guard the page so a direct /idps navigation in CE shows a
+  // message instead of firing 404-ing requests.
+  const hasFeature = edition.has('external_idp')
   const PROVIDER_LABEL = useProviderLabel()
   const [items, setItems] = useState<ExternalIDP[]>([])
   const [types, setTypes] = useState<string[]>([])
@@ -57,6 +62,10 @@ export default function IDPsPage() {
   const [deleting, setDeleting] = useState(false)
 
   const load = useCallback(async () => {
+    if (!hasFeature) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
     try {
       const [list, typeList] = await Promise.all([externalIdpApi.list(), externalIdpApi.types()])
@@ -65,7 +74,7 @@ export default function IDPsPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [hasFeature])
 
   useEffect(() => {
     load()
@@ -101,6 +110,15 @@ export default function IDPsPage() {
     } catch (e) {
       toast.error(t('common.saveFailed'), extractMessage(e))
     }
+  }
+
+  if (!hasFeature) {
+    return (
+      <motion.div {...pageMotion}>
+        <PageHeader title={t('idps.title')} description={t('idps.subtitle')} />
+        <Card className="p-12 text-center text-sm text-muted">{t('idps.eeOnly')}</Card>
+      </motion.div>
+    )
   }
 
   return (
