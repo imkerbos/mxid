@@ -24,6 +24,7 @@ import (
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"github.com/imkerbos/mxid/pkg/urlswap"
+	"go.uber.org/zap"
 )
 
 // Handler serves SAML protocol endpoints.
@@ -35,6 +36,19 @@ type Handler struct {
 	idRes       resolver.IdentityResolver
 	sessRes     resolver.SessionResolver
 	tenantRes   resolver.TenantResolver
+	sessionIdx  *SessionIndexStore
+	logger      *zap.Logger
+	// backchannelClient overrides the package-level SSRF-safe
+	// samlBackchannelClient when non-nil. Used in tests so an httptest SP on
+	// loopback can receive IdP-initiated LogoutRequests; production always uses
+	// the SSRF-safe client.
+	backchannelClient httpDoer
+}
+
+// httpDoer is the minimal HTTP interface used by IdP-initiated SLO so tests can
+// substitute a plain http.Client while production uses the SSRF-safe client.
+type httpDoer interface {
+	Do(*http.Request) (*http.Response, error)
 }
 
 // SetURLProvider wires the runtime URL lookup. nil = stick with the
@@ -50,6 +64,8 @@ func (h *Handler) resolveURLs(ctx context.Context, reqHost string) urlswap.URLs 
 
 // NewHandler creates a SAML handler. portalURL is where the user-facing
 // login lives; empty falls back to issuer (single-domain deploy).
+// sessionIdx may be nil — when nil the session index is not persisted
+// (degrades gracefully; L3 SLO will simply find nothing to send).
 func NewHandler(
 	issuer string,
 	portalURL string,
@@ -57,17 +73,24 @@ func NewHandler(
 	idRes resolver.IdentityResolver,
 	sessRes resolver.SessionResolver,
 	tenantRes resolver.TenantResolver,
+	sessionIdx *SessionIndexStore,
+	logger *zap.Logger,
 ) *Handler {
 	if portalURL == "" {
 		portalURL = issuer
 	}
+	if logger == nil {
+		logger = zap.NewNop()
+	}
 	return &Handler{
-		issuer:    issuer,
-		portalURL: portalURL,
-		appRes:    appRes,
-		idRes:     idRes,
-		sessRes:   sessRes,
-		tenantRes: tenantRes,
+		issuer:     issuer,
+		portalURL:  portalURL,
+		appRes:     appRes,
+		idRes:      idRes,
+		sessRes:    sessRes,
+		tenantRes:  tenantRes,
+		sessionIdx: sessionIdx,
+		logger:     logger,
 	}
 }
 
@@ -284,14 +307,14 @@ func (h *Handler) processSSO(c *gin.Context, appCode, requestID, relayState stri
 		attrs["username"] = subj.DisplayUsername
 	}
 
-	h.emitCrewjamResponse(c, appCode, app.ID, samlCfg, requestID, relayState, nameIDValue, attrs)
+	h.emitCrewjamResponse(c, appCode, app.ID, ssoSess.UserID, samlCfg, requestID, relayState, nameIDValue, attrs)
 }
 
 // emitCrewjamResponse builds and writes the SAML Response via crewjam/saml,
 // which signs the assertion (and response), handles NameID / Conditions /
 // element ordering / canonicalisation, and renders the auto-submit POST form.
 // Handles both SP-initiated (requestID set) and IdP-initiated (empty) flows.
-func (h *Handler) emitCrewjamResponse(c *gin.Context, appCode string, appID int64, samlCfg *SAMLConfig, requestID, relayState, nameIDValue string, attrs map[string]string) {
+func (h *Handler) emitCrewjamResponse(c *gin.Context, appCode string, appID, userID int64, samlCfg *SAMLConfig, requestID, relayState, nameIDValue string, attrs map[string]string) {
 	key, cert, err := h.loadKeyAndCert(c.Request.Context(), appID)
 	if err != nil {
 		response.InternalError(c, "load signing key: "+err.Error())
@@ -362,6 +385,28 @@ func (h *Handler) emitCrewjamResponse(c *gin.Context, appCode string, appID int6
 		response.InternalError(c, "make assertion: "+err.Error())
 		return
 	}
+
+	// Record the session index for IdP-initiated SLO (Task L3).
+	// Best-effort: a Redis failure must not block the SSO response.
+	if h.sessionIdx != nil {
+		sessionTTL := time.Duration(samlCfg.SessionTTL) * time.Second
+		if sessionTTL <= 0 {
+			sessionTTL = 8 * time.Hour
+		}
+		ref := SAMLSessionRef{
+			SessionIndex: session.Index,
+			NameID:       session.NameID,
+			SPEntityID:   samlCfg.SPEntityID,
+		}
+		if rerr := h.sessionIdx.Record(c.Request.Context(), userID, appID, ref, sessionTTL); rerr != nil {
+			// Log but do not abort — SSO must succeed even if the index store is
+			// down. The only cost is that IdP-initiated SLO can't reach this
+			// session later.
+			h.logger.Warn("saml: record session index failed",
+				zap.Int64("user_id", userID), zap.Int64("app_id", appID), zap.Error(rerr))
+		}
+	}
+
 	if err := req.WriteResponse(c.Writer); err != nil {
 		response.InternalError(c, "write saml response: "+err.Error())
 		return

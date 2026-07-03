@@ -24,11 +24,13 @@ const consolePathPrefix = "/api/v1/console/"
 // security-critical state and therefore require step-up. Matched against the
 // gin route template (c.FullPath()) by suffix so they survive prefix changes.
 var highRiskWriteSuffixes = []string{
-	"/super-admin",        // grant/revoke super admin
-	"/password",           // admin set another user's password (account takeover)
-	"/rotate-signing-key", // invalidate an app's SSO signing material
-	"/regenerate-secret",  // reset an app's client secret
-	"/mfa/lockout/clear",  // clear an MFA brute-force lockout
+	"/super-admin",                 // grant/revoke super admin
+	"/password",                    // admin set another user's password (account takeover)
+	"/rotate-signing-key",          // invalidate an app's SSO signing material
+	"/regenerate-secret",           // reset an app's client secret
+	"/mfa/lockout/clear",           // clear an MFA brute-force lockout
+	"/access-requests/:id/approve", // JIT: approve a temporary privilege elevation
+	"/access-requests/:id/revoke",  // JIT: revoke an active temporary grant
 }
 
 // IsHighRiskConsole reports whether a console request should be gated by

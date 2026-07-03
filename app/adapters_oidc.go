@@ -10,9 +10,23 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/bootstrap"
+	appdomain "github.com/imkerbos/mxid/internal/domain/app"
 	"github.com/imkerbos/mxid/internal/domain/appaccess"
 	"github.com/imkerbos/mxid/internal/domain/approle"
 )
+
+// appProtocolResolver adapts the app domain service to access.ProtocolResolver:
+// given an app id, it returns the app's SSO protocol ("oidc"|"saml"|"cas") so
+// the CompositeTerminator can pick the matching downstream-logout handler.
+type appProtocolResolver struct{ svc *appdomain.Service }
+
+func (r appProtocolResolver) ProtocolForApp(ctx context.Context, appID int64) (string, error) {
+	application, err := r.svc.GetByID(ctx, appID)
+	if err != nil {
+		return "", err
+	}
+	return application.Protocol, nil
+}
 
 type oidcAccessAdapter struct{ svc *appaccess.Service }
 
@@ -53,6 +67,33 @@ func (m *accessMatcher) UserHasRole(ctx context.Context, userID, roleID int64) (
 	err := m.app.DB.WithContext(ctx).Table("mxid_role_binding").
 		Where("role_id = ? AND subject_type = 'user' AND subject_id = ?", roleID, userID).Count(&n).Error
 	return n > 0, err
+}
+
+// accessSubjectMatcher adapts *accessMatcher (UserInGroup/UserInOrg/UserHasRole
+// returning (bool, error), tenant-agnostic) to the JIT access package's
+// access.SubjectMatcher interface (tenant-scoped, error-swallowing bool). The
+// underlying membership tables are not tenant-partitioned in CE, so tenantID is
+// accepted for interface compatibility but not used in the lookup; a lookup
+// error is treated as "no match" (fail-closed), matching the appaccess posture.
+type accessSubjectMatcher struct{ m *accessMatcher }
+
+func newAccessSubjectMatcher(app *bootstrap.App) *accessSubjectMatcher {
+	return &accessSubjectMatcher{m: newAccessMatcher(app)}
+}
+
+func (a *accessSubjectMatcher) UserInGroup(ctx context.Context, _ /*tenantID*/, userID, groupID int64) bool {
+	ok, err := a.m.UserInGroup(ctx, userID, groupID)
+	return err == nil && ok
+}
+
+func (a *accessSubjectMatcher) UserInOrg(ctx context.Context, _ /*tenantID*/, userID, orgID int64) bool {
+	ok, err := a.m.UserInOrg(ctx, userID, orgID)
+	return err == nil && ok
+}
+
+func (a *accessSubjectMatcher) UserHasRole(ctx context.Context, _ /*tenantID*/, userID, roleID int64) bool {
+	ok, err := a.m.UserHasRole(ctx, userID, roleID)
+	return err == nil && ok
 }
 
 type appLabelResolver struct{ app *bootstrap.App }
