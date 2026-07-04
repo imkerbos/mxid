@@ -60,7 +60,11 @@ func TestValidateSecrets_ReleaseRejectsDevRedisPassword(t *testing.T) {
 
 func TestValidateSecrets_ReleaseRequiresKEK(t *testing.T) {
 	cfg := &Config{
-		Server:   ServerConfig{Mode: "release"},
+		Server: ServerConfig{
+			Mode:           "release",
+			AllowedOrigins: []string{"https://id.example.com"},
+			IssuerURL:      "https://id.example.com",
+		},
 		Database: DatabaseConfig{Password: "a-real-password-not-on-the-deny-list"},
 		Redis:    RedisConfig{Password: "a-real-redis-password"},
 		Session:  SessionConfig{CookieSecure: true},
@@ -71,6 +75,35 @@ func TestValidateSecrets_ReleaseRequiresKEK(t *testing.T) {
 	cfg.Crypto.KeyEncryptionKey = "non-empty"
 	if err := cfg.validateSecrets(); err != nil {
 		t.Errorf("release with all secrets set should pass, got %v", err)
+	}
+}
+
+func TestValidateSecrets_ReleaseRequiresOriginsAndIssuer(t *testing.T) {
+	base := func() *Config {
+		return &Config{
+			Server: ServerConfig{
+				Mode:           "release",
+				AllowedOrigins: []string{"https://id.example.com"},
+				IssuerURL:      "https://id.example.com",
+			},
+			Database: DatabaseConfig{Password: "a-real-password-not-on-the-deny-list"},
+			Redis:    RedisConfig{Password: "a-real-redis-password"},
+			Session:  SessionConfig{CookieSecure: true},
+			Crypto:   CryptoConfig{KeyEncryptionKey: "non-empty"},
+		}
+	}
+	if err := base().validateSecrets(); err != nil {
+		t.Fatalf("baseline release config should pass, got %v", err)
+	}
+	noOrigins := base()
+	noOrigins.Server.AllowedOrigins = nil
+	if err := noOrigins.validateSecrets(); err == nil {
+		t.Errorf("empty allowed_origins must fail in release")
+	}
+	localIssuer := base()
+	localIssuer.Server.IssuerURL = "http://localhost:10050"
+	if err := localIssuer.validateSecrets(); err == nil {
+		t.Errorf("localhost issuer_url must fail in release")
 	}
 }
 
