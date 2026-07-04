@@ -1,8 +1,6 @@
 package tenant
 
 import (
-	"errors"
-	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -58,11 +56,7 @@ func (h *Handler) Get(c *gin.Context) {
 	}
 	t, err := h.svc.Get(c.Request.Context(), id)
 	if err != nil {
-		if errors.Is(err, ErrTenantNotFound) {
-			response.NotFound(c, 40401, err.Error())
-			return
-		}
-		response.InternalError(c, "", err)
+		response.MapError(c, err)
 		return
 	}
 	response.OK(c, t)
@@ -76,15 +70,7 @@ func (h *Handler) Create(c *gin.Context) {
 	}
 	t, err := h.svc.Create(c.Request.Context(), &req)
 	if err != nil {
-		if errors.Is(err, ErrTenantCodeExists) {
-			response.Error(c, http.StatusConflict, 40901, err.Error(), "")
-			return
-		}
-		if errors.Is(err, ErrLicenseQuotaExceeded) {
-			response.Error(c, http.StatusPaymentRequired, 40201, err.Error(), "")
-			return
-		}
-		response.BadRequest(c, 40002, err.Error())
+		response.MapError(c, err)
 		return
 	}
 	response.Created(c, t)
@@ -103,11 +89,7 @@ func (h *Handler) Update(c *gin.Context) {
 	}
 	t, err := h.svc.Update(c.Request.Context(), id, &req)
 	if err != nil {
-		if errors.Is(err, ErrTenantNotFound) {
-			response.NotFound(c, 40401, err.Error())
-			return
-		}
-		response.InternalError(c, "", err)
+		response.MapError(c, err)
 		return
 	}
 	response.OK(c, t)
@@ -120,7 +102,7 @@ func (h *Handler) Delete(c *gin.Context) {
 		return
 	}
 	if err := h.svc.Delete(c.Request.Context(), id); err != nil {
-		response.BadRequest(c, 40002, err.Error())
+		response.MapError(c, err)
 		return
 	}
 	response.OK(c, nil)
