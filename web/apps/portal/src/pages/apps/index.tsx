@@ -256,9 +256,9 @@ export default function AppsPage() {
       saml: 'bg-purple-100 text-purple-700',
       cas: 'bg-teal-100 text-teal-700',
       jwt: 'bg-amber-100 text-amber-700',
-      form: 'bg-gray-100 text-gray-700',
+      form: 'bg-surface-muted text-ink',
     }
-    return colors[protocol] || 'bg-gray-100 text-gray-600'
+    return colors[protocol] || 'bg-surface-muted text-muted'
   }
 
   const appIconValue = (app: PortalApp) => app.logo_url || app.icon || ''
@@ -272,7 +272,7 @@ export default function AppsPage() {
   }
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 py-32 text-gray-500">
+      <div className="flex flex-col items-center justify-center gap-3 py-32 text-muted">
         <AlertCircle className="h-10 w-10 text-red-400" />
         <p className="text-sm">{error}</p>
       </div>
@@ -291,19 +291,19 @@ export default function AppsPage() {
       {/* Top bar: search + title */}
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">{t('portal.appsTitle')}</h1>
-          <p className="mt-0.5 text-xs text-gray-500">
+          <h1 className="text-xl font-semibold text-ink">{t('portal.appsTitle')}</h1>
+          <p className="mt-0.5 text-xs text-muted">
             {t('portal.appsHint')}
           </p>
         </div>
         <div className="relative w-full sm:w-72">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
           <input
             type="text"
             value={query}
             onChange={e => setQuery(e.target.value)}
             placeholder={t('portal.searchPlaceholder')}
-            className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm text-gray-800 outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/15"
+            className="w-full rounded-lg border border-border bg-surface py-2 pl-9 pr-3 text-sm text-ink outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/15"
           />
         </div>
       </div>
@@ -333,7 +333,7 @@ export default function AppsPage() {
               count={apps.length}
               onClick={() => setSelected('all')}
             />
-            <div className="hidden h-px w-full bg-gray-100 lg:block" />
+            <div className="hidden h-px w-full bg-surface-muted lg:block" />
             {sortedGroups.map(g => (
               <SideItem
                 key={g.id}
@@ -351,7 +351,7 @@ export default function AppsPage() {
           {/* Recent ribbon — only on All + no search */}
           {recentRibbonApps.length > 0 && (
             <section className="mb-6">
-              <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-gray-500">
+              <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted">
                 <Clock className="h-3.5 w-3.5" /> {t('portal.recent')}
               </div>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -374,15 +374,15 @@ export default function AppsPage() {
             sections.map(section => (
               <section key={String(section.id)} className="mb-7">
                 <div className="mb-3 flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-gray-700">
+                  <h2 className="text-sm font-semibold text-ink">
                     {section.name}
-                    <span className="ml-2 text-xs font-normal text-gray-400">
+                    <span className="ml-2 text-xs font-normal text-faint">
                       {section.apps.length}
                     </span>
                   </h2>
                 </div>
                 {section.apps.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-gray-200 px-4 py-6 text-center text-xs text-gray-400">
+                  <div className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-xs text-faint">
                     {t('portal.appsEmpty')}
                   </div>
                 ) : (
@@ -447,7 +447,7 @@ function SideItem({
       className={`group inline-flex shrink-0 items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm transition lg:w-full ${
         active
           ? 'bg-primary/10 text-primary font-medium'
-          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+          : 'text-muted hover:bg-surface-muted hover:text-ink'
       }`}
     >
       <span className="inline-flex items-center gap-2 truncate">
@@ -465,7 +465,7 @@ function SideItem({
                 onToggleExpand?.()
               }
             }}
-            className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-gray-400 hover:bg-gray-200"
+            className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-faint hover:bg-surface-muted"
             title={isExpanded ? t('portal.collapse') : t('portal.expand')}
           >
             <span className="text-[10px]">{isExpanded ? '▾' : '▸'}</span>
@@ -476,7 +476,7 @@ function SideItem({
       </span>
       <span
         className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] tabular-nums ${
-          active ? 'bg-primary/15 text-primary' : 'bg-gray-100 text-gray-500'
+          active ? 'bg-primary/15 text-primary' : 'bg-surface-muted text-muted'
         }`}
       >
         {count}
@@ -532,26 +532,26 @@ function AppCard({
       <button
         onClick={onLaunch}
         disabled={launching}
-        className={`flex w-full items-start gap-4 rounded-xl border border-gray-200 bg-white p-5 text-left transition-all hover:border-primary/30 hover:shadow-md hover:shadow-primary/5 disabled:opacity-60 ${draggable ? 'cursor-grab active:cursor-grabbing' : ''}`}
+        className={`flex w-full items-start gap-4 rounded-xl border border-border bg-surface p-5 text-left transition-all hover:border-primary/30 hover:shadow-md hover:shadow-primary/5 disabled:opacity-60 ${draggable ? 'cursor-grab active:cursor-grabbing' : ''}`}
       >
         {draggable && (
-          <GripVertical className="mt-1 h-4 w-4 shrink-0 text-gray-300 group-hover:text-gray-400" />
+          <GripVertical className="mt-1 h-4 w-4 shrink-0 text-faint group-hover:text-faint" />
         )}
         <AppIcon value={iconValue} fallbackName={app.name} size={48} className="rounded-xl" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="truncate text-sm font-semibold text-gray-900">{app.name}</h3>
+            <h3 className="truncate text-sm font-semibold text-ink">{app.name}</h3>
             <span
               className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${protocolBadgeClass}`}
             >
               {protocolLabel(app.protocol)}
             </span>
           </div>
-          <p className="mt-1 line-clamp-2 text-xs text-gray-500">
+          <p className="mt-1 line-clamp-2 text-xs text-muted">
             {app.description || t('portal.noDesc')}
           </p>
         </div>
-        <div className="absolute right-4 top-5 text-gray-300 transition-colors group-hover:text-primary">
+        <div className="absolute right-4 top-5 text-faint transition-colors group-hover:text-primary">
           {launching ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
         </div>
       </button>
@@ -562,7 +562,7 @@ function AppCard({
         className={`absolute right-4 bottom-4 rounded-full p-1.5 transition ${
           isFavorite
             ? 'text-amber-500 hover:bg-amber-50'
-            : 'text-gray-300 opacity-0 hover:text-amber-500 hover:bg-amber-50 group-hover:opacity-100'
+            : 'text-faint opacity-0 hover:text-amber-500 hover:bg-amber-50 group-hover:opacity-100'
         }`}
       >
         <Star className={`h-4 w-4 ${isFavorite ? 'fill-current' : ''}`} />
@@ -585,19 +585,19 @@ function CompactAppCard({
     <button
       onClick={onLaunch}
       disabled={launching}
-      className="group flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left transition hover:border-primary/30 hover:shadow-sm disabled:opacity-60"
+      className="group flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2.5 text-left transition hover:border-primary/30 hover:shadow-sm disabled:opacity-60"
     >
       <AppIcon value={iconValue} fallbackName={app.name} size={32} className="rounded-lg" />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium text-gray-800">{app.name}</div>
-        <div className="truncate text-[10px] uppercase tracking-wide text-gray-400">
+        <div className="truncate text-sm font-medium text-ink">{app.name}</div>
+        <div className="truncate text-[10px] uppercase tracking-wide text-faint">
           {protocolLabel(app.protocol)}
         </div>
       </div>
       {launching ? (
         <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
       ) : (
-        <ExternalLink className="h-3.5 w-3.5 text-gray-300 group-hover:text-primary" />
+        <ExternalLink className="h-3.5 w-3.5 text-faint group-hover:text-primary" />
       )}
     </button>
   )
@@ -616,7 +616,7 @@ function EmptyState({
   else if (selected === 'favorites') label = t('portal.noFavorite')
   else if (selected === 'recent') label = t('portal.noRecent')
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-16 text-gray-400">
+    <div className="flex flex-col items-center justify-center gap-3 py-16 text-faint">
       <LayoutGrid className="h-12 w-12" />
       <p className="text-sm">{label}</p>
     </div>

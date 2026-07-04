@@ -245,15 +245,15 @@ export default function PermissionsPage() {
 
       <div className="flex gap-6">
         {/* Roles list */}
-        <div className="w-72 shrink-0 rounded-xl border border-gray-100 bg-white shadow-sm">
-          <div className="border-b border-gray-100 px-4 py-3">
-            <h3 className="text-sm font-semibold text-gray-700">{t('permissions.rolesList')}</h3>
+        <div className="w-72 shrink-0 rounded-xl border border-border bg-surface shadow-sm">
+          <div className="border-b border-border px-4 py-3">
+            <h3 className="text-sm font-semibold text-ink">{t('permissions.rolesList')}</h3>
           </div>
           <div className="p-2">
             {loading ? (
-              <p className="py-8 text-center text-sm text-gray-400">{t('common.loading')}</p>
+              <p className="py-8 text-center text-sm text-faint">{t('common.loading')}</p>
             ) : roles.items.length === 0 ? (
-              <p className="py-8 text-center text-sm text-gray-400">{t('permissions.emptyRoles')}</p>
+              <p className="py-8 text-center text-sm text-faint">{t('permissions.emptyRoles')}</p>
             ) : (
               <div className="space-y-1">
                 {roles.items.map((role) => (
@@ -264,14 +264,14 @@ export default function PermissionsPage() {
                       'flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm transition-colors',
                       selectedRole?.id === role.id
                         ? 'bg-primary/10 text-primary font-medium'
-                        : 'text-gray-700 hover:bg-gray-50'
+                        : 'text-ink hover:bg-surface-muted'
                     )}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <Shield className="h-4 w-4 shrink-0 text-gray-400" />
+                      <Shield className="h-4 w-4 shrink-0 text-faint" />
                       <div className="min-w-0">
                         <p className="truncate">{role.name}</p>
-                        <p className="truncate text-xs text-gray-400">
+                        <p className="truncate text-xs text-faint">
                           {role.code}
                           {role.member_count > 0 && (
                             <span className="ml-1.5">
@@ -282,7 +282,7 @@ export default function PermissionsPage() {
                       </div>
                     </div>
                     {role.type === RoleType.System && (
-                      <span className="ml-2 shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500">
+                      <span className="ml-2 shrink-0 rounded bg-surface-muted px-1.5 py-0.5 text-[10px] text-muted">
                         {t('permissions.systemTag')}
                       </span>
                     )}
@@ -294,14 +294,14 @@ export default function PermissionsPage() {
         </div>
 
         {/* Role detail panel */}
-        <div className="flex-1 rounded-xl border border-gray-100 bg-white shadow-sm">
+        <div className="flex-1 rounded-xl border border-border bg-surface shadow-sm">
           {selectedRole ? (
             <div>
               {/* Header */}
-              <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+              <div className="flex items-center justify-between border-b border-border px-6 py-4">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">{selectedRole.name}</h3>
-                  <p className="text-sm text-gray-500">
+                  <h3 className="text-lg font-semibold text-ink">{selectedRole.name}</h3>
+                  <p className="text-sm text-muted">
                     {selectedRole.description || t('permissions.noDescription')} &middot; {t('permissions.createdAtPrefix', { date: formatDate(selectedRole.created_at) })}
                     {selectedRole.member_count > 0 && (
                       <span> &middot; {t('permissions.memberCountFragment', { count: selectedRole.member_count })}</span>
@@ -312,7 +312,7 @@ export default function PermissionsPage() {
                   {selectedRole.type !== RoleType.System && (
                     <button
                       onClick={() => setDelRole(selectedRole)}
-                      className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-red-500 hover:bg-red-50"
+                      className="rounded-lg border border-border px-3 py-1.5 text-sm text-red-500 hover:bg-red-50"
                     >
                       {t('permissions.deleteRole')}
                     </button>
@@ -340,14 +340,14 @@ export default function PermissionsPage() {
               </div>
 
               {/* Tabs */}
-              <div className="flex border-b border-gray-100 px-6">
+              <div className="flex border-b border-border px-6">
                 <button
                   onClick={() => handleTabChange('permissions')}
                   className={cn(
                     'relative px-4 py-3 text-sm font-medium transition-colors',
                     activeTab === 'permissions'
                       ? 'text-primary'
-                      : 'text-gray-500 hover:text-gray-700'
+                      : 'text-muted hover:text-ink'
                   )}
                 >
                   {t('permissions.tabPermissions')}
@@ -364,7 +364,7 @@ export default function PermissionsPage() {
                     'relative px-4 py-3 text-sm font-medium transition-colors',
                     activeTab === 'members'
                       ? 'text-primary'
-                      : 'text-gray-500 hover:text-gray-700'
+                      : 'text-muted hover:text-ink'
                   )}
                 >
                   <span className="inline-flex items-center gap-1.5">
@@ -374,7 +374,7 @@ export default function PermissionsPage() {
                         'inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[11px] font-medium',
                         activeTab === 'members'
                           ? 'bg-primary/10 text-primary'
-                          : 'bg-gray-100 text-gray-500'
+                          : 'bg-surface-muted text-muted'
                       )}>
                         {selectedRole.member_count}
                       </span>
@@ -393,12 +393,12 @@ export default function PermissionsPage() {
               {activeTab === 'permissions' && (
                 <div className="p-6">
                   {allPermissions.length === 0 ? (
-                    <p className="py-8 text-center text-sm text-gray-400">{t('permissions.emptyPermissions')}</p>
+                    <p className="py-8 text-center text-sm text-faint">{t('permissions.emptyPermissions')}</p>
                   ) : (
                     <div className="space-y-6">
                       {Object.entries(groupedPermissions).map(([resource, perms]) => (
                         <div key={resource}>
-                          <h4 className="mb-3 text-sm font-semibold text-gray-700 uppercase tracking-wide">
+                          <h4 className="mb-3 text-sm font-semibold text-ink uppercase tracking-wide">
                             {resource}
                           </h4>
                           <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
@@ -412,7 +412,7 @@ export default function PermissionsPage() {
                                     'flex items-center gap-2.5 rounded-lg border px-3 py-2 text-left text-sm transition-colors',
                                     checked
                                       ? 'border-primary/30 bg-primary/5 text-primary'
-                                      : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                                      : 'border-border text-muted hover:bg-surface-muted'
                                   )}
                                 >
                                   <div
@@ -420,14 +420,14 @@ export default function PermissionsPage() {
                                       'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
                                       checked
                                         ? 'border-primary bg-primary text-white'
-                                        : 'border-gray-300'
+                                        : 'border-border'
                                     )}
                                   >
                                     {checked && <Check className="h-3 w-3" />}
                                   </div>
                                   <div className="min-w-0">
                                     <p className="truncate font-medium">{perm.name}</p>
-                                    <p className="truncate text-xs text-gray-400">
+                                    <p className="truncate text-xs text-faint">
                                       {perm.action}
                                     </p>
                                   </div>
@@ -446,16 +446,16 @@ export default function PermissionsPage() {
                 <div className="p-6">
                   {membersLoading ? (
                     <div className="flex items-center justify-center py-12">
-                      <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-                      <span className="ml-2 text-sm text-gray-400">{t('common.loading')}</span>
+                      <Loader2 className="h-5 w-5 animate-spin text-faint" />
+                      <span className="ml-2 text-sm text-faint">{t('common.loading')}</span>
                     </div>
                   ) : members.items.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12">
-                      <Users className="h-10 w-10 text-gray-300" />
-                      <p className="mt-3 text-sm text-gray-400">{t('permissions.emptyMembers')}</p>
+                      <Users className="h-10 w-10 text-faint" />
+                      <p className="mt-3 text-sm text-faint">{t('permissions.emptyMembers')}</p>
                       <button
                         onClick={() => setShowAddMember(true)}
-                        className="mt-4 inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                        className="mt-4 inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-surface-muted"
                       >
                         <UserPlus className="h-4 w-4" />
                         {t('permissions.addMember')}
@@ -465,7 +465,7 @@ export default function PermissionsPage() {
                     <div>
                       <table className="w-full">
                         <thead>
-                          <tr className="border-b border-gray-100 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                          <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-muted">
                             <th className="pb-3 pr-4">{t('permissions.columns.subjectType')}</th>
                             <th className="pb-3 pr-4">{t('permissions.columns.subjectId')}</th>
                             <th className="pb-3 pr-4">{t('permissions.columns.scope')}</th>
@@ -473,7 +473,7 @@ export default function PermissionsPage() {
                             <th className="pb-3 w-16">{t('permissions.columns.actions')}</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-50">
+                        <tbody className="divide-y divide-border">
                           {members.items.map((binding) => (
                             <tr key={binding.id} className="group">
                               <td className="py-3 pr-4">
@@ -486,7 +486,7 @@ export default function PermissionsPage() {
                                   {subjectTypeLabels[binding.subject_type as SubjectType] || binding.subject_type}
                                 </span>
                               </td>
-                              <td className="py-3 pr-4 text-sm text-gray-700">
+                              <td className="py-3 pr-4 text-sm text-ink">
                                 {binding.subject_id}
                               </td>
                               <td className="py-3 pr-4 text-sm">
@@ -495,17 +495,17 @@ export default function PermissionsPage() {
                                     {binding.scope_type === 'org' ? t('permissions.scopeOrg') : t('permissions.scopeGroup')} #{binding.scope_id}
                                   </span>
                                 ) : (
-                                  <span className="text-xs text-gray-400">{t('permissions.scopeGlobal')}</span>
+                                  <span className="text-xs text-faint">{t('permissions.scopeGlobal')}</span>
                                 )}
                               </td>
-                              <td className="py-3 pr-4 text-sm text-gray-500">
+                              <td className="py-3 pr-4 text-sm text-muted">
                                 {formatDate(binding.created_at)}
                               </td>
                               <td className="py-3 w-16">
                                 <button
                                   onClick={() => setDelBinding(binding)}
                                   disabled={removingMemberId === binding.id}
-                                  className="inline-flex items-center rounded-md p-1 text-gray-400 opacity-0 transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 disabled:opacity-50"
+                                  className="inline-flex items-center rounded-md p-1 text-faint opacity-0 transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 disabled:opacity-50"
                                   title={t('permissions.removeMember')}
                                 >
                                   {removingMemberId === binding.id ? (
@@ -522,25 +522,25 @@ export default function PermissionsPage() {
 
                       {/* Pagination */}
                       {totalMemberPages > 1 && (
-                        <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-4">
-                          <p className="text-xs text-gray-500">
+                        <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
+                          <p className="text-xs text-muted">
                             {t('permissions.totalRecords', { total: members.total })}
                           </p>
                           <div className="flex items-center gap-1">
                             <button
                               onClick={() => selectedRole && loadMembers(selectedRole.id, members.page - 1)}
                               disabled={members.page <= 1}
-                              className="rounded-md border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                              className="rounded-md border border-border px-2.5 py-1 text-xs text-muted hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-40"
                             >
                               {t('permissions.prevPage')}
                             </button>
-                            <span className="px-2 text-xs text-gray-500">
+                            <span className="px-2 text-xs text-muted">
                               {members.page} / {totalMemberPages}
                             </span>
                             <button
                               onClick={() => selectedRole && loadMembers(selectedRole.id, members.page + 1)}
                               disabled={members.page >= totalMemberPages}
-                              className="rounded-md border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                              className="rounded-md border border-border px-2.5 py-1 text-xs text-muted hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-40"
                             >
                               {t('permissions.nextPage')}
                             </button>
@@ -553,7 +553,7 @@ export default function PermissionsPage() {
               )}
             </div>
           ) : (
-            <div className="flex h-64 items-center justify-center text-sm text-gray-400">
+            <div className="flex h-64 items-center justify-center text-sm text-faint">
               {t('permissions.selectRoleHint')}
             </div>
           )}
@@ -565,31 +565,31 @@ export default function PermissionsPage() {
         <Modal open title={t('permissions.createRoleModal.title')} onClose={() => setShowCreate(false)} size="md">
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">{t('permissions.createRoleModal.nameRequired')}</label>
+                <label className="mb-1 block text-sm font-medium text-ink">{t('permissions.createRoleModal.nameRequired')}</label>
                 <input
                   type="text"
                   value={createForm.name}
                   onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   required
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">{t('permissions.createRoleModal.codeRequired')}</label>
+                <label className="mb-1 block text-sm font-medium text-ink">{t('permissions.createRoleModal.codeRequired')}</label>
                 <input
                   type="text"
                   value={createForm.code}
                   onChange={(e) => setCreateForm((f) => ({ ...f, code: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   required
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">{t('permissions.createRoleModal.description')}</label>
+                <label className="mb-1 block text-sm font-medium text-ink">{t('permissions.createRoleModal.description')}</label>
                 <textarea
                   value={createForm.description}
                   onChange={(e) => setCreateForm((f) => ({ ...f, description: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   rows={3}
                 />
               </div>
@@ -613,7 +613,7 @@ export default function PermissionsPage() {
             </p>
             <form onSubmit={handleAddMember} className="space-y-4">
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">{t('permissions.addMemberModal.subjectTypeRequired')}</label>
+                <label className="mb-1 block text-sm font-medium text-ink">{t('permissions.addMemberModal.subjectTypeRequired')}</label>
                 <div className="flex gap-2">
                   {SUBJECT_TYPES.map((st) => (
                     <button
@@ -624,7 +624,7 @@ export default function PermissionsPage() {
                         'flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
                         addMemberForm.subject_type === st
                           ? 'border-primary bg-primary/5 text-primary'
-                          : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                          : 'border-border text-muted hover:bg-surface-muted'
                       )}
                     >
                       {subjectTypeLabels[st]}
@@ -633,7 +633,7 @@ export default function PermissionsPage() {
                 </div>
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
+                <label className="mb-1 block text-sm font-medium text-ink">
                   {t('permissions.addMemberModal.subjectIdLabel', { type: subjectTypeLabels[addMemberForm.subject_type] })}
                 </label>
                 <input
@@ -642,13 +642,13 @@ export default function PermissionsPage() {
                   value={addMemberForm.subject_id}
                   onChange={(e) => setAddMemberForm((f) => ({ ...f, subject_id: e.target.value }))}
                   placeholder={t('permissions.addMemberModal.subjectIdPlaceholder', { type: subjectTypeLabels[addMemberForm.subject_type] })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   required
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">{t('permissions.addMemberModal.scope')}</label>
+                <label className="mb-1 block text-sm font-medium text-ink">{t('permissions.addMemberModal.scope')}</label>
                 <div className="flex gap-2">
                   {([
                     { v: '', label: t('permissions.addMemberModal.scopeGlobal') },
@@ -663,21 +663,21 @@ export default function PermissionsPage() {
                         'flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
                         addMemberForm.scope_type === opt.v
                           ? 'border-primary bg-primary/5 text-primary'
-                          : 'border-gray-200 text-gray-600 hover:bg-gray-50',
+                          : 'border-border text-muted hover:bg-surface-muted',
                       )}
                     >
                       {opt.label}
                     </button>
                   ))}
                 </div>
-                <p className="mt-1 text-xs text-gray-400">
+                <p className="mt-1 text-xs text-faint">
                   {t('permissions.addMemberModal.scopeHint')}
                 </p>
               </div>
 
               {addMemberForm.scope_type !== '' && (
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                  <label className="mb-1 block text-sm font-medium text-ink">
                     {addMemberForm.scope_type === 'org' ? t('permissions.addMemberModal.scopeIdOrgLabel') : t('permissions.addMemberModal.scopeIdGroupLabel')}
                   </label>
                   <input
@@ -686,7 +686,7 @@ export default function PermissionsPage() {
                     value={addMemberForm.scope_id}
                     onChange={(e) => setAddMemberForm((f) => ({ ...f, scope_id: e.target.value }))}
                     placeholder={addMemberForm.scope_type === 'org' ? t('permissions.addMemberModal.scopeIdOrgPlaceholder') : t('permissions.addMemberModal.scopeIdGroupPlaceholder')}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                     required
                   />
                 </div>

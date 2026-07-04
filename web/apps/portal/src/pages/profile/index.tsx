@@ -114,7 +114,7 @@ export default function ProfilePage() {
 
   if (error || !profile) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 py-32 text-gray-500">
+      <div className="flex flex-col items-center justify-center gap-3 py-32 text-muted">
         <AlertCircle className="h-10 w-10 text-red-400" />
         <p className="text-sm">{error || t('common.failed')}</p>
       </div>
@@ -128,8 +128,8 @@ export default function ProfilePage() {
       transition={{ duration: 0.3 }}
     >
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-gray-900">{t('portal.profile.title')}</h1>
-        <p className="mt-1 text-sm text-gray-500">{t('portal.profile.basic')}</p>
+        <h1 className="text-xl font-semibold text-ink">{t('portal.profile.title')}</h1>
+        <p className="mt-1 text-sm text-muted">{t('portal.profile.basic')}</p>
       </div>
 
       {verifiedBanner && (
@@ -141,7 +141,7 @@ export default function ProfilePage() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Left - User card */}
-        <div className="rounded-xl border border-gray-200 bg-white p-6">
+        <div className="rounded-xl border border-border bg-surface p-6">
           <div className="flex flex-col items-center text-center">
             {profile.avatar ? (
               <img
@@ -154,10 +154,10 @@ export default function ProfilePage() {
                 <UserCircle className="h-10 w-10 text-primary" />
               </div>
             )}
-            <h2 className="mt-4 text-lg font-semibold text-gray-900">
+            <h2 className="mt-4 text-lg font-semibold text-ink">
               {profile.display_name || profile.username}
             </h2>
-            <p className="text-sm text-gray-500">@{profile.username}</p>
+            <p className="text-sm text-muted">@{profile.username}</p>
 
             <div className="mt-6 w-full space-y-3 text-left">
               <InfoRow label={t('account.fields.email')} value={profile.email || '-'} />
@@ -168,25 +168,25 @@ export default function ProfilePage() {
         </div>
 
         {/* Right - Edit form */}
-        <div className="rounded-xl border border-gray-200 bg-white p-6 lg:col-span-2">
-          <h3 className="mb-4 text-base font-semibold text-gray-900">
+        <div className="rounded-xl border border-border bg-surface p-6 lg:col-span-2">
+          <h3 className="mb-4 text-base font-semibold text-ink">
 {t('common.edit')}
           </h3>
           <form onSubmit={handleSave} className="space-y-4">
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">
+              <label className="mb-1.5 block text-sm font-medium text-ink">
 {t('users.columns.username')}
               </label>
               <input
                 type="text"
                 value={profile.username}
                 disabled
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-500"
+                className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2.5 text-sm text-muted"
               />
             </div>
             <div>
               <div className="mb-1.5 flex items-center justify-between">
-                <label className="block text-sm font-medium text-gray-700">{t('account.fields.email')}</label>
+                <label className="block text-sm font-medium text-ink">{t('account.fields.email')}</label>
                 {email && (
                   <span
                     className={
@@ -204,10 +204,10 @@ export default function ProfilePage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="user@example.com"
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/20"
+                className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-ink outline-none transition-colors placeholder:text-faint focus:border-primary focus:ring-2 focus:ring-primary/20"
               />
               <div className="mt-2 flex items-center justify-between gap-2">
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-faint">
                   {t('account.emailModified')}
                 </p>
                 {!profile.email_verified && email && (
@@ -236,7 +236,7 @@ export default function ProfilePage() {
               )}
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">
+              <label className="mb-1.5 block text-sm font-medium text-ink">
 {t('account.fields.displayName')}
               </label>
               <input
@@ -244,11 +244,11 @@ export default function ProfilePage() {
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder={t('account.fields.displayName')}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/20"
+                className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-ink outline-none transition-colors placeholder:text-faint focus:border-primary focus:ring-2 focus:ring-primary/20"
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">
+              <label className="mb-1.5 block text-sm font-medium text-ink">
 {t('users.columns.phone')}
               </label>
               <input
@@ -256,7 +256,7 @@ export default function ProfilePage() {
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder={t('users.columns.phone')}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/20"
+                className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-ink outline-none transition-colors placeholder:text-faint focus:border-primary focus:ring-2 focus:ring-primary/20"
               />
             </div>
 
@@ -292,9 +292,9 @@ export default function ProfilePage() {
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between border-b border-gray-100 pb-2 last:border-0">
-      <span className="text-xs text-gray-500">{label}</span>
-      <span className="text-sm text-gray-700">{value}</span>
+    <div className="flex items-center justify-between border-b border-border pb-2 last:border-0">
+      <span className="text-xs text-muted">{label}</span>
+      <span className="text-sm text-ink">{value}</span>
     </div>
   )
 }

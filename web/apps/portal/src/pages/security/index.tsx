@@ -29,8 +29,8 @@ export default function SecurityPage() {
       transition={{ duration: 0.3 }}
     >
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-gray-900">{t('account.title')}</h1>
-        <p className="mt-1 text-sm text-gray-500">{t('account.subtitle')}</p>
+        <h1 className="text-xl font-semibold text-ink">{t('account.title')}</h1>
+        <p className="mt-1 text-sm text-muted">{t('account.subtitle')}</p>
       </div>
 
       <div className="space-y-6">
@@ -87,7 +87,7 @@ function ChangePasswordSection() {
       <form onSubmit={handleSubmit} className="max-w-md space-y-4">
         {/* Old password */}
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700">
+          <label className="mb-1.5 block text-sm font-medium text-ink">
             {t('account.pwd.old')}
           </label>
           <div className="relative">
@@ -97,12 +97,12 @@ function ChangePasswordSection() {
               onChange={(e) => setOldPwd(e.target.value)}
               placeholder={t('account.pwd.old')}
               autoComplete="current-password"
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 pr-10 text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/20"
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 pr-10 text-sm text-ink outline-none transition-colors placeholder:text-faint focus:border-primary focus:ring-2 focus:ring-primary/20"
             />
             <button
               type="button"
               onClick={() => setShowOld(!showOld)}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-faint hover:text-muted"
             >
               {showOld ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
@@ -111,7 +111,7 @@ function ChangePasswordSection() {
 
         {/* New password */}
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700">
+          <label className="mb-1.5 block text-sm font-medium text-ink">
             {t('account.pwd.new')}
           </label>
           <div className="relative">
@@ -121,12 +121,12 @@ function ChangePasswordSection() {
               onChange={(e) => setNewPwd(e.target.value)}
               placeholder={t('account.pwd.new')}
               autoComplete="new-password"
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 pr-10 text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/20"
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 pr-10 text-sm text-ink outline-none transition-colors placeholder:text-faint focus:border-primary focus:ring-2 focus:ring-primary/20"
             />
             <button
               type="button"
               onClick={() => setShowNew(!showNew)}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-faint hover:text-muted"
             >
               {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
@@ -135,7 +135,7 @@ function ChangePasswordSection() {
 
         {/* Confirm */}
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700">
+          <label className="mb-1.5 block text-sm font-medium text-ink">
             {t('account.pwd.confirm')}
           </label>
           <input
@@ -144,7 +144,7 @@ function ChangePasswordSection() {
             onChange={(e) => setConfirmPwd(e.target.value)}
             placeholder={t('account.pwd.confirm')}
             autoComplete="new-password"
-            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/20"
+            className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-ink outline-none transition-colors placeholder:text-faint focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
         </div>
 
@@ -233,15 +233,15 @@ function MFASection() {
       }
     >
       {loading ? (
-        <div className="flex items-center gap-2 py-4 text-sm text-gray-500">
+        <div className="flex items-center gap-2 py-4 text-sm text-muted">
           <Loader2 className="h-4 w-4 animate-spin" />
           {t('common.loading')}
         </div>
       ) : error ? (
         <p className="text-sm text-red-500">{error}</p>
       ) : mfaList.length === 0 ? (
-        <div className="flex items-center gap-3 rounded-lg border border-dashed border-gray-300 bg-gray-50/50 px-4 py-6 text-sm text-gray-500">
-          <Shield className="h-5 w-5 text-gray-400" />
+        <div className="flex items-center gap-3 rounded-lg border border-dashed border-border bg-surface-muted/50 px-4 py-6 text-sm text-muted">
+          <Shield className="h-5 w-5 text-faint" />
           {t('account.mfa.noFactorAdmin')}
         </div>
       ) : (
@@ -249,15 +249,15 @@ function MFASection() {
           {mfaList.map((mfa) => (
             <div
               key={mfa.type}
-              className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3"
+              className="flex items-center justify-between rounded-lg border border-border bg-surface px-4 py-3"
             >
               <div className="flex items-center gap-3">
                 <Smartphone className="h-5 w-5 text-primary" />
                 <div>
-                  <p className="text-sm font-medium text-gray-900">
+                  <p className="text-sm font-medium text-ink">
                     {mfaTypeLabel(mfa.type)}
                   </p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted">
                     {mfa.is_default ? t('account.mfa.defaultMethod') : t('account.mfa.backupMethod')}
                   </p>
                 </div>
@@ -377,14 +377,14 @@ function EnrollTOTPModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+        className="w-full max-w-md rounded-2xl bg-surface p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-base font-semibold text-gray-900">{t('account.mfa.enrollTitle')}</h3>
+          <h3 className="text-base font-semibold text-ink">{t('account.mfa.enrollTitle')}</h3>
           <button
             onClick={onClose}
-            className="rounded-full p-1 text-gray-400 hover:bg-gray-100"
+            className="rounded-full p-1 text-faint hover:bg-surface-muted"
           >
             <X className="h-4 w-4" />
           </button>
@@ -398,10 +398,10 @@ function EnrollTOTPModal({
           <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{err}</p>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted">
               {t('account.mfa.enrollHint')}
             </p>
-            <div className="flex justify-center rounded-xl border border-gray-200 bg-gray-50 p-3">
+            <div className="flex justify-center rounded-xl border border-border bg-surface-muted p-3">
               {qrDataURL ? (
                 <img src={qrDataURL} alt="TOTP QR" className="h-44 w-44" />
               ) : (
@@ -416,19 +416,19 @@ function EnrollTOTPModal({
               )}
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">
+              <label className="mb-1 block text-xs font-medium text-muted">
                 {t('account.mfa.secretManual')}
               </label>
               <div className="flex items-center gap-2">
                 <input
                   readOnly
                   value={secret}
-                  className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-700"
+                  className="flex-1 rounded-lg border border-border bg-surface-muted px-3 py-2 font-mono text-xs text-ink"
                 />
                 <button
                   type="button"
                   onClick={copySecret}
-                  className="rounded-lg border border-gray-200 px-3 py-2 text-xs hover:bg-gray-50"
+                  className="rounded-lg border border-border px-3 py-2 text-xs hover:bg-surface-muted"
                   title={t('account.mfa.copyTitle')}
                 >
                   <Copy className="h-3.5 w-3.5" />
@@ -436,7 +436,7 @@ function EnrollTOTPModal({
               </div>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">
+              <label className="mb-1 block text-xs font-medium text-muted">
                 {t('account.mfa.verifyCode')}
               </label>
               <input
@@ -446,7 +446,7 @@ function EnrollTOTPModal({
                 maxLength={6}
                 value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-center text-lg font-mono tracking-widest text-gray-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                className="w-full rounded-lg border border-border px-3 py-2 text-center text-lg font-mono tracking-widest text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                 placeholder="••••••"
               />
             </div>
@@ -454,7 +454,7 @@ function EnrollTOTPModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-lg border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50"
+                className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-surface-muted"
               >
                 {t('common.cancel')}
               </button>
@@ -518,28 +518,28 @@ function SessionsSection() {
   return (
     <SectionCard icon={Monitor} title={t('account.sessions.title')}>
       {loading ? (
-        <div className="flex items-center gap-2 py-4 text-sm text-gray-500">
+        <div className="flex items-center gap-2 py-4 text-sm text-muted">
           <Loader2 className="h-4 w-4 animate-spin" />
           {t('common.loading')}
         </div>
       ) : error ? (
         <p className="text-sm text-red-500">{error}</p>
       ) : sessions.length === 0 ? (
-        <p className="py-4 text-sm text-gray-500">{t('account.sessions.empty')}</p>
+        <p className="py-4 text-sm text-muted">{t('account.sessions.empty')}</p>
       ) : (
         <div className="space-y-3">
           {sessions.map((session) => (
             <div
               key={session.id}
-              className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3"
+              className="flex items-center justify-between rounded-lg border border-border bg-surface px-4 py-3"
             >
               <div className="flex items-center gap-3">
-                <Monitor className="h-5 w-5 text-gray-400" />
+                <Monitor className="h-5 w-5 text-faint" />
                 <div>
-                  <p className="text-sm font-medium text-gray-900">
+                  <p className="text-sm font-medium text-ink">
                     {parseUA(session.user_agent)}
                   </p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted">
                     IP: {session.ip} &middot; {t('account.sessions.lastActiveLabel')}: {formatDate(session.last_active_at)}
                   </p>
                 </div>
@@ -579,11 +579,11 @@ function SectionCard({
   children: React.ReactNode
 }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-6">
+    <div className="rounded-xl border border-border bg-surface p-6">
       <div className="mb-4 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Icon className="h-5 w-5 text-primary" />
-          <h2 className="text-base font-semibold text-gray-900">{title}</h2>
+          <h2 className="text-base font-semibold text-ink">{title}</h2>
         </div>
         {action}
       </div>

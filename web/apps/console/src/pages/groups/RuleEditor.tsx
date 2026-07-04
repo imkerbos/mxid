@@ -86,9 +86,9 @@ export default function RuleEditor({ value, onChange }: RuleEditorProps) {
   }
 
   return (
-    <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+    <div className="space-y-2 rounded-lg border border-border bg-surface-muted p-3">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-medium text-gray-600">{t('groupRules.title')}</p>
+        <p className="text-xs font-medium text-muted">{t('groupRules.title')}</p>
         <button
           type="button"
           onClick={addCondition}
@@ -100,14 +100,14 @@ export default function RuleEditor({ value, onChange }: RuleEditorProps) {
       </div>
 
       {value.conditions.length === 0 && (
-        <p className="py-2 text-center text-xs text-gray-400">{t('groupRules.emptyCondition')}</p>
+        <p className="py-2 text-center text-xs text-faint">{t('groupRules.emptyCondition')}</p>
       )}
 
       <div className="space-y-2">
         {value.conditions.map((c, i) => {
           const cmps = fields[c.field] ?? []
           return (
-            <div key={i} className="grid grid-cols-[1fr_1fr_1.4fr_auto] gap-2 rounded-md border border-gray-100 bg-white p-2">
+            <div key={i} className="grid grid-cols-[1fr_1fr_1.4fr_auto] gap-2 rounded-md border border-border bg-surface p-2">
               <select
                 value={c.field}
                 onChange={(e) => {
@@ -119,7 +119,7 @@ export default function RuleEditor({ value, onChange }: RuleEditorProps) {
                     value: newField === 'status' ? 1 : '',
                   })
                 }}
-                className="rounded-md border border-gray-300 px-2 py-1 text-xs outline-none focus:border-primary"
+                className="rounded-md border border-border px-2 py-1 text-xs outline-none focus:border-primary"
               >
                 {fieldKeys.map((f) => (
                   <option key={f} value={f}>
@@ -131,7 +131,7 @@ export default function RuleEditor({ value, onChange }: RuleEditorProps) {
               <select
                 value={c.cmp}
                 onChange={(e) => updateCondition(i, { cmp: e.target.value })}
-                className="rounded-md border border-gray-300 px-2 py-1 text-xs outline-none focus:border-primary"
+                className="rounded-md border border-border px-2 py-1 text-xs outline-none focus:border-primary"
               >
                 {cmps.map((op) => (
                   <option key={op} value={op}>
@@ -150,7 +150,7 @@ export default function RuleEditor({ value, onChange }: RuleEditorProps) {
               <button
                 type="button"
                 onClick={() => removeCondition(i)}
-                className="rounded-md p-1 text-gray-400 hover:bg-red-50 hover:text-red-500"
+                className="rounded-md p-1 text-faint hover:bg-red-50 hover:text-red-500"
                 title={t('groupRules.deleteCondition')}
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -160,7 +160,7 @@ export default function RuleEditor({ value, onChange }: RuleEditorProps) {
         })}
       </div>
 
-      <p className="text-xs text-gray-400">
+      <p className="text-xs text-faint">
         {t('groupRules.footerHint')}
       </p>
     </div>
@@ -187,7 +187,7 @@ function ConditionValue({
       <select
         value={typeof value === 'number' ? value : Number(value) || 1}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="rounded-md border border-gray-300 px-2 py-1 text-xs outline-none focus:border-primary"
+        className="rounded-md border border-border px-2 py-1 text-xs outline-none focus:border-primary"
       >
         {STATUS_OPTIONS.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
@@ -204,7 +204,7 @@ function ConditionValue({
       value={typeof value === 'string' ? value : String(value ?? '')}
       onChange={(e) => onChange(e.target.value)}
       placeholder={t('groupRules.valuePlaceholder')}
-      className="rounded-md border border-gray-300 px-2 py-1 text-xs outline-none focus:border-primary"
+      className="rounded-md border border-border px-2 py-1 text-xs outline-none focus:border-primary"
     />
   )
 }
@@ -269,25 +269,25 @@ function OrgSelector({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="w-full truncate rounded-md border border-gray-300 px-2 py-1 text-left text-xs hover:border-primary focus:border-primary focus:outline-none"
+        className="w-full truncate rounded-md border border-border px-2 py-1 text-left text-xs hover:border-primary focus:border-primary focus:outline-none"
       >
-        {selected ? `${'· '.repeat(selected.depth)}${selected.name}` : <span className="text-gray-400">{placeholder}</span>}
+        {selected ? `${'· '.repeat(selected.depth)}${selected.name}` : <span className="text-faint">{placeholder}</span>}
       </button>
       {open && (
-        <div className="absolute z-20 mt-1 w-72 rounded-md border border-gray-200 bg-white shadow-lg">
+        <div className="absolute z-20 mt-1 w-72 rounded-md border border-border bg-surface shadow-lg">
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t('groupRules.searchOrgPlaceholder')}
-            className="w-full border-b border-gray-100 px-2 py-1.5 text-xs outline-none"
+            className="w-full border-b border-border px-2 py-1.5 text-xs outline-none"
             autoFocus
           />
           <div className="max-h-56 overflow-y-auto">
             {loading ? (
-              <div className="py-3 text-center text-xs text-gray-400">{t('groupRules.loading')}</div>
+              <div className="py-3 text-center text-xs text-faint">{t('groupRules.loading')}</div>
             ) : filtered.length === 0 ? (
-              <div className="py-3 text-center text-xs text-gray-400">{t('groupRules.noMatchOrg')}</div>
+              <div className="py-3 text-center text-xs text-faint">{t('groupRules.noMatchOrg')}</div>
             ) : (
               filtered.map((n) => (
                 <button
@@ -299,14 +299,14 @@ function OrgSelector({
                     setQuery('')
                   }}
                   className={
-                    'flex w-full items-center justify-between px-2 py-1.5 text-left text-xs hover:bg-gray-50 ' +
-                    (selected?.id === n.id ? 'bg-primary/5 text-primary' : 'text-gray-700')
+                    'flex w-full items-center justify-between px-2 py-1.5 text-left text-xs hover:bg-surface-muted ' +
+                    (selected?.id === n.id ? 'bg-primary/5 text-primary' : 'text-ink')
                   }
                 >
                   <span className="truncate">
                     {'· '.repeat(n.depth)}{n.name}
                   </span>
-                  <code className="ml-2 shrink-0 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-500">
+                  <code className="ml-2 shrink-0 rounded bg-surface-muted px-1 py-0.5 text-[10px] text-muted">
                     {n.code}
                   </code>
                 </button>

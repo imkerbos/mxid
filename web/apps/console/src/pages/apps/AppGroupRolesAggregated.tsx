@@ -35,10 +35,10 @@ export default function AppGroupRolesAggregated({ groupId }: { groupId: string }
 
   useEffect(() => { load() }, [load])
 
-  if (loading) return <Loader2 className="mx-auto my-8 h-5 w-5 animate-spin text-gray-400" />
+  if (loading) return <Loader2 className="mx-auto my-8 h-5 w-5 animate-spin text-faint" />
   if (list.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-gray-200 py-6 text-center text-sm text-gray-400">
+      <div className="rounded-lg border border-dashed border-border py-6 text-center text-sm text-faint">
         {t('apps.aggregated.emptyMembers')}
       </div>
     )
@@ -51,34 +51,34 @@ export default function AppGroupRolesAggregated({ groupId }: { groupId: string }
   return (
     <div className="space-y-3">
       {list.map((m) => (
-        <div key={m.app_id} className="rounded-xl border border-gray-200 bg-white">
+        <div key={m.app_id} className="rounded-xl border border-border bg-surface">
           <button
             type="button"
             onClick={() => openApp(m.app_id)}
-            className="flex w-full items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 transition-colors hover:bg-gray-50"
+            className="flex w-full items-center justify-between gap-3 border-b border-border px-4 py-3 transition-colors hover:bg-surface-muted"
           >
             <div className="flex min-w-0 items-center gap-2.5">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                 <AppWindow className="h-4 w-4 text-primary" />
               </div>
               <div className="min-w-0 text-left">
-                <div className="truncate text-sm font-semibold text-gray-900">{m.app_name}</div>
-                <div className="truncate font-mono text-xs text-gray-400">{m.app_code}</div>
+                <div className="truncate text-sm font-semibold text-ink">{m.app_name}</div>
+                <div className="truncate font-mono text-xs text-faint">{m.app_code}</div>
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <Tag>{t('apps.aggregated.rolesCount', { count: m.roles.length })}</Tag>
               <Tag variant="primary">{t('apps.aggregated.bindingsCount', { count: m.bindings.length })}</Tag>
-              <ChevronRight className="h-4 w-4 text-gray-300" />
+              <ChevronRight className="h-4 w-4 text-faint" />
             </div>
           </button>
 
           <div className="space-y-3 px-4 py-3">
             {/* Roles */}
             <div>
-              <div className="mb-1.5 text-xs font-medium text-gray-500">{t('apps.aggregated.rolesCatalog')}</div>
+              <div className="mb-1.5 text-xs font-medium text-muted">{t('apps.aggregated.rolesCatalog')}</div>
               {m.roles.length === 0 ? (
-                <p className="text-xs text-gray-400">{t('apps.aggregated.undefined')}</p>
+                <p className="text-xs text-faint">{t('apps.aggregated.undefined')}</p>
               ) : (
                 <div className="flex flex-wrap gap-1.5">
                   {m.roles.map((r) => (
@@ -98,16 +98,16 @@ export default function AppGroupRolesAggregated({ groupId }: { groupId: string }
 
             {/* Bindings */}
             <div>
-              <div className="mb-1.5 text-xs font-medium text-gray-500">{t('apps.aggregated.bindings')}</div>
+              <div className="mb-1.5 text-xs font-medium text-muted">{t('apps.aggregated.bindings')}</div>
               {m.bindings.length === 0 ? (
-                <p className="text-xs text-gray-400">{t('apps.aggregated.noBindings')}</p>
+                <p className="text-xs text-faint">{t('apps.aggregated.noBindings')}</p>
               ) : (
                 <div className="space-y-1">
                   {m.bindings.map((b) => (
                     <div key={b.id} className="flex items-center gap-2 text-xs">
-                      <span className="text-gray-500">{subjectLabel(b.subject_type, t)}</span>
-                      <span className="text-gray-700">{b.subject_name || t('apps.aggregated.unknown')}</span>
-                      <span className="text-gray-300">→</span>
+                      <span className="text-muted">{subjectLabel(b.subject_type, t)}</span>
+                      <span className="text-ink">{b.subject_name || t('apps.aggregated.unknown')}</span>
+                      <span className="text-faint">→</span>
                       <span className="font-medium text-primary">{b.role_name}</span>
                     </div>
                   ))}

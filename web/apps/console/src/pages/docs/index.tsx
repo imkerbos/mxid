@@ -108,9 +108,9 @@ export default function DocsPage() {
       <div className="grid grid-cols-12 gap-6">
         {/* ───── Left rail: search + filter + list ───── */}
         <aside className="col-span-12 md:col-span-4 xl:col-span-3">
-          <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
+          <div className="space-y-3 rounded-xl border border-border bg-surface p-4">
             <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -128,7 +128,7 @@ export default function DocsPage() {
                     'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
                     protoFilter === p
                       ? 'bg-primary text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
+                      : 'bg-surface-muted text-muted hover:bg-surface-muted',
                   )}
                 >
                   {p === 'all' ? t('docs.allFilter') : PROTOCOL_LABEL[p as Protocol]}
@@ -146,7 +146,7 @@ export default function DocsPage() {
                 />
               ))}
               {filtered.length === 0 && (
-                <p className="px-2 py-6 text-center text-sm text-gray-400">{t('docs.noMatch')}</p>
+                <p className="px-2 py-6 text-center text-sm text-faint">{t('docs.noMatch')}</p>
               )}
             </div>
           </div>
@@ -186,11 +186,11 @@ function GuideRow({
       onClick={onClick}
       className={cn(
         'w-full rounded-lg px-3 py-2.5 text-left transition-colors',
-        active ? 'bg-primary/10 ring-1 ring-primary/30' : 'hover:bg-gray-50',
+        active ? 'bg-primary/10 ring-1 ring-primary/30' : 'hover:bg-surface-muted',
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className={cn('truncate text-sm font-medium', active ? 'text-primary' : 'text-gray-800')}>
+        <span className={cn('truncate text-sm font-medium', active ? 'text-primary' : 'text-ink')}>
           {guide.app}
         </span>
         <span
@@ -202,7 +202,7 @@ function GuideRow({
           {PROTOCOL_LABEL[guide.protocol]}
         </span>
       </div>
-      <p className="mt-0.5 line-clamp-2 text-xs text-gray-500">{guide.summary}</p>
+      <p className="mt-0.5 line-clamp-2 text-xs text-muted">{guide.summary}</p>
     </button>
   )
 }
@@ -228,9 +228,9 @@ function GuideView({
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.18 }}
-      className="space-y-6 rounded-xl border border-gray-200 bg-white p-6"
+      className="space-y-6 rounded-xl border border-border bg-surface p-6"
     >
-      <header className="space-y-2 border-b border-gray-100 pb-4">
+      <header className="space-y-2 border-b border-border pb-4">
         <div className="flex items-center gap-2">
           <span
             className={cn(
@@ -240,12 +240,12 @@ function GuideView({
           >
             {PROTOCOL_LABEL[guide.protocol]}
           </span>
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-faint">
             {t('docs.difficulty')}{'⭐'.repeat(guide.difficulty)}
           </span>
         </div>
-        <h2 className="text-2xl font-bold text-gray-900">{guide.app}</h2>
-        <p className="text-sm text-gray-600">{guide.summary}</p>
+        <h2 className="text-2xl font-bold text-ink">{guide.app}</h2>
+        <p className="text-sm text-muted">{guide.summary}</p>
         <div className="flex flex-wrap gap-1.5 pt-1">
           {guide.tags.map((t) => (
             <Tag key={t}>{t}</Tag>
@@ -294,7 +294,7 @@ function GuideView({
         </section>
       )}
 
-      <footer className="flex items-center gap-2 border-t border-gray-100 pt-4 text-xs text-gray-400">
+      <footer className="flex items-center gap-2 border-t border-border pt-4 text-xs text-faint">
         <ExternalLink className="h-3.5 w-3.5" />
         {t('docs.footer')}
       </footer>
@@ -317,7 +317,7 @@ function StepBlock({
 }) {
   return (
     <div className="space-y-2">
-      <h3 className="flex items-center gap-2 text-base font-semibold text-gray-900">
+      <h3 className="flex items-center gap-2 text-base font-semibold text-ink">
         <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">
           {index}
         </span>
@@ -346,7 +346,7 @@ function RenderBody({ text, substitute }: { text: string; substitute: (s: string
     }
   }
   return (
-    <div className="space-y-3 text-sm leading-relaxed text-gray-700">
+    <div className="space-y-3 text-sm leading-relaxed text-ink">
       {blocks.map((b, i) =>
         b.kind === 'code' ? (
           <CodeBlock key={i} code={b.content} lang={b.lang} />
@@ -382,7 +382,7 @@ function renderInline(text: string) {
     const tok = m[1]
     if (tok.startsWith('**')) {
       out.push(
-        <strong key={out.length} className="font-semibold text-gray-900">
+        <strong key={out.length} className="font-semibold text-ink">
           {tok.slice(2, -2)}
         </strong>,
       )
@@ -390,7 +390,7 @@ function renderInline(text: string) {
       out.push(
         <code
           key={out.length}
-          className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[12.5px] text-rose-600"
+          className="rounded bg-surface-muted px-1.5 py-0.5 font-mono text-[12.5px] text-rose-600"
         >
           {tok.slice(1, -1)}
         </code>,
@@ -414,7 +414,7 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
   return (
     <div className="group relative overflow-hidden rounded-lg border border-gray-800 bg-gray-900">
       {lang && (
-        <div className="border-b border-gray-800 px-3 py-1 text-[10px] uppercase tracking-wider text-gray-400">
+        <div className="border-b border-gray-800 px-3 py-1 text-[10px] uppercase tracking-wider text-faint">
           {lang}
         </div>
       )}

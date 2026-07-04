@@ -66,8 +66,8 @@ export default function AccessPolicyTab({
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <h3 className="text-base font-semibold text-gray-900">{t('apps.access.title')}</h3>
-          <p className="mt-0.5 text-sm text-gray-500">
+          <h3 className="text-base font-semibold text-ink">{t('apps.access.title')}</h3>
+          <p className="mt-0.5 text-sm text-muted">
             {isGroup ? t('apps.access.hintGroup') : t('apps.access.hintApp')}
           </p>
         </div>
@@ -79,7 +79,7 @@ export default function AccessPolicyTab({
 
       {loading ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+          <Loader2 className="h-6 w-6 animate-spin text-faint" />
         </div>
       ) : list.length === 0 ? (
         <div className="rounded-lg border border-dashed border-red-200 bg-red-50 px-4 py-6 text-center">
@@ -127,27 +127,27 @@ function PolicyRow({ policy, onDelete }: { policy: AccessPolicy; onDelete: (p: A
   const Icon = SUBJECT_ICON[policy.subject_type]
   const isAllow = policy.effect === 'allow'
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3">
+    <div className="flex items-center gap-3 rounded-lg border border-border bg-surface px-4 py-3">
       <div className={cn('flex h-9 w-9 items-center justify-center rounded-lg', isAllow ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700')}>
         <Icon className="h-4 w-4" />
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <Tag variant={isAllow ? 'green' : 'red'}>{isAllow ? t('apps.access.allow') : t('apps.access.deny')}</Tag>
-          <span className="text-sm font-medium text-gray-900">{t(`apps.access.subjectLabel.${policy.subject_type}`)}</span>
+          <span className="text-sm font-medium text-ink">{t(`apps.access.subjectLabel.${policy.subject_type}`)}</span>
           {policy.subject_type !== 'public' && (
-            <span className="text-sm text-gray-700">
-              {policy.subject_name || t('apps.access.subjectLabel.unknown')} <span className="text-xs text-gray-400 font-mono">{policy.subject_code}</span>
+            <span className="text-sm text-ink">
+              {policy.subject_name || t('apps.access.subjectLabel.unknown')} <span className="text-xs text-faint font-mono">{policy.subject_code}</span>
             </span>
           )}
           {policy.subject_type === 'public' && (
-            <span className="text-sm text-gray-500">{t('apps.access.subjectLabel.publicLong')}</span>
+            <span className="text-sm text-muted">{t('apps.access.subjectLabel.publicLong')}</span>
           )}
         </div>
       </div>
       <button
         onClick={() => onDelete(policy)}
-        className="rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
+        className="rounded-md p-1.5 text-faint hover:bg-red-50 hover:text-red-500"
         title={t('common.delete')}
       >
         <Trash2 className="h-4 w-4" />
@@ -248,7 +248,7 @@ function AddPolicyModal({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+      <div className="w-full max-w-md rounded-xl bg-surface p-6 shadow-xl">
         <h3 className="mb-4 text-lg font-semibold">{t('apps.access.addModalTitle')}</h3>
         <div className="space-y-4">
           <Field label={t('apps.access.effect')}>
@@ -271,7 +271,7 @@ function AddPolicyModal({
           {subjectType !== 'public' && (
             <Field label={t('apps.access.selectSubject')}>
               {optsLoading ? (
-                <div className="flex h-10 items-center justify-center"><Loader2 className="h-4 w-4 animate-spin text-gray-400" /></div>
+                <div className="flex h-10 items-center justify-center"><Loader2 className="h-4 w-4 animate-spin text-faint" /></div>
               ) : (
                 <Select value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
                   <option value="">{t('apps.access.pleaseSelect')}</option>

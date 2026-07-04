@@ -103,20 +103,20 @@ export default function MailSMTPPage() {
   return (
     <div className="space-y-6">
       {/* ─── Card: SMTP 服务器 ─── */}
-      <section className="rounded-xl border border-gray-200 bg-white p-6">
+      <section className="rounded-xl border border-border bg-surface p-6">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">{t('settings.smtp.title')}</h2>
-            <p className="mt-0.5 text-sm text-gray-500">
+            <h2 className="text-lg font-semibold text-ink">{t('settings.smtp.title')}</h2>
+            <p className="mt-0.5 text-sm text-muted">
               {t('settings.smtp.desc')}
             </p>
           </div>
-          <label className="flex items-center gap-2 text-sm text-gray-700">
+          <label className="flex items-center gap-2 text-sm text-ink">
             <input
               type="checkbox"
               checked={cfg.enabled}
               onChange={(e) => update({ enabled: e.target.checked })}
-              className="h-4 w-4 rounded border-gray-300"
+              className="h-4 w-4 rounded border-border"
             />
             {t('common.enable')}
           </label>
@@ -146,12 +146,12 @@ export default function MailSMTPPage() {
             </Select>
           </Field>
           <Field label="" hint="">
-            <label className="flex items-center gap-2 pt-7 text-sm text-gray-700">
+            <label className="flex items-center gap-2 pt-7 text-sm text-ink">
               <input
                 type="checkbox"
                 checked={cfg.skip_verify}
                 onChange={(e) => update({ skip_verify: e.target.checked })}
-                className="h-4 w-4 rounded border-gray-300"
+                className="h-4 w-4 rounded border-border"
               />
               {t('settings.smtp.skipVerify')}
             </label>
@@ -197,10 +197,10 @@ export default function MailSMTPPage() {
       </section>
 
       {/* ─── Card: 测试发送 ─── */}
-      <section className="rounded-xl border border-gray-200 bg-white p-6">
+      <section className="rounded-xl border border-border bg-surface p-6">
         <div className="mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">{t('settings.smtp.testTitle')}</h2>
-          <p className="mt-0.5 text-sm text-gray-500">
+          <h2 className="text-lg font-semibold text-ink">{t('settings.smtp.testTitle')}</h2>
+          <p className="mt-0.5 text-sm text-muted">
             {t('settings.smtp.testDesc')}
           </p>
         </div>

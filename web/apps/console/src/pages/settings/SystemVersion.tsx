@@ -51,7 +51,7 @@ export default function SystemVersionPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20 text-gray-400">
+      <div className="flex items-center justify-center py-20 text-faint">
         <Loader2 className="h-5 w-5 animate-spin" />
       </div>
     )
@@ -64,42 +64,42 @@ export default function SystemVersionPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-gray-900">{t('settings.systemVersion.title')}</h2>
-        <p className="mt-1 text-sm text-gray-500">{t('settings.systemVersion.desc')}</p>
+        <h2 className="text-lg font-semibold text-ink">{t('settings.systemVersion.title')}</h2>
+        <p className="mt-1 text-sm text-muted">{t('settings.systemVersion.desc')}</p>
       </div>
 
       {/* Current build */}
-      <div className="rounded-xl border border-gray-200 bg-white p-5">
+      <div className="rounded-xl border border-border bg-surface p-5">
         <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
-            <dt className="text-xs font-medium uppercase tracking-wide text-gray-400">
+            <dt className="text-xs font-medium uppercase tracking-wide text-faint">
               {t('settings.systemVersion.current')}
             </dt>
-            <dd className="mt-1 font-mono text-sm text-gray-900">{cur?.version || '—'}</dd>
+            <dd className="mt-1 font-mono text-sm text-ink">{cur?.version || '—'}</dd>
           </div>
           <div>
-            <dt className="text-xs font-medium uppercase tracking-wide text-gray-400">
+            <dt className="text-xs font-medium uppercase tracking-wide text-faint">
               {t('settings.systemVersion.commit')}
             </dt>
-            <dd className="mt-1 font-mono text-sm text-gray-900">{cur?.commit || '—'}</dd>
+            <dd className="mt-1 font-mono text-sm text-ink">{cur?.commit || '—'}</dd>
           </div>
           <div>
-            <dt className="text-xs font-medium uppercase tracking-wide text-gray-400">
+            <dt className="text-xs font-medium uppercase tracking-wide text-faint">
               {t('settings.systemVersion.buildTime')}
             </dt>
-            <dd className="mt-1 font-mono text-sm text-gray-900">{fmt(cur?.build_time) || '—'}</dd>
+            <dd className="mt-1 font-mono text-sm text-ink">{fmt(cur?.build_time) || '—'}</dd>
           </div>
         </dl>
       </div>
 
       {/* Update status */}
-      <div className="rounded-xl border border-gray-200 bg-white p-5">
+      <div className="rounded-xl border border-border bg-surface p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             {status?.error ? (
               <>
                 <AlertTriangle className="h-5 w-5 text-amber-500" />
-                <span className="text-sm text-gray-700">{status.error}</span>
+                <span className="text-sm text-ink">{status.error}</span>
               </>
             ) : updateAvailable ? (
               <>
@@ -112,7 +112,7 @@ export default function SystemVersionPage() {
             ) : (
               <>
                 <CheckCircle2 className="h-5 w-5 text-emerald-500" />
-                <span className="text-sm text-gray-700">{t('settings.systemVersion.upToDate')}</span>
+                <span className="text-sm text-ink">{t('settings.systemVersion.upToDate')}</span>
               </>
             )}
           </div>
@@ -128,11 +128,11 @@ export default function SystemVersionPage() {
         </div>
 
         {(latest || status?.checked_at) && (
-          <div className="mt-4 space-y-1 border-t border-gray-100 pt-4 text-sm text-gray-500">
+          <div className="mt-4 space-y-1 border-t border-border pt-4 text-sm text-muted">
             {latest?.version && (
               <div className="flex items-center gap-2">
                 <span>{t('settings.systemVersion.latest')}:</span>
-                <span className="font-mono text-gray-900">{latest.version}</span>
+                <span className="font-mono text-ink">{latest.version}</span>
                 {latest.url && (
                   <a
                     href={latest.url}
