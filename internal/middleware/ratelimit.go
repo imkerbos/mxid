@@ -36,12 +36,22 @@ type RateLimitRule struct {
 	// Use for long-lived / self-reconnecting connections that must not burn
 	// the budget — e.g. the SSE event stream.
 	SkipPaths []string
+	// FailClosed switches the Redis-outage behavior from fail-open (allow) to
+	// fail-closed (reject with 503). Leave false for coarse availability caps
+	// where a Redis blip must not take the whole site down; set true for a
+	// limiter guarding a brute-force-sensitive endpoint where an outage must
+	// not silently lift the cap. Note the credential/login path additionally
+	// has a fail-closed DB lockout (pkg/ratelimit) independent of this
+	// middleware, so the default (fail-open) here is safe for that surface.
+	FailClosed bool
 }
 
 // RateLimiter applies the given rule using a Redis-backed fixed-window
-// counter. On Redis outages we fail open (log + allow): denial of
-// legitimate traffic by limiter outage is worse than letting a real
-// attacker through during the few seconds until Redis comes back.
+// counter. On Redis outages the behavior is governed by rule.FailClosed:
+// default (false) fails open — denial of legitimate traffic by limiter
+// outage is worse than letting a real attacker through during the few
+// seconds until Redis comes back; set true on a sensitive limiter to
+// reject with 503 instead.
 //
 // On limit exceeded we return 429 with Retry-After header (seconds
 // until the current window flips) plus a JSON body documenting which
@@ -80,7 +90,16 @@ func RateLimiter(rdb *redis.Client, rule RateLimitRule) gin.HandlerFunc {
 
 		count, err := rdb.Incr(c.Request.Context(), redisKey).Result()
 		if err != nil && !errors.Is(err, redis.Nil) {
-			// Fail open.
+			if rule.FailClosed {
+				// Fail closed: an outage must not lift a security-sensitive cap.
+				c.Header("Retry-After", "1")
+				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
+					"code":    50301,
+					"message": fmt.Sprintf("rate limiter unavailable: %s", rule.Name),
+				})
+				return
+			}
+			// Fail open (default): availability over strict enforcement.
 			c.Next()
 			return
 		}
