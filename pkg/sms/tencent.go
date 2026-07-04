@@ -110,7 +110,7 @@ func (tencentSender) SendCode(ctx context.Context, cfg setting.SMS, phone, code 
 	req.Header.Set("X-TC-Version", version)
 	req.Header.Set("X-TC-Region", region)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := smsHTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("tencent send: %w", err)
 	}
@@ -123,7 +123,7 @@ func (tencentSender) SendCode(ctx context.Context, cfg setting.SMS, phone, code 
 				Code    string `json:"Code"`
 				Message string `json:"Message"`
 			} `json:"Error"`
-			RequestId   string `json:"RequestId"`
+			RequestId     string `json:"RequestId"`
 			SendStatusSet []struct {
 				Code        string `json:"Code"`
 				Message     string `json:"Message"`

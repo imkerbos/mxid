@@ -4,9 +4,10 @@
 // to a provider-specific Sender.
 //
 // Provider matrix:
-//   aliyun   → Alibaba Cloud SMS (HMAC-SHA1 over query params, stdlib only)
-//   tencent  → Tencent Cloud SMS v3 (HMAC-SHA256 signing, stdlib only)
-//   twilio   → Twilio REST API (HTTP Basic auth, x-www-form-urlencoded)
+//
+//	aliyun   → Alibaba Cloud SMS (HMAC-SHA1 over query params, stdlib only)
+//	tencent  → Tencent Cloud SMS v3 (HMAC-SHA256 signing, stdlib only)
+//	twilio   → Twilio REST API (HTTP Basic auth, x-www-form-urlencoded)
 //
 // All three providers share the same SendCode signature: (ctx, phone,
 // code, [vars]). vars carries optional template parameters; providers that
@@ -17,9 +18,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/imkerbos/mxid/internal/domain/setting"
+	"github.com/imkerbos/mxid/pkg/safehttp"
 )
+
+// smsHTTPClient is the shared outbound client for every SMS provider. It is
+// SSRF-safe and, critically, timeout-bounded: bare http.DefaultClient has no
+// timeout, so a slow/hung provider endpoint would pile up handler goroutines on
+// the unauthenticated OTP-send path (/auth/sms/send) until the process starves.
+// All three providers target public HTTPS APIs, so the SSRF guard is compatible.
+var smsHTTPClient = safehttp.New(safehttp.WithTimeout(10 * time.Second))
 
 // ErrDisabled — the SMS service is not enabled or has no provider chosen.
 // Callers (auth handlers) should map this to a 503 / 403 with a hint.
