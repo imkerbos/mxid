@@ -69,11 +69,11 @@
 /* ── 语义色三元组(暗) ── 覆盖同名, cascade 进 @theme 映射与所有工具类 ──
    border 值较亮版提高, 保证暗色下卡片描边看得清. */
 .dark {
-  --bg: 11 15 23;
-  --surface: 19 25 39;
-  --surface-muted: 26 33 50;
-  --border: 42 52 72;
-  --border-strong: 64 77 105;
+  --bg: 9 12 22;
+  --surface: 20 26 42;
+  --surface-muted: 28 36 55;
+  --border: 52 64 90;
+  --border-strong: 72 86 116;
   --primary: 59 130 246;
   --primary-hover: 96 165 250;
   --accent: 96 165 250;
@@ -93,6 +93,15 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Dark-mode depth: a subtle top-left glow lifts the page background off flat
+   black so cards read as floating on a textured surface, not a void. */
+.dark body {
+  background:
+    radial-gradient(1100px 620px at 18% -8%, rgb(28 36 64) 0%, rgba(28, 36, 64, 0) 58%),
+    rgb(var(--bg));
+  background-attachment: fixed;
 }
 
 #root {
