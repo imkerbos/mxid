@@ -120,7 +120,7 @@ type forgotResponse struct {
 func (h *PasswordResetHandler) forgot(c *gin.Context) {
 	var req forgotRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 	email := strings.TrimSpace(strings.ToLower(req.Email))
@@ -224,7 +224,7 @@ type resetRequest struct {
 func (h *PasswordResetHandler) reset(c *gin.Context) {
 	var req resetRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 

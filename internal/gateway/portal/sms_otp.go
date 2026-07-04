@@ -131,7 +131,7 @@ func (h *SMSOTPHandler) send(c *gin.Context) {
 
 	var req smsSendRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 	phone := strings.TrimSpace(req.Phone)
@@ -219,7 +219,7 @@ func (h *SMSOTPHandler) login(c *gin.Context) {
 
 	var req smsLoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 	phone := strings.TrimSpace(req.Phone)

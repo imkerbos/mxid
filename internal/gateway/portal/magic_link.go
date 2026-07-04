@@ -130,7 +130,7 @@ func (h *MagicLinkHandler) send(c *gin.Context) {
 
 	var req magicSendRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 	email := strings.TrimSpace(strings.ToLower(req.Email))
