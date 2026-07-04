@@ -89,8 +89,10 @@ export const portalApi = {
         { params: { app_id: appId, scope: scopes } }
       )
       .then(r => r.data.data),
-  grantConsent: (appId: string, scopes: string[]) =>
-    portalClient.post<ApiResponse<null>>('/consent', { app_id: appId, scopes }).then(r => r.data),
+  grantConsent: (appId: string, scopes: string[], returnTo: string) =>
+    portalClient
+      .post<ApiResponse<{ redirect: string }>>('/consent', { app_id: appId, scopes, return_to: returnTo })
+      .then(r => r.data.data),
   listConsents: () =>
     portalClient
       .get<ApiResponse<Array<{ app_id: string; app: { id: string; name: string; logo_url: string }; scopes: string[]; granted_at: string }>>>('/consent/granted')

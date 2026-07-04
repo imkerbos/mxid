@@ -1,6 +1,7 @@
 package cas
 
 import (
+	"context"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/protocol/resolver"
 	"github.com/imkerbos/mxid/pkg/response"
+	"github.com/imkerbos/mxid/pkg/ssoflow"
 	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"github.com/imkerbos/mxid/pkg/urlswap"
 	"go.uber.org/zap"
@@ -21,6 +23,13 @@ import (
 // casLogoutClient package var.
 type httpDoer interface {
 	Do(*http.Request) (*http.Response, error)
+}
+
+// AppRoleResolver returns a user's effective app-role codes for an app, JIT
+// (time-bound) elevations first. Structurally identical to the OIDC/SAML
+// resolvers so one adapter serves all three.
+type AppRoleResolver interface {
+	ResolveAppRoles(ctx context.Context, userID, appID, tenantID int64) ([]string, error)
 }
 
 // Handler serves CAS protocol endpoints.
@@ -35,6 +44,12 @@ type Handler struct {
 	store           *TicketStore
 	serviceRegistry *ServiceRegistry
 	logger          *zap.Logger
+	// confirm mints/consumes the one-time SSO login-confirmation token. Set by
+	// Register. nil = confirmation feature off (every login is seamless).
+	confirm *ssoflow.ConfirmStore
+	// appRoles resolves the user's effective app roles (JIT elevations first) to
+	// emit as a multi-value CAS attribute. nil = no role attribute.
+	appRoles AppRoleResolver
 	// backchannelClient overrides the package-level casLogoutClient when
 	// non-nil. Used in tests so an httptest SP on loopback can receive SLO
 	// POSTs; production always uses the SSRF-safe client.
@@ -137,6 +152,22 @@ func (h *Handler) login(c *gin.Context) {
 	}
 	// Pin the SSO session's tenant so the user read is tenant-scoped.
 	c.Request = c.Request.WithContext(tenantscope.WithTenant(c.Request.Context(), ssoSess.TenantID))
+
+	// SSO login confirmation (product rule, same as OIDC/SAML).
+	//   idp_initiated=1 (portal app-list launch) → SEAMLESS: issue the ticket.
+	//   SP-initiated (the CAS client sent the user to /login) → confirm EVERY
+	//     time via the one-time token. sso_deny=1 → user cancelled: bounce back
+	//     to the service with NO ticket (the client shows its own login again).
+	if c.Query("sso_deny") == "1" {
+		c.Redirect(http.StatusFound, service)
+		return
+	}
+	if c.Query("idp_initiated") != "1" && h.confirm != nil {
+		if !h.confirm.Consume(c.Request.Context(), c.Query("sso_confirm"), ssoSess.UserID, app.ID) {
+			h.redirectToConsent(c, app.ID, appCode, service)
+			return
+		}
+	}
 
 	// User authenticated — resolve user and issue ticket
 	user, err := h.idRes.ResolveUser(c.Request.Context(), ssoSess.UserID)
@@ -330,6 +361,19 @@ func (h *Handler) doServiceValidate(c *gin.Context, includeAttributes bool) {
 					})
 				}
 			}
+			// Effective app roles (JIT elevations first) as a multi-value
+			// attribute — one <cas:roleAttr> element per role. Best-effort.
+			if h.appRoles != nil {
+				if roles, rerr := h.appRoles.ResolveAppRoles(c.Request.Context(), st.UserID, app.ID, st.TenantID); rerr == nil {
+					roleAttr := casCfg.RoleAttribute
+					if roleAttr == "" {
+						roleAttr = "roles"
+					}
+					for _, rc := range roles {
+						attrs.Items = append(attrs.Items, AttributeItem{Name: roleAttr, Value: rc})
+					}
+				}
+			}
 			if len(attrs.Items) > 0 {
 				success.Attributes = attrs
 			}
@@ -468,6 +512,24 @@ func (h *Handler) redirectToLogin(c *gin.Context, appCode, service string) {
 	loginURL := fmt.Sprintf("%s/login?protocol=cas&app_code=%s&service=%s",
 		base, appCode, service)
 	c.Redirect(http.StatusFound, loginURL)
+}
+
+// redirectToConsent bounces the user to the portal confirm page for an
+// SP-initiated CAS login. return_to is the CAS /login URL (on the issuer host)
+// so the page's approve replays it carrying sso_confirm, and the page's cancel
+// appends sso_deny=1. No scope param — CAS has none, so the page renders a pure
+// "log in to App X?" confirmation.
+func (h *Handler) redirectToConsent(c *gin.Context, appID int64, appCode, service string) {
+	urls := h.resolveURLs(c)
+	base := urls.Portal
+	if base == "" {
+		base = urls.Issuer
+	}
+	loginURL := fmt.Sprintf("%s/protocol/cas/%s/login?service=%s",
+		urls.Issuer, url.PathEscape(appCode), url.QueryEscape(service))
+	consentURL := fmt.Sprintf("%s/consent?app_id=%d&return_to=%s",
+		base, appID, url.QueryEscape(loginURL))
+	c.Redirect(http.StatusFound, consentURL)
 }
 
 func (h *Handler) buildAttributes(cfg *CASConfig, user *resolver.IdentityInfo) *Attributes {

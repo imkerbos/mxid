@@ -2,9 +2,23 @@ package oidc
 
 import (
 	"errors"
+	"net"
 	"net/url"
 	"strings"
 )
+
+// allowPrivateHTTPRedirect, when true, additionally permits http:// on RFC1918 /
+// ULA private addresses (192.168/16, 10/8, 172.16/12, fc00::/7) — not just
+// loopback. Set ONLY in dev (non-release) via SetAllowPrivateHTTPRedirect so a
+// LAN demo (Grafana on http://192.168.x.x:port) works without https, while
+// production stays strict (loopback + https only). The exact-match against the
+// registered redirect_uri list still applies regardless, so this never opens an
+// open-redirect — it only relaxes the scheme gate for trusted private networks.
+var allowPrivateHTTPRedirect bool
+
+// SetAllowPrivateHTTPRedirect toggles the dev-only private-IP http exemption.
+// Call once at startup with !IsRelease().
+func SetAllowPrivateHTTPRedirect(allow bool) { allowPrivateHTTPRedirect = allow }
 
 // Errors returned by ValidateRedirectURI for callers that want to surface
 // the precise reason. The OIDC handler maps them all to a generic
@@ -74,7 +88,16 @@ func isAcceptableScheme(u *url.URL) bool {
 		return true
 	case "http":
 		host := u.Hostname()
-		return host == "localhost" || host == "127.0.0.1" || host == "::1"
+		if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+			return true
+		}
+		// Dev-only: also allow http on private LAN addresses (a LAN IP demo).
+		if allowPrivateHTTPRedirect {
+			if ip := net.ParseIP(host); ip != nil && (ip.IsPrivate() || ip.IsLoopback()) {
+				return true
+			}
+		}
+		return false
 	case "":
 		return false
 	}
