@@ -9,9 +9,9 @@ import (
 	"github.com/imkerbos/mxid/internal/domain/authn"
 	"github.com/imkerbos/mxid/pkg/authz"
 	"github.com/imkerbos/mxid/pkg/idstr"
-	"github.com/imkerbos/mxid/pkg/tenantctx"
 	"github.com/imkerbos/mxid/pkg/pagination"
 	"github.com/imkerbos/mxid/pkg/response"
+	"github.com/imkerbos/mxid/pkg/tenantctx"
 )
 
 // Handler handles HTTP requests for the user domain.
@@ -105,7 +105,7 @@ func parseID(c *gin.Context) (int64, bool) {
 func (h *Handler) Create(c *gin.Context) {
 	var req CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 
@@ -172,7 +172,7 @@ func (h *Handler) SetSuperAdmin(c *gin.Context) {
 	}
 	var req SetSuperAdminRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 	actorID, _ := authn.GetUserID(c)
@@ -192,7 +192,7 @@ func (h *Handler) Update(c *gin.Context) {
 
 	var req UpdateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 
@@ -229,7 +229,7 @@ func (h *Handler) List(c *gin.Context) {
 
 	var req ListUsersRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 
@@ -266,7 +266,7 @@ func (h *Handler) UpdateStatus(c *gin.Context) {
 
 	var req UpdateStatusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 
@@ -287,7 +287,7 @@ func (h *Handler) ResetPassword(c *gin.Context) {
 
 	var req ResetPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 
@@ -305,7 +305,7 @@ func (h *Handler) ResetPassword(c *gin.Context) {
 func (h *Handler) BatchAction(c *gin.Context) {
 	var req BatchUsersRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 	ids, err := idstr.ParseList(req.IDs)
@@ -330,7 +330,7 @@ func (h *Handler) LockUser(c *gin.Context) {
 	}
 	var req LockUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 	actorID := actorIDFromCtx(c)
@@ -456,7 +456,7 @@ func (h *Handler) UpdateDetail(c *gin.Context) {
 	}
 	var req UpdateDetailRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 	detail, err := h.svc.UpsertDetail(c.Request.Context(), id, &req)
