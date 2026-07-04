@@ -8,6 +8,7 @@ import (
 
 	"github.com/imkerbos/mxid/internal/domain/user"
 	"github.com/imkerbos/mxid/pkg/authz"
+	"github.com/imkerbos/mxid/pkg/pagination"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/tenantctx"
 )
@@ -62,17 +63,13 @@ func (h *Handler) Offboard(c *gin.Context) {
 // ListTasks handles GET /offboarding/tasks — the review panel listing.
 func (h *Handler) ListTasks(c *gin.Context) {
 	tenantID := tenantctx.FromContext(c, h.tenantID)
-	limit := atoiDefault(c.Query("page_size"), 20)
-	page := atoiDefault(c.Query("page"), 1)
-	if page < 1 {
-		page = 1
-	}
-	tasks, total, err := h.svc.ListTasks(c.Request.Context(), tenantID, limit, (page-1)*limit)
+	p := pagination.Parse(c)
+	tasks, total, err := h.svc.ListTasks(c.Request.Context(), tenantID, p.PageSize, p.Offset())
 	if err != nil {
 		response.InternalError(c, "list offboarding tasks failed", err)
 		return
 	}
-	response.OK(c, gin.H{"items": tasks, "total": total, "page": page, "page_size": limit})
+	response.Paginated(c, tasks, total, p.Page, p.PageSize)
 }
 
 // ListItems handles GET /offboarding/tasks/:id/items.
@@ -113,11 +110,4 @@ func actorID(c *gin.Context) int64 {
 		}
 	}
 	return 0
-}
-
-func atoiDefault(s string, def int) int {
-	if n, err := strconv.Atoi(s); err == nil && n > 0 {
-		return n
-	}
-	return def
 }
