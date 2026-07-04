@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 
 	"go.uber.org/zap"
@@ -11,11 +12,27 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 )
 
+// sqlStringLiteral matches a single-quoted SQL string literal (handling the ”
+// escape). GORM hands the Trace callback already-interpolated SQL, so the
+// parameterized form is unrecoverable — redacting the string literals is the
+// pragmatic point to strip PII (email / phone), password hashes, tokens and
+// other secret column values before they reach the logs.
+var sqlStringLiteral = regexp.MustCompile(`'(?:[^']|'')*'`)
+
+// redactSQL replaces every string-literal value in an interpolated SQL statement
+// with '?', keeping the statement structure and numeric ids intact for
+// debugging while removing sensitive column values. Applied to every logged
+// statement (dev and prod alike) — the structure is what matters for diagnosis,
+// not the literal values.
+func redactSQL(sql string) string {
+	return sqlStringLiteral.ReplaceAllString(sql, "'?'")
+}
+
 // zapGormLogger adapts zap.Logger to GORM's logger interface.
 type zapGormLogger struct {
-	logger   *zap.Logger
-	level    gormlogger.LogLevel
-	slowSQL  time.Duration
+	logger  *zap.Logger
+	level   gormlogger.LogLevel
+	slowSQL time.Duration
 }
 
 // NewGormLogger creates a GORM logger backed by zap.
@@ -64,7 +81,7 @@ func (l *zapGormLogger) Trace(_ context.Context, begin time.Time, fc func() (sql
 	fields := []zap.Field{
 		zap.Duration("elapsed", elapsed),
 		zap.Int64("rows", rows),
-		zap.String("sql", sql),
+		zap.String("sql", redactSQL(sql)),
 	}
 
 	switch {
