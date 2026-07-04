@@ -467,6 +467,16 @@ func (h *Handler) idpInitiatedSSO(c *gin.Context, appCode, relayState string) {
 // Without (a) the spec-allowed "return RelayState to the user agent" turns
 // into an open redirect because RelayState is attacker-controlled.
 func (h *Handler) slo(c *gin.Context) {
+	// Authenticate an SP-initiated LogoutRequest BEFORE tearing down the SSO
+	// session or emitting a signed LogoutResponse. When the SP has a signing
+	// cert on file, a valid HTTP-Redirect binding signature is mandatory — a
+	// forged/unsigned LogoutRequest must not log the user out (logout CSRF) or
+	// elicit a signed LogoutResponse we could be tricked into reflecting.
+	if err := h.verifySPLogoutRequestSig(c); err != nil {
+		response.BadRequest(c, 40008, "invalid LogoutRequest signature")
+		return
+	}
+
 	sessionCookie, _ := c.Cookie("mxid_proto_sid")
 
 	if sessionCookie != "" {
@@ -496,6 +506,31 @@ func (h *Handler) slo(c *gin.Context) {
 	}
 
 	response.OK(c, gin.H{"message": "logged out"})
+}
+
+// verifySPLogoutRequestSig authenticates an SP-initiated LogoutRequest over the
+// HTTP-Redirect binding. It returns nil (allow) when there is no LogoutRequest,
+// when the SP can't be resolved, or when the SP has no signing cert configured
+// (legacy SPs that don't sign logout — nothing to verify against). When a cert
+// IS configured, a valid RSA-SHA256 redirect-binding signature is required and
+// any missing/invalid signature is a hard error.
+//
+// Only the redirect binding (query-param signature) is authenticated here; a
+// POST-binding LogoutRequest carries an enveloped XML signature instead, which
+// is out of scope for this check.
+func (h *Handler) verifySPLogoutRequestSig(c *gin.Context) error {
+	if c.Query("SAMLRequest") == "" {
+		return nil // no redirect-binding LogoutRequest to authenticate
+	}
+	app, err := h.appRes.GetApp(c.Request.Context(), c.Param("app_code"))
+	if err != nil || app == nil {
+		return nil // unknown SP — no cert to verify against; treat as plain logout
+	}
+	samlCfg := h.parseSAMLConfig(app.ProtocolConfig)
+	if samlCfg.SPCert == "" {
+		return nil // no SP cert on file — cannot verify, legacy allow
+	}
+	return verifyRedirectSignature(c.Request.URL.RawQuery, samlCfg.SPCert)
 }
 
 // sloResponseRedirect builds the SP SLS redirect URL carrying a signed SAML
@@ -747,8 +782,8 @@ func (h *Handler) redirectToLogin(c *gin.Context, appCode, requestID, relayState
 // Encoding sandwich per SAML 2.0 bindings (§3.4.4.1 for HTTP-Redirect,
 // §3.5.4 for HTTP-POST):
 //
-//   HTTP-Redirect: DEFLATE → base64 → URL-encode
-//   HTTP-POST:     base64 → form-encode (no DEFLATE)
+//	HTTP-Redirect: DEFLATE → base64 → URL-encode
+//	HTTP-POST:     base64 → form-encode (no DEFLATE)
 //
 // We try multiple base64 alphabets (std + URL + raw) so a buggy SP that
 // chose the wrong variant still works. After base64-decode we attempt
