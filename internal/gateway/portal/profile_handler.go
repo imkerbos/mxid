@@ -106,7 +106,7 @@ func (h *ProfileHandler) updateProfile(c *gin.Context) {
 
 	var req UpdateProfileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 
@@ -137,7 +137,7 @@ func (h *ProfileHandler) updateAvatar(c *gin.Context) {
 
 	var req UpdateAvatarRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 

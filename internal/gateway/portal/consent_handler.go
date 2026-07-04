@@ -109,7 +109,7 @@ func (h *consentHandler) grant(c *gin.Context) {
 		Scopes []string `json:"scopes" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 	if _, err := h.consentSvc.Grant(c.Request.Context(), h.tenantID, userID, req.AppID, req.Scopes); err != nil {
