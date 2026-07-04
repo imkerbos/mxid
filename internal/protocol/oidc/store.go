@@ -212,16 +212,16 @@ func (s *Store) CreateAuthCode(ctx context.Context, req *AuthCodeRequest) (*Auth
 // ConsumeAuthCode retrieves and deletes an authorization code (single-use).
 func (s *Store) ConsumeAuthCode(ctx context.Context, code string) (*AuthorizationCode, error) {
 	key := authCodePrefix + code
-	data, err := s.rdb.Get(ctx, key).Bytes()
+	// GETDEL is atomic: two concurrent redemptions of the same code can't both
+	// read it before deletion (a plain Get-then-Del race let both succeed,
+	// defeating single-use / enabling code replay).
+	data, err := s.rdb.GetDel(ctx, key).Bytes()
 	if err != nil {
 		if err == redis.Nil {
 			return nil, fmt.Errorf("authorization code not found or expired")
 		}
 		return nil, fmt.Errorf("get auth code: %w", err)
 	}
-
-	// Delete immediately (single-use)
-	s.rdb.Del(ctx, key)
 
 	var ac AuthorizationCode
 	if err := json.Unmarshal(data, &ac); err != nil {
@@ -322,7 +322,12 @@ func (s *Store) ConsumeRefreshToken(ctx context.Context, token string) (*Refresh
 	}
 
 	key := refreshTokenPrefix + hash
-	data, err := s.rdb.Get(ctx, key).Bytes()
+	// GETDEL atomically claims the token: of two concurrent redemptions of the
+	// same fresh token, exactly one gets the value and the other gets redis.Nil
+	// (a Get-then-pipeline-Del race let both read it and both rotate). Late
+	// replays after the token is gone are caught by the consumed-marker check
+	// above, which revokes the family.
+	data, err := s.rdb.GetDel(ctx, key).Bytes()
 	if err != nil {
 		if err == redis.Nil {
 			return nil, fmt.Errorf("refresh token not found or expired")
@@ -335,16 +340,13 @@ func (s *Store) ConsumeRefreshToken(ctx context.Context, token string) (*Refresh
 		return nil, fmt.Errorf("unmarshal refresh token: %w", err)
 	}
 
-	// Mark consumed + delete. Keep the marker for the original TTL so a
-	// late-arriving replay can still be caught.
+	// Record the consumed marker (the token key is already gone via GETDEL).
+	// Keep it for the original TTL so a late-arriving replay is still caught.
 	remaining := time.Until(rt.ExpiresAt)
 	if remaining < time.Minute {
 		remaining = time.Minute
 	}
-	pipe := s.rdb.Pipeline()
-	pipe.Del(ctx, key)
-	pipe.Set(ctx, consumedKey, rt.FamilyID, remaining)
-	_, _ = pipe.Exec(ctx)
+	s.rdb.Set(ctx, consumedKey, rt.FamilyID, remaining)
 
 	return &rt, nil
 }

@@ -22,8 +22,11 @@ func CORS(cfg CORSConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		origin := c.GetHeader("Origin")
 
-		// Check if origin is allowed
-		if len(allowedOrigins) == 0 || allowedOrigins[origin] {
+		// Reflect the origin only if it is explicitly allow-listed. An empty
+		// allow-list means deny-all — never reflect an arbitrary Origin with
+		// Access-Control-Allow-Credentials, which would be a credentialed
+		// wildcard defeating the SameSite/CSRF model.
+		if origin != "" && allowedOrigins[origin] {
 			c.Header("Access-Control-Allow-Origin", origin)
 			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
 			c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization, X-Request-ID, X-API-Key")
