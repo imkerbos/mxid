@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"gorm.io/gorm"
+	"github.com/imkerbos/mxid/pkg/dberr"
 )
 
 // ExternalLoginInput is the data the external-IdP feature hands to
@@ -75,7 +75,7 @@ func (s *Service) ResolveExternalLogin(ctx context.Context, in *ExternalLoginInp
 		}
 		return u, nil
 	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
+	if !dberr.IsNotFound(err) {
 		return nil, fmt.Errorf("lookup identity: %w", err)
 	}
 
@@ -102,13 +102,13 @@ func (s *Service) ResolveExternalLogin(ctx context.Context, in *ExternalLoginInp
 	}
 	if in.Email != "" {
 		// Only set email if not already used; otherwise leave blank.
-		if _, err := s.repo.GetByEmail(ctx, in.TenantID, in.Email); err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
+		if _, err := s.repo.GetByEmail(ctx, in.TenantID, in.Email); err != nil && dberr.IsNotFound(err) {
 			e := in.Email
 			user.Email = &e
 		}
 	}
 	if in.Phone != "" {
-		if _, err := s.repo.GetByPhone(ctx, in.TenantID, in.Phone); err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
+		if _, err := s.repo.GetByPhone(ctx, in.TenantID, in.Phone); err != nil && dberr.IsNotFound(err) {
 			p := in.Phone
 			user.Phone = &p
 		}
@@ -218,7 +218,7 @@ func (s *Service) allocUsername(ctx context.Context, tenantID int64, base string
 	candidate := base
 	for i := 0; i < 1000; i++ {
 		_, err := s.repo.GetByUsername(ctx, tenantID, candidate)
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return candidate, nil
 		}
 		if err != nil {

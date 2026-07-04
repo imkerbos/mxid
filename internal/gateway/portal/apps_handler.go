@@ -1,13 +1,12 @@
 package portal
 
 import (
-	"errors"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 
 	"github.com/imkerbos/mxid/internal/domain/authn"
+	"github.com/imkerbos/mxid/pkg/dberr"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/urlswap"
@@ -212,7 +211,7 @@ func (h *appsHandler) launchApp(c *gin.Context) {
 
 	url, err := h.appQuerier.GetAppLaunchURL(c.Request.Context(), appID, userID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			response.NotFound(c, 40401, "app not found")
 			return
 		}

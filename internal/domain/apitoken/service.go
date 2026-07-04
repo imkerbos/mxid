@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/imkerbos/mxid/pkg/dberr"
 	"github.com/imkerbos/mxid/pkg/snowflake"
 	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"golang.org/x/crypto/bcrypt"
@@ -69,7 +70,7 @@ func (r *repo) GetByID(ctx context.Context, id int64) (*Token, error) {
 	var t Token
 	err := r.db.WithContext(ctx).Where("id = ?", id).First(&t).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrNotFound
 		}
 		return nil, err

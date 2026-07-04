@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/imkerbos/mxid/pkg/dberr"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/snowflake"
-	"gorm.io/gorm"
 )
 
 // Service errors.
@@ -129,7 +129,7 @@ func (s *Service) GetByID(ctx context.Context, id int64) (*UserGroup, error) {
 func (s *Service) requireGroup(ctx context.Context, groupID int64) (*UserGroup, error) {
 	g, err := s.repo.GetByID(ctx, groupID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrGroupNotFound
 		}
 		return nil, fmt.Errorf("get group: %w", err)
@@ -171,7 +171,7 @@ func (s *Service) Delete(ctx context.Context, id int64, force bool) error {
 	// where repo.Delete on a missing row was a no-op).
 	g, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil
 		}
 		return fmt.Errorf("get group for delete: %w", err)

@@ -10,9 +10,9 @@ import (
 
 	"github.com/imkerbos/mxid/internal/protocol/saml"
 	"github.com/imkerbos/mxid/pkg/crypto"
+	"github.com/imkerbos/mxid/pkg/dberr"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/snowflake"
-	"gorm.io/gorm"
 )
 
 // Service errors.
@@ -164,7 +164,7 @@ func (s *Service) SetKeyService(ks *KeyService) {
 func (s *Service) Create(ctx context.Context, tenantID int64, req *CreateAppRequest) (*CreateAppResult, error) {
 	if _, err := s.repo.GetByCode(ctx, tenantID, req.Code); err == nil {
 		return nil, ErrAppCodeExists
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+	} else if !dberr.IsNotFound(err) {
 		return nil, fmt.Errorf("check app code: %w", err)
 	}
 
@@ -352,7 +352,7 @@ func (s *Service) Create(ctx context.Context, tenantID int64, req *CreateAppRequ
 func (s *Service) RotateClientSecret(ctx context.Context, id int64) (*RotateSecretResult, error) {
 	application, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrAppNotFound
 		}
 		return nil, fmt.Errorf("get app: %w", err)
@@ -387,7 +387,7 @@ func (s *Service) RotateClientSecret(ctx context.Context, id int64) (*RotateSecr
 // Returns the new active cert.
 func (s *Service) RotateSigningKey(ctx context.Context, id int64) (*AppCert, error) {
 	if _, err := s.repo.GetByID(ctx, id); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrAppNotFound
 		}
 		return nil, fmt.Errorf("get app: %w", err)
@@ -411,7 +411,7 @@ func (s *Service) RotateSigningKey(ctx context.Context, id int64) (*AppCert, err
 func (s *Service) VerifyClientSecret(ctx context.Context, clientID, plaintext string) (*App, bool, error) {
 	application, err := s.repo.GetByClientID(ctx, clientID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, false, nil
 		}
 		return nil, false, fmt.Errorf("get app: %w", err)
@@ -435,7 +435,7 @@ func needsClientSecret(protocol, clientType string) bool {
 func (s *Service) GetByID(ctx context.Context, id int64) (*App, error) {
 	application, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrAppNotFound
 		}
 		return nil, fmt.Errorf("get app: %w", err)
@@ -451,7 +451,7 @@ func (s *Service) GetByID(ctx context.Context, id int64) (*App, error) {
 // since the column plugin cannot filter them.
 func (s *Service) requireApp(ctx context.Context, appID int64) error {
 	if _, err := s.repo.GetByID(ctx, appID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrAppNotFound
 		}
 		return fmt.Errorf("get app: %w", err)
@@ -463,7 +463,7 @@ func (s *Service) requireApp(ctx context.Context, appID int64) error {
 // cross-tenant groupID resolves to ErrAppGroupNotFound.
 func (s *Service) requireAppGroup(ctx context.Context, groupID int64) error {
 	if _, err := s.repo.GetGroupByID(ctx, groupID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrAppGroupNotFound
 		}
 		return fmt.Errorf("get app group: %w", err)
@@ -475,7 +475,7 @@ func (s *Service) requireAppGroup(ctx context.Context, groupID int64) error {
 func (s *Service) Update(ctx context.Context, id int64, req *UpdateAppRequest) (*App, error) {
 	application, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrAppNotFound
 		}
 		return nil, fmt.Errorf("get app: %w", err)
@@ -567,7 +567,7 @@ func (s *Service) Update(ctx context.Context, id int64, req *UpdateAppRequest) (
 func (s *Service) Delete(ctx context.Context, id int64) error {
 	application, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrAppNotFound
 		}
 		return fmt.Errorf("get app: %w", err)
@@ -599,7 +599,7 @@ func (s *Service) List(ctx context.Context, tenantID int64, params ListAppParams
 // UpdateStatus updates an application's status.
 func (s *Service) UpdateStatus(ctx context.Context, id int64, status int) error {
 	if err := s.repo.UpdateStatus(ctx, id, status); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrAppNotFound
 		}
 		return fmt.Errorf("update app status: %w", err)
@@ -617,7 +617,7 @@ func (s *Service) UpdateStatus(ctx context.Context, id int64, status int) error 
 func (s *Service) GetProtocolConfig(ctx context.Context, id int64) (map[string]any, error) {
 	application, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrAppNotFound
 		}
 		return nil, fmt.Errorf("get app: %w", err)
@@ -644,7 +644,7 @@ func (s *Service) UpdateProtocolConfig(ctx context.Context, id int64, config map
 	}
 
 	if err := s.repo.UpdateProtocolConfig(ctx, id, data); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrAppNotFound
 		}
 		return fmt.Errorf("update protocol config: %w", err)
@@ -668,7 +668,7 @@ func (s *Service) UpdateProtocolConfig(ctx context.Context, id int64, config map
 func (s *Service) ImportSAMLSPMetadata(ctx context.Context, id int64, xmlBytes []byte) (map[string]any, error) {
 	app, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrAppNotFound
 		}
 		return nil, fmt.Errorf("get app: %w", err)
@@ -757,7 +757,7 @@ func (s *Service) CreateGroup(ctx context.Context, tenantID int64, req *AppGroup
 func (s *Service) GetGroupByID(ctx context.Context, id int64) (*AppGroup, error) {
 	group, err := s.repo.GetGroupByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrAppGroupNotFound
 		}
 		return nil, fmt.Errorf("get group: %w", err)
@@ -769,7 +769,7 @@ func (s *Service) GetGroupByID(ctx context.Context, id int64) (*AppGroup, error)
 func (s *Service) UpdateGroup(ctx context.Context, id int64, req *UpdateAppGroupRequest) (*AppGroup, error) {
 	group, err := s.repo.GetGroupByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrAppGroupNotFound
 		}
 		return nil, fmt.Errorf("get group: %w", err)
@@ -802,7 +802,7 @@ func (s *Service) UpdateGroup(ctx context.Context, id int64, req *UpdateAppGroup
 func (s *Service) DeleteGroup(ctx context.Context, id int64) error {
 	group, err := s.repo.GetGroupByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrAppGroupNotFound
 		}
 		return fmt.Errorf("get group: %w", err)
@@ -848,7 +848,7 @@ func (s *Service) GetByIDs(ctx context.Context, ids []int64) ([]*App, error) {
 func (s *Service) AddAppToGroup(ctx context.Context, groupID, appID int64) error {
 	// Verify group exists
 	if _, err := s.repo.GetGroupByID(ctx, groupID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrAppGroupNotFound
 		}
 		return fmt.Errorf("get group: %w", err)
@@ -856,7 +856,7 @@ func (s *Service) AddAppToGroup(ctx context.Context, groupID, appID int64) error
 
 	// Verify app exists
 	if _, err := s.repo.GetByID(ctx, appID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrAppNotFound
 		}
 		return fmt.Errorf("get app: %w", err)
@@ -891,7 +891,7 @@ func (s *Service) RemoveAppFromGroup(ctx context.Context, groupID, appID int64) 
 		return err
 	}
 	if err := s.repo.RemoveAppFromGroup(ctx, appID, groupID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrAppNotFound
 		}
 		return fmt.Errorf("remove app from group: %w", err)
@@ -910,7 +910,7 @@ func (s *Service) RemoveAppFromGroup(ctx context.Context, groupID, appID int64) 
 func (s *Service) AddAccess(ctx context.Context, appID int64, req *AddAccessRequest) (*AppAccess, error) {
 	// Verify app exists
 	if _, err := s.repo.GetByID(ctx, appID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrAppNotFound
 		}
 		return nil, fmt.Errorf("get app: %w", err)
@@ -950,7 +950,7 @@ func (s *Service) AddAccess(ctx context.Context, appID int64, req *AddAccessRequ
 func (s *Service) RemoveAccess(ctx context.Context, id int64) error {
 	access, err := s.repo.GetAccessByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrAccessNotFound
 		}
 		return fmt.Errorf("get access: %w", err)
@@ -963,7 +963,7 @@ func (s *Service) RemoveAccess(ctx context.Context, id int64) error {
 		return err
 	}
 	if err := s.repo.RemoveAccess(ctx, id); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrAccessNotFound
 		}
 		return fmt.Errorf("remove access: %w", err)
@@ -1002,7 +1002,7 @@ func (s *Service) CreateCert(ctx context.Context, appID int64) (*AppCert, error)
 		return nil, fmt.Errorf("key service not configured")
 	}
 	if _, err := s.repo.GetByID(ctx, appID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrAppNotFound
 		}
 		return nil, fmt.Errorf("get app: %w", err)
@@ -1040,7 +1040,7 @@ func (s *Service) ListCerts(ctx context.Context, appID int64) ([]*AppCert, error
 func (s *Service) DeleteCert(ctx context.Context, id int64) error {
 	cert, err := s.repo.GetCertByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrCertNotFound
 		}
 		return fmt.Errorf("get cert: %w", err)
@@ -1052,7 +1052,7 @@ func (s *Service) DeleteCert(ctx context.Context, id int64) error {
 		return err
 	}
 	if err := s.repo.DeleteCert(ctx, id); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrCertNotFound
 		}
 		return fmt.Errorf("delete cert: %w", err)

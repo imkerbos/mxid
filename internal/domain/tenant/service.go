@@ -6,10 +6,10 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/imkerbos/mxid/pkg/dberr"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/snowflake"
 	"gorm.io/datatypes"
-	"gorm.io/gorm"
 )
 
 var (
@@ -74,7 +74,7 @@ func (s *Service) Create(ctx context.Context, req *CreateRequest) (*Tenant, erro
 	}
 	if _, err := s.repo.GetByCode(ctx, req.Code); err == nil {
 		return nil, ErrTenantCodeExists
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+	} else if !dberr.IsNotFound(err) {
 		return nil, fmt.Errorf("check code: %w", err)
 	}
 
@@ -108,7 +108,7 @@ func (s *Service) Create(ctx context.Context, req *CreateRequest) (*Tenant, erro
 func (s *Service) Get(ctx context.Context, id int64) (*Tenant, error) {
 	t, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrTenantNotFound
 		}
 		return nil, err
@@ -120,7 +120,7 @@ func (s *Service) Get(ctx context.Context, id int64) (*Tenant, error) {
 func (s *Service) GetByCode(ctx context.Context, code string) (*Tenant, error) {
 	t, err := s.repo.GetByCode(ctx, code)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrTenantNotFound
 		}
 		return nil, err
@@ -132,7 +132,7 @@ func (s *Service) GetByCode(ctx context.Context, code string) (*Tenant, error) {
 func (s *Service) Update(ctx context.Context, id int64, req *UpdateRequest) (*Tenant, error) {
 	t, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrTenantNotFound
 		}
 		return nil, err
@@ -163,7 +163,7 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 	// Already gone → idempotent success (preserves the prior no-op behavior).
 	t, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil
 		}
 		return err

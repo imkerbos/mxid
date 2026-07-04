@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/imkerbos/mxid/pkg/dberr"
 	"gorm.io/datatypes"
-	"gorm.io/gorm"
 )
 
 // Rule-related service errors.
@@ -38,7 +38,7 @@ func (s *Service) GetRule(ctx context.Context, groupID int64) (*UserGroupRule, e
 	}
 	r, err := s.repo.GetRule(ctx, groupID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrRuleNotFound
 		}
 		return nil, fmt.Errorf("get rule: %w", err)
@@ -131,7 +131,7 @@ func (s *Service) SyncRule(ctx context.Context, groupID int64) (*SyncReport, err
 	}
 	rule, err := s.repo.GetRule(ctx, groupID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrRuleNotFound
 		}
 		return nil, fmt.Errorf("get rule: %w", err)

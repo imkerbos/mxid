@@ -5,8 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"gorm.io/gorm"
-
+	"github.com/imkerbos/mxid/pkg/dberr"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/snowflake"
 )
@@ -112,7 +111,7 @@ func (s *Service) GetByID(ctx context.Context, id int64) (*Organization, error) 
 func (s *Service) fetchOrg(ctx context.Context, orgID int64) (*Organization, error) {
 	org, err := s.repo.GetByID(ctx, orgID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrOrgNotFound
 		}
 		return nil, fmt.Errorf("get organization: %w", err)
