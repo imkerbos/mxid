@@ -66,7 +66,7 @@ func (h *Handler) ListByUser(c *gin.Context) {
 func (h *Handler) Create(c *gin.Context) {
 	var req CreateGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request: "+err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 
@@ -112,7 +112,7 @@ func (h *Handler) Update(c *gin.Context) {
 
 	var req UpdateGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request: "+err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 
@@ -190,7 +190,7 @@ func (h *Handler) AddMember(c *gin.Context) {
 
 	var req AddMemberRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request: "+err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 
@@ -225,7 +225,7 @@ func (h *Handler) BatchAddMembers(c *gin.Context) {
 
 	var req BatchMembersRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request: "+err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 	userIDs, err := idstr.ParseList(req.UserIDs)
@@ -296,7 +296,7 @@ func (h *Handler) BatchRemoveMembers(c *gin.Context) {
 
 	var req BatchMembersRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request: "+err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 	userIDs, err := idstr.ParseList(req.UserIDs)
@@ -362,7 +362,7 @@ func (h *Handler) UpsertRule(c *gin.Context) {
 	}
 	var body json.RawMessage
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.BadRequest(c, 40001, "invalid rule body: "+err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 	expr, err := ValidateRule(body)

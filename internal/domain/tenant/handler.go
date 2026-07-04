@@ -71,7 +71,7 @@ func (h *Handler) Get(c *gin.Context) {
 func (h *Handler) Create(c *gin.Context) {
 	var req CreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 	t, err := h.svc.Create(c.Request.Context(), &req)
@@ -98,7 +98,7 @@ func (h *Handler) Update(c *gin.Context) {
 	}
 	var req UpdateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 	t, err := h.svc.Update(c.Request.Context(), id, &req)

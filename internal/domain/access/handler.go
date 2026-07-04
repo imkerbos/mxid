@@ -137,7 +137,7 @@ func (h *Handler) RegisterPortal(rg *gin.RouterGroup) {
 func (h *Handler) createEligibility(c *gin.Context) {
 	var body CreateEligibilityRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.BadRequest(c, 40002, err.Error())
+		response.BadRequest(c, 40002, "invalid request body")
 		return
 	}
 	uid := h.userID(c)
@@ -153,7 +153,7 @@ func (h *Handler) updateEligibility(c *gin.Context) {
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	var body CreateEligibilityRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.BadRequest(c, 40010, err.Error())
+		response.BadRequest(c, 40010, "invalid request body")
 		return
 	}
 	e, err := h.svc.UpdateEligibility(c.Request.Context(), h.tenantID(c), id, body)
@@ -246,7 +246,7 @@ func (h *Handler) reject(c *gin.Context) {
 	var body DecisionRequest
 	_ = c.ShouldBindJSON(&body)
 	if err := h.svc.Reject(c.Request.Context(), h.tenantID(c), id, h.userID(c), body.Reason); err != nil {
-		response.BadRequest(c, 40005, err.Error())
+		response.BadRequest(c, 40005, "invalid request body")
 		return
 	}
 	response.OK(c, gin.H{"status": StatusRejected})
@@ -284,7 +284,7 @@ func (h *Handler) myRequests(c *gin.Context) {
 func (h *Handler) createRequest(c *gin.Context) {
 	var body CreateAccessRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.BadRequest(c, 40008, err.Error())
+		response.BadRequest(c, 40008, "invalid request body")
 		return
 	}
 	uid := h.userID(c)

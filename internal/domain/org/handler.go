@@ -39,7 +39,7 @@ func (h *Handler) GetTree(c *gin.Context) {
 func (h *Handler) Create(c *gin.Context) {
 	var req CreateOrgRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request: "+err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 
@@ -83,7 +83,7 @@ func (h *Handler) Update(c *gin.Context) {
 
 	var req UpdateOrgRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request: "+err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 
@@ -130,7 +130,7 @@ func (h *Handler) Move(c *gin.Context) {
 
 	var req MoveOrgRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request: "+err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 
@@ -180,7 +180,7 @@ func (h *Handler) AddMember(c *gin.Context) {
 
 	var req AddMemberRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request: "+err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 

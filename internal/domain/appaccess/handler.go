@@ -78,7 +78,7 @@ func (h *Handler) createForApp(c *gin.Context) {
 	}
 	var body createBody
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.BadRequest(c, 40002, err.Error())
+		response.BadRequest(c, 40002, "invalid request body")
 		return
 	}
 	p, err := h.service.AddPolicy(c.Request.Context(), AddPolicyRequest{
@@ -120,7 +120,7 @@ func (h *Handler) createForAppGroup(c *gin.Context) {
 	}
 	var body createBody
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.BadRequest(c, 40002, err.Error())
+		response.BadRequest(c, 40002, "invalid request body")
 		return
 	}
 	p, err := h.service.AddPolicy(c.Request.Context(), AddPolicyRequest{

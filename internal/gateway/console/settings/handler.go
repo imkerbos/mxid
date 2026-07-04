@@ -16,9 +16,9 @@ import (
 	"github.com/microcosm-cc/bluemonday"
 
 	"github.com/imkerbos/mxid/internal/domain/platformconfig"
-	"github.com/imkerbos/mxid/pkg/authz"
 	"github.com/imkerbos/mxid/internal/domain/setting"
 	"github.com/imkerbos/mxid/internal/middleware"
+	"github.com/imkerbos/mxid/pkg/authz"
 	"github.com/imkerbos/mxid/pkg/ee/license"
 	"github.com/imkerbos/mxid/pkg/mailer"
 	"github.com/imkerbos/mxid/pkg/response"
@@ -180,7 +180,7 @@ func (h *Handler) getMailSMTP(c *gin.Context) {
 func (h *Handler) putMailSMTP(c *gin.Context) {
 	var body setting.MailSMTP
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 	// Empty password in PUT → preserve the existing one (admin didn't
@@ -201,7 +201,7 @@ func (h *Handler) testMailSMTP(c *gin.Context) {
 		To string `json:"to" binding:"required,email"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 	err := h.mailer.Send(c.Request.Context(), h.tenantID(c), []string{body.To},
@@ -226,7 +226,7 @@ func (h *Handler) genericGet(c *gin.Context, key string, defaultVal any) {
 
 func (h *Handler) genericPut(c *gin.Context, key string, body any) {
 	if err := c.ShouldBindJSON(body); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 	if err := h.service.Set(c.Request.Context(), key, h.tenantID(c), body, h.userID(c)); err != nil {
@@ -260,6 +260,7 @@ func (h *Handler) getBranding(c *gin.Context) {
 	v := setting.DefaultBranding()
 	h.genericGet(c, setting.KeyBranding, &v)
 }
+
 // brandingSanitizer strips scripts/event-handlers/javascript: URIs from the
 // admin-authored login_footer_html, which the login pages render with
 // dangerouslySetInnerHTML on the PRE-AUTH page — raw HTML would be stored XSS
@@ -269,7 +270,7 @@ var brandingSanitizer = bluemonday.UGCPolicy()
 func (h *Handler) putBranding(c *gin.Context) {
 	var v setting.Branding
 	if err := c.ShouldBindJSON(&v); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 	v.LoginFooterHTML = brandingSanitizer.Sanitize(v.LoginFooterHTML)
@@ -311,7 +312,7 @@ func (h *Handler) getSMS(c *gin.Context) {
 func (h *Handler) putSMS(c *gin.Context) {
 	var v setting.SMS
 	if err := c.ShouldBindJSON(&v); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 	if v.Secret == "" {
@@ -349,7 +350,7 @@ func (h *Handler) getOffboardingWebhook(c *gin.Context) {
 func (h *Handler) putOffboardingWebhook(c *gin.Context) {
 	var v setting.OffboardingWebhook
 	if err := c.ShouldBindJSON(&v); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 	if v.Enabled {
@@ -378,7 +379,7 @@ func (h *Handler) getMFA(c *gin.Context) {
 func (h *Handler) putMFA(c *gin.Context) {
 	var v setting.MFAPolicy
 	if err := c.ShouldBindJSON(&v); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 	switch v.Mode {
@@ -404,7 +405,7 @@ func (h *Handler) getConditionalAccess(c *gin.Context) {
 func (h *Handler) putConditionalAccess(c *gin.Context) {
 	var v setting.ConditionalAccess
 	if err := c.ShouldBindJSON(&v); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 	if v.ImpossibleTravelWindowMinutes < 0 {
@@ -451,7 +452,7 @@ func (h *Handler) putLicense(c *gin.Context) {
 		Key string `json:"key"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 	key := strings.TrimSpace(body.Key)
