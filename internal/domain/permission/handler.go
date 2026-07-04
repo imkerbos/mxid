@@ -1,7 +1,6 @@
 package permission
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -391,25 +390,8 @@ func (h *Handler) ListAllPermissions(c *gin.Context) {
 }
 
 // handleServiceError maps service errors to HTTP responses.
+// handleServiceError maps a domain error to its response via the errcode
+// registry (see errcodes.go for the permission-domain bindings).
 func (h *Handler) handleServiceError(c *gin.Context, err error) {
-	switch {
-	case errors.Is(err, ErrRoleNotFound):
-		response.NotFound(c, 40401, err.Error())
-	case errors.Is(err, ErrRoleCodeExists):
-		response.Error(c, http.StatusConflict, 40901, err.Error(), "")
-	case errors.Is(err, ErrSystemRoleDelete):
-		response.Error(c, http.StatusForbidden, 40301, err.Error(), "")
-	case errors.Is(err, ErrMemberNotFound):
-		response.NotFound(c, 40402, err.Error())
-	case errors.Is(err, ErrPermissionNotFound):
-		response.BadRequest(c, 40002, err.Error())
-	case errors.Is(err, ErrSubjectNotInTenant):
-		response.NotFound(c, 40403, err.Error())
-	case errors.Is(err, ErrScopeNotInTenant):
-		response.NotFound(c, 40404, err.Error())
-	case errors.Is(err, ErrScopeIncomplete):
-		response.BadRequest(c, 40003, err.Error())
-	default:
-		response.InternalError(c, "internal server error", err)
-	}
+	response.MapError(c, err)
 }

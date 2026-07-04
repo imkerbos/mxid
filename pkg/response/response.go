@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"go.uber.org/zap"
 )
 
@@ -124,6 +125,19 @@ func Conflict(c *gin.Context, code int, message string) {
 // NoContent sends a 204 with no body. Used by DELETE handlers.
 func NoContent(c *gin.Context) {
 	c.Status(http.StatusNoContent)
+}
+
+// MapError writes the API response for a domain error. If err (or anything it
+// wraps) is a sentinel registered in pkg/errcode, its bound (status, code) is
+// used with the error's own message — domain sentinels carry safe, user-facing
+// text. Otherwise it's an unexpected error → 500, with the cause logged and
+// never leaked. This replaces the per-handler errors.Is switches.
+func MapError(c *gin.Context, err error) {
+	if code, ok := errcode.Lookup(err); ok {
+		Error(c, code.HTTP, code.Num, err.Error(), "")
+		return
+	}
+	InternalError(c, "internal server error", err)
 }
 
 // InternalError sends a 500 error. Default message is intentionally
