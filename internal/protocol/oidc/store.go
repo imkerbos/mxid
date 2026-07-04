@@ -397,9 +397,15 @@ type AuthCodeRequest struct {
 }
 
 // VerifyPKCE verifies the code_verifier against the stored challenge.
+//
+// S256 only. The deprecated `plain` method is rejected at the authorize
+// endpoint (OAuth 2.1 / Security BCP §2.1.1), so any non-S256 method reaching
+// here is treated as a verification failure rather than silently falling back
+// to a plaintext string compare — which would let an attacker who captures the
+// code challenge satisfy PKCE with challenge==verifier.
 func VerifyPKCE(codeVerifier, codeChallenge, method string) bool {
-	if method == "" || method == "plain" {
-		return codeVerifier == codeChallenge
+	if method != "S256" {
+		return false
 	}
 	// S256: BASE64URL(SHA256(code_verifier))
 	hash := sha256.Sum256([]byte(codeVerifier))
