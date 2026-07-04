@@ -233,7 +233,7 @@ func (h *Handler) loginHandler(namespace, cookieName string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req LoginRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			response.BadRequest(c, 40001, err.Error())
+			response.BadRequest(c, 40001, "invalid request body")
 			return
 		}
 
@@ -378,7 +378,7 @@ func (h *Handler) verifyMFAHandler(namespace, cookieName string) gin.HandlerFunc
 	return func(c *gin.Context) {
 		var req VerifyMFARequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			response.BadRequest(c, 40001, err.Error())
+			response.BadRequest(c, 40001, "invalid request body")
 			return
 		}
 
@@ -627,7 +627,7 @@ func (h *Handler) stepUpHandler() gin.HandlerFunc {
 
 		var req StepUpRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			response.BadRequest(c, 40001, err.Error())
+			response.BadRequest(c, 40001, "invalid request body")
 			return
 		}
 

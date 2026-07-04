@@ -37,7 +37,7 @@ func (h *Handler) List(c *gin.Context) {
 
 	var req ListAuditRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 

@@ -126,7 +126,7 @@ func (h *Handler) List(c *gin.Context) {
 
 	var req ListAppsRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 
@@ -159,7 +159,7 @@ func (h *Handler) List(c *gin.Context) {
 func (h *Handler) Create(c *gin.Context) {
 	var req CreateAppRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 
@@ -199,7 +199,7 @@ func (h *Handler) Update(c *gin.Context) {
 
 	var req UpdateAppRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 
@@ -236,7 +236,7 @@ func (h *Handler) UpdateStatus(c *gin.Context) {
 
 	var req UpdateStatusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 
@@ -273,7 +273,7 @@ func (h *Handler) UpdateProtocolConfig(c *gin.Context) {
 
 	var req UpdateProtocolConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 
@@ -317,7 +317,7 @@ func (h *Handler) AddAccess(c *gin.Context) {
 
 	var req AddAccessRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 
@@ -421,7 +421,7 @@ func (h *Handler) ListGroups(c *gin.Context) {
 func (h *Handler) CreateGroup(c *gin.Context) {
 	var req AppGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 
@@ -443,7 +443,7 @@ func (h *Handler) UpdateGroup(c *gin.Context) {
 
 	var req UpdateAppGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 
@@ -480,7 +480,7 @@ func (h *Handler) AddAppToGroup(c *gin.Context) {
 
 	var req AddAppToGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 
