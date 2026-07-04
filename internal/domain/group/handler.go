@@ -346,7 +346,7 @@ func (h *Handler) GetRule(c *gin.Context) {
 	}
 	resp, err := toRuleResponse(rule)
 	if err != nil {
-		response.InternalError(c, "failed to decode rule: "+err.Error(), err)
+		response.InternalError(c, "failed to decode rule", err)
 		return
 	}
 	response.OK(c, resp)
@@ -382,7 +382,7 @@ func (h *Handler) UpsertRule(c *gin.Context) {
 	}
 	resp, derr := toRuleResponse(rule)
 	if derr != nil {
-		response.InternalError(c, "failed to decode rule: "+derr.Error(), derr)
+		response.InternalError(c, "failed to decode rule", derr)
 		return
 	}
 	response.OK(c, resp)
