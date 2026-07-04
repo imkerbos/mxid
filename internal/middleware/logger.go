@@ -1,11 +1,50 @@
 package middleware
 
 import (
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
+
+// sensitiveQueryParams are query-string keys whose VALUES are bearer credentials
+// or one-shot secrets — magic-link / password-reset / email-verify tokens, CAS
+// service tickets, OAuth authorization codes / state. They must never land in
+// access logs in cleartext. The value-level RedactingCore only matches zap field
+// KEYS, so a single "query" field carrying "?token=..." slips straight past it;
+// redactQuery closes that gap.
+var sensitiveQueryParams = map[string]bool{
+	"token": true, "ticket": true, "code": true, "state": true,
+	"access_token": true, "refresh_token": true, "id_token": true,
+	"client_secret": true, "secret": true, "password": true,
+	"authorization": true, "api_key": true, "apikey": true, "assertion": true,
+}
+
+// redactQuery returns rawQuery with any sensitive parameter value replaced by
+// REDACTED, keeping the rest for debuggability. An unparseable query is redacted
+// wholesale (fail-closed).
+func redactQuery(rawQuery string) string {
+	if rawQuery == "" {
+		return ""
+	}
+	values, err := url.ParseQuery(rawQuery)
+	if err != nil {
+		return "REDACTED"
+	}
+	changed := false
+	for k := range values {
+		if sensitiveQueryParams[strings.ToLower(k)] {
+			values[k] = []string{"REDACTED"}
+			changed = true
+		}
+	}
+	if !changed {
+		return rawQuery
+	}
+	return values.Encode()
+}
 
 // Logger returns a Gin middleware that logs HTTP requests using zap.
 func Logger(logger *zap.Logger) gin.HandlerFunc {
@@ -23,7 +62,7 @@ func Logger(logger *zap.Logger) gin.HandlerFunc {
 			zap.Int("status", status),
 			zap.String("method", c.Request.Method),
 			zap.String("path", path),
-			zap.String("query", query),
+			zap.String("query", redactQuery(query)),
 			zap.String("ip", c.ClientIP()),
 			zap.Duration("latency", latency),
 			zap.Int("size", c.Writer.Size()),
