@@ -41,7 +41,7 @@ func (twilioSender) SendCode(ctx context.Context, cfg setting.SMS, phone, code s
 	req.SetBasicAuth(cfg.AccessKey, cfg.Secret)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := smsHTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("twilio send: %w", err)
 	}

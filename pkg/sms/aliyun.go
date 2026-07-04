@@ -70,7 +70,7 @@ func (aliyunSender) SendCode(ctx context.Context, cfg setting.SMS, phone, code s
 	if err != nil {
 		return err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := smsHTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("aliyun send: %w", err)
 	}
