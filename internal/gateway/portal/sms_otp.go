@@ -141,7 +141,9 @@ func (h *SMSOTPHandler) send(c *gin.Context) {
 	// tenant_id; phone numbers are globally unique enough for this.
 	cooldownKey := smsOTPCooldownPrefix + phone
 	if exists, _ := h.rdb.Exists(c.Request.Context(), cooldownKey).Result(); exists > 0 {
-		response.BadRequest(c, 42901, "please wait before requesting another code")
+		// Cooldown is a rate-limit condition — emit 429 to match the other 42901
+		// sites (it was a 400 here, a status collision on the same code).
+		response.Error(c, http.StatusTooManyRequests, 42901, "please wait before requesting another code", "")
 		return
 	}
 
