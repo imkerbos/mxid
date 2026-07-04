@@ -195,28 +195,38 @@ func (r *repo) ResolveCodesForUser(ctx context.Context, userID, appID, tenantID 
       ))
     )`
 
+	// is_jit = the binding is time-bound (has an expiry) = a JIT elevation. Those
+	// roles float to the FRONT of app_roles so a "single primary role" SP that
+	// reads app_roles[0] picks up the elevated role for the grant's lifetime;
+	// permanent roles keep their sort_order/code order behind them. BOOL_OR so a
+	// role that is both permanent AND currently JIT-granted still floats.
 	q := `
-(
-    SELECT DISTINCT ar.code, ar.sort_order
-    FROM mxid_app_role_binding b
-    INNER JOIN mxid_app_role ar ON ar.id = b.app_role_id
-    WHERE b.app_id = ? AND b.tenant_id IN (?, 0)` + activeBindingSQL + `
-      AND ` + subjectMatchSQL + `
-)
-UNION
-(
-    SELECT DISTINCT ar.code, ar.sort_order
-    FROM mxid_app_role_binding b
-    INNER JOIN mxid_app_role ar ON ar.id = b.app_role_id
-    INNER JOIN mxid_app_group_rel rel ON rel.group_id = b.app_group_id
-    WHERE rel.app_id = ? AND b.tenant_id IN (?, 0) AND b.app_group_id IS NOT NULL` + activeBindingSQL + `
-      AND ` + subjectMatchSQL + `
-)
-ORDER BY sort_order ASC, code ASC`
+SELECT code, MIN(sort_order) AS sort_order, BOOL_OR(is_jit) AS is_jit
+FROM (
+    (
+        SELECT ar.code, ar.sort_order, (b.expires_at IS NOT NULL) AS is_jit
+        FROM mxid_app_role_binding b
+        INNER JOIN mxid_app_role ar ON ar.id = b.app_role_id
+        WHERE b.app_id = ? AND b.tenant_id IN (?, 0)` + activeBindingSQL + `
+          AND ` + subjectMatchSQL + `
+    )
+    UNION ALL
+    (
+        SELECT ar.code, ar.sort_order, (b.expires_at IS NOT NULL) AS is_jit
+        FROM mxid_app_role_binding b
+        INNER JOIN mxid_app_role ar ON ar.id = b.app_role_id
+        INNER JOIN mxid_app_group_rel rel ON rel.group_id = b.app_group_id
+        WHERE rel.app_id = ? AND b.tenant_id IN (?, 0) AND b.app_group_id IS NOT NULL` + activeBindingSQL + `
+          AND ` + subjectMatchSQL + `
+    )
+) t
+GROUP BY code
+ORDER BY is_jit DESC, sort_order ASC, code ASC`
 
 	type row struct {
 		Code      string
 		SortOrder int
+		IsJit     bool
 	}
 	var rows []row
 	if err := r.db.WithContext(ctx).Raw(q,

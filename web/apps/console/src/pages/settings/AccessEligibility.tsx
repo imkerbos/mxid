@@ -26,7 +26,7 @@ import type {
   Role,
   User,
 } from '@mxid/shared'
-import { pageMotion, Button, Field, Select, ConfirmDialog } from '@mxid/shared/ui'
+import { pageMotion, Button, Field, Select, ConfirmDialog, SearchSelect } from '@mxid/shared/ui'
 import { toast, extractMessage } from '../../components/ui/toast'
 
 const ALL_DURATIONS = [3600, 14400, 86400, 259200, 604800] as const
@@ -333,54 +333,41 @@ export default function AccessEligibilityPage() {
 
           {form.target_kind === 'console' ? (
             <Field label={t('eligibility.roleId')}>
-              <Select
+              <SearchSelect
                 value={form.role_id}
                 disabled={consoleRolesLoading}
-                onChange={(e) => setForm((f) => ({ ...f, role_id: e.target.value }))}
-              >
-                <option value="">{t('eligibility.pleaseSelect')}</option>
-                {consoleRoles.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name} ({r.code})
-                  </option>
-                ))}
-              </Select>
+                onChange={(v) => setForm((f) => ({ ...f, role_id: v }))}
+                options={consoleRoles.map((r) => ({ value: String(r.id), label: `${r.name} (${r.code})` }))}
+                placeholder={t('eligibility.pleaseSelect')}
+                searchPlaceholder={t('common.search')}
+                emptyText={t('common.empty')}
+              />
             </Field>
           ) : (
             <Field label={t('eligibility.appId')}>
-              <Select
+              <SearchSelect
                 value={form.app_id ?? ''}
                 disabled={appsLoading}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, app_id: e.target.value, role_id: '' }))
-                }
-              >
-                <option value="">{t('eligibility.pleaseSelect')}</option>
-                {apps.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name} ({a.code})
-                  </option>
-                ))}
-              </Select>
+                onChange={(v) => setForm((f) => ({ ...f, app_id: v, role_id: '' }))}
+                options={apps.map((a) => ({ value: String(a.id), label: `${a.name} (${a.code})` }))}
+                placeholder={t('eligibility.pleaseSelect')}
+                searchPlaceholder={t('common.search')}
+                emptyText={t('common.empty')}
+              />
             </Field>
           )}
 
           {form.target_kind === 'app' && (
             <Field label={t('eligibility.roleId')}>
-              <Select
+              <SearchSelect
                 value={form.role_id}
                 disabled={!form.app_id || appRolesLoading}
-                onChange={(e) => setForm((f) => ({ ...f, role_id: e.target.value }))}
-              >
-                <option value="">
-                  {form.app_id ? t('eligibility.pleaseSelect') : t('eligibility.selectAppFirst')}
-                </option>
-                {appRoles.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name} ({r.code})
-                  </option>
-                ))}
-              </Select>
+                onChange={(v) => setForm((f) => ({ ...f, role_id: v }))}
+                options={appRoles.map((r) => ({ value: String(r.id), label: `${r.name} (${r.code})` }))}
+                placeholder={form.app_id ? t('eligibility.pleaseSelect') : t('eligibility.selectAppFirst')}
+                searchPlaceholder={t('common.search')}
+                emptyText={t('common.empty')}
+              />
             </Field>
           )}
 
@@ -408,44 +395,35 @@ export default function AccessEligibilityPage() {
                 <option value="">{t('eligibility.requesterAnyHint')}</option>
               </Select>
             ) : form.requester_subject_type === 'group' ? (
-              <Select
+              <SearchSelect
                 value={form.requester_subject_id ?? ''}
                 disabled={groupsLoading}
-                onChange={(e) => setForm((f) => ({ ...f, requester_subject_id: e.target.value }))}
-              >
-                <option value="">{t('eligibility.pleaseSelect')}</option>
-                {groups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name} ({g.code})
-                  </option>
-                ))}
-              </Select>
+                onChange={(v) => setForm((f) => ({ ...f, requester_subject_id: v }))}
+                options={groups.map((g) => ({ value: String(g.id), label: `${g.name} (${g.code})` }))}
+                placeholder={t('eligibility.pleaseSelect')}
+                searchPlaceholder={t('common.search')}
+                emptyText={t('common.empty')}
+              />
             ) : form.requester_subject_type === 'org' ? (
-              <Select
+              <SearchSelect
                 value={form.requester_subject_id ?? ''}
                 disabled={orgsLoading}
-                onChange={(e) => setForm((f) => ({ ...f, requester_subject_id: e.target.value }))}
-              >
-                <option value="">{t('eligibility.pleaseSelect')}</option>
-                {orgs.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name} ({o.code})
-                  </option>
-                ))}
-              </Select>
+                onChange={(v) => setForm((f) => ({ ...f, requester_subject_id: v }))}
+                options={orgs.map((o) => ({ value: String(o.id), label: `${o.name} (${o.code})` }))}
+                placeholder={t('eligibility.pleaseSelect')}
+                searchPlaceholder={t('common.search')}
+                emptyText={t('common.empty')}
+              />
             ) : (
-              <Select
+              <SearchSelect
                 value={form.requester_subject_id ?? ''}
                 disabled={usersLoading}
-                onChange={(e) => setForm((f) => ({ ...f, requester_subject_id: e.target.value }))}
-              >
-                <option value="">{t('eligibility.pleaseSelect')}</option>
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.display_name || u.username} ({u.username})
-                  </option>
-                ))}
-              </Select>
+                onChange={(v) => setForm((f) => ({ ...f, requester_subject_id: v }))}
+                options={users.map((u) => ({ value: String(u.id), label: `${u.display_name || u.username} (${u.username})` }))}
+                placeholder={t('eligibility.pleaseSelect')}
+                searchPlaceholder={t('common.search')}
+                emptyText={t('common.empty')}
+              />
             )}
           </Field>
 
@@ -473,44 +451,35 @@ export default function AccessEligibilityPage() {
                 <option value="">{t('eligibility.approverAutoHint')}</option>
               </Select>
             ) : form.approver_subject_type === 'role' ? (
-              <Select
+              <SearchSelect
                 value={form.approver_subject_id ?? ''}
                 disabled={consoleRolesLoading}
-                onChange={(e) => setForm((f) => ({ ...f, approver_subject_id: e.target.value }))}
-              >
-                <option value="">{t('eligibility.pleaseSelect')}</option>
-                {consoleRoles.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name} ({r.code})
-                  </option>
-                ))}
-              </Select>
+                onChange={(v) => setForm((f) => ({ ...f, approver_subject_id: v }))}
+                options={consoleRoles.map((r) => ({ value: String(r.id), label: `${r.name} (${r.code})` }))}
+                placeholder={t('eligibility.pleaseSelect')}
+                searchPlaceholder={t('common.search')}
+                emptyText={t('common.empty')}
+              />
             ) : form.approver_subject_type === 'group' ? (
-              <Select
+              <SearchSelect
                 value={form.approver_subject_id ?? ''}
                 disabled={groupsLoading}
-                onChange={(e) => setForm((f) => ({ ...f, approver_subject_id: e.target.value }))}
-              >
-                <option value="">{t('eligibility.pleaseSelect')}</option>
-                {groups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name} ({g.code})
-                  </option>
-                ))}
-              </Select>
+                onChange={(v) => setForm((f) => ({ ...f, approver_subject_id: v }))}
+                options={groups.map((g) => ({ value: String(g.id), label: `${g.name} (${g.code})` }))}
+                placeholder={t('eligibility.pleaseSelect')}
+                searchPlaceholder={t('common.search')}
+                emptyText={t('common.empty')}
+              />
             ) : (
-              <Select
+              <SearchSelect
                 value={form.approver_subject_id ?? ''}
                 disabled={usersLoading}
-                onChange={(e) => setForm((f) => ({ ...f, approver_subject_id: e.target.value }))}
-              >
-                <option value="">{t('eligibility.pleaseSelect')}</option>
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.display_name || u.username} ({u.username})
-                  </option>
-                ))}
-              </Select>
+                onChange={(v) => setForm((f) => ({ ...f, approver_subject_id: v }))}
+                options={users.map((u) => ({ value: String(u.id), label: `${u.display_name || u.username} (${u.username})` }))}
+                placeholder={t('eligibility.pleaseSelect')}
+                searchPlaceholder={t('common.search')}
+                emptyText={t('common.empty')}
+              />
             )}
           </Field>
 

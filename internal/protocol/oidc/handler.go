@@ -20,6 +20,7 @@ import (
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/safehttp"
 	"github.com/imkerbos/mxid/pkg/session"
+	"github.com/imkerbos/mxid/pkg/ssoflow"
 	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"github.com/imkerbos/mxid/pkg/urlswap"
 	"golang.org/x/crypto/bcrypt"
@@ -60,6 +61,10 @@ type Handler struct {
 	store       *Store
 	tokenIss    *TokenIssuer
 	eventBus    *event.Bus
+	// confirm mints/consumes the one-time SSO login-confirmation token. SP-
+	// initiated /authorize shows the confirm page every time; approve mints a
+	// token, the replay consumes it to proceed. nil = confirmation disabled.
+	confirm *ssoflow.ConfirmStore
 	// backchannelClient overrides the package-level backchannelLogoutClient
 	// when non-nil. Used in tests to bypass the SSRF guard so an httptest RP
 	// on loopback can receive logout_tokens.
@@ -133,6 +138,7 @@ func NewHandler(
 		store:      store,
 		tokenIss:   NewTokenIssuer(issuer),
 		eventBus:   eventBus,
+		confirm:    ssoflow.NewConfirmStore(store.Redis()),
 	}
 }
 
@@ -285,6 +291,15 @@ func (h *Handler) authorize(c *gin.Context) {
 		return
 	}
 
+	// SSO login-confirmation CANCEL: the confirm page bounces the user back here
+	// with sso_deny=1. redirect_uri is validated now, so send the SP a spec
+	// access_denied instead of the portal constructing the redirect itself
+	// (which would be an open-redirect surface).
+	if c.Query("sso_deny") == "1" {
+		h.redirectError(c, redirectURI, state, "access_denied", "user cancelled the login")
+		return
+	}
+
 	// From here on redirect_uri is pinned to the app's allow-list, so
 	// redirectError() is a safe (registered-target) redirect.
 	rtParts := parseResponseType(responseType)
@@ -370,24 +385,27 @@ func (h *Handler) authorize(c *gin.Context) {
 		}
 	}
 
-	// Consent check (OIDC Core §3.1.2.4).
-	// require_consent=true OR third-party app forces explicit user grant.
-	// First-party apps with require_consent=false skip the prompt — matches
-	// Auth0 / Okta first-party app behavior.
-	if h.consent != nil && (app.RequireConsent || !app.IsFirstParty()) {
-		ok, err := h.consent.HasAll(c.Request.Context(), ssoSess.TenantID, ssoSess.UserID, app.ID, scopes)
-		if err != nil {
-			h.redirectError(c, redirectURI, state, "server_error", "consent check failed")
-			return
-		}
-		if !ok {
+	// SSO login confirmation (product requirement, Google-style).
+	//   IdP-initiated (portal app-list launch, idp_initiated=1) → SEAMLESS: no
+	//     confirm screen, no scope prompt — the user chose this app in our own UI.
+	//   SP-initiated (a third-party app redirected the user here) → show the
+	//     confirm page EVERY time: "log in to App X as <you>" merged with the
+	//     scope grant (choice B). The page's approve mints a one-time token; this
+	//     /authorize is then re-hit with ?sso_confirm=<token>, which we consume
+	//     exactly once to proceed. Cancel → the page bounces the SP an
+	//     access_denied. Access policy was already enforced just above.
+	idpInitiated := c.Query("idp_initiated") == "1"
+	if !idpInitiated && h.confirm != nil {
+		if !h.confirm.Consume(c.Request.Context(), c.Query("sso_confirm"), ssoSess.UserID, app.ID) {
 			if prompt == "none" {
-				h.redirectError(c, redirectURI, state, "interaction_required", "consent required")
+				h.redirectError(c, redirectURI, state, "interaction_required", "login confirmation required")
 				return
 			}
 			h.redirectToConsent(c, app.ID, clientID, redirectURI, scope, state, nonce, codeChallenge, codeChallengeMethod)
 			return
 		}
+		// Confirmed via the one-time token minted by the confirm page's approve;
+		// that approve also recorded the scope grant. Proceed to issue the code.
 	}
 
 	// Issue the response components dictated by response_type. Hybrid +

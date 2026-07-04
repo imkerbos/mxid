@@ -297,6 +297,7 @@ func (r *repo) ListRequestsByStatus(ctx context.Context, tenantID int64, status 
 	// id. Best-effort: a lookup failure must not fail the list — the name is
 	// cosmetic display only, the id remains authoritative in requester_id.
 	r.populateRequesterNames(ctx, rows)
+	r.populateRequestTargetNames(ctx, rows)
 	return rows, nil
 }
 
@@ -331,13 +332,63 @@ func (r *repo) populateRequesterNames(ctx context.Context, rows []*Request) {
 	}
 }
 
+// populateRequestTargetNames fills each row's TargetName (role name) and AppName
+// (for app targets) via batched lookups, mirroring populateEligibilityNames.
+// Best-effort: a lookup miss (target deleted after the request) leaves the field
+// empty and the UI falls back to the raw id.
+func (r *repo) populateRequestTargetNames(ctx context.Context, rows []*Request) {
+	if len(rows) == 0 {
+		return
+	}
+	var roleIDs, appRoleIDs, appIDs []int64
+	seenRole := map[int64]bool{}
+	seenAppRole := map[int64]bool{}
+	seenApp := map[int64]bool{}
+	add := func(dst *[]int64, seen map[int64]bool, id int64) {
+		if id == 0 || seen[id] {
+			return
+		}
+		seen[id] = true
+		*dst = append(*dst, id)
+	}
+	for _, row := range rows {
+		switch row.TargetKind {
+		case TargetConsole:
+			add(&roleIDs, seenRole, row.RoleID)
+		case TargetApp:
+			add(&appRoleIDs, seenAppRole, row.RoleID)
+			if row.AppID != nil {
+				add(&appIDs, seenApp, *row.AppID)
+			}
+		}
+	}
+	roleNames := r.batchNames(ctx, "mxid_role", roleIDs, true)
+	appRoleNames := r.batchNames(ctx, "mxid_app_role", appRoleIDs, false)
+	appNames := r.batchNames(ctx, "mxid_app", appIDs, true)
+	for _, row := range rows {
+		switch row.TargetKind {
+		case TargetConsole:
+			row.TargetName = roleNames[row.RoleID]
+		case TargetApp:
+			row.TargetName = appRoleNames[row.RoleID]
+			if row.AppID != nil {
+				row.AppName = appNames[*row.AppID]
+			}
+		}
+	}
+}
+
 func (r *repo) ListRequestsByRequester(ctx context.Context, requesterID, tenantID int64) ([]*Request, error) {
 	var rows []*Request
 	err := r.db.WithContext(ctx).
 		Where("requester_id = ? AND tenant_id = ?", requesterID, tenantID).
 		Order("created_at DESC").
 		Find(&rows).Error
-	return rows, err
+	if err != nil {
+		return nil, err
+	}
+	r.populateRequestTargetNames(ctx, rows)
+	return rows, nil
 }
 
 // ─── Grant operations ─────────────────────────────────────────────────────────
@@ -367,6 +418,20 @@ func (r *repo) bindingTable(kind string) string {
 func (r *repo) insertBindingTx(tx *gorm.DB, req *Request, bindingID int64, expiresAt time.Time) error {
 	switch req.TargetKind {
 	case TargetConsole:
+		// Supersede any existing active grant for the same (role, subject, scope):
+		// the subject may already hold a JIT grant (a prior approval, or a stale
+		// binding) and the unique index (role_id, subject, scope) would otherwise
+		// make this INSERT a 23505. Delete-then-insert keeps the new bindingID
+		// authoritative (EndGrant deletes by binding_id) and refreshes the window.
+		if err := tx.Exec(`
+DELETE FROM mxid_role_binding
+WHERE role_id = ? AND subject_type = 'user' AND subject_id = ?
+  AND COALESCE(scope_type, '') = COALESCE(?, '')
+  AND COALESCE(scope_id, 0) = COALESCE(?, 0)`,
+			req.RoleID, req.RequesterID, req.ScopeType, req.ScopeID,
+		).Error; err != nil {
+			return err
+		}
 		return tx.Exec(`
 INSERT INTO mxid_role_binding
     (id, role_id, subject_type, subject_id, scope_type, scope_id, grant_id, expires_at, status, created_at)
@@ -384,6 +449,16 @@ VALUES (?, ?, 'user', ?, ?, ?, ?, ?, ?, NOW())`,
 	case TargetApp:
 		if req.AppID == nil {
 			return fmt.Errorf("access: app_id is required for TargetApp grant")
+		}
+		// Supersede any existing active grant for the same (app, role, subject) —
+		// covers both unique indexes on the table (app_group_id is NULL here).
+		if err := tx.Exec(`
+DELETE FROM mxid_app_role_binding
+WHERE app_id = ? AND tenant_id = ? AND app_role_id = ?
+  AND subject_type = 'user' AND subject_id = ? AND app_group_id IS NULL`,
+			*req.AppID, req.TenantID, req.RoleID, req.RequesterID,
+		).Error; err != nil {
+			return err
 		}
 		return tx.Exec(`
 INSERT INTO mxid_app_role_binding

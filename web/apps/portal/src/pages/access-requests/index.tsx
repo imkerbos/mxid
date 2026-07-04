@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { accessRequestApi } from '@mxid/shared/api'
 import type { Eligibility, AccessRequest } from '@mxid/shared/api'
-import { Button, Modal, Field, Select, Textarea, pageMotion, LoadingState } from '@mxid/shared/ui'
+import { Button, Modal, Field, Select, SearchSelect, Textarea, pageMotion, LoadingState } from '@mxid/shared/ui'
 import { toast, extractMessage } from '@mxid/shared/ui/toast'
 import { formatDate, useTranslation } from '@mxid/shared'
 
@@ -139,10 +139,12 @@ export default function AccessRequestsPage() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-ink text-sm">
-                    {r.target_kind === 'console' ? t('access.targetConsole') : t('access.targetApp')}
+                    {r.target_kind === 'console'
+                      ? t('access.targetConsole')
+                      : r.app_name || t('access.targetApp')}
                   </span>
                   <span className="text-faint text-xs">·</span>
-                  <span className="text-muted text-sm">{r.role_id}</span>
+                  <span className="text-muted text-sm">{r.target_name || r.role_id}</span>
                   <span
                     className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${STATUS_VARIANT[r.status] ?? 'bg-surface-muted text-muted'}`}
                   >
@@ -182,20 +184,20 @@ export default function AccessRequestsPage() {
       <Modal open={modalOpen} onClose={closeModal} title={t('access.newRequest')}>
         <div className="space-y-4">
           <Field label={t('access.eligibility')} required>
-            <Select
+            <SearchSelect
               value={selEligID}
-              onChange={e => {
-                setSelEligID(e.target.value)
+              onChange={(v) => {
+                setSelEligID(v)
                 setDuration(0)
               }}
-            >
-              <option value="">{t('access.selectEligibility')}</option>
-              {eligibilities.map(el => (
-                <option key={el.id} value={el.id}>
-                  {el.target_kind === 'console' ? t('access.targetConsole') : t('access.targetApp')} · {el.role_id}
-                </option>
-              ))}
-            </Select>
+              options={eligibilities.map((el) => ({
+                value: el.id,
+                label: `${el.target_kind === 'console' ? t('access.targetConsole') : el.app_name || t('access.targetApp')} · ${el.target_name || el.role_id}`,
+              }))}
+              placeholder={t('access.selectEligibility')}
+              searchPlaceholder={t('common.search')}
+              emptyText={t('common.empty')}
+            />
           </Field>
 
           {selectedElig && (

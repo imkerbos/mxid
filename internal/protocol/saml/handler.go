@@ -22,10 +22,18 @@ import (
 	"github.com/google/uuid"
 	"github.com/imkerbos/mxid/internal/protocol/resolver"
 	"github.com/imkerbos/mxid/pkg/response"
+	"github.com/imkerbos/mxid/pkg/ssoflow"
 	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"github.com/imkerbos/mxid/pkg/urlswap"
 	"go.uber.org/zap"
 )
+
+// AppRoleResolver returns a user's effective app-role codes for an app, ordered
+// with JIT (time-bound) elevations first — see approle.Service.ResolveCodes.
+// Structurally identical to the OIDC resolver so the same adapter serves both.
+type AppRoleResolver interface {
+	ResolveAppRoles(ctx context.Context, userID, appID, tenantID int64) ([]string, error)
+}
 
 // Handler serves SAML protocol endpoints.
 type Handler struct {
@@ -38,6 +46,12 @@ type Handler struct {
 	tenantRes   resolver.TenantResolver
 	sessionIdx  *SessionIndexStore
 	logger      *zap.Logger
+	// confirm mints/consumes the one-time SSO login-confirmation token. Set by
+	// Register. nil = confirmation feature off (SP-initiated stays seamless).
+	confirm *ssoflow.ConfirmStore
+	// appRoles resolves the user's effective app roles (JIT elevations first) to
+	// emit as a multi-value SAML attribute. nil = no role attribute.
+	appRoles AppRoleResolver
 	// backchannelClient overrides the package-level SSRF-safe
 	// samlBackchannelClient when non-nil. Used in tests so an httptest SP on
 	// loopback can receive IdP-initiated LogoutRequests; production always uses
@@ -275,6 +289,25 @@ func (h *Handler) processSSO(c *gin.Context, appCode, requestID, relayState stri
 		return
 	}
 
+	// SSO login confirmation (product rule, Google-style). Only SP-initiated
+	// flows confirm — those carry an AuthnRequest (requestID != ""). IdP-initiated
+	// portal launches have no AuthnRequest (requestID == "") and stay seamless.
+	//   sso_deny=1 → user cancelled: POST a signed SAML error Response (Responder
+	//     / AuthnFailed) back to the SP's ACS (spec-compliant, not a bare page).
+	//   otherwise consume the one-time token; if absent → bounce to the confirm
+	//     page, whose approve replays /resume with sso_confirm and whose cancel
+	//     appends sso_deny=1.
+	if requestID != "" && h.confirm != nil {
+		if c.Query("sso_deny") == "1" {
+			h.writeSAMLError(c, appCode, app.ID, samlCfg, requestID, relayState)
+			return
+		}
+		if !h.confirm.Consume(c.Request.Context(), c.Query("sso_confirm"), ssoSess.UserID, app.ID) {
+			h.redirectToConsent(c, app.ID, appCode, requestID, relayState)
+			return
+		}
+	}
+
 	// Pin the SSO session's tenant so the user-identity read below is
 	// tenant-scoped under the gorm isolation plugin (protocol group has no
 	// AuthMiddleware).
@@ -320,14 +353,21 @@ func (h *Handler) processSSO(c *gin.Context, appCode, requestID, relayState stri
 		attrs["username"] = subj.DisplayUsername
 	}
 
-	h.emitCrewjamResponse(c, appCode, app.ID, ssoSess.UserID, samlCfg, requestID, relayState, nameIDValue, attrs)
+	// Effective app roles (JIT elevations first) → emitted as a multi-value
+	// attribute. Best-effort: a lookup failure just omits the role attribute.
+	var roleCodes []string
+	if h.appRoles != nil {
+		roleCodes, _ = h.appRoles.ResolveAppRoles(c.Request.Context(), ssoSess.UserID, app.ID, ssoSess.TenantID)
+	}
+
+	h.emitCrewjamResponse(c, appCode, app.ID, ssoSess.UserID, samlCfg, requestID, relayState, nameIDValue, attrs, roleCodes)
 }
 
 // emitCrewjamResponse builds and writes the SAML Response via crewjam/saml,
 // which signs the assertion (and response), handles NameID / Conditions /
 // element ordering / canonicalisation, and renders the auto-submit POST form.
 // Handles both SP-initiated (requestID set) and IdP-initiated (empty) flows.
-func (h *Handler) emitCrewjamResponse(c *gin.Context, appCode string, appID, userID int64, samlCfg *SAMLConfig, requestID, relayState, nameIDValue string, attrs map[string]string) {
+func (h *Handler) emitCrewjamResponse(c *gin.Context, appCode string, appID, userID int64, samlCfg *SAMLConfig, requestID, relayState, nameIDValue string, attrs map[string]string, roleCodes []string) {
 	key, cert, err := h.loadKeyAndCert(c.Request.Context(), appID)
 	if err != nil {
 		h.logger.Error("saml sso: load signing key failed", zap.Int64("app_id", appID), zap.Error(err))
@@ -342,6 +382,22 @@ func (h *Handler) emitCrewjamResponse(c *gin.Context, appCode string, appID, use
 	}
 
 	now := time.Now()
+	customAttrs := attrsToCrewjam(attrs)
+	if len(roleCodes) > 0 {
+		roleAttr := samlCfg.RoleAttribute
+		if roleAttr == "" {
+			roleAttr = "roles"
+		}
+		vals := make([]crewjam.AttributeValue, len(roleCodes))
+		for i, rc := range roleCodes {
+			vals[i] = crewjam.AttributeValue{Type: "xs:string", Value: rc}
+		}
+		customAttrs = append(customAttrs, crewjam.Attribute{
+			Name:       roleAttr,
+			NameFormat: "urn:oasis:names:tc:SAML:2.0:attrname-format:basic",
+			Values:     vals,
+		})
+	}
 	session := &crewjam.Session{
 		ID:               uuid.NewString(),
 		CreateTime:       now,
@@ -349,12 +405,20 @@ func (h *Handler) emitCrewjamResponse(c *gin.Context, appCode string, appID, use
 		Index:            uuid.NewString(),
 		NameID:           nameIDValue,
 		NameIDFormat:     samlCfg.NameIDFormat,
-		CustomAttributes: attrsToCrewjam(attrs),
+		CustomAttributes: customAttrs,
 	}
 
+	// The raw SAMLRequest blob is only present on the SP's initial hit
+	// (ssoRedirect/ssoPost). After a login or confirm bounce the flow resumes via
+	// /resume (request_id only, no blob), and the login-confirm feature always
+	// routes SP-initiated logins through /resume. So parse the blob only when it
+	// is actually here; otherwise build the request manually (below) and stamp
+	// the request ID so the Response still carries InResponseTo.
+	hasRawRequest := c.Query("SAMLRequest") != "" || c.PostForm("SAMLRequest") != ""
+
 	var req *crewjam.IdpAuthnRequest
-	if requestID != "" {
-		// SP-initiated: parse + validate the AuthnRequest off the HTTP request.
+	if requestID != "" && hasRawRequest {
+		// SP-initiated with the AuthnRequest in hand: parse + validate it.
 		req, err = crewjam.NewIdpAuthnRequest(idp, c.Request)
 		if err != nil {
 			h.logger.Warn("saml sso: parse AuthnRequest failed",
@@ -369,7 +433,10 @@ func (h *Handler) emitCrewjamResponse(c *gin.Context, appCode string, appID, use
 			return
 		}
 	} else {
-		// IdP-initiated: no AuthnRequest — assemble the request + ACS manually.
+		// No AuthnRequest blob: IdP-initiated (requestID == "") OR an SP-initiated
+		// resume/confirm replay (requestID != ""). Assemble the request + ACS from
+		// the SP's registered metadata — the assertion always targets the
+		// configured ACS, never a request-supplied one.
 		req = &crewjam.IdpAuthnRequest{IDP: idp, HTTPRequest: c.Request, RelayState: relayState, Now: now}
 		req.ServiceProviderMetadata, err = idp.ServiceProviderProvider.GetServiceProvider(c.Request, samlCfg.SPEntityID)
 		if err != nil {
@@ -403,6 +470,13 @@ func (h *Handler) emitCrewjamResponse(c *gin.Context, appCode string, appID, use
 				zap.String("sp_entity_id", samlCfg.SPEntityID))
 			response.InternalError(c, "no compatible assertion consumer endpoint for this application")
 			return
+		}
+		// SP-initiated resume/confirm replay: stamp the original AuthnRequest ID so
+		// the Response carries InResponseTo, and an IssueInstant so the assertion's
+		// NotBefore is derived sanely (IdP-initiated leaves both zero-valued).
+		if requestID != "" {
+			req.Request.ID = requestID
+			req.Request.IssueInstant = now
 		}
 	}
 

@@ -142,6 +142,13 @@ type Request struct {
 	// ignored by GORM (gorm:"-") so every other Request query path (CreateRequest,
 	// GetRequest, ListRequestsByRequester, ListDueGrants, ...) is unaffected.
 	RequesterName string `gorm:"-" json:"requester_name,omitempty"`
+	// TargetName is the role name for RoleID (mxid_role for console, mxid_app_role
+	// for app). AppName is the mxid_app name for AppID (app targets only). Both
+	// gorm:"-", populated on the list paths so the UI shows names not raw ids. A
+	// lookup miss (e.g. the app/role was deleted after the request) leaves them
+	// empty and the UI falls back to the id.
+	TargetName string `gorm:"-" json:"target_name,omitempty"`
+	AppName    string `gorm:"-" json:"app_name,omitempty"`
 }
 
 func (Request) TableName() string { return "mxid_access_request" }

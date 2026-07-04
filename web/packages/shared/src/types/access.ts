@@ -33,7 +33,11 @@ export interface AccessRequest {
   eligibility_id: string
   target_kind: 'console' | 'app'
   role_id: string
+  /** Resolved role name for role_id (empty if the role was deleted). */
+  target_name?: string
   app_id?: string
+  /** Resolved app name for app_id (app targets only). */
+  app_name?: string
   requested_seconds: number
   justification: string
   status: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'expired' | 'revoked'

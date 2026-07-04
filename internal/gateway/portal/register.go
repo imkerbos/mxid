@@ -8,6 +8,7 @@ import (
 	"github.com/imkerbos/mxid/internal/domain/consent"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/mailer"
+	"github.com/imkerbos/mxid/pkg/ssoflow"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
@@ -66,6 +67,7 @@ func Register(
 		queryier:   consentQ,
 		tenantID:   tenantID,
 		bus:        bus,
+		confirm:    ssoflow.NewConfirmStore(rdb),
 	})
 
 	return &Module{}

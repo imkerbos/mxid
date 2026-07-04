@@ -145,6 +145,12 @@ type SessionQuerier interface {
 	// given namespace except `exceptSID`. Used by change-password so the
 	// caller's own session survives the global purge.
 	DeleteAllByUserExcept(ctx context.Context, namespace string, userID int64, exceptSID string) error
+	// MarkStepUpFresh records a successful MFA verification on the session so a
+	// high-risk op immediately afterwards passes step-up without re-prompting.
+	// Called after TOTP enrollment/re-verify — that verify already proved
+	// possession, so demanding a second code seconds later (which would reuse the
+	// same TOTP window and be rejected as a replay) is both hostile and pointless.
+	MarkStepUpFresh(ctx context.Context, namespace, sessionID string) error
 }
 
 // MFAQuerier provides MFA data access for portal handlers.
