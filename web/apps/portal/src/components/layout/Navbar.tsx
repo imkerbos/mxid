@@ -46,7 +46,7 @@ export default function Navbar() {
   }
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 h-16 border-b border-gray-200 bg-white/80 backdrop-blur-md">
+    <nav className="fixed top-0 left-0 right-0 z-50 h-16 border-b border-border bg-surface/80 backdrop-blur-md">
       <div className="mx-auto flex h-full max-w-6xl items-center justify-between px-4">
         {/* Logo */}
         <NavLink to="/apps" className="flex items-center">
@@ -64,7 +64,7 @@ export default function Navbar() {
                   'flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                   isActive
                     ? 'bg-primary/10 text-primary'
-                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
+                    : 'text-muted hover:bg-surface-muted hover:text-ink',
                 )
               }
             >
@@ -76,14 +76,14 @@ export default function Navbar() {
 
         {/* User & Logout */}
         <div className="hidden items-center gap-3 md:flex">
-          <div className="flex items-center gap-1 text-xs text-gray-500">
+          <div className="flex items-center gap-1 text-xs text-muted">
             {SUPPORTED_LANGS.map((l) => (
               <button
                 key={l}
                 onClick={() => setLanguage(l)}
                 className={cn(
                   'rounded px-2 py-0.5 transition-colors',
-                  i18n.language === l ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-gray-100',
+                  i18n.language === l ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-surface-muted',
                 )}
               >
                 {l === 'zh-CN' ? '中' : 'EN'}
@@ -101,13 +101,13 @@ export default function Navbar() {
               {t('nav.switchToConsole')}
             </a>
           )}
-          <span className="text-sm text-gray-500">
+          <span className="text-sm text-muted">
             {user?.display_name || user?.username}
           </span>
           <button
             onClick={handleLogout}
             disabled={loggingOut}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-danger/10 hover:text-danger disabled:opacity-50"
           >
             <LogOut className="h-4 w-4" />
             {t('nav.logout')}
@@ -117,7 +117,7 @@ export default function Navbar() {
         {/* Mobile menu button */}
         <button
           onClick={() => setMobileOpen(!mobileOpen)}
-          className="rounded-lg p-2 text-gray-600 hover:bg-gray-100 md:hidden"
+          className="rounded-lg p-2 text-muted hover:bg-surface-muted md:hidden"
         >
           {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
@@ -125,7 +125,7 @@ export default function Navbar() {
 
       {/* Mobile Nav */}
       {mobileOpen && (
-        <div className="border-b border-gray-200 bg-white px-4 pb-4 md:hidden">
+        <div className="border-b border-border bg-surface px-4 pb-4 md:hidden">
           <div className="flex flex-col gap-1">
             {navItems.map((item) => (
               <NavLink
@@ -137,7 +137,7 @@ export default function Navbar() {
                     'flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
                     isActive
                       ? 'bg-primary/10 text-primary'
-                      : 'text-gray-600 hover:bg-gray-100',
+                      : 'text-muted hover:bg-surface-muted',
                   )
                 }
               >
@@ -158,7 +158,7 @@ export default function Navbar() {
             <button
               onClick={handleLogout}
               disabled={loggingOut}
-              className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+              className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-danger transition-colors hover:bg-danger/10 disabled:opacity-50"
             >
               <LogOut className="h-4 w-4" />
               {t('nav.logout')}
