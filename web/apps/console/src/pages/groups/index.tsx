@@ -363,23 +363,23 @@ export default function GroupsPage() {
       {/* Search */}
       <div className="mb-4">
         <div className="relative max-w-xs">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
           <input
             type="text"
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
             placeholder={t('groups.searchPlaceholder')}
-            className="w-full rounded-lg border border-gray-200 py-2 pl-10 pr-4 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+            className="w-full rounded-lg border border-border py-2 pl-10 pr-4 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
         </div>
       </div>
 
       {/* Table */}
-      <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
+      <div className="rounded-xl border border-border bg-surface shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-gray-100 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-muted">
                 <th className="px-6 py-3">{t('groups.columns.name')}</th>
                 <th className="px-6 py-3">{t('groups.columns.code')}</th>
                 <th className="px-6 py-3">{t('groups.columns.desc')}</th>
@@ -388,16 +388,16 @@ export default function GroupsPage() {
                 <th className="px-6 py-3 text-right">{t('common.actions')}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-border">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-10 text-center text-sm text-gray-400">
+                  <td colSpan={6} className="px-6 py-10 text-center text-sm text-faint">
                     {t('common.loading')}
                   </td>
                 </tr>
               ) : data.items.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-10 text-center text-sm text-gray-400">
+                  <td colSpan={6} className="px-6 py-10 text-center text-sm text-faint">
                     {t('common.empty')}
                   </td>
                 </tr>
@@ -406,7 +406,7 @@ export default function GroupsPage() {
                   <tr
                     key={group.id}
                     className={cn(
-                      'hover:bg-gray-50/50 transition-colors',
+                      'hover:bg-surface-muted/50 transition-colors',
                       memberGroup?.id === group.id && 'bg-primary/5',
                     )}
                   >
@@ -414,7 +414,7 @@ export default function GroupsPage() {
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => openEdit(group)}
-                          className="text-sm font-medium text-gray-900 hover:text-primary transition-colors"
+                          className="text-sm font-medium text-ink hover:text-primary transition-colors"
                           title={t('groups.titleHint.edit')}
                         >
                           {group.name}
@@ -428,11 +428,11 @@ export default function GroupsPage() {
                       </div>
                     </td>
                     <td className="px-6 py-3">
-                      <code className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                      <code className="rounded bg-surface-muted px-2 py-0.5 text-xs text-muted">
                         {group.code}
                       </code>
                     </td>
-                    <td className="px-6 py-3 text-sm text-gray-600">
+                    <td className="px-6 py-3 text-sm text-muted">
                       {group.description || '-'}
                     </td>
                     <td className="px-6 py-3">
@@ -442,7 +442,7 @@ export default function GroupsPage() {
                           'inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm transition-colors',
                           memberGroup?.id === group.id
                             ? 'bg-primary/10 text-primary font-medium'
-                            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
+                            : 'text-muted hover:bg-surface-muted hover:text-ink',
                         )}
                         title={t('groups.titleHint.manageMembers')}
                       >
@@ -450,21 +450,21 @@ export default function GroupsPage() {
                         {group.member_count}
                       </button>
                     </td>
-                    <td className="whitespace-nowrap px-6 py-3 text-sm text-gray-500">
+                    <td className="whitespace-nowrap px-6 py-3 text-sm text-muted">
                       {formatDate(group.created_at)}
                     </td>
                     <td className="px-6 py-3 text-right">
                       <div className="inline-flex items-center gap-1">
                         <button
                           onClick={() => openEdit(group)}
-                          className="rounded p-1 text-gray-400 hover:bg-blue-50 hover:text-blue-500"
+                          className="rounded p-1 text-faint hover:bg-blue-50 hover:text-blue-500"
                           title={t('common.edit')}
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
                         <button
                           onClick={() => setDelGroup(group)}
-                          className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-500"
+                          className="rounded p-1 text-faint hover:bg-red-50 hover:text-red-500"
                           title={t('common.delete')}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -480,22 +480,22 @@ export default function GroupsPage() {
 
         {/* Pagination */}
         {data.total > 0 && (
-          <div className="flex items-center justify-between border-t border-gray-100 px-6 py-3">
-            <p className="text-sm text-gray-500">
+          <div className="flex items-center justify-between border-t border-border px-6 py-3">
+            <p className="text-sm text-muted">
               {t('groups.pagingSummary', { total: data.total, page, pages: totalPages })}
             </p>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page <= 1}
-                className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-gray-50"
+                className="rounded-lg border border-border px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-surface-muted"
               >
                 {t('groups.prevPage')}
               </button>
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page >= totalPages}
-                className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-gray-50"
+                className="rounded-lg border border-border px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-surface-muted"
               >
                 {t('groups.nextPage')}
               </button>
@@ -512,17 +512,17 @@ export default function GroupsPage() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 12 }}
             transition={{ duration: 0.2 }}
-            className="mt-4 rounded-xl border border-gray-100 bg-white shadow-sm"
+            className="mt-4 rounded-xl border border-border bg-surface shadow-sm"
           >
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+            <div className="flex items-center justify-between border-b border-border px-6 py-4">
               <div className="flex items-center gap-3">
                 <UsersRound className="h-5 w-5 text-primary" />
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-900">
+                  <h3 className="text-sm font-semibold text-ink">
                     {t('groups.memberMgmt', { name: memberGroup.name })}
                   </h3>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted">
                     {t('groups.memberTotal', { n: members.total })}
                   </p>
                 </div>
@@ -549,7 +549,7 @@ export default function GroupsPage() {
                 ))}
                 <button
                   onClick={closeMembers}
-                  className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                  className="rounded p-1 text-faint hover:bg-surface-muted hover:text-muted"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -557,14 +557,14 @@ export default function GroupsPage() {
             </div>
 
             {/* Tab bar */}
-            <div className="flex gap-6 border-b border-gray-100 px-6">
+            <div className="flex gap-6 border-b border-border px-6">
               {(['members', 'app-roles'] as const).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setMemberModalTab(tab)}
                   className={cn(
                     'border-b-2 px-1 py-2.5 text-sm font-medium transition-colors',
-                    memberModalTab === tab ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700',
+                    memberModalTab === tab ? 'border-primary text-primary' : 'border-transparent text-muted hover:text-ink',
                   )}
                 >
                   {tab === 'members' ? t('groups.tabMembers') : t('groups.tabAppRoles')}
@@ -574,7 +574,7 @@ export default function GroupsPage() {
 
             {/* Dynamic group sync banner */}
             {memberModalTab === 'members' && memberGroup.type === GroupType.Dynamic && groupRule && (
-              <div className="border-b border-gray-100 bg-amber-50/40 px-6 py-2 text-xs text-gray-600">
+              <div className="border-b border-border bg-amber-50/40 px-6 py-2 text-xs text-muted">
                 <Zap className="mr-1 inline h-3 w-3 text-amber-500" />
                 {groupRule.last_sync_at
                   ? t('groups.dynamicLastSync', {
@@ -598,12 +598,12 @@ export default function GroupsPage() {
             <>
             <div className="px-6 py-4">
               {membersLoading ? (
-                <div className="flex items-center justify-center py-8 text-sm text-gray-400">
+                <div className="flex items-center justify-center py-8 text-sm text-faint">
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   {t('common.loading')}
                 </div>
               ) : members.items.length === 0 ? (
-                <div className="py-8 text-center text-sm text-gray-400">
+                <div className="py-8 text-center text-sm text-faint">
                   {memberGroup.type === GroupType.Dynamic ? t('groups.membersEmptyDynamic') : t('groups.membersEmptyStatic')}
                 </div>
               ) : (
@@ -613,7 +613,7 @@ export default function GroupsPage() {
                     return (
                       <div
                         key={m.user_id}
-                        className="flex items-center justify-between rounded-lg border border-gray-100 px-4 py-2.5 transition-colors hover:bg-gray-50"
+                        className="flex items-center justify-between rounded-lg border border-border px-4 py-2.5 transition-colors hover:bg-surface-muted"
                       >
                         <div className="flex min-w-0 items-center gap-3">
                           {m.avatar ? (
@@ -629,27 +629,27 @@ export default function GroupsPage() {
                           )}
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="truncate text-sm font-medium text-gray-900">
+                              <span className="truncate text-sm font-medium text-ink">
                                 {m.display_name || m.username}
                               </span>
-                              <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">
+                              <code className="rounded bg-surface-muted px-1.5 py-0.5 text-xs text-muted">
                                 {m.username}
                               </code>
                             </div>
                             {m.email && (
-                              <p className="truncate text-xs text-gray-400">{m.email}</p>
+                              <p className="truncate text-xs text-faint">{m.email}</p>
                             )}
                           </div>
                         </div>
                         {memberGroup.type === GroupType.Dynamic ? (
-                          <span className="text-xs text-gray-400" title={t('groups.dynamicMemberLocked')}>
+                          <span className="text-xs text-faint" title={t('groups.dynamicMemberLocked')}>
                             —
                           </span>
                         ) : (
                           <button
                             onClick={() => handleRemoveMember(m.user_id)}
                             disabled={removingMemberId === m.user_id}
-                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-faint transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
                             title={t('groups.removeMember')}
                           >
                             {removingMemberId === m.user_id ? (
@@ -669,22 +669,22 @@ export default function GroupsPage() {
 
             {/* Member pagination */}
             {members.total > 0 && (
-              <div className="flex items-center justify-between border-t border-gray-100 px-6 py-3">
-                <p className="text-sm text-gray-500">
+              <div className="flex items-center justify-between border-t border-border px-6 py-3">
+                <p className="text-sm text-muted">
                   {t('groups.pagingSummary', { total: members.total, page: memberPage, pages: memberTotalPages })}
                 </p>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setMemberPage((p) => Math.max(1, p - 1))}
                     disabled={memberPage <= 1}
-                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-gray-50"
+                    className="rounded-lg border border-border px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-surface-muted"
                   >
                     {t('groups.prevPage')}
                   </button>
                   <button
                     onClick={() => setMemberPage((p) => Math.min(memberTotalPages, p + 1))}
                     disabled={memberPage >= memberTotalPages}
-                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-gray-50"
+                    className="rounded-lg border border-border px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-surface-muted"
                   >
                     {t('groups.nextPage')}
                   </button>
@@ -705,23 +705,23 @@ export default function GroupsPage() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="my-auto w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl"
+              className="my-auto w-full max-w-2xl rounded-xl bg-surface p-6 shadow-xl"
             >
               <h3 className="mb-4 text-lg font-semibold">{t('groups.createModal.title')}</h3>
               <form onSubmit={handleCreate} className="space-y-4">
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">{t('groups.createModal.nameRequired')}</label>
+                  <label className="mb-1 block text-sm font-medium text-ink">{t('groups.createModal.nameRequired')}</label>
                   <input
                     type="text"
                     value={createForm.name}
                     onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                     required
                   />
-                  <p className="mt-1 text-xs text-gray-400">{t('groups.createModal.nameHint')}</p>
+                  <p className="mt-1 text-xs text-faint">{t('groups.createModal.nameHint')}</p>
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">{t('groups.createModal.codeRequired')}</label>
+                  <label className="mb-1 block text-sm font-medium text-ink">{t('groups.createModal.codeRequired')}</label>
                   <CodeField
                     value={createForm.code}
                     onChange={(v) => setCreateForm((f) => ({ ...f, code: v }))}
@@ -729,36 +729,36 @@ export default function GroupsPage() {
                     prefix="ug"
                     placeholder="engineering / devops / admins ..."
                   />
-                  <p className="mt-1 text-xs text-gray-400">
+                  <p className="mt-1 text-xs text-faint">
                     {t('groups.createModal.harborHint')}
                     <span className="text-amber-600">{t('groups.createModal.codeImmutable')}</span>
                   </p>
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">{t('groups.createModal.desc')}</label>
+                  <label className="mb-1 block text-sm font-medium text-ink">{t('groups.createModal.desc')}</label>
                   <textarea
                     value={createForm.description}
                     onChange={(e) => setCreateForm((f) => ({ ...f, description: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                     rows={3}
                   />
-                  <p className="mt-1 text-xs text-gray-400">{t('groups.createModal.descHint')}</p>
+                  <p className="mt-1 text-xs text-faint">{t('groups.createModal.descHint')}</p>
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">{t('groups.createModal.groupType')}</label>
+                  <label className="mb-1 block text-sm font-medium text-ink">{t('groups.createModal.groupType')}</label>
                   <div className="flex gap-3">
-                    <label className={cn('flex flex-1 cursor-pointer items-start gap-2 rounded-lg border p-3', createType === 1 ? 'border-primary bg-primary/5' : 'border-gray-200')}>
+                    <label className={cn('flex flex-1 cursor-pointer items-start gap-2 rounded-lg border p-3', createType === 1 ? 'border-primary bg-primary/5' : 'border-border')}>
                       <input type="radio" name="group_type" checked={createType === 1} onChange={() => setCreateType(1)} className="mt-0.5" />
                       <div>
-                        <div className="text-sm font-medium text-gray-900">{t('groups.createModal.staticName')}</div>
-                        <div className="text-xs text-gray-500">{t('groups.createModal.staticDesc')}</div>
+                        <div className="text-sm font-medium text-ink">{t('groups.createModal.staticName')}</div>
+                        <div className="text-xs text-muted">{t('groups.createModal.staticDesc')}</div>
                       </div>
                     </label>
-                    <label className={cn('flex flex-1 cursor-pointer items-start gap-2 rounded-lg border p-3', createType === 2 ? 'border-primary bg-primary/5' : 'border-gray-200')}>
+                    <label className={cn('flex flex-1 cursor-pointer items-start gap-2 rounded-lg border p-3', createType === 2 ? 'border-primary bg-primary/5' : 'border-border')}>
                       <input type="radio" name="group_type" checked={createType === 2} onChange={() => setCreateType(2)} className="mt-0.5" />
                       <div>
-                        <div className="text-sm font-medium text-gray-900">{t('groups.createModal.dynamicName')}</div>
-                        <div className="text-xs text-gray-500">{t('groups.createModal.dynamicDesc')}</div>
+                        <div className="text-sm font-medium text-ink">{t('groups.createModal.dynamicName')}</div>
+                        <div className="text-xs text-muted">{t('groups.createModal.dynamicDesc')}</div>
                       </div>
                     </label>
                   </div>
@@ -788,59 +788,59 @@ export default function GroupsPage() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="my-auto w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl"
+              className="my-auto w-full max-w-2xl rounded-xl bg-surface p-6 shadow-xl"
             >
               <h3 className="mb-4 text-lg font-semibold">{t('groups.editModal.title')}</h3>
               <form onSubmit={handleEdit} className="space-y-4">
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">{t('groups.createModal.nameRequired')}</label>
+                  <label className="mb-1 block text-sm font-medium text-ink">{t('groups.createModal.nameRequired')}</label>
                   <input
                     type="text"
                     value={editForm.name}
                     onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                     required
                   />
-                  <p className="mt-1 text-xs text-gray-400">{t('groups.editModal.nameHintEditable')}</p>
+                  <p className="mt-1 text-xs text-faint">{t('groups.editModal.nameHintEditable')}</p>
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">{t('groups.editModal.code')}</label>
+                  <label className="mb-1 block text-sm font-medium text-ink">{t('groups.editModal.code')}</label>
                   <input
                     type="text"
                     value={editGroup.code}
                     disabled
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500"
+                    className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-muted"
                   />
-                  <p className="mt-1 text-xs text-gray-400">
+                  <p className="mt-1 text-xs text-faint">
                     {t('groups.editModal.codeImmutableHint')}
                     <span className="text-amber-600">{t('groups.editModal.codeImmutableLabel')}</span>
                     {t('groups.editModal.codeImmutableTail')}
                   </p>
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">{t('groups.createModal.desc')}</label>
+                  <label className="mb-1 block text-sm font-medium text-ink">{t('groups.createModal.desc')}</label>
                   <textarea
                     value={editForm.description}
                     onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                     rows={3}
                   />
-                  <p className="mt-1 text-xs text-gray-400">{t('groups.editModal.descHint')}</p>
+                  <p className="mt-1 text-xs text-faint">{t('groups.editModal.descHint')}</p>
                 </div>
                 {editGroup.type === GroupType.Dynamic && (
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                    <label className="mb-1 block text-sm font-medium text-ink">
                       <Zap className="mr-1 inline h-3.5 w-3.5 text-amber-500" />
                       {t('groups.editModal.dynamicRule')}
                     </label>
                     {editRule === null ? (
-                      <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center text-xs text-gray-400">
+                      <div className="rounded-lg border border-border bg-surface-muted p-3 text-center text-xs text-faint">
                         <Loader2 className="mx-auto h-4 w-4 animate-spin" />
                       </div>
                     ) : (
                       <RuleEditor value={editRule} onChange={setEditRule} />
                     )}
-                    <p className="mt-1 text-xs text-gray-400">{t('groups.editModal.ruleSavedHint')}</p>
+                    <p className="mt-1 text-xs text-faint">{t('groups.editModal.ruleSavedHint')}</p>
                   </div>
                 )}
                 <div className="flex justify-end gap-3 pt-2">
@@ -865,7 +865,7 @@ export default function GroupsPage() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl bg-white p-6 shadow-xl"
+              className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl bg-surface p-6 shadow-xl"
             >
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-lg font-semibold">{t('groups.addMemberModal.title')}</h3>
@@ -875,7 +875,7 @@ export default function GroupsPage() {
                     setUserSearch('')
                     setUserResults([])
                   }}
-                  className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                  className="rounded p-1 text-faint hover:bg-surface-muted hover:text-muted"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -883,19 +883,19 @@ export default function GroupsPage() {
 
               <div className="space-y-3">
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">{t('groups.addMemberModal.searchLabel')}</label>
+                  <label className="mb-1 block text-sm font-medium text-ink">{t('groups.addMemberModal.searchLabel')}</label>
                   <div className="relative">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
                     <input
                       type="text"
                       value={userSearch}
                       onChange={(e) => handleUserSearch(e.target.value)}
                       placeholder={t('groups.addMemberModal.searchPlaceholder')}
-                      className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      className="w-full rounded-lg border border-border py-2 pl-10 pr-4 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                       autoFocus
                     />
                     {userSearching && (
-                      <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-gray-400" />
+                      <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-faint" />
                     )}
                   </div>
                 </div>
@@ -903,7 +903,7 @@ export default function GroupsPage() {
                 {/* Search results */}
                 <div className="max-h-64 overflow-y-auto">
                   {!userSearching && userResults.length === 0 && (
-                    <div className="py-6 text-center text-sm text-gray-400">
+                    <div className="py-6 text-center text-sm text-faint">
                       {userSearch.trim() ? t('groups.addMemberModal.noMatch') : t('groups.addMemberModal.noCandidates')}
                     </div>
                   )}
@@ -912,18 +912,18 @@ export default function GroupsPage() {
                       {userResults.map((user) => (
                         <div
                           key={user.id}
-                          className="flex items-center justify-between rounded-lg px-3 py-2.5 transition-colors hover:bg-gray-50"
+                          className="flex items-center justify-between rounded-lg px-3 py-2.5 transition-colors hover:bg-surface-muted"
                         >
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-gray-900">
+                              <span className="text-sm font-medium text-ink">
                                 {user.display_name || user.username}
                               </span>
-                              <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">
+                              <code className="rounded bg-surface-muted px-1.5 py-0.5 text-xs text-muted">
                                 {user.username}
                               </code>
                             </div>
-                            <p className="mt-0.5 text-xs text-gray-400">
+                            <p className="mt-0.5 text-xs text-faint">
                               ID: {user.id}
                               {user.email ? ` / ${user.email}` : ''}
                             </p>

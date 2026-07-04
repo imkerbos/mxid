@@ -125,7 +125,7 @@ export default function ConsentPage() {
     return (
       <div className="mx-auto max-w-md py-24 text-center">
         <XCircle className="mx-auto h-12 w-12 text-red-400" />
-        <p className="mt-3 text-sm text-gray-600">{error || t('common.empty')}</p>
+        <p className="mt-3 text-sm text-muted">{error || t('common.empty')}</p>
       </div>
     )
   }
@@ -137,7 +137,7 @@ export default function ConsentPage() {
       transition={{ duration: 0.3 }}
       className="mx-auto max-w-lg"
     >
-      <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
+      <div className="rounded-2xl border border-border bg-surface p-8 shadow-sm">
         <div className="mb-6 flex items-center gap-4">
           <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
             {app.logo_url ? (
@@ -147,22 +147,22 @@ export default function ConsentPage() {
             )}
           </div>
           <div className="min-w-0">
-            <h1 className="text-lg font-semibold text-gray-900">{app.name}</h1>
-            <p className="mt-0.5 text-xs text-gray-500">{app.description || t('portal.consent.subtitle')}</p>
+            <h1 className="text-lg font-semibold text-ink">{app.name}</h1>
+            <p className="mt-0.5 text-xs text-muted">{app.description || t('portal.consent.subtitle')}</p>
           </div>
         </div>
 
-        <p className="mb-3 text-sm font-medium text-gray-700">{t('portal.consent.subtitle')}</p>
+        <p className="mb-3 text-sm font-medium text-ink">{t('portal.consent.subtitle')}</p>
         <ul className="mb-8 space-y-2">
           {scopeItems.map((s) => (
             <li
               key={s.scope}
-              className="flex items-start gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5"
+              className="flex items-start gap-3 rounded-lg border border-border bg-surface-muted px-3 py-2.5"
             >
               <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
               <div className="min-w-0">
-                <p className="text-sm text-gray-800">{s.label}</p>
-                <p className="font-mono text-[10px] text-gray-400">{s.scope}</p>
+                <p className="text-sm text-ink">{s.label}</p>
+                <p className="font-mono text-[10px] text-faint">{s.scope}</p>
               </div>
             </li>
           ))}
@@ -178,7 +178,7 @@ export default function ConsentPage() {
         </div>
       </div>
 
-      <p className="mt-4 text-center text-xs text-gray-400">
+      <p className="mt-4 text-center text-xs text-faint">
         {app.name}
       </p>
     </motion.div>

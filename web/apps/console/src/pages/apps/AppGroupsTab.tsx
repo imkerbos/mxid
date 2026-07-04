@@ -113,19 +113,19 @@ export default function AppGroupsTab() {
   return (
     <div className="flex gap-4">
       {/* Left: list */}
-      <div className="w-72 shrink-0 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+      <div className="w-72 shrink-0 rounded-xl border border-border bg-surface p-4 shadow-sm">
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-700">{t('apps.appGroups.title')}</h3>
+          <h3 className="text-sm font-semibold text-ink">{t('apps.appGroups.title')}</h3>
           <Button size="sm" onClick={openCreate} icon={<Plus className="h-3.5 w-3.5" />}>
             {t('apps.appGroups.create')}
           </Button>
         </div>
         {loading ? (
-          <p className="py-6 text-center text-sm text-gray-400">
+          <p className="py-6 text-center text-sm text-faint">
             <Loader2 className="mx-auto h-4 w-4 animate-spin" />
           </p>
         ) : groups.length === 0 ? (
-          <p className="py-6 text-center text-sm text-gray-400">{t('apps.appGroups.empty')}</p>
+          <p className="py-6 text-center text-sm text-faint">{t('apps.appGroups.empty')}</p>
         ) : (
           <div className="space-y-1">
             {groups.map((g) => (
@@ -134,7 +134,7 @@ export default function AppGroupsTab() {
                 onClick={() => setSelected(g)}
                 className={cn(
                   'flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-sm',
-                  selected?.id === g.id ? 'bg-primary/10 text-primary' : 'hover:bg-gray-50',
+                  selected?.id === g.id ? 'bg-primary/10 text-primary' : 'hover:bg-surface-muted',
                 )}
               >
                 <div className="min-w-0 flex-1">
@@ -142,7 +142,7 @@ export default function AppGroupsTab() {
                     <LayoutGrid className="h-3.5 w-3.5 shrink-0" />
                     <span className="truncate font-medium">{g.name}</span>
                   </div>
-                  <p className="ml-5 truncate text-xs text-gray-400">{g.code}</p>
+                  <p className="ml-5 truncate text-xs text-faint">{g.code}</p>
                 </div>
               </button>
             ))}
@@ -151,7 +151,7 @@ export default function AppGroupsTab() {
       </div>
 
       {/* Right: detail + members */}
-      <div className="flex-1 rounded-xl border border-gray-100 bg-white shadow-sm">
+      <div className="flex-1 rounded-xl border border-border bg-surface shadow-sm">
         {selected ? (
           <GroupDetail
             group={selected}
@@ -160,7 +160,7 @@ export default function AppGroupsTab() {
             onMutated={load}
           />
         ) : (
-          <div className="py-16 text-center text-sm text-gray-400">{t('apps.appGroupDetail.selectGroupHint')}</div>
+          <div className="py-16 text-center text-sm text-faint">{t('apps.appGroupDetail.selectGroupHint')}</div>
         )}
       </div>
 
@@ -171,17 +171,17 @@ export default function AppGroupsTab() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl"
+              className="w-full max-w-md rounded-xl bg-surface p-6 shadow-xl"
             >
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-lg font-semibold">{editing ? t('apps.appGroupDetail.editGroup') : t('apps.appGroupDetail.createGroup')}</h3>
-                <button onClick={() => setShowForm(false)} className="rounded p-1 text-gray-400 hover:bg-gray-100">
+                <button onClick={() => setShowForm(false)} className="rounded p-1 text-faint hover:bg-surface-muted">
                   <X className="h-4 w-4" />
                 </button>
               </div>
               <form onSubmit={submit} className="space-y-4">
                 <Field label={`${t('apps.appGroups.name')} *`} hint={t('apps.appGroups.nameHint')}>
-                  <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+                  <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
                 </Field>
                 <Field
                   label={editing ? t('apps.appGroupDetail.codeUneditable') : t('apps.appGroupDetail.codeRequired')}
@@ -191,7 +191,7 @@ export default function AppGroupsTab() {
                     <input
                       value={form.code}
                       disabled
-                      className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500 outline-none"
+                      className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-muted outline-none"
                     />
                   ) : (
                     <CodeField
@@ -204,10 +204,10 @@ export default function AppGroupsTab() {
                   )}
                 </Field>
                 <Field label={t('apps.appGroups.desc')}>
-                  <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+                  <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
                 </Field>
                 <Field label={t('apps.appGroups.sortOrder')} hint={t('apps.appGroups.sortOrderHint')}>
-                  <input type="number" value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: Number(e.target.value) })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+                  <input type="number" value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: Number(e.target.value) })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
                 </Field>
                 <div className="flex justify-end gap-3 pt-2">
                   <Button type="button" variant="secondary" onClick={() => setShowForm(false)}>{t('common.cancel')}</Button>
@@ -316,11 +316,11 @@ function GroupDetail({
   return (
     <div>
       {/* header */}
-      <div className="flex items-start justify-between border-b border-gray-100 px-6 py-4">
+      <div className="flex items-start justify-between border-b border-border px-6 py-4">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">{group.name}</h2>
-          <p className="text-xs text-gray-500">
-            <code className="rounded bg-gray-100 px-1.5 py-0.5">{group.code}</code>
+          <h2 className="text-lg font-semibold text-ink">{group.name}</h2>
+          <p className="text-xs text-muted">
+            <code className="rounded bg-surface-muted px-1.5 py-0.5">{group.code}</code>
             {' · '}{t('apps.appGroupDetail.sortLabel', { order: group.sort_order })}
             {group.description ? ` · ${group.description}` : ''}
           </p>
@@ -336,14 +336,14 @@ function GroupDetail({
       </div>
 
       {/* tabs */}
-      <div className="flex gap-6 border-b border-gray-100 px-6">
+      <div className="flex gap-6 border-b border-border px-6">
         {(['members', 'access', 'roles'] as const).map((tabKey) => (
           <button
             key={tabKey}
             onClick={() => setTab(tabKey)}
             className={cn(
               'border-b-2 px-1 py-2.5 text-sm font-medium transition-colors',
-              tab === tabKey ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700',
+              tab === tabKey ? 'border-primary text-primary' : 'border-transparent text-muted hover:text-ink',
             )}
           >
             {tabKey === 'members'
@@ -366,8 +366,8 @@ function GroupDetail({
           <AppRolesTab owner="app-group" ownerId={String(group.id)} />
 
           <div>
-            <h3 className="mb-2 text-base font-semibold text-gray-900">{t('apps.appGroupDetail.rolesSummaryTitle')}</h3>
-            <p className="mb-3 text-sm text-gray-500">
+            <h3 className="mb-2 text-base font-semibold text-ink">{t('apps.appGroupDetail.rolesSummaryTitle')}</h3>
+            <p className="mb-3 text-sm text-muted">
               {t('apps.appGroupDetail.rolesSummaryDesc')}
             </p>
             <AppGroupRolesAggregated groupId={String(group.id)} />
@@ -379,17 +379,17 @@ function GroupDetail({
       {tab === 'members' && (
       <div className="px-6 py-4">
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-700">{t('apps.appGroupDetail.joinedApps')}</h3>
+          <h3 className="text-sm font-semibold text-ink">{t('apps.appGroupDetail.joinedApps')}</h3>
           <button onClick={() => setPicking(true)} className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-white hover:bg-primary-hover">
             <Plus className="h-3.5 w-3.5" /> {t('apps.appGroupDetail.addApp')}
           </button>
         </div>
         {loading ? (
-          <p className="py-6 text-center text-sm text-gray-400">
+          <p className="py-6 text-center text-sm text-faint">
             <Loader2 className="mx-auto h-4 w-4 animate-spin" />
           </p>
         ) : members.length === 0 ? (
-          <p className="py-6 text-center text-sm text-gray-400">{t('apps.appGroupDetail.emptyMembers')}</p>
+          <p className="py-6 text-center text-sm text-faint">{t('apps.appGroupDetail.emptyMembers')}</p>
         ) : (
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {members.map((a) => (
@@ -397,7 +397,7 @@ function GroupDetail({
                 <button
                   onClick={() => removeApp(a)}
                   disabled={busy === a.id}
-                  className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+                  className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-faint hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
                 >
                   {busy === a.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
                   {t('common.remove')}
@@ -416,24 +416,24 @@ function GroupDetail({
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-2xl max-h-[80vh] overflow-y-auto rounded-xl bg-white p-6 shadow-xl"
+              className="w-full max-w-2xl max-h-[80vh] overflow-y-auto rounded-xl bg-surface p-6 shadow-xl"
             >
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-lg font-semibold">{t('apps.appGroupDetail.addAppTitle', { name: group.name })}</h3>
-                <button onClick={() => setPicking(false)} className="rounded p-1 text-gray-400 hover:bg-gray-100">
+                <button onClick={() => setPicking(false)} className="rounded p-1 text-faint hover:bg-surface-muted">
                   <X className="h-4 w-4" />
                 </button>
               </div>
               {candidates.length === 0 ? (
-                <p className="py-8 text-center text-sm text-gray-400">{t('apps.appGroupDetail.noCandidates')}</p>
+                <p className="py-8 text-center text-sm text-faint">{t('apps.appGroupDetail.noCandidates')}</p>
               ) : (
                 <div className="space-y-2">
                   {candidates.map((a) => (
-                    <div key={a.id} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2 hover:bg-gray-50">
+                    <div key={a.id} className="flex items-center justify-between rounded-lg border border-border px-3 py-2 hover:bg-surface-muted">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-gray-900">{a.name}</span>
-                          <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">{a.code}</code>
+                          <span className="text-sm font-medium text-ink">{a.name}</span>
+                          <code className="rounded bg-surface-muted px-1.5 py-0.5 text-xs text-muted">{a.code}</code>
                           <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">{a.protocol}</span>
                         </div>
                       </div>
@@ -459,13 +459,13 @@ function GroupDetail({
 
 function AppCard({ app, action }: { app: App; action: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between rounded-lg border border-gray-100 p-3 hover:bg-gray-50">
+    <div className="flex items-center justify-between rounded-lg border border-border p-3 hover:bg-surface-muted">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium text-gray-900">{app.name}</span>
+          <span className="truncate text-sm font-medium text-ink">{app.name}</span>
           <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700">{app.protocol}</span>
         </div>
-        <code className="truncate text-xs text-gray-400">{app.code}</code>
+        <code className="truncate text-xs text-faint">{app.code}</code>
       </div>
       {action}
     </div>

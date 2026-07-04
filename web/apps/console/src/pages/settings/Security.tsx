@@ -177,10 +177,10 @@ export default function SecurityPage() {
 
 function Section({ title, desc, children }: { title: string; desc?: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-6">
+    <section className="rounded-xl border border-border bg-surface p-6">
       <div className="mb-4">
-        <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
-        {desc && <p className="mt-0.5 text-sm text-gray-500">{desc}</p>}
+        <h2 className="text-lg font-semibold text-ink">{title}</h2>
+        {desc && <p className="mt-0.5 text-sm text-muted">{desc}</p>}
       </div>
       {children}
     </section>
@@ -189,8 +189,8 @@ function Section({ title, desc, children }: { title: string; desc?: string; chil
 
 function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (b: boolean) => void }) {
   return (
-    <label className="flex items-center gap-2 text-sm text-gray-700">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 rounded border-gray-300" />
+    <label className="flex items-center gap-2 text-sm text-ink">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 rounded border-border" />
       {label}
     </label>
   )

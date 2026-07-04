@@ -241,18 +241,18 @@ function CopyField({ label, value }: { label: string; value: string }) {
 
   return (
     <div>
-      <label className="mb-1 block text-sm font-medium text-gray-700">{label}</label>
+      <label className="mb-1 block text-sm font-medium text-ink">{label}</label>
       <div className="flex items-center gap-2">
         <input
           type="text"
           value={value}
           readOnly
-          className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 outline-none"
+          className="flex-1 rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-muted outline-none"
         />
         <button
           type="button"
           onClick={handleCopy}
-          className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-50"
+          className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-sm text-muted transition-colors hover:bg-surface-muted"
         >
           <Copy className="h-3.5 w-3.5" />
           {copied ? t('common.copied') : t('common.copy')}
@@ -279,25 +279,25 @@ function SecretField({ label, value }: { label: string; value: string }) {
 
   return (
     <div>
-      <label className="mb-1 block text-sm font-medium text-gray-700">{label}</label>
+      <label className="mb-1 block text-sm font-medium text-ink">{label}</label>
       <div className="flex items-center gap-2">
         <input
           type={visible ? 'text' : 'password'}
           value={value}
           readOnly
-          className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 outline-none"
+          className="flex-1 rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-muted outline-none"
         />
         <button
           type="button"
           onClick={() => setVisible((v) => !v)}
-          className="inline-flex items-center rounded-lg border border-gray-200 px-2.5 py-2 text-gray-500 transition-colors hover:bg-gray-50"
+          className="inline-flex items-center rounded-lg border border-border px-2.5 py-2 text-muted transition-colors hover:bg-surface-muted"
         >
           {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
         </button>
         <button
           type="button"
           onClick={handleCopy}
-          className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-50"
+          className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-sm text-muted transition-colors hover:bg-surface-muted"
         >
           <Copy className="h-3.5 w-3.5" />
           {copied ? t('common.copied') : t('common.copy')}
@@ -320,7 +320,7 @@ const DETAIL_TAB_KEYS: DetailTab[] = ['basic', 'protocol', 'credentials', 'acces
 // ---------------------------------------------------------------------------
 
 const inputCls =
-  'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+  'w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
 
 // ---------------------------------------------------------------------------
 // Main page component
@@ -761,12 +761,12 @@ export default function AppsPage() {
       />
 
       {/* View switcher */}
-      <div className="mb-4 inline-flex rounded-lg border border-gray-200 bg-white p-1">
+      <div className="mb-4 inline-flex rounded-lg border border-border bg-surface p-1">
         <button
           onClick={() => setView('apps')}
           className={cn(
             'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-            view === 'apps' ? 'bg-primary text-white' : 'text-gray-600 hover:text-gray-900',
+            view === 'apps' ? 'bg-primary text-white' : 'text-muted hover:text-ink',
           )}
         >
           <AppWindow className="h-3.5 w-3.5" />
@@ -776,7 +776,7 @@ export default function AppsPage() {
           onClick={() => setView('groups')}
           className={cn(
             'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-            view === 'groups' ? 'bg-primary text-white' : 'text-gray-600 hover:text-gray-900',
+            view === 'groups' ? 'bg-primary text-white' : 'text-muted hover:text-ink',
           )}
         >
           <LayoutGrid className="h-3.5 w-3.5" />
@@ -790,9 +790,9 @@ export default function AppsPage() {
       <>
       {/* Card grid */}
       {loading ? (
-        <div className="py-20 text-center text-sm text-gray-400">{t('common.loading')}</div>
+        <div className="py-20 text-center text-sm text-faint">{t('common.loading')}</div>
       ) : data.items.length === 0 ? (
-        <div className="py-20 text-center text-sm text-gray-400">{t('apps.list.empty')}</div>
+        <div className="py-20 text-center text-sm text-faint">{t('apps.list.empty')}</div>
       ) : (
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {data.items.map((app, i) => (
@@ -801,7 +801,7 @@ export default function AppsPage() {
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.04, duration: 0.25 }}
-              className="group cursor-pointer rounded-xl border border-gray-100 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
+              className="group cursor-pointer rounded-xl border border-border bg-surface p-5 shadow-sm transition-shadow hover:shadow-md"
               onClick={() => openDetail(app)}
             >
               {/* App icon + name */}
@@ -815,8 +815,8 @@ export default function AppsPage() {
                     </div>
                   )}
                   <div className="min-w-0">
-                    <h3 className="truncate text-sm font-semibold text-gray-900">{app.name}</h3>
-                    <p className="truncate text-xs text-gray-400">{app.code}</p>
+                    <h3 className="truncate text-sm font-semibold text-ink">{app.name}</h3>
+                    <p className="truncate text-xs text-faint">{app.code}</p>
                   </div>
                 </div>
                 <button
@@ -824,7 +824,7 @@ export default function AppsPage() {
                     e.stopPropagation()
                     openDetail(app)
                   }}
-                  className="rounded-lg p-1.5 text-gray-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-gray-100 hover:text-gray-600"
+                  className="rounded-lg p-1.5 text-faint opacity-0 transition-all group-hover:opacity-100 hover:bg-surface-muted hover:text-muted"
                   title={t('apps.list.detail')}
                 >
                   <Settings className="h-4 w-4" />
@@ -832,7 +832,7 @@ export default function AppsPage() {
               </div>
 
               {/* Description */}
-              <p className="mb-4 line-clamp-2 text-xs text-gray-500">
+              <p className="mb-4 line-clamp-2 text-xs text-muted">
                 {app.description || t('apps.list.noDescription')}
               </p>
 
@@ -841,7 +841,7 @@ export default function AppsPage() {
                 <span
                   className={cn(
                     'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium',
-                    protocolColors[app.protocol] || 'bg-gray-100 text-gray-700'
+                    protocolColors[app.protocol] || 'bg-surface-muted text-ink'
                   )}
                 >
                   {protocolLabel(app.protocol)}
@@ -857,7 +857,7 @@ export default function AppsPage() {
               </div>
 
               {/* Actions */}
-              <div className="flex items-center gap-2 border-t border-gray-50 pt-3">
+              <div className="flex items-center gap-2 border-t border-border pt-3">
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
@@ -866,7 +866,7 @@ export default function AppsPage() {
                   className={cn(
                     'rounded px-2.5 py-1 text-xs font-medium transition-colors',
                     app.status === AppStatus.Enabled
-                      ? 'text-gray-500 hover:bg-gray-100'
+                      ? 'text-muted hover:bg-surface-muted'
                       : 'text-emerald-600 hover:bg-emerald-50'
                   )}
                 >
@@ -890,19 +890,19 @@ export default function AppsPage() {
       {/* Pagination */}
       {data.total > 0 && (
         <div className="mt-6 flex items-center justify-between">
-          <p className="text-sm text-gray-500">{t('apps.list.total', { total: data.total })}</p>
+          <p className="text-sm text-muted">{t('apps.list.total', { total: data.total })}</p>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-gray-50"
+              className="rounded-lg border border-border px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-surface-muted"
             >
               {t('apps.list.prevPage')}
             </button>
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-gray-50"
+              className="rounded-lg border border-border px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-surface-muted"
             >
               {t('apps.list.nextPage')}
             </button>
@@ -916,26 +916,26 @@ export default function AppsPage() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl"
+            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-surface p-6 shadow-xl"
           >
             <h3 className="mb-4 text-lg font-semibold">{t('apps.createModal.title')}</h3>
             <form onSubmit={handleCreate} className="space-y-4">
               {/* Template picker step */}
               {!activeTemplate ? (
                 <div className="space-y-3">
-                  <div className="text-sm font-medium text-gray-700">{t('apps.templates.pick')}</div>
+                  <div className="text-sm font-medium text-ink">{t('apps.templates.pick')}</div>
                   <div className="grid grid-cols-3 gap-2 max-h-80 overflow-y-auto">
                     {templates.map((tpl) => (
                       <button
                         key={tpl.key}
                         type="button"
                         onClick={() => handlePickTemplate(tpl.key)}
-                        className="flex items-center gap-3 rounded-lg border border-gray-200 px-3 py-2.5 text-left hover:border-blue-400 hover:bg-blue-50/30"
+                        className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5 text-left hover:border-blue-400 hover:bg-blue-50/30"
                       >
                         <AppIcon value={tpl.icon} fallbackName={tpl.name} size={32} />
                         <div className="min-w-0">
                           <div className="truncate text-sm font-medium">{tpl.name}</div>
-                          <div className="text-xs text-gray-400">{protocolLabel(tpl.protocol)}</div>
+                          <div className="text-xs text-faint">{protocolLabel(tpl.protocol)}</div>
                         </div>
                       </button>
                     ))}
@@ -957,11 +957,11 @@ export default function AppsPage() {
                     </div>
                   )}
                   {activeTemplate.doc_md && (
-                    <pre className="whitespace-pre-wrap rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">{activeTemplate.doc_md}</pre>
+                    <pre className="whitespace-pre-wrap rounded-lg bg-surface-muted px-3 py-2 text-xs text-muted">{activeTemplate.doc_md}</pre>
                   )}
                   {(activeTemplate.fields ?? []).map((fld) => (
                     <div key={fld.key}>
-                      <label className="mb-1 block text-sm font-medium text-gray-700">{fld.label}</label>
+                      <label className="mb-1 block text-sm font-medium text-ink">{fld.label}</label>
                       {fld.type === 'textarea' ? (
                         <textarea className={inputCls} placeholder={fld.placeholder} value={tplFieldValues[fld.key] ?? ''}
                           onChange={(e) => setTplFieldValues((v) => ({ ...v, [fld.key]: e.target.value }))} />
@@ -976,7 +976,7 @@ export default function AppsPage() {
 
               {/* Name + Code always visible */}
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">{t('apps.createModal.nameLabel')}</label>
+                <label className="mb-1 block text-sm font-medium text-ink">{t('apps.createModal.nameLabel')}</label>
                 <input
                   type="text"
                   value={createForm.name}
@@ -986,7 +986,7 @@ export default function AppsPage() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">{t('apps.createModal.codeLabel')}</label>
+                <label className="mb-1 block text-sm font-medium text-ink">{t('apps.createModal.codeLabel')}</label>
                 <CodeField
                   value={createForm.code}
                   onChange={(v) => setCreateForm((f) => ({ ...f, code: v }))}
@@ -994,7 +994,7 @@ export default function AppsPage() {
                   prefix="app"
                   placeholder="jira / harbor / jumpserver ..."
                 />
-                <p className="mt-1 text-xs text-gray-400">
+                <p className="mt-1 text-xs text-faint">
                   {t('apps.createModal.codeHint', { example: `/protocol/saml/${createForm.code || 'jira'}/metadata` })}
                 </p>
               </div>
@@ -1003,7 +1003,7 @@ export default function AppsPage() {
               {!activeTemplate?.key && (
                 <>
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-gray-700">{t('apps.createModal.protocolLabel')}</label>
+                    <label className="mb-1 block text-sm font-medium text-ink">{t('apps.createModal.protocolLabel')}</label>
                     <select
                       value={createForm.protocol}
                       onChange={(e) => setCreateForm((f) => ({ ...f, protocol: e.target.value }))}
@@ -1018,7 +1018,7 @@ export default function AppsPage() {
                   {createForm.protocol === 'oidc' && (
                     <>
                       <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">
+                        <label className="mb-1 block text-sm font-medium text-ink">
                           {t('apps.createModal.clientTypeLabel')}
                         </label>
                         <select
@@ -1034,7 +1034,7 @@ export default function AppsPage() {
                       </div>
 
                       <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">
+                        <label className="mb-1 block text-sm font-medium text-ink">
                           {t('apps.createModal.homeUrlLabel')}
                         </label>
                         <input
@@ -1047,7 +1047,7 @@ export default function AppsPage() {
                       </div>
 
                       <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">
+                        <label className="mb-1 block text-sm font-medium text-ink">
                           {t('apps.createModal.redirectUrisLabel')} {createForm.client_type !== 'm2m' && '*'}
                         </label>
                         <textarea
@@ -1100,10 +1100,10 @@ export default function AppsPage() {
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-              className="fixed inset-y-0 right-0 z-50 flex w-full max-w-4xl flex-col bg-white shadow-2xl"
+              className="fixed inset-y-0 right-0 z-50 flex w-full max-w-4xl flex-col bg-surface shadow-2xl"
             >
               {/* Header */}
-              <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+              <div className="flex items-center justify-between border-b border-border px-6 py-4">
                 <div className="flex items-center gap-3">
                   {detailApp.icon ? (
                     <AppIcon value={detailApp.icon} size={40} />
@@ -1113,13 +1113,13 @@ export default function AppsPage() {
                     </div>
                   )}
                   <div>
-                    <h2 className="text-lg font-semibold text-gray-900">{detailApp.name}</h2>
+                    <h2 className="text-lg font-semibold text-ink">{detailApp.name}</h2>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-400">{detailApp.code}</span>
+                      <span className="text-xs text-faint">{detailApp.code}</span>
                       <span
                         className={cn(
                           'inline-flex rounded-full px-2 py-0.5 text-xs font-medium',
-                          protocolColors[detailApp.protocol] || 'bg-gray-100 text-gray-700'
+                          protocolColors[detailApp.protocol] || 'bg-surface-muted text-ink'
                         )}
                       >
                         {protocolLabel(detailApp.protocol)}
@@ -1129,14 +1129,14 @@ export default function AppsPage() {
                 </div>
                 <button
                   onClick={closeDetail}
-                  className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+                  className="rounded-lg p-2 text-faint transition-colors hover:bg-surface-muted hover:text-muted"
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
 
               {/* Tabs */}
-              <div className="flex border-b border-gray-100 px-6">
+              <div className="flex border-b border-border px-6">
                 {DETAIL_TAB_KEYS.map((tabKey) => (
                   <button
                     key={tabKey}
@@ -1145,7 +1145,7 @@ export default function AppsPage() {
                       'relative px-4 py-3 text-sm font-medium transition-colors',
                       detailTab === tabKey
                         ? 'text-primary'
-                        : 'text-gray-500 hover:text-gray-700'
+                        : 'text-muted hover:text-ink'
                     )}
                   >
                     {t(`apps.detail.tabs.${tabKey}`)}
@@ -1163,7 +1163,7 @@ export default function AppsPage() {
               <div className="flex-1 overflow-y-auto px-6 py-6">
                 {detailLoading ? (
                   <div className="flex items-center justify-center py-20">
-                    <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                    <Loader2 className="h-6 w-6 animate-spin text-faint" />
                   </div>
                 ) : (
                   <>
@@ -1171,7 +1171,7 @@ export default function AppsPage() {
                     {detailTab === 'basic' && (
                       <form onSubmit={handleSaveBasic} className="space-y-5">
                         <div>
-                          <label className="mb-1 block text-sm font-medium text-gray-700">
+                          <label className="mb-1 block text-sm font-medium text-ink">
                             {t('apps.detail.basic.nameLabel')}
                           </label>
                           <input
@@ -1186,7 +1186,7 @@ export default function AppsPage() {
                         </div>
 
                         <div>
-                          <label className="mb-1 block text-sm font-medium text-gray-700">
+                          <label className="mb-1 block text-sm font-medium text-ink">
                             {t('apps.detail.basic.descLabel')}
                           </label>
                           <textarea
@@ -1200,7 +1200,7 @@ export default function AppsPage() {
                         </div>
 
                         <div>
-                          <label className="mb-1 block text-sm font-medium text-gray-700">
+                          <label className="mb-1 block text-sm font-medium text-ink">
                             {t('apps.detail.basic.iconLabel')}
                           </label>
                           <IconPicker
@@ -1210,7 +1210,7 @@ export default function AppsPage() {
                         </div>
 
                         <div>
-                          <label className="mb-1 block text-sm font-medium text-gray-700">
+                          <label className="mb-1 block text-sm font-medium text-ink">
                             {t('apps.detail.basic.homeUrlLabel')}
                           </label>
                           <input
@@ -1222,13 +1222,13 @@ export default function AppsPage() {
                             className={inputCls}
                             placeholder="https://app.example.com"
                           />
-                          <p className="mt-1 text-xs text-gray-500">
+                          <p className="mt-1 text-xs text-muted">
                             {t('apps.detail.basic.homeUrlHint')}
                           </p>
                         </div>
 
                         <div>
-                          <label className="mb-1 block text-sm font-medium text-gray-700">
+                          <label className="mb-1 block text-sm font-medium text-ink">
                             {t('apps.detail.basic.loginUrlLabel')}
                           </label>
                           <input
@@ -1243,7 +1243,7 @@ export default function AppsPage() {
                         </div>
 
                         <div>
-                          <label className="mb-1 block text-sm font-medium text-gray-700">
+                          <label className="mb-1 block text-sm font-medium text-ink">
                             {t('apps.detail.basic.logoutUrlLabel')}
                           </label>
                           <input
@@ -1263,7 +1263,7 @@ export default function AppsPage() {
                             basic tab protocol-clean. */}
                         {detailApp.protocol === 'oidc' && (
                           <div>
-                            <label className="mb-1 block text-sm font-medium text-gray-700">
+                            <label className="mb-1 block text-sm font-medium text-ink">
                               {t('apps.detail.basic.redirectUrisLabel')}
                             </label>
                             <textarea
@@ -1291,17 +1291,17 @@ export default function AppsPage() {
                       <>
                         {protocolConfigLoading ? (
                           <div className="flex items-center justify-center py-20">
-                            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                            <Loader2 className="h-6 w-6 animate-spin text-faint" />
                           </div>
                         ) : (
                           <form onSubmit={handleSaveProtocol} className="space-y-5">
-                            <div className="mb-4 rounded-lg bg-gray-50 px-4 py-3">
-                              <p className="text-sm text-gray-600">
+                            <div className="mb-4 rounded-lg bg-surface-muted px-4 py-3">
+                              <p className="text-sm text-muted">
                                 {t('apps.detail.protocol.protocolType')}
                                 <span
                                   className={cn(
                                     'ml-1 inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium',
-                                    protocolColors[detailApp.protocol] || 'bg-gray-100 text-gray-700'
+                                    protocolColors[detailApp.protocol] || 'bg-surface-muted text-ink'
                                   )}
                                 >
                                   {protocolLabel(detailApp.protocol)}
@@ -1336,7 +1336,7 @@ export default function AppsPage() {
 
                             {(protocolConfigFields[detailApp.protocol] || []).map((field) => (
                               <div key={field.key}>
-                                <label className="mb-1 block text-sm font-medium text-gray-700">
+                                <label className="mb-1 block text-sm font-medium text-ink">
                                   {field.label}
                                 </label>
                                 {field.type === 'textarea' ? (
@@ -1388,13 +1388,13 @@ export default function AppsPage() {
                                   />
                                 )}
                                 {field.hint && (
-                                  <p className="mt-1 text-xs text-gray-500">{field.hint}</p>
+                                  <p className="mt-1 text-xs text-muted">{field.hint}</p>
                                 )}
                               </div>
                             ))}
 
                             {(protocolConfigFields[detailApp.protocol] || []).length === 0 && (
-                              <p className="py-10 text-center text-sm text-gray-400">
+                              <p className="py-10 text-center text-sm text-faint">
                                 {t('apps.detail.protocol.emptyConfig')}
                               </p>
                             )}
@@ -1454,10 +1454,10 @@ export default function AppsPage() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-lg rounded-xl bg-white p-6 shadow-2xl"
+              className="w-full max-w-lg rounded-xl bg-surface p-6 shadow-2xl"
             >
-              <h3 className="mb-2 text-lg font-semibold text-gray-900">{t('apps.secretReveal.title')}</h3>
-              <p className="mb-4 text-sm text-gray-500">
+              <h3 className="mb-2 text-lg font-semibold text-ink">{t('apps.secretReveal.title')}</h3>
+              <p className="mb-4 text-sm text-muted">
                 {t('apps.secretReveal.desc')}
               </p>
 
@@ -1518,21 +1518,21 @@ function CredentialsTab({
         </div>
         <CopyField label="Client ID" value={app.client_id || '—'} />
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Client Secret</label>
-          <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
+          <label className="mb-1 block text-sm font-medium text-ink">Client Secret</label>
+          <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-muted">
             <span className="flex-1 font-mono">{t('apps.detail.credentials.masked')}</span>
             {(app.client_type === 'web_app' || app.client_type === 'm2m') && (
               <button
                 type="button"
                 onClick={onRotateSecret}
-                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100"
+                className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:bg-surface-muted"
               >
                 {t('apps.detail.credentials.rotate')}
               </button>
             )}
           </div>
           {(app.client_type === 'spa' || app.client_type === 'native') && (
-            <p className="mt-1 text-xs text-gray-400">
+            <p className="mt-1 text-xs text-faint">
               {t('apps.detail.credentials.publicClientHint', { clientType: app.client_type })}
             </p>
           )}
@@ -1551,7 +1551,7 @@ function CredentialsTab({
       <div className="space-y-6">
         <CopyField label={t('apps.detail.credentials.saml.entityID')} value={origin} />
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">
+          <label className="mb-1 block text-sm font-medium text-ink">
             {t('apps.detail.credentials.saml.metadataURL')}
           </label>
           <div className="flex items-center gap-2">
@@ -1559,12 +1559,12 @@ function CredentialsTab({
               type="text"
               readOnly
               value={metadataURL}
-              className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600"
+              className="flex-1 rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-muted"
             />
             <button
               type="button"
               onClick={() => copyToClipboard(metadataURL)}
-              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-50"
+              className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-muted transition-colors hover:bg-surface-muted"
             >
               <Copy className="h-3.5 w-3.5" />
               {t('common.copy')}
@@ -1573,19 +1573,19 @@ function CredentialsTab({
               href={metadataURL}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-50"
+              className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-muted transition-colors hover:bg-surface-muted"
             >
               {t('apps.detail.credentials.saml.openMetadata')}
             </a>
             <a
               href={metadataURL}
               download={`${app.code}-idp-metadata.xml`}
-              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-50"
+              className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-muted transition-colors hover:bg-surface-muted"
             >
               {t('apps.detail.credentials.saml.downloadMetadata')}
             </a>
           </div>
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-muted">
             {t('apps.detail.credentials.saml.metadataHint')}
           </p>
         </div>
@@ -1605,13 +1605,13 @@ function CredentialsTab({
         <CopyField label={t('apps.detail.credentials.cas.logoutURL')} value={`${baseURL}/logout`} />
         <CopyField label={t('apps.detail.credentials.cas.validateURL')} value={`${baseURL}/serviceValidate`} />
         <CopyField label={t('apps.detail.credentials.cas.p3ValidateURL')} value={`${baseURL}/p3/serviceValidate`} />
-        <p className="text-xs text-gray-500">{t('apps.detail.credentials.cas.hint')}</p>
+        <p className="text-xs text-muted">{t('apps.detail.credentials.cas.hint')}</p>
       </div>
     )
   }
 
   return (
-    <p className="py-10 text-center text-sm text-gray-400">
+    <p className="py-10 text-center text-sm text-faint">
       {t('apps.detail.credentials.noneForProtocol')}
     </p>
   )
@@ -1669,10 +1669,10 @@ function SAMLCertView({ appId }: { appId: string }) {
 
   return (
     <div>
-      <label className="mb-1 block text-sm font-medium text-gray-700">
+      <label className="mb-1 block text-sm font-medium text-ink">
         {t('apps.detail.credentials.saml.signingCert')}
       </label>
-      {loading && <p className="text-xs text-gray-400">{t('common.loading')}</p>}
+      {loading && <p className="text-xs text-faint">{t('common.loading')}</p>}
       {error && <p className="text-xs text-red-500">{error}</p>}
       {!loading && !error && pem && (
         <>
@@ -1680,13 +1680,13 @@ function SAMLCertView({ appId }: { appId: string }) {
             readOnly
             value={pem}
             rows={5}
-            className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-700"
+            className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2 font-mono text-xs text-ink"
           />
           <div className="mt-2 flex gap-2">
             <button
               type="button"
               onClick={() => copyToClipboard(pem)}
-              className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-surface px-3 py-1.5 text-xs text-muted hover:bg-surface-muted"
             >
               <Copy className="h-3.5 w-3.5" />
               {t('apps.detail.credentials.saml.copyPEM')}
@@ -1694,7 +1694,7 @@ function SAMLCertView({ appId }: { appId: string }) {
             <button
               type="button"
               onClick={() => copyToClipboard(rawBase64)}
-              className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-surface px-3 py-1.5 text-xs text-muted hover:bg-surface-muted"
             >
               <Copy className="h-3.5 w-3.5" />
               {t('apps.detail.credentials.saml.copyBase64')}
@@ -1702,12 +1702,12 @@ function SAMLCertView({ appId }: { appId: string }) {
             <button
               type="button"
               onClick={downloadPEM}
-              className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-surface px-3 py-1.5 text-xs text-muted hover:bg-surface-muted"
             >
               {t('apps.detail.credentials.saml.downloadPEM')}
             </button>
           </div>
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-muted">
             {t('apps.detail.credentials.saml.signingCertHint')}
           </p>
         </>
@@ -1781,10 +1781,10 @@ function SamlMetadataImport({
   return (
     <div className="rounded-lg border border-dashed border-blue-200 bg-blue-50/40 p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <p className="text-sm font-medium text-gray-800">
+        <p className="text-sm font-medium text-ink">
           {t('apps.detail.protocol.samlImport.title')}
         </p>
-        <div className="inline-flex rounded-md border border-gray-200 bg-white text-xs">
+        <div className="inline-flex rounded-md border border-border bg-surface text-xs">
           {(['paste', 'file', 'url'] as const).map((m) => (
             <button
               key={m}
@@ -1792,7 +1792,7 @@ function SamlMetadataImport({
               onClick={() => setMode(m)}
               className={cn(
                 'px-3 py-1.5 transition',
-                mode === m ? 'bg-primary text-white' : 'text-gray-600 hover:bg-gray-50',
+                mode === m ? 'bg-primary text-white' : 'text-muted hover:bg-surface-muted',
               )}
             >
               {t(`apps.detail.protocol.samlImport.mode.${m}`)}
@@ -1801,7 +1801,7 @@ function SamlMetadataImport({
         </div>
       </div>
 
-      <p className="mb-3 text-xs text-gray-500">
+      <p className="mb-3 text-xs text-muted">
         {t('apps.detail.protocol.samlImport.hint')}
       </p>
 
@@ -1834,7 +1834,7 @@ function SamlMetadataImport({
             }}
             className="text-xs"
           />
-          {busy && <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-400" />}
+          {busy && <Loader2 className="h-3.5 w-3.5 animate-spin text-faint" />}
         </div>
       )}
 

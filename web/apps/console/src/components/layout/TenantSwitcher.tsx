@@ -63,7 +63,7 @@ export default function TenantSwitcher() {
       <button
         onClick={() => canSwitch && setOpen((o) => !o)}
         disabled={!canSwitch}
-        className="flex w-full items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/90 transition-colors hover:bg-white/10 disabled:cursor-default disabled:hover:bg-white/5"
+        className="flex w-full items-center justify-between gap-2 rounded-lg border border-white/10 bg-surface/5 px-3 py-2 text-sm text-white/90 transition-colors hover:bg-surface/10 disabled:cursor-default disabled:hover:bg-surface/5"
         title={canSwitch ? t('nav.switchTenant') : t('nav.currentTenant')}
       >
         <div className="flex min-w-0 items-center gap-2">
@@ -86,7 +86,7 @@ export default function TenantSwitcher() {
                     'flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors',
                     isActive
                       ? 'bg-primary/20 text-white'
-                      : 'text-white/80 hover:bg-white/5 hover:text-white',
+                      : 'text-white/80 hover:bg-surface/5 hover:text-white',
                   )}
                 >
                   <div className="min-w-0">

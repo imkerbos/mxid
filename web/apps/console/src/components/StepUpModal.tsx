@@ -67,7 +67,7 @@ export default function StepUpModal() {
   return (
     <Modal open={open} title={t('stepup.title')} onClose={() => settle(false)} size="sm">
       <div className="space-y-4">
-        <p className="text-sm text-gray-600">{t('stepup.hint')}</p>
+        <p className="text-sm text-muted">{t('stepup.hint')}</p>
         <Input
           autoFocus
           inputMode="numeric"

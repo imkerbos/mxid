@@ -325,7 +325,7 @@ function IDPForm({
               value={form.type}
               onChange={(e) => setForm({ ...form, type: e.target.value, config: {} })}
               disabled={!!initial}
-              className={cn('w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20', initial ? 'border-gray-200 bg-gray-50 text-gray-500' : 'border-gray-300')}
+              className={cn('w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20', initial ? 'border-border bg-surface-muted text-muted' : 'border-border')}
             >
               {allowedTypes.map((tp) => (
                 <option key={tp} value={tp}>{PROVIDER_LABEL[tp] ?? tp}</option>
@@ -335,7 +335,7 @@ function IDPForm({
 
           <div className="grid grid-cols-2 gap-4">
             <Field label={t('idps.fields.nameRequired')} hint={t('idps.fields.nameHint')}>
-              <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+              <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
             </Field>
             <Field label={initial ? t('idps.fields.codeImmutable') : t('idps.fields.codeRequired')} hint={t('idps.fields.codeHint')}>
               <input
@@ -343,7 +343,7 @@ function IDPForm({
                 onChange={(e) => setForm({ ...form, code: e.target.value })}
                 disabled={!!initial}
                 required={!initial}
-                className={cn('w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20', initial ? 'border-gray-200 bg-gray-50 text-gray-500' : 'border-gray-300')}
+                className={cn('w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20', initial ? 'border-border bg-surface-muted text-muted' : 'border-border')}
               />
             </Field>
           </div>
@@ -356,12 +356,12 @@ function IDPForm({
                   ['Portal', `${window.location.origin}/api/v1/portal-public/auth/external/${form.code}/callback`],
                 ] as const).map(([label, url]) => (
                   <div key={label} className="flex items-center gap-2">
-                    <span className="w-14 shrink-0 text-xs text-gray-500">{label}</span>
-                    <code className="flex-1 truncate rounded bg-gray-100 px-2 py-1 text-xs text-gray-700">{url}</code>
+                    <span className="w-14 shrink-0 text-xs text-muted">{label}</span>
+                    <code className="flex-1 truncate rounded bg-surface-muted px-2 py-1 text-xs text-ink">{url}</code>
                     <button
                       type="button"
                       onClick={() => { navigator.clipboard.writeText(url); toast.success(t('idps.fields.callbackCopied')) }}
-                      className="shrink-0 rounded-lg border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
+                      className="shrink-0 rounded-lg border border-border px-2 py-1 text-xs text-muted hover:bg-surface-muted"
                     >
                       {t('idps.fields.copy')}
                     </button>
@@ -372,17 +372,17 @@ function IDPForm({
           )}
 
           <Field label={t('idps.fields.description')}>
-            <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+            <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
           </Field>
 
           <Field label={t('idps.fields.iconUrl')}>
-            <input value={form.icon} onChange={(e) => setForm({ ...form, icon: e.target.value })} placeholder="https://..." className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+            <input value={form.icon} onChange={(e) => setForm({ ...form, icon: e.target.value })} placeholder="https://..." className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
           </Field>
 
           {/* Provider-specific config block */}
           {fields.length > 0 && (
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-              <p className="mb-3 text-xs font-medium text-gray-600">{t('idps.fields.credentials', { provider: PROVIDER_LABEL[form.type] ?? form.type })}</p>
+            <div className="rounded-lg border border-border bg-surface-muted p-3">
+              <p className="mb-3 text-xs font-medium text-muted">{t('idps.fields.credentials', { provider: PROVIDER_LABEL[form.type] ?? form.type })}</p>
               <div className="space-y-3">
                 {fields.map((f) => (
                   <Field key={f.key} label={f.required ? `${f.label} *` : f.label} hint={f.hint}>
@@ -392,7 +392,7 @@ function IDPForm({
                       onChange={(e) => setForm({ ...form, config: { ...form.config, [f.key]: e.target.value } })}
                       placeholder={f.placeholder}
                       required={f.required && !initial}
-                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                     />
                   </Field>
                 ))}
@@ -402,21 +402,21 @@ function IDPForm({
 
           <div className="grid grid-cols-2 gap-4">
             <Field label={t('idps.fields.enable')}>
-              <select value={form.status} onChange={(e) => setForm({ ...form, status: Number(e.target.value) })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
+              <select value={form.status} onChange={(e) => setForm({ ...form, status: Number(e.target.value) })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
                 <option value={1}>{t('common.enable')}</option>
                 <option value={2}>{t('common.disable')}</option>
               </select>
             </Field>
             <Field label={t('idps.fields.sortOrder')} hint={t('idps.fields.sortOrderHint')}>
-              <input type="number" value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: Number(e.target.value) })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+              <input type="number" value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: Number(e.target.value) })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
             </Field>
           </div>
 
           <label className="flex items-start gap-2 text-sm">
-            <input type="checkbox" checked={form.auto_create} onChange={(e) => setForm({ ...form, auto_create: e.target.checked })} className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary" />
+            <input type="checkbox" checked={form.auto_create} onChange={(e) => setForm({ ...form, auto_create: e.target.checked })} className="mt-0.5 h-4 w-4 rounded border-border text-primary" />
             <span>
               <span className="font-medium">{t('idps.fields.autoCreate')}</span>
-              <span className="ml-1 text-xs text-gray-500">{t('idps.fields.autoCreateHint')}</span>
+              <span className="ml-1 text-xs text-muted">{t('idps.fields.autoCreateHint')}</span>
             </span>
           </label>
 

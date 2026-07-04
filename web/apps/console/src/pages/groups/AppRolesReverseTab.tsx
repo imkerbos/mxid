@@ -56,10 +56,10 @@ export default function AppRolesReverseTab({ groupId }: { groupId: string }) {
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-base font-semibold text-gray-900">{t('groupAppRoles.title')}</h3>
-          <p className="mt-0.5 text-sm text-gray-500">
+          <h3 className="text-base font-semibold text-ink">{t('groupAppRoles.title')}</h3>
+          <p className="mt-0.5 text-sm text-muted">
             {t('groupAppRoles.description')}
-            <code className="rounded bg-gray-100 px-1">app_roles</code>{t('groupAppRoles.descriptionTail')}
+            <code className="rounded bg-surface-muted px-1">app_roles</code>{t('groupAppRoles.descriptionTail')}
           </p>
         </div>
         <Button variant="primary" size="sm" onClick={() => setShowAdd(true)}>
@@ -68,9 +68,9 @@ export default function AppRolesReverseTab({ groupId }: { groupId: string }) {
       </div>
 
       {loading ? (
-        <Loader2 className="mx-auto my-12 h-6 w-6 animate-spin text-gray-400" />
+        <Loader2 className="mx-auto my-12 h-6 w-6 animate-spin text-faint" />
       ) : list.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-200 py-8 text-center text-sm text-gray-400">
+        <div className="rounded-lg border border-dashed border-border py-8 text-center text-sm text-faint">
           {t('groupAppRoles.empty')}
         </div>
       ) : (
@@ -104,25 +104,25 @@ function BindingRow({ binding, onDelete }: { binding: ReverseAppRoleBinding; onD
   const { t } = useTranslation()
   const Icon = binding.target_type === 'app' ? AppWindow : LayoutGrid
   return (
-    <div className="flex items-center gap-4 rounded-lg border border-gray-200 bg-white px-4 py-3 hover:border-primary/30">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100">
-        <Icon className="h-4 w-4 text-gray-500" />
+    <div className="flex items-center gap-4 rounded-lg border border-border bg-surface px-4 py-3 hover:border-primary/30">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-muted">
+        <Icon className="h-4 w-4 text-muted" />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium text-gray-900">{binding.target_name}</div>
-        <div className="flex items-center gap-1.5 truncate text-xs text-gray-400">
+        <div className="truncate text-sm font-medium text-ink">{binding.target_name}</div>
+        <div className="flex items-center gap-1.5 truncate text-xs text-faint">
           <span>{binding.target_type === 'app' ? t('groupAppRoles.targetTypeApp') : t('groupAppRoles.targetTypeAppGroup')}</span>
           <span>·</span>
           <span className="font-mono">{binding.target_code}</span>
         </div>
       </div>
-      <span className="shrink-0 text-gray-300">→</span>
+      <span className="shrink-0 text-faint">→</span>
       <div className="flex shrink-0 items-center gap-2 rounded-lg bg-primary/5 px-3 py-1.5">
         <Shield className="h-3.5 w-3.5 text-primary" />
         <span className="text-sm font-medium text-primary">{binding.role_name}</span>
         <span className="font-mono text-xs text-primary/60">{binding.role_code}</span>
       </div>
-      <button onClick={() => onDelete(binding)} className="shrink-0 rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500">
+      <button onClick={() => onDelete(binding)} className="shrink-0 rounded-md p-1.5 text-faint hover:bg-red-50 hover:text-red-500">
         <Trash2 className="h-4 w-4" />
       </button>
     </div>
@@ -200,7 +200,7 @@ function AddModal({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+      <div className="w-full max-w-md rounded-xl bg-surface p-6 shadow-xl">
         <h3 className="mb-4 text-lg font-semibold">{t('groupAppRoles.addModalTitle')}</h3>
         <div className="space-y-4">
           <Field label={t('groupAppRoles.fields.targetType')}>
@@ -223,7 +223,7 @@ function AddModal({
           {targetId && (
             <Field label={t('groupAppRoles.fields.targetRole')}>
               {loading ? (
-                <div className="flex h-10 items-center"><Loader2 className="h-4 w-4 animate-spin text-gray-400" /></div>
+                <div className="flex h-10 items-center"><Loader2 className="h-4 w-4 animate-spin text-faint" /></div>
               ) : roles.length === 0 ? (
                 <p className="text-xs text-amber-600">{t('groupAppRoles.fields.noRolesHint')}</p>
               ) : (

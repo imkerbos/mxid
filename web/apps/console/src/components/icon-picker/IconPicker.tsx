@@ -78,20 +78,20 @@ export function IconPicker({
   return (
     <div className="space-y-3">
       {/* ─── Preview row ─── */}
-      <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
+      <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-muted px-3 py-2.5">
         <AppIcon value={value} size={40} />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-xs font-medium text-gray-700">
+          <div className="truncate text-xs font-medium text-ink">
             {previewLabel(value, t)}
           </div>
-          <div className="truncate font-mono text-[11px] text-gray-400">{value || t('iconPicker.emptyValue')}</div>
+          <div className="truncate font-mono text-[11px] text-faint">{value || t('iconPicker.emptyValue')}</div>
         </div>
         {!!value && (
           <button
             type="button"
             onClick={clear}
             title={t('iconPicker.clearTitle')}
-            className="rounded-md p-1.5 text-gray-400 hover:bg-white hover:text-red-500"
+            className="rounded-md p-1.5 text-faint hover:bg-surface hover:text-red-500"
           >
             <X className="h-4 w-4" />
           </button>
@@ -99,7 +99,7 @@ export function IconPicker({
       </div>
 
       {/* ─── Mode tabs ─── */}
-      <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
+      <div className="flex gap-1 rounded-lg bg-surface-muted p-1">
         <ModeButton active={mode === 'builtin'} onClick={() => setMode('builtin')} icon={Library} label={t('iconPicker.modeBuiltin')} />
         <ModeButton active={mode === 'upload'} onClick={() => setMode('upload')} icon={Upload} label={t('iconPicker.modeUpload')} />
         <ModeButton active={mode === 'url'} onClick={() => setMode('url')} icon={Globe} label={t('iconPicker.modeUrl')} />
@@ -131,17 +131,17 @@ export function IconPicker({
             disabled={uploading}
             onClick={() => fileRef.current?.click()}
             className={cn(
-              'flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 py-8 text-sm text-gray-600 transition-colors',
-              uploading ? 'cursor-wait bg-gray-50' : 'hover:border-primary hover:bg-primary/5',
+              'flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border py-8 text-sm text-muted transition-colors',
+              uploading ? 'cursor-wait bg-surface-muted' : 'hover:border-primary hover:bg-primary/5',
             )}
           >
             {uploading ? (
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
             ) : (
-              <Upload className="h-6 w-6 text-gray-400" />
+              <Upload className="h-6 w-6 text-faint" />
             )}
             <span>{uploading ? t('iconPicker.uploading') : t('iconPicker.uploadHint')}</span>
-            <span className="text-xs text-gray-400">{t('iconPicker.uploadFormatHint')}</span>
+            <span className="text-xs text-faint">{t('iconPicker.uploadFormatHint')}</span>
           </button>
           {uploadError && <p className="mt-2 text-xs text-red-500">{uploadError}</p>}
         </div>
@@ -154,9 +154,9 @@ export function IconPicker({
             value={urlInput}
             onChange={(e) => setURL(e.target.value)}
             placeholder={t('iconPicker.urlPlaceholder')}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+            className="w-full rounded-lg border border-border px-3 py-2 text-sm font-mono outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
-          <p className="mt-1 text-xs text-gray-400">{t('iconPicker.urlHint')}</p>
+          <p className="mt-1 text-xs text-faint">{t('iconPicker.urlHint')}</p>
         </div>
       )}
     </div>
@@ -199,7 +199,7 @@ function ModeButton({
       onClick={onClick}
       className={cn(
         'flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
-        active ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700',
+        active ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink',
       )}
     >
       <Icon className="h-3.5 w-3.5" />
@@ -231,9 +231,9 @@ function BuiltinGrid({
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
         placeholder={t('iconPicker.searchPlaceholder')}
-        className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+        className="mb-2 w-full rounded-lg border border-border px-3 py-1.5 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
       />
-      <div className="grid max-h-64 grid-cols-6 gap-2 overflow-y-auto rounded-lg border border-gray-200 p-2">
+      <div className="grid max-h-64 grid-cols-6 gap-2 overflow-y-auto rounded-lg border border-border p-2">
         {filtered.map((ic) => (
           <button
             key={ic.slug}
@@ -244,15 +244,15 @@ function BuiltinGrid({
               'flex flex-col items-center gap-1 rounded-lg p-1.5 transition-colors',
               selectedSlug === ic.slug
                 ? 'bg-primary/10 ring-2 ring-primary'
-                : 'hover:bg-gray-100',
+                : 'hover:bg-surface-muted',
             )}
           >
             <AppIcon value={`${BUILTIN_PREFIX}${ic.slug}`} size={32} />
-            <span className="truncate text-[10px] text-gray-600">{ic.name}</span>
+            <span className="truncate text-[10px] text-muted">{ic.name}</span>
           </button>
         ))}
         {filtered.length === 0 && (
-          <p className="col-span-6 py-6 text-center text-xs text-gray-400">{t('iconPicker.noMatch')}</p>
+          <p className="col-span-6 py-6 text-center text-xs text-faint">{t('iconPicker.noMatch')}</p>
         )}
       </div>
     </div>

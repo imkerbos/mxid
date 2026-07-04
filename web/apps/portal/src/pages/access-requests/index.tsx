@@ -22,8 +22,8 @@ const STATUS_VARIANT: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700',
   approved: 'bg-emerald-100 text-emerald-700',
   rejected: 'bg-red-100 text-red-700',
-  cancelled: 'bg-gray-100 text-gray-600',
-  expired: 'bg-gray-100 text-gray-500',
+  cancelled: 'bg-surface-muted text-muted',
+  expired: 'bg-surface-muted text-muted',
   revoked: 'bg-red-100 text-red-600',
 }
 
@@ -107,15 +107,15 @@ export default function AccessRequestsPage() {
     <motion.div {...pageMotion} className="p-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">{t('access.title')}</h1>
-          <p className="mt-0.5 text-sm text-gray-500">{t('access.subtitle')}</p>
+          <h1 className="text-xl font-semibold text-ink">{t('access.title')}</h1>
+          <p className="mt-0.5 text-sm text-muted">{t('access.subtitle')}</p>
         </div>
         <div className="flex flex-col items-end gap-1">
           <Button onClick={() => setModalOpen(true)} disabled={eligibilities.length === 0 && !loading}>
             {t('access.newRequest')}
           </Button>
           {!loading && eligibilities.length === 0 && (
-            <p className="max-w-[220px] text-right text-xs text-gray-400">
+            <p className="max-w-[220px] text-right text-xs text-faint">
               {t('access.noEligibilitiesHint')}
             </p>
           )}
@@ -127,29 +127,29 @@ export default function AccessRequestsPage() {
       ) : (
         <div className="space-y-2">
           {requests.length === 0 && (
-            <div className="rounded-lg border border-dashed border-gray-200 px-4 py-10 text-center text-sm text-gray-400">
+            <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-faint">
               {t('access.empty')}
             </div>
           )}
           {requests.map(r => (
             <div
               key={r.id}
-              className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3"
+              className="flex items-center justify-between rounded-lg border border-border bg-surface px-4 py-3"
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-gray-900 text-sm">
+                  <span className="font-medium text-ink text-sm">
                     {r.target_kind === 'console' ? t('access.targetConsole') : t('access.targetApp')}
                   </span>
-                  <span className="text-gray-400 text-xs">·</span>
-                  <span className="text-gray-600 text-sm">{r.role_id}</span>
+                  <span className="text-faint text-xs">·</span>
+                  <span className="text-muted text-sm">{r.role_id}</span>
                   <span
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${STATUS_VARIANT[r.status] ?? 'bg-gray-100 text-gray-600'}`}
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${STATUS_VARIANT[r.status] ?? 'bg-surface-muted text-muted'}`}
                   >
                     {t(`access.status.${r.status}`, { defaultValue: r.status })}
                   </span>
                 </div>
-                <div className="mt-0.5 text-xs text-gray-500 flex items-center gap-2">
+                <div className="mt-0.5 text-xs text-muted flex items-center gap-2">
                   <span>{durationLabel(r.requested_seconds)}</span>
                   {r.expires_at && (
                     <>
@@ -161,7 +161,7 @@ export default function AccessRequestsPage() {
                   <span>{formatDate(r.created_at)}</span>
                 </div>
                 {r.justification && (
-                  <div className="mt-1 text-xs text-gray-400 truncate max-w-lg">{r.justification}</div>
+                  <div className="mt-1 text-xs text-faint truncate max-w-lg">{r.justification}</div>
                 )}
               </div>
               {r.status === 'pending' && (

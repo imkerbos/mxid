@@ -210,7 +210,7 @@ function ProfileSection() {
         !editing && !loading ? (
           <button
             onClick={() => setEditing(true)}
-            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs hover:bg-gray-50"
+            className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-surface-muted"
           >
             {t('common.edit')}
           </button>
@@ -218,7 +218,7 @@ function ProfileSection() {
       }
     >
       {loading ? (
-        <div className="flex items-center gap-2 py-4 text-sm text-gray-500">
+        <div className="flex items-center gap-2 py-4 text-sm text-muted">
           <Loader2 className="h-4 w-4 animate-spin" /> {t('common.loading')}
         </div>
       ) : (
@@ -244,7 +244,7 @@ function ProfileSection() {
                 className="hidden"
               />
             </label>
-            <p className="text-[10px] text-gray-400">{t('account.fields.avatarHint')}</p>
+            <p className="text-[10px] text-faint">{t('account.fields.avatarHint')}</p>
           </div>
 
           {editing ? (
@@ -253,7 +253,7 @@ function ProfileSection() {
                 <input
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                 />
               </Field>
               <Field label={t('account.fields.email')}>
@@ -261,9 +261,9 @@ function ProfileSection() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                 />
-                <p className="mt-1 text-xs text-gray-400">{t('account.emailModified')}</p>
+                <p className="mt-1 text-xs text-faint">{t('account.emailModified')}</p>
               </Field>
               <div className="flex gap-2">
                 <Button type="submit" loading={saving}>
@@ -289,9 +289,9 @@ function ProfileSection() {
               <Row label={t('account.fields.username')} value={profile?.username ?? '-'} />
               <Row label={t('account.fields.displayName')} value={profile?.display_name || '-'} />
               <div>
-                <p className="text-xs text-gray-500">{t('account.fields.email')}</p>
+                <p className="text-xs text-muted">{t('account.fields.email')}</p>
                 <div className="flex items-center gap-2">
-                  <p className="text-sm text-gray-800">{profile?.email || <span className="text-gray-400">{t('account.fields.emailUnset')}</span>}</p>
+                  <p className="text-sm text-ink">{profile?.email || <span className="text-faint">{t('account.fields.emailUnset')}</span>}</p>
                   {profile?.email && (
                     <span
                       className={cn(
@@ -308,7 +308,7 @@ function ProfileSection() {
                     <button
                       onClick={handleSendVerify}
                       disabled={sending}
-                      className="ml-auto flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+                      className="ml-auto flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-surface-muted disabled:opacity-50"
                     >
                       {sending && <Loader2 className="h-3 w-3 animate-spin" />}
                       <Mail className="h-3 w-3" /> {t('account.fields.sendVerify')}
@@ -336,7 +336,7 @@ function ProfileSection() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="mb-1 text-xs text-gray-500">{label}</p>
+      <p className="mb-1 text-xs text-muted">{label}</p>
       {children}
     </div>
   )
@@ -345,8 +345,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-xs text-gray-500">{label}</p>
-      <p className="text-sm text-gray-800">{value}</p>
+      <p className="text-xs text-muted">{label}</p>
+      <p className="text-sm text-ink">{value}</p>
     </div>
   )
 }
@@ -426,9 +426,9 @@ function ChangePasswordSection({ totpActive }: { totpActive: boolean }) {
         />
         {totpActive && (
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
+            <label className="mb-1.5 block text-sm font-medium text-ink">
               {t('account.pwd.mfaCode')}
-              <span className="ml-2 text-xs text-gray-400">{t('account.pwd.mfaCodeHint')}</span>
+              <span className="ml-2 text-xs text-faint">{t('account.pwd.mfaCodeHint')}</span>
             </label>
             <input
               inputMode="numeric"
@@ -437,7 +437,7 @@ function ChangePasswordSection({ totpActive }: { totpActive: boolean }) {
               value={totpCode}
               onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
               placeholder="••••••"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-center text-lg font-mono tracking-widest outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+              className="w-full rounded-lg border border-border px-3 py-2 text-center text-lg font-mono tracking-widest outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
             />
           </div>
         )}
@@ -457,7 +457,7 @@ function ChangePasswordSection({ totpActive }: { totpActive: boolean }) {
           <Button type="submit" loading={saving} disabled={saving || !oldPwd || !newPwd || !confirmPwd}>
             {saving ? t('account.pwd.submitting') : t('account.pwd.submit')}
           </Button>
-          <p className="mt-2 text-xs text-gray-500">
+          <p className="mt-2 text-xs text-muted">
             {t('account.pwd.footnote')}
           </p>
         </div>
@@ -485,9 +485,9 @@ function PasswordField({
 }) {
   return (
     <div>
-      <label className="mb-1.5 block text-sm font-medium text-gray-700">
+      <label className="mb-1.5 block text-sm font-medium text-ink">
         {label}
-        {hint && <span className="ml-2 text-xs text-gray-400">{hint}</span>}
+        {hint && <span className="ml-2 text-xs text-faint">{hint}</span>}
       </label>
       <div className="relative">
         <input
@@ -495,12 +495,12 @@ function PasswordField({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           autoComplete={autoComplete}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          className="w-full rounded-lg border border-border px-3 py-2 pr-10 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
         />
         <button
           type="button"
           onClick={onToggle}
-          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-faint hover:text-muted"
         >
           {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
         </button>
@@ -590,11 +590,11 @@ function MFASection({
       }
     >
       {loading ? (
-        <div className="flex items-center gap-2 py-4 text-sm text-gray-500">
+        <div className="flex items-center gap-2 py-4 text-sm text-muted">
           <Loader2 className="h-4 w-4 animate-spin" /> {t('common.loading')}
         </div>
       ) : mfaList.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50/50 px-4 py-6 text-sm text-gray-500">
+        <div className="rounded-lg border border-dashed border-border bg-surface-muted/50 px-4 py-6 text-sm text-muted">
           {t('account.mfa.noFactor')}
         </div>
       ) : (
@@ -602,15 +602,15 @@ function MFASection({
           {mfaList.map((mfa) => (
             <div
               key={mfa.type}
-              className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3"
+              className="flex items-center justify-between rounded-lg border border-border bg-surface px-4 py-3"
             >
               <div className="flex items-center gap-3">
                 <Smartphone className="h-5 w-5 text-primary" />
                 <div>
-                  <p className="text-sm font-medium text-gray-900">
+                  <p className="text-sm font-medium text-ink">
                     {mfa.type === 'totp' ? t('account.mfa.type.totp') : mfa.type.toUpperCase()}
                   </p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted">
                     {mfa.is_default ? t('account.mfa.defaultMethod') : t('account.mfa.backupMethod')}
                   </p>
                 </div>
@@ -639,16 +639,16 @@ function MFASection({
       )}
       {/* Backup codes — only relevant when TOTP is active */}
       {totpActive && (
-        <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50/60 px-4 py-3">
+        <div className="mt-4 rounded-lg border border-border bg-surface-muted/60 px-4 py-3">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-900">{t('account.mfa.backupTitle')}</p>
-              <p className="mt-0.5 text-xs text-gray-500">
+              <p className="text-sm font-medium text-ink">{t('account.mfa.backupTitle')}</p>
+              <p className="mt-0.5 text-xs text-muted">
                 {t('account.mfa.backupHint')}{' '}
                 <span
                   className={cn(
                     'font-semibold',
-                    backupRemaining !== null && backupRemaining <= 3 ? 'text-red-600' : 'text-gray-800',
+                    backupRemaining !== null && backupRemaining <= 3 ? 'text-red-600' : 'text-ink',
                   )}
                 >
                   {backupRemaining === null ? '…' : backupRemaining}
@@ -659,7 +659,7 @@ function MFASection({
             <button
               onClick={() => setShowRegen(true)}
               disabled={regenerating}
-              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium hover:bg-surface-muted disabled:opacity-50"
             >
               {regenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
               {backupRemaining && backupRemaining > 0 ? t('account.mfa.backupRegen') : t('account.mfa.backupGen')}
@@ -721,10 +721,10 @@ function BackupCodesModal({ codes, onClose }: { codes: string[]; onClose: () => 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-md rounded-2xl bg-surface p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-base font-semibold text-gray-900">{t('account.mfa.backupSaveTitle')}</h3>
-          <button onClick={onClose} className="rounded-full p-1 text-gray-400 hover:bg-gray-100">
+          <h3 className="text-base font-semibold text-ink">{t('account.mfa.backupSaveTitle')}</h3>
+          <button onClick={onClose} className="rounded-full p-1 text-faint hover:bg-surface-muted">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -736,7 +736,7 @@ function BackupCodesModal({ codes, onClose }: { codes: string[]; onClose: () => 
         </div>
         <ul className="mb-3 grid grid-cols-2 gap-2">
           {codes.map((c) => (
-            <li key={c} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-center font-mono text-sm text-gray-800">
+            <li key={c} className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-center font-mono text-sm text-ink">
               {c}
             </li>
           ))}
@@ -745,13 +745,13 @@ function BackupCodesModal({ codes, onClose }: { codes: string[]; onClose: () => 
           <a
             download="mxid-backup-codes.txt"
             href={blob}
-            className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-center text-xs font-medium text-gray-700 hover:bg-gray-50"
+            className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-center text-xs font-medium text-ink hover:bg-surface-muted"
           >
             {t('account.mfa.backupDownload')}
           </a>
           <button
             onClick={copy}
-            className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-xs font-medium text-ink hover:bg-surface-muted"
           >
             {t('account.mfa.backupCopyAll')}
           </button>
@@ -824,12 +824,12 @@ function EnrollTOTPModal({ onClose, onSuccess }: { onClose: () => void; onSucces
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+        className="w-full max-w-md rounded-2xl bg-surface p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-base font-semibold text-gray-900">{t('account.mfa.enrollTitle')}</h3>
-          <button onClick={onClose} className="rounded-full p-1 text-gray-400 hover:bg-gray-100">
+          <h3 className="text-base font-semibold text-ink">{t('account.mfa.enrollTitle')}</h3>
+          <button onClick={onClose} className="rounded-full p-1 text-faint hover:bg-surface-muted">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -841,10 +841,10 @@ function EnrollTOTPModal({ onClose, onSuccess }: { onClose: () => void; onSucces
           <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{err}</p>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted">
               {t('account.mfa.enrollHint')}
             </p>
-            <div className="flex justify-center rounded-xl border border-gray-200 bg-gray-50 p-3">
+            <div className="flex justify-center rounded-xl border border-border bg-surface-muted p-3">
               {qrDataURL ? (
                 <img src={qrDataURL} alt="TOTP QR" className="h-44 w-44" />
               ) : (
@@ -859,17 +859,17 @@ function EnrollTOTPModal({ onClose, onSuccess }: { onClose: () => void; onSucces
               )}
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">{t('account.mfa.secretLabel')}</label>
+              <label className="mb-1 block text-xs font-medium text-muted">{t('account.mfa.secretLabel')}</label>
               <div className="flex items-center gap-2">
                 <input
                   readOnly
                   value={secret}
-                  className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-700"
+                  className="flex-1 rounded-lg border border-border bg-surface-muted px-3 py-2 font-mono text-xs text-ink"
                 />
                 <button
                   type="button"
                   onClick={copySecret}
-                  className="rounded-lg border border-gray-200 px-3 py-2 text-xs hover:bg-gray-50"
+                  className="rounded-lg border border-border px-3 py-2 text-xs hover:bg-surface-muted"
                   title={t('account.mfa.copyTitle')}
                 >
                   <Copy className="h-3.5 w-3.5" />
@@ -877,7 +877,7 @@ function EnrollTOTPModal({ onClose, onSuccess }: { onClose: () => void; onSucces
               </div>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">{t('account.mfa.verifyCode')}</label>
+              <label className="mb-1 block text-xs font-medium text-muted">{t('account.mfa.verifyCode')}</label>
               <input
                 autoFocus
                 inputMode="numeric"
@@ -885,7 +885,7 @@ function EnrollTOTPModal({ onClose, onSuccess }: { onClose: () => void; onSucces
                 maxLength={6}
                 value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-center text-lg font-mono tracking-widest text-gray-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                className="w-full rounded-lg border border-border px-3 py-2 text-center text-lg font-mono tracking-widest text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                 placeholder="••••••"
               />
             </div>
@@ -958,13 +958,13 @@ function SessionsSection() {
   return (
     <SectionCard icon={Monitor} title={t('account.sessionsSection')} description={t('account.sessionsHint')}>
       {loading ? (
-        <div className="flex items-center gap-2 py-4 text-sm text-gray-500">
+        <div className="flex items-center gap-2 py-4 text-sm text-muted">
           <Loader2 className="h-4 w-4 animate-spin" /> {t('common.loading')}
         </div>
       ) : error ? (
         <p className="text-sm text-red-500">{error}</p>
       ) : sessions.length === 0 ? (
-        <p className="py-4 text-sm text-gray-500">{t('account.sessions.empty')}</p>
+        <p className="py-4 text-sm text-muted">{t('account.sessions.empty')}</p>
       ) : (
         <div className="space-y-3">
           {[...sessions]
@@ -975,12 +975,12 @@ function SessionsSection() {
               return (
                 <div
                   key={s.id}
-                  className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3"
+                  className="flex items-center justify-between rounded-lg border border-border bg-surface px-4 py-3"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <Monitor className="h-5 w-5 shrink-0 text-gray-400" />
+                    <Monitor className="h-5 w-5 shrink-0 text-faint" />
                     <div className="min-w-0">
-                      <p className="flex items-center gap-2 truncate text-sm font-medium text-gray-900">
+                      <p className="flex items-center gap-2 truncate text-sm font-medium text-ink">
                         {ua.short}
                         {isCurrent && (
                           <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600">
@@ -988,7 +988,7 @@ function SessionsSection() {
                           </span>
                         )}
                       </p>
-                      <p className="truncate text-xs text-gray-500">
+                      <p className="truncate text-xs text-muted">
                         {t('account.sessions.ipLabel')}: {s.ip || t('account.sessions.unknown')} · {t('account.sessions.lastActiveLabel')}: {formatDate(s.last_active_at)}
                       </p>
                     </div>
@@ -1044,15 +1044,15 @@ function LoginHistorySection() {
       description={t('account.historyHint')}
     >
       {loading ? (
-        <div className="flex items-center gap-2 py-4 text-sm text-gray-500">
+        <div className="flex items-center gap-2 py-4 text-sm text-muted">
           <Loader2 className="h-4 w-4 animate-spin" /> {t('common.loading')}
         </div>
       ) : rows.length === 0 ? (
-        <p className="py-4 text-sm text-gray-500">{t('account.history.empty')}</p>
+        <p className="py-4 text-sm text-muted">{t('account.history.empty')}</p>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-gray-200">
+        <div className="overflow-hidden rounded-lg border border-border">
           <table className="min-w-full text-xs">
-            <thead className="bg-gray-50 text-gray-500">
+            <thead className="bg-surface-muted text-muted">
               <tr>
                 <th className="px-3 py-2 text-left font-medium">{t('account.history.time')}</th>
                 <th className="px-3 py-2 text-left font-medium">{t('account.history.event')}</th>
@@ -1061,7 +1061,7 @@ function LoginHistorySection() {
                 <th className="px-3 py-2 text-left font-medium">{t('account.history.detail')}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border">
               {rows.map((r, i) => {
                 const ua = parseUserAgent(r.user_agent)
                 const evLabel: Record<string, string> = {
@@ -1071,22 +1071,22 @@ function LoginHistorySection() {
                 }
                 return (
                   <tr key={i} className={cn(!r.success && 'bg-red-50/40')}>
-                    <td className="whitespace-nowrap px-3 py-2 text-gray-700">{formatDate(r.created_at)}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-ink">{formatDate(r.created_at)}</td>
                     <td className="px-3 py-2">
                       <span
                         className={cn(
                           'inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium',
                           r.event_type === 'login.success' && 'bg-emerald-50 text-emerald-700',
                           r.event_type === 'login.failed' && 'bg-red-50 text-red-700',
-                          r.event_type === 'logout' && 'bg-gray-100 text-gray-600',
+                          r.event_type === 'logout' && 'bg-surface-muted text-muted',
                         )}
                       >
                         {evLabel[r.event_type] ?? r.event_type}
                       </span>
                     </td>
-                    <td className="px-3 py-2 font-mono text-gray-700">{r.ip || '-'}</td>
-                    <td className="px-3 py-2 text-gray-700">{ua.short}</td>
-                    <td className="px-3 py-2 text-gray-500">{r.reason || '-'}</td>
+                    <td className="px-3 py-2 font-mono text-ink">{r.ip || '-'}</td>
+                    <td className="px-3 py-2 text-ink">{ua.short}</td>
+                    <td className="px-3 py-2 text-muted">{r.reason || '-'}</td>
                   </tr>
                 )
               })}
@@ -1167,17 +1167,17 @@ function APITokensSection() {
       }
     >
       {loading ? (
-        <div className="flex items-center gap-2 py-4 text-sm text-gray-500">
+        <div className="flex items-center gap-2 py-4 text-sm text-muted">
           <Loader2 className="h-4 w-4 animate-spin" /> {t('common.loading')}
         </div>
       ) : tokens.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-gray-300 bg-gray-50/50 px-4 py-6 text-center text-sm text-gray-500">
+        <p className="rounded-lg border border-dashed border-border bg-surface-muted/50 px-4 py-6 text-center text-sm text-muted">
           {t('account.apiTokens.empty')}
         </p>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-gray-200">
+        <div className="overflow-hidden rounded-lg border border-border">
           <table className="min-w-full text-xs">
-            <thead className="bg-gray-50 text-gray-500">
+            <thead className="bg-surface-muted text-muted">
               <tr>
                 <th className="px-3 py-2 text-left font-medium">{t('account.apiTokens.cols.name')}</th>
                 <th className="px-3 py-2 text-left font-medium">{t('account.apiTokens.cols.prefix')}</th>
@@ -1188,14 +1188,14 @@ function APITokensSection() {
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border">
               {tokens.map((tok) => (
-                <tr key={tok.id} className={cn(tok.revoked_at && 'text-gray-400')}>
+                <tr key={tok.id} className={cn(tok.revoked_at && 'text-faint')}>
                   <td className="px-3 py-2 font-medium">{tok.name}</td>
-                  <td className="px-3 py-2 font-mono text-gray-700">mxidpat_{tok.prefix}…</td>
+                  <td className="px-3 py-2 font-mono text-ink">mxidpat_{tok.prefix}…</td>
                   <td className="px-3 py-2">
                     {tok.scopes.length === 0 ? (
-                      <span className="text-gray-400">{t('account.apiTokens.noScope')}</span>
+                      <span className="text-faint">{t('account.apiTokens.noScope')}</span>
                     ) : (
                       <span className="break-all">{tok.scopes.join(', ')}</span>
                     )}
@@ -1204,7 +1204,7 @@ function APITokensSection() {
                   <td className="px-3 py-2">{tok.last_used_at ? formatDate(tok.last_used_at) : '-'}</td>
                   <td className="px-3 py-2">
                     {tok.revoked_at ? (
-                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-600">{t('common.revoked')}</span>
+                      <span className="rounded-full bg-surface-muted px-2 py-0.5 text-muted">{t('common.revoked')}</span>
                     ) : tok.expires_at && new Date(tok.expires_at) < new Date() ? (
                       <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">{t('common.expired')}</span>
                     ) : (
@@ -1282,10 +1282,10 @@ function CreateAPITokenModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-md rounded-2xl bg-surface p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-base font-semibold text-gray-900">{t('account.apiTokens.newToken')}</h3>
-          <button onClick={onClose} className="rounded-full p-1 text-gray-400 hover:bg-gray-100">
+          <h3 className="text-base font-semibold text-ink">{t('account.apiTokens.newToken')}</h3>
+          <button onClick={onClose} className="rounded-full p-1 text-faint hover:bg-surface-muted">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -1296,7 +1296,7 @@ function CreateAPITokenModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={t('account.apiTokens.formNamePlaceholder')}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
             />
           </Field>
           <Field label={t('account.apiTokens.formScopes')}>
@@ -1304,9 +1304,9 @@ function CreateAPITokenModal({
               value={scopesText}
               onChange={(e) => setScopesText(e.target.value)}
               placeholder={t('account.apiTokens.formScopesPlaceholder')}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
             />
-            <p className="mt-1 text-xs text-gray-400">{t('account.apiTokens.formScopesHint')}</p>
+            <p className="mt-1 text-xs text-faint">{t('account.apiTokens.formScopesHint')}</p>
           </Field>
           <Field label={t('account.apiTokens.formExpires')}>
             <input
@@ -1315,9 +1315,9 @@ function CreateAPITokenModal({
               max={730}
               value={days}
               onChange={(e) => setDays(Number(e.target.value) || 0)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
             />
-            <p className="mt-1 text-xs text-gray-400">{t('account.apiTokens.formExpiresHint')}</p>
+            <p className="mt-1 text-xs text-faint">{t('account.apiTokens.formExpiresHint')}</p>
           </Field>
           <div className="flex justify-end gap-2 pt-1">
             <Button type="button" variant="secondary" onClick={onClose}>
@@ -1343,10 +1343,10 @@ function NewTokenModal({ name, token, onClose }: { name: string; token: string; 
   }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-md rounded-2xl bg-surface p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-base font-semibold text-gray-900">{t('account.apiTokens.created')}</h3>
-          <button onClick={onClose} className="rounded-full p-1 text-gray-400 hover:bg-gray-100">
+          <h3 className="text-base font-semibold text-ink">{t('account.apiTokens.created')}</h3>
+          <button onClick={onClose} className="rounded-full p-1 text-faint hover:bg-surface-muted">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -1356,14 +1356,14 @@ function NewTokenModal({ name, token, onClose }: { name: string; token: string; 
             <strong>{t('account.apiTokens.createWarnTitle')}</strong>{t('account.apiTokens.createWarnBody')}
           </p>
         </div>
-        <p className="mb-2 text-xs text-gray-500">{name}</p>
-        <div className="mb-3 break-all rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-800">
+        <p className="mb-2 text-xs text-muted">{name}</p>
+        <div className="mb-3 break-all rounded-lg border border-border bg-surface-muted px-3 py-2 font-mono text-xs text-ink">
           {token}
         </div>
         <div className="flex gap-2">
           <button
             onClick={copy}
-            className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-xs font-medium text-ink hover:bg-surface-muted"
           >
             <Copy className="mr-1 inline h-3 w-3" /> {t('common.copy')}
           </button>
@@ -1394,12 +1394,12 @@ function SectionCard({
   children: React.ReactNode
 }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-6">
+    <div className="rounded-xl border border-border bg-surface p-6">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Icon className="h-5 w-5 text-primary" />
-          <h2 className="text-base font-semibold text-gray-900">{title}</h2>
-          {description && <span className="text-xs text-gray-400">· {description}</span>}
+          <h2 className="text-base font-semibold text-ink">{title}</h2>
+          {description && <span className="text-xs text-faint">· {description}</span>}
         </div>
         {action}
       </div>

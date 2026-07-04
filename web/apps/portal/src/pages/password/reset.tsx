@@ -91,7 +91,7 @@ export default function ResetPasswordPage() {
                     value={pwd}
                     onChange={(e) => setPwd(e.target.value)}
                     autoFocus
-                    className="w-full rounded-lg border border-white/25 bg-white/[0.08] px-3 py-2.5 pr-10 text-sm text-white placeholder:text-white/50 outline-none transition-colors focus:border-white/60 focus:bg-white/[0.12]"
+                    className="w-full rounded-lg border border-white/25 bg-surface/[0.08] px-3 py-2.5 pr-10 text-sm text-white placeholder:text-white/50 outline-none transition-colors focus:border-white/60 focus:bg-surface/[0.12]"
                   />
                   <button
                     type="button"
@@ -110,7 +110,7 @@ export default function ResetPasswordPage() {
                   type={showPwd ? 'text' : 'password'}
                   value={pwd2}
                   onChange={(e) => setPwd2(e.target.value)}
-                  className="w-full rounded-lg border border-white/25 bg-white/[0.08] px-3 py-2.5 text-sm text-white placeholder:text-white/50 outline-none transition-colors focus:border-white/60 focus:bg-white/[0.12]"
+                  className="w-full rounded-lg border border-white/25 bg-surface/[0.08] px-3 py-2.5 text-sm text-white placeholder:text-white/50 outline-none transition-colors focus:border-white/60 focus:bg-surface/[0.12]"
                 />
               </div>
               {error && (

@@ -90,25 +90,25 @@ export default function AppRolesTab({
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-base font-semibold text-gray-900">{t('apps.roles.title')}</h3>
-        <p className="mt-0.5 text-sm text-gray-500">
+        <h3 className="text-base font-semibold text-ink">{t('apps.roles.title')}</h3>
+        <p className="mt-0.5 text-sm text-muted">
           {t('apps.roles.hint')}{' '}
           {t('apps.roles.tokenHint', { claim: 'app_roles' })}
         </p>
       </div>
 
       {/* ─── Roles section ─── */}
-      <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
+      <section className="space-y-3 rounded-xl border border-border bg-surface p-4">
         <div className="flex items-center justify-between">
-          <h4 className="text-sm font-semibold text-gray-700">{t('apps.roles.catalog', { count: roles.length })}</h4>
+          <h4 className="text-sm font-semibold text-ink">{t('apps.roles.catalog', { count: roles.length })}</h4>
           <Button variant="primary" size="sm" onClick={() => { setEditingRole(null); setShowRoleForm(true) }}>
             <Plus className="h-4 w-4" /> {t('apps.roles.createRole')}
           </Button>
         </div>
         {loading ? (
-          <Loader2 className="mx-auto my-6 h-5 w-5 animate-spin text-gray-400" />
+          <Loader2 className="mx-auto my-6 h-5 w-5 animate-spin text-faint" />
         ) : roles.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-gray-200 py-6 text-center text-sm text-gray-400">
+          <p className="rounded-lg border border-dashed border-border py-6 text-center text-sm text-faint">
             {t('apps.roles.emptyCatalog')}
           </p>
         ) : (
@@ -116,30 +116,30 @@ export default function AppRolesTab({
             {roles.map((r) => (
               <div
                 key={r.id}
-                className="group relative flex items-start gap-3 overflow-hidden rounded-xl border border-gray-200 bg-white px-4 py-3 transition-colors hover:border-primary/40 hover:shadow-sm"
+                className="group relative flex items-start gap-3 overflow-hidden rounded-xl border border-border bg-surface px-4 py-3 transition-colors hover:border-primary/40 hover:shadow-sm"
               >
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                   <Shield className="h-4 w-4 text-primary" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    <span className="truncate text-sm font-semibold text-gray-900">{r.name}</span>
+                    <span className="truncate text-sm font-semibold text-ink">{r.name}</span>
                     {r.is_default && (
                       <span title={t('apps.roles.defaultRoleTitle')} className="shrink-0">
                         <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
                       </span>
                     )}
                   </div>
-                  <div className="mt-0.5 truncate font-mono text-xs text-gray-400">{r.code}</div>
+                  <div className="mt-0.5 truncate font-mono text-xs text-faint">{r.code}</div>
                   {r.description && (
-                    <p className="mt-1 line-clamp-2 text-xs text-gray-500">{r.description}</p>
+                    <p className="mt-1 line-clamp-2 text-xs text-muted">{r.description}</p>
                   )}
                 </div>
                 <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                  <button onClick={() => { setEditingRole(r); setShowRoleForm(true) }} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title={t('common.edit')}>
+                  <button onClick={() => { setEditingRole(r); setShowRoleForm(true) }} className="rounded p-1 text-faint hover:bg-surface-muted hover:text-ink" title={t('common.edit')}>
                     <Edit2 className="h-3.5 w-3.5" />
                   </button>
-                  <button onClick={() => setDelRole(r)} className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-500" title={t('common.delete')}>
+                  <button onClick={() => setDelRole(r)} className="rounded p-1 text-faint hover:bg-red-50 hover:text-red-500" title={t('common.delete')}>
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -150,17 +150,17 @@ export default function AppRolesTab({
       </section>
 
       {/* ─── Bindings section ─── */}
-      <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
+      <section className="space-y-3 rounded-xl border border-border bg-surface p-4">
         <div className="flex items-center justify-between">
-          <h4 className="text-sm font-semibold text-gray-700">{t('apps.roles.bindings', { count: bindings.length })}</h4>
+          <h4 className="text-sm font-semibold text-ink">{t('apps.roles.bindings', { count: bindings.length })}</h4>
           <Button variant="primary" size="sm" onClick={() => setShowBindForm(true)} disabled={roles.length === 0}>
             <Plus className="h-4 w-4" /> {t('apps.roles.createBinding')}
           </Button>
         </div>
         {roles.length === 0 ? (
-          <p className="py-4 text-center text-xs text-gray-400">{t('apps.roles.pleaseCreateRoleFirst')}</p>
+          <p className="py-4 text-center text-xs text-faint">{t('apps.roles.pleaseCreateRoleFirst')}</p>
         ) : bindings.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-gray-200 py-6 text-center text-sm text-gray-400">
+          <p className="rounded-lg border border-dashed border-border py-6 text-center text-sm text-faint">
             {t('apps.roles.emptyBindings')}
           </p>
         ) : (
@@ -222,17 +222,17 @@ function BindingRow({ binding, onDelete }: { binding: AppRoleBinding; onDelete: 
   const subjectSame = binding.subject_name === binding.subject_code
   const subjectLabel = t(`apps.roles.subjectLabels.${binding.subject_type}`)
   return (
-    <div className="flex items-center gap-4 rounded-lg border border-gray-200 bg-white px-4 py-3 transition-colors hover:border-primary/30">
+    <div className="flex items-center gap-4 rounded-lg border border-border bg-surface px-4 py-3 transition-colors hover:border-primary/30">
       {/* Subject */}
       <div className="flex min-w-0 flex-1 items-center gap-2.5">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100">
-          <Icon className="h-4 w-4 text-gray-500" />
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-muted">
+          <Icon className="h-4 w-4 text-muted" />
         </div>
         <div className="min-w-0">
-          <div className="truncate text-sm font-medium text-gray-900">
+          <div className="truncate text-sm font-medium text-ink">
             {binding.subject_name || t('apps.roles.unknownSubject')}
           </div>
-          <div className="flex items-center gap-1.5 truncate text-xs text-gray-400">
+          <div className="flex items-center gap-1.5 truncate text-xs text-faint">
             <span>{subjectLabel}</span>
             {!subjectSame && binding.subject_code && (
               <>
@@ -245,7 +245,7 @@ function BindingRow({ binding, onDelete }: { binding: AppRoleBinding; onDelete: 
       </div>
 
       {/* Arrow */}
-      <span className="shrink-0 text-gray-300">→</span>
+      <span className="shrink-0 text-faint">→</span>
 
       {/* Role */}
       <div className="flex min-w-0 shrink-0 items-center gap-2 rounded-lg bg-primary/5 px-3 py-1.5">
@@ -256,7 +256,7 @@ function BindingRow({ binding, onDelete }: { binding: AppRoleBinding; onDelete: 
 
       <button
         onClick={() => onDelete(binding)}
-        className="shrink-0 rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
+        className="shrink-0 rounded-md p-1.5 text-faint hover:bg-red-50 hover:text-red-500"
         title={t('apps.roles.unbindTitle')}
       >
         <Trash2 className="h-4 w-4" />
@@ -304,7 +304,7 @@ function RoleForm({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+      <div className="w-full max-w-md rounded-xl bg-surface p-6 shadow-xl">
         <h3 className="mb-4 text-lg font-semibold">{editing ? t('apps.roles.editRole') : t('apps.roles.createRole')}</h3>
         <div className="space-y-4">
           <Field label={t('apps.roles.codeLabel')} hint={t('apps.roles.codeHint')}>
@@ -319,8 +319,8 @@ function RoleForm({
           <Field label={t('apps.roles.sortLabel')}>
             <Input type="number" value={sortOrder} onChange={(e) => setSortOrder(Number(e.target.value))} />
           </Field>
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} className="h-4 w-4 rounded border-gray-300" />
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} className="h-4 w-4 rounded border-border" />
             <span>{t('apps.roles.setDefault')}</span>
           </label>
         </div>
@@ -391,7 +391,7 @@ function BindingForm({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+      <div className="w-full max-w-md rounded-xl bg-surface p-6 shadow-xl">
         <h3 className="mb-4 text-lg font-semibold">{t('apps.roles.createBindingTitle')}</h3>
         <div className="space-y-4">
           <Field label={t('apps.roles.targetRole')}>
@@ -409,7 +409,7 @@ function BindingForm({
           </Field>
           <Field label={t('apps.roles.selectSubject')}>
             {optsLoading ? (
-              <div className="flex h-10 items-center justify-center"><Loader2 className="h-4 w-4 animate-spin text-gray-400" /></div>
+              <div className="flex h-10 items-center justify-center"><Loader2 className="h-4 w-4 animate-spin text-faint" /></div>
             ) : (
               <Select value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
                 <option value="">{t('apps.roles.pleaseSelect')}</option>

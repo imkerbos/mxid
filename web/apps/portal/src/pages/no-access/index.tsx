@@ -14,13 +14,13 @@ export default function NoAccessPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
-      <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-8 text-center shadow-sm">
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-100">
           <ShieldX className="h-7 w-7 text-red-600" />
         </div>
-        <h1 className="text-xl font-semibold text-gray-900">{t('portal.noAccess.title')} {app}</h1>
-        <p className="mt-2 text-sm text-gray-600">{friendly}</p>
-        <div className="mt-2 inline-block rounded-md bg-gray-50 px-2 py-1 font-mono text-xs text-gray-400">
+        <h1 className="text-xl font-semibold text-ink">{t('portal.noAccess.title')} {app}</h1>
+        <p className="mt-2 text-sm text-muted">{friendly}</p>
+        <div className="mt-2 inline-block rounded-md bg-surface-muted px-2 py-1 font-mono text-xs text-faint">
           reason: {reason}
         </div>
         <div className="mt-6">
@@ -31,7 +31,7 @@ export default function NoAccessPage() {
             {t('portal.noAccess.back')}
           </Link>
         </div>
-        <p className="mt-4 text-xs text-gray-400">
+        <p className="mt-4 text-xs text-faint">
           {t('portal.noAccess.contactHint')}
         </p>
       </div>

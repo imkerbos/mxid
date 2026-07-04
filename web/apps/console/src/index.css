@@ -108,61 +108,20 @@ body {
   min-height: 100vh;
 }
 
-/* ── 暗色兼容层 ──
-   存量页仍写死 bg-white / text-gray-* / border-gray-*(约 1000+ 处). 在页面
-   内容区(<main>)下把这些字面工具类重映射到语义 token, 暗色一次覆盖全站, 无需
-   逐页改 className. 侧栏(<aside>) / 顶栏(<nav>)在 <main> 外, 保持深色设计.
+/* ── 暗色状态色压暗层 ──
+   The gray/white/text/border literals (bg-white, text-gray-*, border-gray-*)
+   have all been migrated to semantic tokens (bg-surface / border-border /
+   text-ink|muted|faint) across every page, so the old ~1000-site gray remap is
+   GONE — semantic tokens switch light/dark on their own now.
 
-   关键: 用属性选择器 [class~="bg-white"] 而非 .bg-white. Tailwind v4 的插件会
-   把对已知 utility 类的裸类选择器重定义(.bg-white{...})当成 utility 候选而
-   静默剥离, 导致 remap 规则根本不进最终样式表; 属性选择器对其不透明, 得以保留,
-   且 [class~=] 内可直接写 : 和 / 无需转义. 加 !important 兜底胜过 utilities 层.
-   bg-gray-900/800(代码块等刻意深色元素)不 remap. 过渡桥: P3 逐页换 token 后删. */
+   What remains: colored status pills & callout boxes still use literal
+   color-100/50/700/900 classes (bg-emerald-100, text-red-700, bg-blue-50, …),
+   which are too bright in dark mode. Remap those to the matching semantic tint.
+   Uses [class~=] (not a bare class) because Tailwind v4's plugin silently strips
+   a bare-class redefinition of a known utility; the attribute selector is opaque
+   to it. bg-gray-900/800 (deliberately-dark code blocks) are intentionally left. */
 
-/* 面层背景 */
-.dark main [class~="bg-white"] { background-color: rgb(var(--surface)) !important; }
-.dark main [class~="bg-gray-50"],
-.dark main [class~="bg-gray-100"] { background-color: rgb(var(--surface-muted)) !important; }
-.dark main [class~="bg-gray-50/40"],
-.dark main [class~="bg-gray-50/50"],
-.dark main [class~="bg-gray-50/60"] { background-color: rgb(var(--surface-muted) / 0.6) !important; }
-.dark main [class~="bg-gray-200"] { background-color: rgb(var(--border-strong)) !important; }
-
-/* hover 背景 —— 存量 opacity/shade 变体全覆盖, 杜绝 hover 变亮导致文字看不清 */
-.dark main [class~="hover:bg-white"]:hover { background-color: rgb(var(--surface-muted)) !important; }
-.dark main [class~="hover:bg-gray-50"]:hover { background-color: rgb(var(--surface-muted)) !important; }
-.dark main [class~="hover:bg-gray-50/50"]:hover,
-.dark main [class~="hover:bg-gray-50/60"]:hover { background-color: rgb(var(--surface-muted) / 0.7) !important; }
-.dark main [class~="hover:bg-gray-100"]:hover { background-color: rgb(var(--border)) !important; }
-.dark main [class~="hover:bg-gray-200"]:hover { background-color: rgb(var(--border-strong)) !important; }
-.dark main [class~="hover:bg-blue-50"]:hover { background-color: rgb(var(--primary) / 0.12) !important; }
-.dark main [class~="hover:bg-red-50"]:hover { background-color: rgb(var(--danger) / 0.12) !important; }
-.dark main [class~="hover:bg-emerald-50"]:hover { background-color: rgb(var(--success) / 0.12) !important; }
-
-/* 文字 */
-.dark main [class~="text-gray-900"],
-.dark main [class~="text-gray-800"],
-.dark main [class~="text-gray-700"] { color: rgb(var(--ink)) !important; }
-.dark main [class~="text-gray-600"],
-.dark main [class~="text-gray-500"] { color: rgb(var(--muted)) !important; }
-.dark main [class~="text-gray-400"],
-.dark main [class~="text-gray-300"] { color: rgb(var(--faint)) !important; }
-.dark main [class~="hover:text-gray-900"]:hover,
-.dark main [class~="hover:text-gray-700"]:hover,
-.dark main [class~="hover:text-gray-600"]:hover { color: rgb(var(--ink)) !important; }
-.dark main [class~="hover:text-gray-400"]:hover { color: rgb(var(--faint)) !important; }
-.dark main [class~="placeholder:text-gray-400"]::placeholder { color: rgb(var(--faint)) !important; }
-
-/* 边框 / 分隔 —— 卡片描边用 border-strong 保证可见 */
-.dark main [class~="border-gray-50"] { border-color: rgb(var(--border)) !important; }
-.dark main [class~="border-gray-100"],
-.dark main [class~="border-gray-200"],
-.dark main [class~="border-gray-300"] { border-color: rgb(var(--border-strong)) !important; }
-.dark main [class~="ring-gray-100"] { --tw-ring-color: rgb(var(--border-strong)) !important; }
-.dark main [class~="divide-gray-50"] > :not([hidden]) ~ :not([hidden]),
-.dark main [class~="divide-gray-100"] > :not([hidden]) ~ :not([hidden]) { border-color: rgb(var(--border)) !important; }
-
-/* 存量硬编码状态 pill(bg-*-100 text-*-700 之类)在暗色下过亮, 压成 tint. */
+/* 状态 pill(bg-*-100 text-*-700 之类)在暗色下过亮, 压成 tint. */
 .dark main [class~="bg-emerald-100"],
 .dark main [class~="bg-green-100"] { background-color: rgb(var(--success) / 0.15) !important; }
 .dark main [class~="bg-red-100"],

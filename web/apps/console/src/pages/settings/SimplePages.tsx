@@ -118,10 +118,10 @@ function GenericForm<T>({
 
   return (
     <div className="space-y-6">
-      <section className="rounded-xl border border-gray-200 bg-white p-6">
+      <section className="rounded-xl border border-border bg-surface p-6">
         <div className="mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
-          {desc && <p className="mt-0.5 text-sm text-gray-500">{desc}</p>}
+          <h2 className="text-lg font-semibold text-ink">{title}</h2>
+          {desc && <p className="mt-0.5 text-sm text-muted">{desc}</p>}
         </div>
 
         {banner && <div className="mb-4">{banner}</div>}
@@ -137,14 +137,14 @@ function GenericForm<T>({
               return (
                 <label
                   key={r.key}
-                  className="flex cursor-pointer select-none items-center justify-between gap-3 self-end rounded-lg border border-gray-200 px-3.5 py-2.5 text-sm hover:bg-gray-50"
+                  className="flex cursor-pointer select-none items-center justify-between gap-3 self-end rounded-lg border border-border px-3.5 py-2.5 text-sm hover:bg-surface-muted"
                 >
-                  <span className="font-medium text-gray-700">{r.label}</span>
+                  <span className="font-medium text-ink">{r.label}</span>
                   <input
                     type="checkbox"
                     checked={!!get(v, r.key)}
                     onChange={(e) => setV(set(v, r.key, e.target.checked))}
-                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/20"
+                    className="h-4 w-4 rounded border-border text-primary focus:ring-primary/20"
                   />
                 </label>
               )
@@ -453,13 +453,13 @@ export function LicensePage() {
             : t('settings.licensePage.invalidWarning')}
         </div>
       )}
-      <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm">
+      <div className="space-y-2 rounded-lg border border-border bg-surface-muted px-4 py-3 text-sm">
         <div className="flex items-center gap-2">
-          <span className="text-gray-500">{t('settings.licensePage.editionLabel')}:</span>
+          <span className="text-muted">{t('settings.licensePage.editionLabel')}:</span>
           <span className={cn('rounded px-2 py-0.5 text-xs font-semibold',
             isEE ? 'bg-primary/10 text-primary'
               : state === 'invalid' ? 'bg-amber-100 text-amber-800'
-              : state === 'ce' ? 'bg-gray-200 text-gray-600'
+              : state === 'ce' ? 'bg-surface-muted text-muted'
               : 'bg-red-100 text-red-700')}>
             {isEE ? 'Enterprise'
               : state === 'expired' ? t('settings.licensePage.stateExpired')
@@ -469,16 +469,16 @@ export function LicensePage() {
         </div>
         {isEE && (
           <>
-            <div><span className="text-gray-500">{t('settings.licensePage.registeredTo')}:</span> {lic?.registered_to || '—'}</div>
-            <div><span className="text-gray-500">{t('settings.licensePage.expiresAt')}:</span> {lic?.expires_at || t('settings.licensePage.perpetual')}</div>
-            <div><span className="text-gray-500">{t('settings.licensePage.features')}:</span> {features.join(', ') || '—'}</div>
+            <div><span className="text-muted">{t('settings.licensePage.registeredTo')}:</span> {lic?.registered_to || '—'}</div>
+            <div><span className="text-muted">{t('settings.licensePage.expiresAt')}:</span> {lic?.expires_at || t('settings.licensePage.perpetual')}</div>
+            <div><span className="text-muted">{t('settings.licensePage.features')}:</span> {features.join(', ') || '—'}</div>
           </>
         )}
         {lic?.install_id && (
-          <div className="border-t border-gray-200 pt-2">
-            <span className="text-gray-500">{t('settings.licensePage.installId')}:</span>{' '}
-            <code className="select-all rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700">{lic.install_id}</code>
-            <div className="mt-0.5 text-[11px] text-gray-400">{t('settings.licensePage.installIdHint')}</div>
+          <div className="border-t border-border pt-2">
+            <span className="text-muted">{t('settings.licensePage.installId')}:</span>{' '}
+            <code className="select-all rounded bg-surface-muted px-1.5 py-0.5 text-xs text-ink">{lic.install_id}</code>
+            <div className="mt-0.5 text-[11px] text-faint">{t('settings.licensePage.installIdHint')}</div>
           </div>
         )}
       </div>

@@ -89,44 +89,6 @@ body {
 
 /* ── 暗色兼容层 ── 见 console/index.css 说明(用属性选择器规避 Tailwind 剥离,
    内 : / 无需转义). 内容区(<main>)下重映射存量字面类到语义 token, 顶栏在外不受影响. */
-.dark main [class~="bg-white"] { background-color: rgb(var(--surface)) !important; }
-.dark main [class~="bg-gray-50"],
-.dark main [class~="bg-gray-100"] { background-color: rgb(var(--surface-muted)) !important; }
-.dark main [class~="bg-gray-50/40"],
-.dark main [class~="bg-gray-50/50"],
-.dark main [class~="bg-gray-50/60"] { background-color: rgb(var(--surface-muted) / 0.6) !important; }
-.dark main [class~="bg-gray-200"] { background-color: rgb(var(--border-strong)) !important; }
-
-.dark main [class~="hover:bg-white"]:hover { background-color: rgb(var(--surface-muted)) !important; }
-.dark main [class~="hover:bg-gray-50"]:hover { background-color: rgb(var(--surface-muted)) !important; }
-.dark main [class~="hover:bg-gray-50/50"]:hover,
-.dark main [class~="hover:bg-gray-50/60"]:hover { background-color: rgb(var(--surface-muted) / 0.7) !important; }
-.dark main [class~="hover:bg-gray-100"]:hover { background-color: rgb(var(--border)) !important; }
-.dark main [class~="hover:bg-gray-200"]:hover { background-color: rgb(var(--border-strong)) !important; }
-.dark main [class~="hover:bg-blue-50"]:hover { background-color: rgb(var(--primary) / 0.12) !important; }
-.dark main [class~="hover:bg-red-50"]:hover { background-color: rgb(var(--danger) / 0.12) !important; }
-.dark main [class~="hover:bg-emerald-50"]:hover { background-color: rgb(var(--success) / 0.12) !important; }
-
-.dark main [class~="text-gray-900"],
-.dark main [class~="text-gray-800"],
-.dark main [class~="text-gray-700"] { color: rgb(var(--ink)) !important; }
-.dark main [class~="text-gray-600"],
-.dark main [class~="text-gray-500"] { color: rgb(var(--muted)) !important; }
-.dark main [class~="text-gray-400"],
-.dark main [class~="text-gray-300"] { color: rgb(var(--faint)) !important; }
-.dark main [class~="hover:text-gray-900"]:hover,
-.dark main [class~="hover:text-gray-700"]:hover,
-.dark main [class~="hover:text-gray-600"]:hover { color: rgb(var(--ink)) !important; }
-.dark main [class~="hover:text-gray-400"]:hover { color: rgb(var(--faint)) !important; }
-.dark main [class~="placeholder:text-gray-400"]::placeholder { color: rgb(var(--faint)) !important; }
-
-.dark main [class~="border-gray-50"] { border-color: rgb(var(--border)) !important; }
-.dark main [class~="border-gray-100"],
-.dark main [class~="border-gray-200"],
-.dark main [class~="border-gray-300"] { border-color: rgb(var(--border-strong)) !important; }
-.dark main [class~="ring-gray-100"] { --tw-ring-color: rgb(var(--border-strong)) !important; }
-.dark main [class~="divide-gray-50"] > :not([hidden]) ~ :not([hidden]),
-.dark main [class~="divide-gray-100"] > :not([hidden]) ~ :not([hidden]) { border-color: rgb(var(--border)) !important; }
 
 .dark main [class~="bg-emerald-100"],
 .dark main [class~="bg-green-100"] { background-color: rgb(var(--success) / 0.15) !important; }
