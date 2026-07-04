@@ -532,29 +532,10 @@ func (h *Handler) GetTemplate(c *gin.Context) {
 }
 
 // handleServiceError maps service errors to HTTP responses.
+// handleServiceError maps a domain error to its response via the errcode
+// registry (see errcodes.go for the app-domain bindings).
 func (h *Handler) handleServiceError(c *gin.Context, err error) {
-	switch {
-	case errors.Is(err, ErrAppNotFound):
-		response.NotFound(c, 40401, err.Error())
-	case errors.Is(err, ErrAppGroupNotFound):
-		response.NotFound(c, 40402, err.Error())
-	case errors.Is(err, ErrAccessNotFound):
-		response.NotFound(c, 40403, err.Error())
-	case errors.Is(err, ErrCertNotFound):
-		response.NotFound(c, 40404, err.Error())
-	case errors.Is(err, ErrAccountNotFound):
-		response.NotFound(c, 40405, err.Error())
-	case errors.Is(err, ErrSubjectNotInTenant):
-		response.NotFound(c, 40406, err.Error())
-	case errors.Is(err, ErrAppCodeExists):
-		response.Error(c, http.StatusConflict, 40901, err.Error(), "")
-	case errors.Is(err, ErrGroupCodeExists):
-		response.Error(c, http.StatusConflict, 40902, err.Error(), "")
-	case errors.Is(err, ErrInvalidClientType):
-		response.BadRequest(c, 40010, err.Error())
-	default:
-		response.InternalError(c, "internal server error", err)
-	}
+	response.MapError(c, err)
 }
 
 // RotateSigningKey handles POST /apps/:id/rotate-signing-key.

@@ -533,27 +533,8 @@ func (h *Handler) ClearMFALockout(c *gin.Context) {
 }
 
 // handleServiceError maps service errors to HTTP responses.
+// handleServiceError maps a domain error to its response via the errcode
+// registry (see errcodes.go for the user-domain bindings).
 func (h *Handler) handleServiceError(c *gin.Context, err error) {
-	switch {
-	case errors.Is(err, ErrUserNotFound), errors.Is(err, ErrDetailNotFound), errors.Is(err, ErrIdentityNotFound):
-		response.NotFound(c, 40401, err.Error())
-	case errors.Is(err, ErrUsernameExists):
-		response.Error(c, http.StatusConflict, 40901, err.Error(), "")
-	case errors.Is(err, ErrEmailExists):
-		response.Error(c, http.StatusConflict, 40902, err.Error(), "")
-	case errors.Is(err, ErrPhoneExists):
-		response.Error(c, http.StatusConflict, 40903, err.Error(), "")
-	case errors.Is(err, ErrInvalidPassword):
-		response.BadRequest(c, 40002, err.Error())
-	case errors.Is(err, ErrWeakPassword):
-		response.BadRequest(c, 40004, err.Error())
-	case errors.Is(err, ErrPasswordReused):
-		response.BadRequest(c, 40003, err.Error())
-	case errors.Is(err, ErrLicenseQuotaExceeded):
-		response.Error(c, http.StatusPaymentRequired, 40201, err.Error(), "")
-	case errors.Is(err, ErrLastSuperAdmin):
-		response.Error(c, http.StatusConflict, 40904, err.Error(), "")
-	default:
-		response.InternalError(c, "internal server error", err)
-	}
+	response.MapError(c, err)
 }
