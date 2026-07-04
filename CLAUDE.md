@@ -73,12 +73,13 @@ org; canonical namespace stays `imkerbos/mxid` (images `ghcr.io/imkerbos/...`).
   public key in `pkg/ee/license`. The private key lives only in the
   `license-authority` repo. DB-only activation (console Settings → License),
   hot-reloaded; **never echo the token back to the UI**.
-- `license.Current()` is the single source of truth for gating. CE caps:
-  `CEMaxUsers=100`, `CEMaxTenants=1`. EE = unlimited (or the license's caps).
+- `license.Current()` is the single source of truth for gating. CE cap:
+  `CEMaxUsers=100`. EE = unlimited (or the license's caps). The product is
+  **single-tenant in both CE and EE** — multi-tenancy is not a feature we ship.
 - **Expiry = graceful downgrade to CE limits**: logins/SSO keep working,
   existing data grandfathered, only new creation past the CE cap is blocked.
 - Two gating tiers: runtime (`middleware.RequireFeature` → 403) for branding /
-  multi-tenant / conditional-access — their code stays in CE (the schema is
+  conditional-access — their code stays in CE (the schema is
   foundational / grandfathered), only the EE capability is license-gated;
   **code separation** for high-value features (external-IdP, webauthn, scim, …)
   — they live ONLY in the private `mxid-ee` repo (a feature package registered
@@ -87,7 +88,7 @@ org; canonical namespace stays `imkerbos/mxid` (images `ghcr.io/imkerbos/...`).
   binary, and `garble`-obfuscated. The reusable gate is `pkg/ee/feature`
   (`internal/middleware.RequireFeature` delegates to it so EE packages, in a
   separate module, can gate their own routes).
-- EE features: `multi_tenant`, `external_idp`, `branding`, `conditional_access`,
+- EE features: `external_idp`, `branding`, `conditional_access`,
   `webauthn`, `scim`, `advanced_stepup`, `sms`.
 
 ## Frontend conventions
