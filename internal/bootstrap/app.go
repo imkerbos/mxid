@@ -155,6 +155,7 @@ func NewApp(configPath string) (*App, error) {
 	router.Use(
 		middleware.RequestID(),
 		middleware.Logger(logger),
+		middleware.SecurityHeaders(cfg.Server.Mode == "release"),
 		middleware.CORS(middleware.CORSConfig{AllowOrigins: origins}),
 		middleware.CSRF(middleware.CSRFConfig{
 			TrustedOrigins: origins,
