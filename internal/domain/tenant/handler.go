@@ -44,7 +44,7 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 func (h *Handler) List(c *gin.Context) {
 	items, err := h.svc.List(c.Request.Context())
 	if err != nil {
-		response.InternalError(c, "list tenants: "+err.Error(), err)
+		response.InternalError(c, "list tenants failed", err)
 		return
 	}
 	response.OK(c, items)

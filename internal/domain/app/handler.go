@@ -525,7 +525,7 @@ func (h *Handler) GetTemplate(c *gin.Context) {
 			response.NotFound(c, 40407, "template not found")
 			return
 		}
-		response.InternalError(c, err.Error(), err)
+		response.InternalError(c, "get template failed", err)
 		return
 	}
 	response.OK(c, tpl)
