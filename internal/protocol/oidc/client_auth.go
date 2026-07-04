@@ -251,7 +251,10 @@ func fetchJWKSURI(ctx context.Context, uri string) (*jwksCacheEntry, error) {
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("jwks_uri returned status %d", resp.StatusCode)
 	}
-	body, err := io.ReadAll(resp.Body)
+	// Cap the JWKS body: an admin-configured RP endpoint is semi-trusted, and an
+	// oversized/streaming response must not balloon memory. 1 MiB dwarfs any real
+	// JWKS.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return nil, err
 	}
