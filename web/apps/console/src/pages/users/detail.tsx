@@ -101,7 +101,7 @@ export default function UserDetailPage() {
   }, [userID, loadUser])
 
   if (!userID || !/^\d+$/.test(userID)) {
-    return <div className="p-8 text-sm text-gray-500">{t('users.detail.invalidUserId')}</div>
+    return <div className="p-8 text-sm text-muted">{t('users.detail.invalidUserId')}</div>
   }
 
   return (
@@ -112,7 +112,7 @@ export default function UserDetailPage() {
         actions={
           <button
             onClick={() => navigate('/users')}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm text-muted hover:bg-surface-muted"
           >
             <ArrowLeft className="h-4 w-4" />
             {t('users.detail.backToList')}
@@ -121,9 +121,9 @@ export default function UserDetailPage() {
       />
 
       {/* User header card */}
-      <div className="mb-4 rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
+      <div className="mb-4 rounded-xl border border-border bg-surface p-6 shadow-sm">
         {loading || !user ? (
-          <div className="flex h-24 items-center justify-center text-sm text-gray-400">
+          <div className="flex h-24 items-center justify-center text-sm text-faint">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             {t('users.detail.loading')}
           </div>
@@ -138,7 +138,7 @@ export default function UserDetailPage() {
             )}
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-3">
-                <h2 className="text-lg font-semibold text-gray-900">
+                <h2 className="text-lg font-semibold text-ink">
                   {user.display_name || user.username}
                 </h2>
                 <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', statusColor(user.status))}>
@@ -150,7 +150,7 @@ export default function UserDetailPage() {
                   </span>
                 )}
               </div>
-              <div className="mt-1 flex flex-wrap items-center gap-4 text-sm text-gray-500">
+              <div className="mt-1 flex flex-wrap items-center gap-4 text-sm text-muted">
                 <span className="inline-flex items-center gap-1">
                   <UserIcon className="h-3.5 w-3.5" />
                   {user.username}
@@ -168,7 +168,7 @@ export default function UserDetailPage() {
                   </span>
                 )}
               </div>
-              <p className="mt-2 text-xs text-gray-400">
+              <p className="mt-2 text-xs text-faint">
                 {t('users.detail.createdAt', { date: formatDate(user.created_at) })}
                 {user.last_login_at && t('users.detail.lastLoginAt', { date: formatDate(user.last_login_at) })}
                 {user.last_login_ip && t('users.detail.lastLoginIp', { ip: user.last_login_ip })}
@@ -190,8 +190,8 @@ export default function UserDetailPage() {
       </div>
 
       {/* Tabs */}
-      <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
-        <nav className="flex border-b border-gray-100">
+      <div className="rounded-xl border border-border bg-surface shadow-sm">
+        <nav className="flex border-b border-border">
           {TAB_KEYS.map((item) => (
             <button
               key={item.key}
@@ -200,7 +200,7 @@ export default function UserDetailPage() {
                 'border-b-2 px-4 py-3 text-sm font-medium transition-colors',
                 tab === item.key
                   ? 'border-primary text-primary'
-                  : 'border-transparent text-gray-500 hover:text-gray-700',
+                  : 'border-transparent text-muted hover:text-ink',
               )}
             >
               {t(item.i18nKey)}
@@ -259,25 +259,25 @@ function ResetPasswordButton({ userID, onDone }: { userID: string; onDone: () =>
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+          <div className="w-full max-w-md rounded-xl bg-surface p-6 shadow-xl">
             <h3 className="mb-4 text-lg font-semibold">{t('users.detail.resetPwd.title')}</h3>
             <div className="space-y-3">
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">{t('users.detail.resetPwd.newPassword')}</label>
+                <label className="mb-1 block text-sm font-medium text-ink">{t('users.detail.resetPwd.newPassword')}</label>
                 <input
                   type="password"
                   value={pwd}
                   onChange={(e) => setPwd(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   placeholder={t('users.detail.resetPwd.placeholder')}
                 />
               </div>
-              <label className="flex items-center gap-2 text-sm text-gray-700">
+              <label className="flex items-center gap-2 text-sm text-ink">
                 <input
                   type="checkbox"
                   checked={mustChange}
                   onChange={(e) => setMustChange(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                 />
                 {t('users.detail.resetPwd.forceChange')}
               </label>
@@ -343,19 +343,19 @@ function BasicTab({ user, onSaved }: { user: User; onSaved: () => void }) {
   return (
     <form onSubmit={save} className="max-w-2xl space-y-4">
       <Field label={t('users.detail.basicForm.displayName')} hint={t('users.detail.basicForm.displayNameHint')}>
-        <input value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+        <input value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
       </Field>
       <Field label={t('users.detail.basicForm.email')} hint={t('users.detail.basicForm.emailHint')}>
-        <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+        <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
       </Field>
       <Field label={t('users.detail.basicForm.phone')} hint={t('users.detail.basicForm.phoneHint')}>
-        <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+        <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
       </Field>
       <Field label={t('users.detail.basicForm.avatar')} hint={t('users.detail.basicForm.avatarHint')}>
-        <input value={form.avatar} onChange={(e) => setForm({ ...form, avatar: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+        <input value={form.avatar} onChange={(e) => setForm({ ...form, avatar: e.target.value })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
       </Field>
       <Field label={t('users.detail.basicForm.status')} hint={<><strong>{t('users.detail.status.active')}</strong>{t('users.detail.basicForm.statusHintActiveDesc')}<strong>{t('users.detail.status.locked')}</strong>{t('users.detail.basicForm.statusHintLockedDesc')}<strong>{t('users.detail.status.disabled')}</strong>{t('users.detail.basicForm.statusHintDisabledDesc')}<strong>{t('users.detail.status.pending')}</strong>{t('users.detail.basicForm.statusHintPendingDesc')}</>}>
-        <select value={form.status} onChange={(e) => setForm({ ...form, status: Number(e.target.value) })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
+        <select value={form.status} onChange={(e) => setForm({ ...form, status: Number(e.target.value) })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
           {STATUS_VALUES.map((s) => (
             <option key={s.value} value={s.value}>{t(s.i18nKey)}</option>
           ))}
@@ -434,32 +434,32 @@ function DetailTab({ userID }: { userID: string }) {
   }
 
   if (loading) {
-    return <div className="py-8 text-center text-sm text-gray-400"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
+    return <div className="py-8 text-center text-sm text-faint"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
   }
 
   return (
     <form onSubmit={save} className="max-w-2xl space-y-4">
       <Field label={t('users.detail.profile.gender')} hint={t('users.detail.profile.genderHint')}>
-        <select value={form.gender} onChange={(e) => setForm({ ...form, gender: Number(e.target.value) })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
+        <select value={form.gender} onChange={(e) => setForm({ ...form, gender: Number(e.target.value) })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
           {GENDER_VALUES.map((g) => (
             <option key={g.value} value={g.value}>{t(g.i18nKey)}</option>
           ))}
         </select>
       </Field>
       <Field label={t('users.detail.profile.birthday')} hint={t('users.detail.profile.birthdayHint')}>
-        <input type="date" value={form.birthday} onChange={(e) => setForm({ ...form, birthday: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+        <input type="date" value={form.birthday} onChange={(e) => setForm({ ...form, birthday: e.target.value })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
       </Field>
       <Field label={t('users.detail.profile.department')} hint={t('users.detail.profile.departmentHint')}>
-        <input value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder={t('users.detail.profile.departmentPlaceholder')} />
+        <input value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder={t('users.detail.profile.departmentPlaceholder')} />
       </Field>
       <Field label={t('users.detail.profile.jobTitle')} hint={t('users.detail.profile.jobTitleHint')}>
-        <input value={form.job_title} onChange={(e) => setForm({ ...form, job_title: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder={t('users.detail.profile.jobTitlePlaceholder')} />
+        <input value={form.job_title} onChange={(e) => setForm({ ...form, job_title: e.target.value })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder={t('users.detail.profile.jobTitlePlaceholder')} />
       </Field>
       <Field label={t('users.detail.profile.employeeNo')} hint={t('users.detail.profile.employeeNoHint')}>
-        <input value={form.employee_no} onChange={(e) => setForm({ ...form, employee_no: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+        <input value={form.employee_no} onChange={(e) => setForm({ ...form, employee_no: e.target.value })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
       </Field>
       <Field label={t('users.detail.profile.address')} hint={t('users.detail.profile.addressHint')}>
-        <textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} rows={2} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+        <textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} rows={2} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
       </Field>
       <div className="pt-2">
         <Button type="submit" loading={saving}>
@@ -467,7 +467,7 @@ function DetailTab({ userID }: { userID: string }) {
         </Button>
       </div>
       {detail && (
-        <p className="text-xs text-gray-400">{t('users.detail.profile.lastUpdated', { date: formatDate(detail.birthday ? new Date().toISOString() : new Date().toISOString()) })}</p>
+        <p className="text-xs text-faint">{t('users.detail.profile.lastUpdated', { date: formatDate(detail.birthday ? new Date().toISOString() : new Date().toISOString()) })}</p>
       )}
     </form>
   )
@@ -493,23 +493,23 @@ function GroupsTab({ userID }: { userID: string }) {
   }, [userID])
 
   if (loading) {
-    return <div className="py-8 text-center text-sm text-gray-400"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
+    return <div className="py-8 text-center text-sm text-faint"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
   }
   if (groups.length === 0) {
-    return <div className="py-8 text-center text-sm text-gray-400">{t('users.detail.groupsTab.empty')}</div>
+    return <div className="py-8 text-center text-sm text-faint">{t('users.detail.groupsTab.empty')}</div>
   }
   return (
     <div className="space-y-2">
       {groups.map((g) => (
-        <div key={g.id} className="flex items-center justify-between rounded-lg border border-gray-100 px-4 py-3 hover:bg-gray-50">
+        <div key={g.id} className="flex items-center justify-between rounded-lg border border-border px-4 py-3 hover:bg-surface-muted">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-gray-900">{g.name}</span>
-              <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">{g.code}</code>
+              <span className="text-sm font-medium text-ink">{g.name}</span>
+              <code className="rounded bg-surface-muted px-1.5 py-0.5 text-xs text-muted">{g.code}</code>
             </div>
-            {g.description && <p className="mt-0.5 text-xs text-gray-500">{g.description}</p>}
+            {g.description && <p className="mt-0.5 text-xs text-muted">{g.description}</p>}
           </div>
-          <span className="text-xs text-gray-400">{t('users.detail.groupsTab.memberCount', { count: g.member_count })}</span>
+          <span className="text-xs text-faint">{t('users.detail.groupsTab.memberCount', { count: g.member_count })}</span>
         </div>
       ))}
     </div>
@@ -556,29 +556,29 @@ function IdentitiesTab({ userID }: { userID: string }) {
   }
 
   if (loading) {
-    return <div className="py-8 text-center text-sm text-gray-400"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
+    return <div className="py-8 text-center text-sm text-faint"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
   }
   if (items.length === 0) {
-    return <div className="py-8 text-center text-sm text-gray-400">{t('users.detail.identitiesTab.empty')}</div>
+    return <div className="py-8 text-center text-sm text-faint">{t('users.detail.identitiesTab.empty')}</div>
   }
   return (
     <div className="space-y-2">
       {items.map((it) => (
-        <div key={it.id} className="flex items-center justify-between rounded-lg border border-gray-100 px-4 py-3 hover:bg-gray-50">
+        <div key={it.id} className="flex items-center justify-between rounded-lg border border-border px-4 py-3 hover:bg-surface-muted">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-gray-900">{it.provider_type}</span>
-              <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">{it.provider_id}</code>
+              <span className="text-sm font-medium text-ink">{it.provider_type}</span>
+              <code className="rounded bg-surface-muted px-1.5 py-0.5 text-xs text-muted">{it.provider_id}</code>
             </div>
-            <p className="mt-0.5 text-xs text-gray-500">
+            <p className="mt-0.5 text-xs text-muted">
               {it.external_name ? `${it.external_name} · ` : ''}{it.external_id}
             </p>
-            <p className="mt-0.5 text-xs text-gray-400">{t('users.detail.identitiesTab.boundAt', { date: formatDate(it.created_at) })}</p>
+            <p className="mt-0.5 text-xs text-faint">{t('users.detail.identitiesTab.boundAt', { date: formatDate(it.created_at) })}</p>
           </div>
           <button
             onClick={() => setDelIdentity(it)}
             disabled={removingID === it.id}
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-gray-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-faint hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
           >
             {removingID === it.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlink className="h-3.5 w-3.5" />}
             {t('users.detail.identitiesTab.unbind')}
@@ -637,24 +637,24 @@ function MFATab({ userID }: { userID: string }) {
   }
 
   if (loading) {
-    return <div className="py-8 text-center text-sm text-gray-400"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
+    return <div className="py-8 text-center text-sm text-faint"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
   }
   if (items.length === 0) {
-    return <div className="py-8 text-center text-sm text-gray-400">{t('users.detail.mfaTab.empty')}</div>
+    return <div className="py-8 text-center text-sm text-faint">{t('users.detail.mfaTab.empty')}</div>
   }
   return (
     <div className="space-y-2">
       {items.map((m) => (
-        <div key={m.type} className="flex items-center justify-between rounded-lg border border-gray-100 px-4 py-3 hover:bg-gray-50">
+        <div key={m.type} className="flex items-center justify-between rounded-lg border border-border px-4 py-3 hover:bg-surface-muted">
           <div className="flex items-center gap-3">
-            <ShieldCheck className={cn('h-5 w-5', m.verified ? 'text-emerald-500' : 'text-gray-300')} />
+            <ShieldCheck className={cn('h-5 w-5', m.verified ? 'text-emerald-500' : 'text-faint')} />
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-900">{m.type.toUpperCase()}</span>
+                <span className="text-sm font-medium text-ink">{m.type.toUpperCase()}</span>
                 {m.is_default && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">{t('users.detail.mfaTab.default')}</span>}
                 {!m.verified && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">{t('users.detail.mfaTab.unverified')}</span>}
               </div>
-              <p className="mt-0.5 text-xs text-gray-400">
+              <p className="mt-0.5 text-xs text-faint">
                 {t('users.detail.mfaTab.enrolledAt', { date: formatDate(m.created_at) })}
               </p>
             </div>
@@ -662,7 +662,7 @@ function MFATab({ userID }: { userID: string }) {
           <button
             onClick={() => setDelMfa(m)}
             disabled={removing === m.type}
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-gray-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-faint hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
           >
             {removing === m.type ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
             {t('users.detail.mfaTab.forceRemove')}
@@ -711,21 +711,21 @@ function LockButton({ userID, onDone }: { userID: string; onDone: () => void }) 
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+          <div className="w-full max-w-md rounded-xl bg-surface p-6 shadow-xl">
             <h3 className="mb-4 text-lg font-semibold">{t('users.detail.lock.title')}</h3>
             <div className="space-y-3">
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">{t('users.detail.lock.reason')}</label>
+                <label className="mb-1 block text-sm font-medium text-ink">{t('users.detail.lock.reason')}</label>
                 <textarea
                   rows={3}
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                   placeholder={t('users.detail.lock.reasonPlaceholder')}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                 />
               </div>
               <div className="flex justify-end gap-3 pt-2">
-                <button onClick={() => setOpen(false)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50">{t('users.detail.common.cancel')}</button>
+                <button onClick={() => setOpen(false)} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-surface-muted">{t('users.detail.common.cancel')}</button>
                 <button
                   onClick={submit}
                   disabled={busy || !reason.trim()}
@@ -809,11 +809,11 @@ function OffboardButton({ userID, username, onDone }: { userID: string; username
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+          <div className="w-full max-w-md rounded-xl bg-surface p-6 shadow-xl">
             <h3 className="mb-2 text-lg font-semibold">{t('users.detail.offboard.title')}</h3>
-            <p className="mb-4 text-sm text-gray-600">{t('users.detail.offboard.confirm', { username })}</p>
+            <p className="mb-4 text-sm text-muted">{t('users.detail.offboard.confirm', { username })}</p>
             <div className="flex justify-end gap-3">
-              <button onClick={() => setOpen(false)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50">{t('users.detail.common.cancel')}</button>
+              <button onClick={() => setOpen(false)} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-surface-muted">{t('users.detail.common.cancel')}</button>
               <button
                 onClick={submit}
                 disabled={busy}
@@ -847,18 +847,18 @@ function RolesTab({ userID }: { userID: string }) {
       alive = false
     }
   }, [userID])
-  if (loading) return <div className="py-8 text-center text-sm text-gray-400"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
-  if (items.length === 0) return <div className="py-8 text-center text-sm text-gray-400">{t('users.detail.rolesTab.empty')}</div>
+  if (loading) return <div className="py-8 text-center text-sm text-faint"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
+  if (items.length === 0) return <div className="py-8 text-center text-sm text-faint">{t('users.detail.rolesTab.empty')}</div>
   return (
     <div className="space-y-2">
       {items.map((it, i) => (
-        <div key={`${it.role.id}-${it.source}-${it.source_id}-${i}`} className="flex items-center justify-between rounded-lg border border-gray-100 px-4 py-3 hover:bg-gray-50">
+        <div key={`${it.role.id}-${it.source}-${it.source_id}-${i}`} className="flex items-center justify-between rounded-lg border border-border px-4 py-3 hover:bg-surface-muted">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-gray-900">{it.role.name}</span>
-              <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">{it.role.code}</code>
+              <span className="text-sm font-medium text-ink">{it.role.name}</span>
+              <code className="rounded bg-surface-muted px-1.5 py-0.5 text-xs text-muted">{it.role.code}</code>
             </div>
-            {it.role.description && <p className="mt-0.5 text-xs text-gray-500">{it.role.description}</p>}
+            {it.role.description && <p className="mt-0.5 text-xs text-muted">{it.role.description}</p>}
           </div>
           <span
             className={cn(
@@ -931,8 +931,8 @@ function SessionsTab({ userID }: { userID: string }) {
     }
   }
 
-  if (loading) return <div className="py-8 text-center text-sm text-gray-400"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
-  if (items.length === 0) return <div className="py-8 text-center text-sm text-gray-400">{t('users.detail.sessionsTab.empty')}</div>
+  if (loading) return <div className="py-8 text-center text-sm text-faint"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
+  if (items.length === 0) return <div className="py-8 text-center text-sm text-faint">{t('users.detail.sessionsTab.empty')}</div>
   return (
     <div className="space-y-3">
       <div className="flex justify-end">
@@ -946,23 +946,23 @@ function SessionsTab({ userID }: { userID: string }) {
         </button>
       </div>
       {items.map((s) => (
-        <div key={s.id} className="rounded-lg border border-gray-100 px-4 py-3 hover:bg-gray-50">
+        <div key={s.id} className="rounded-lg border border-border px-4 py-3 hover:bg-surface-muted">
           <div className="flex items-start justify-between">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">{s.namespace.split(':').pop()}</code>
-                <span className="text-sm text-gray-700">{s.ip}</span>
+                <code className="rounded bg-surface-muted px-1.5 py-0.5 text-xs text-muted">{s.namespace.split(':').pop()}</code>
+                <span className="text-sm text-ink">{s.ip}</span>
                 {s.mfa_verified && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">{t('users.detail.sessionsTab.mfaVerified')}</span>}
               </div>
-              <p className="mt-1 truncate text-xs text-gray-500">{s.user_agent}</p>
-              <p className="mt-0.5 text-xs text-gray-400">
+              <p className="mt-1 truncate text-xs text-muted">{s.user_agent}</p>
+              <p className="mt-0.5 text-xs text-faint">
                 {t('users.detail.sessionsTab.meta', { loginAt: formatDate(s.created_at), lastActiveAt: formatDate(s.last_active_at), expiresAt: formatDate(s.expires_at) })}
               </p>
             </div>
             <button
               onClick={() => setDelSession(s)}
               disabled={revoking === s.id}
-              className="ml-3 inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-gray-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+              className="ml-3 inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-faint hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
             >
               {revoking === s.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />}
               {t('users.detail.sessionsTab.revoke')}
@@ -1019,15 +1019,15 @@ function HistoryTab({ userID }: { userID: string }) {
 
   const totalPages = Math.ceil(data.total / data.page_size) || 1
 
-  if (loading) return <div className="py-8 text-center text-sm text-gray-400"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
-  if (data.items.length === 0) return <div className="py-8 text-center text-sm text-gray-400">{t('users.detail.historyTab.empty')}</div>
+  if (loading) return <div className="py-8 text-center text-sm text-faint"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
+  if (data.items.length === 0) return <div className="py-8 text-center text-sm text-faint">{t('users.detail.historyTab.empty')}</div>
 
   return (
     <div className="space-y-2">
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-gray-100 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+            <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-muted">
               <th className="px-3 py-2">{t('users.detail.historyTab.colTime')}</th>
               <th className="px-3 py-2">{t('users.detail.historyTab.colResult')}</th>
               <th className="px-3 py-2">{t('users.detail.historyTab.colStage')}</th>
@@ -1036,39 +1036,39 @@ function HistoryTab({ userID }: { userID: string }) {
               <th className="px-3 py-2">{t('users.detail.historyTab.colReason')}</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
+          <tbody className="divide-y divide-border">
             {data.items.map((r) => (
               <tr key={r.id}>
-                <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-500">{formatDate(r.created_at)}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-xs text-muted">{formatDate(r.created_at)}</td>
                 <td className="px-3 py-2">
                   <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', r.success ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700')}>
                     {r.success ? t('users.detail.historyTab.success') : t('users.detail.historyTab.failed')}
                   </span>
                 </td>
-                <td className="px-3 py-2 text-xs text-gray-600">{r.stage}</td>
-                <td className="px-3 py-2 text-xs text-gray-600">{r.auth_type}</td>
-                <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-500">{r.ip || '-'}</td>
-                <td className="px-3 py-2 text-xs text-gray-500">{r.reason || '-'}</td>
+                <td className="px-3 py-2 text-xs text-muted">{r.stage}</td>
+                <td className="px-3 py-2 text-xs text-muted">{r.auth_type}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-xs text-muted">{r.ip || '-'}</td>
+                <td className="px-3 py-2 text-xs text-muted">{r.reason || '-'}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
       {totalPages > 1 && (
-        <div className="flex items-center justify-between border-t border-gray-100 pt-3">
-          <p className="text-sm text-gray-500">{t('users.detail.historyTab.pagingSummary', { total: data.total, page, pages: totalPages })}</p>
+        <div className="flex items-center justify-between border-t border-border pt-3">
+          <p className="text-sm text-muted">{t('users.detail.historyTab.pagingSummary', { total: data.total, page, pages: totalPages })}</p>
           <div className="flex gap-2">
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-gray-50"
+              className="rounded-lg border border-border px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-surface-muted"
             >
               {t('users.detail.historyTab.prevPage')}
             </button>
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-gray-50"
+              className="rounded-lg border border-border px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-surface-muted"
             >
               {t('users.detail.historyTab.nextPage')}
             </button>

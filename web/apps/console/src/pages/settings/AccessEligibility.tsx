@@ -293,7 +293,7 @@ export default function AccessEligibilityPage() {
   if (!edition.has('conditional_access')) {
     return (
       <motion.div {...pageMotion} className="p-6">
-        <p className="text-gray-500">{t('eligibility.featureDisabled')}</p>
+        <p className="text-muted">{t('eligibility.featureDisabled')}</p>
       </motion.div>
     )
   }
@@ -301,12 +301,12 @@ export default function AccessEligibilityPage() {
   return (
     <motion.div {...pageMotion} className="space-y-6">
       {/* Create / edit form — reused for both via editingId */}
-      <section className="rounded-xl border border-gray-200 bg-white p-6">
+      <section className="rounded-xl border border-border bg-surface p-6">
         <div className="mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className="text-lg font-semibold text-ink">
             {editingId ? t('eligibility.editTitle') : t('eligibility.createTitle')}
           </h2>
-          <p className="mt-0.5 text-sm text-gray-500">
+          <p className="mt-0.5 text-sm text-muted">
             {editingId ? t('eligibility.editDesc') : t('eligibility.createDesc')}
           </p>
         </div>
@@ -314,7 +314,7 @@ export default function AccessEligibilityPage() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Field label={t('eligibility.targetKind')}>
             <select
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
               value={form.target_kind}
               onChange={(e) => {
                 const value = e.target.value as 'console' | 'app'
@@ -516,7 +516,7 @@ export default function AccessEligibilityPage() {
 
           <Field label={t('eligibility.maxDuration')}>
             <select
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
               value={form.max_duration_seconds}
               onChange={(e) =>
                 setForm((f) => ({
@@ -534,15 +534,15 @@ export default function AccessEligibilityPage() {
           </Field>
 
           <div className="md:col-span-2">
-            <div className="mb-1.5 text-sm font-medium text-gray-700">
+            <div className="mb-1.5 text-sm font-medium text-ink">
               {t('eligibility.allowedDurations')}
             </div>
             <div className="flex flex-wrap gap-4">
               {ALL_DURATIONS.map((d) => (
-                <label key={d} className="flex cursor-pointer items-center gap-1.5 text-sm text-gray-700">
+                <label key={d} className="flex cursor-pointer items-center gap-1.5 text-sm text-ink">
                   <input
                     type="checkbox"
-                    className="h-4 w-4 rounded border-gray-300"
+                    className="h-4 w-4 rounded border-border"
                     checked={form.allowed_durations.includes(d)}
                     onChange={() => toggleDuration(d)}
                   />
@@ -553,10 +553,10 @@ export default function AccessEligibilityPage() {
           </div>
 
           <div className="flex flex-wrap gap-6 md:col-span-2">
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
               <input
                 type="checkbox"
-                className="h-4 w-4 rounded border-gray-300"
+                className="h-4 w-4 rounded border-border"
                 checked={form.require_justification ?? false}
                 onChange={(e) =>
                   setForm((f) => ({ ...f, require_justification: e.target.checked }))
@@ -564,10 +564,10 @@ export default function AccessEligibilityPage() {
               />
               {t('eligibility.requireJustification')}
             </label>
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
               <input
                 type="checkbox"
-                className="h-4 w-4 rounded border-gray-300"
+                className="h-4 w-4 rounded border-border"
                 checked={form.require_stepup ?? false}
                 onChange={(e) =>
                   setForm((f) => ({ ...f, require_stepup: e.target.checked }))
@@ -591,14 +591,14 @@ export default function AccessEligibilityPage() {
       </section>
 
       {/* Eligibility list */}
-      <section className="rounded-xl border border-gray-200 bg-white">
-        <div className="border-b border-gray-100 px-6 py-4">
-          <h2 className="text-base font-semibold text-gray-900">{t('eligibility.listTitle')}</h2>
+      <section className="rounded-xl border border-border bg-surface">
+        <div className="border-b border-border px-6 py-4">
+          <h2 className="text-base font-semibold text-ink">{t('eligibility.listTitle')}</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-gray-100 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-muted">
                 <th className="px-6 py-3">{t('eligibility.columns.target')}</th>
                 <th className="px-6 py-3">{t('eligibility.columns.role')}</th>
                 <th className="px-6 py-3">{t('eligibility.columns.requester')}</th>
@@ -607,46 +607,46 @@ export default function AccessEligibilityPage() {
                 <th className="px-6 py-3 text-right">{t('common.actions')}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-border">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-10 text-center text-sm text-gray-400">
+                  <td colSpan={6} className="px-6 py-10 text-center text-sm text-faint">
                     {t('common.loading')}
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-10 text-center text-sm text-gray-400">
+                  <td colSpan={6} className="px-6 py-10 text-center text-sm text-faint">
                     {t('eligibility.empty')}
                   </td>
                 </tr>
               ) : (
                 rows.map((row) => (
-                  <tr key={row.id} className="hover:bg-gray-50/50">
-                    <td className="whitespace-nowrap px-6 py-3 text-sm text-gray-700">
+                  <tr key={row.id} className="hover:bg-surface-muted/50">
+                    <td className="whitespace-nowrap px-6 py-3 text-sm text-ink">
                       {row.target_kind === 'console'
                         ? t('access.targetConsole')
                         : t('access.targetApp')}
                       {row.target_kind === 'app' && row.app_id && (
-                        <span className="ml-1 text-gray-400">
+                        <span className="ml-1 text-faint">
                           ({row.app_name || row.app_id})
                         </span>
                       )}
                     </td>
-                    <td className="px-6 py-3 text-sm text-gray-600">
+                    <td className="px-6 py-3 text-sm text-muted">
                       {row.target_name || row.role_id}
                     </td>
-                    <td className="px-6 py-3 text-sm text-gray-600">
+                    <td className="px-6 py-3 text-sm text-muted">
                       {row.requester_subject_type === 'any'
                         ? t('eligibility.everyone')
                         : row.requester_subject_name || row.requester_subject_id || '—'}
                     </td>
-                    <td className="px-6 py-3 text-sm text-gray-600">
+                    <td className="px-6 py-3 text-sm text-muted">
                       {row.approver_subject_type === 'auto'
                         ? t('eligibility.autoApprover')
                         : row.approver_subject_name || row.approver_subject_id || '—'}
                     </td>
-                    <td className="whitespace-nowrap px-6 py-3 text-sm text-gray-600">
+                    <td className="whitespace-nowrap px-6 py-3 text-sm text-muted">
                       {row.allowed_durations
                         .map((d) => DURATION_LABELS[d] ?? `${d}s`)
                         .join(' / ')}

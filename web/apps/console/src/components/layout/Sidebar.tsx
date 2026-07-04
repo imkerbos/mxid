@@ -99,7 +99,7 @@ export default function Sidebar() {
 
       {/* Language switcher */}
       <div className="border-t border-white/10 px-3 py-2">
-        <div className="flex items-center justify-between text-xs text-gray-400">
+        <div className="flex items-center justify-between text-xs text-faint">
           <span>{t('nav.language')}</span>
           <div className="flex gap-1">
             {SUPPORTED_LANGS.map((l) => (
@@ -145,12 +145,12 @@ export default function Sidebar() {
             </div>
             <div className="min-w-0">
               <p className="truncate text-sm font-medium group-hover:text-white">{user?.display_name || user?.username}</p>
-              <p className="truncate text-xs text-gray-400">{user?.username}</p>
+              <p className="truncate text-xs text-faint">{user?.username}</p>
             </div>
           </button>
           <button
             onClick={handleLogout}
-            className="shrink-0 rounded-lg p-2 text-gray-400 transition-colors hover:bg-sidebar-hover hover:text-white"
+            className="shrink-0 rounded-lg p-2 text-faint transition-colors hover:bg-sidebar-hover hover:text-white"
             title={t('nav.logout')}
           >
             <LogOut className="h-4 w-4" />

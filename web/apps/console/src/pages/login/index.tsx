@@ -196,7 +196,7 @@ export default function LoginPage() {
                     setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))
                   }
                   placeholder="••••••"
-                  className="w-full rounded-lg border border-white/25 bg-white/[0.08] px-4 py-2.5 text-center text-lg font-mono tracking-widest text-white placeholder:text-white/40 outline-none transition-colors focus:border-white/60 focus:bg-white/[0.12]"
+                  className="w-full rounded-lg border border-white/25 bg-surface/[0.08] px-4 py-2.5 text-center text-lg font-mono tracking-widest text-white placeholder:text-white/40 outline-none transition-colors focus:border-white/60 focus:bg-surface/[0.12]"
                 />
               </div>
               {error && (
@@ -234,7 +234,7 @@ export default function LoginPage() {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full rounded-lg border border-white/25 bg-white/[0.08] px-4 py-2.5 text-sm text-white placeholder:text-white/50 outline-none transition-colors focus:border-white/60 focus:bg-white/[0.12]"
+                className="w-full rounded-lg border border-white/25 bg-surface/[0.08] px-4 py-2.5 text-sm text-white placeholder:text-white/50 outline-none transition-colors focus:border-white/60 focus:bg-surface/[0.12]"
                 placeholder={t('login.placeholderUsername')}
                 autoComplete="username"
                 autoFocus
@@ -250,7 +250,7 @@ export default function LoginPage() {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-lg border border-white/25 bg-white/[0.08] px-4 py-2.5 pr-10 text-sm text-white placeholder:text-white/50 outline-none transition-colors focus:border-white/60 focus:bg-white/[0.12]"
+                  className="w-full rounded-lg border border-white/25 bg-surface/[0.08] px-4 py-2.5 pr-10 text-sm text-white placeholder:text-white/50 outline-none transition-colors focus:border-white/60 focus:bg-surface/[0.12]"
                   placeholder={t('login.placeholderPassword')}
                   autoComplete="current-password"
                 />
@@ -274,7 +274,7 @@ export default function LoginPage() {
                   type="text"
                   value={captchaCode}
                   onChange={(e) => setCaptchaCode(e.target.value)}
-                  className="flex-1 rounded-lg border border-white/25 bg-white/[0.08] px-4 py-2.5 text-sm text-white placeholder:text-white/50 outline-none transition-colors focus:border-white/60 focus:bg-white/[0.12]"
+                  className="flex-1 rounded-lg border border-white/25 bg-surface/[0.08] px-4 py-2.5 text-sm text-white placeholder:text-white/50 outline-none transition-colors focus:border-white/60 focus:bg-surface/[0.12]"
                   placeholder={t('login.captchaPlaceholder')}
                   maxLength={5}
                   autoComplete="off"
@@ -284,19 +284,19 @@ export default function LoginPage() {
                     <img
                       src={captchaImage}
                       alt={t('login.captcha')}
-                      className="h-[42px] w-[120px] cursor-pointer rounded-lg border border-white/25 bg-white"
+                      className="h-[42px] w-[120px] cursor-pointer rounded-lg border border-white/25 bg-surface"
                       onClick={loadCaptcha}
                       title={t('login.captchaClickRefresh')}
                     />
                   ) : (
-                    <div className="flex h-[42px] w-[120px] items-center justify-center rounded-lg border border-white/25 bg-white/[0.08] text-xs text-white/60">
+                    <div className="flex h-[42px] w-[120px] items-center justify-center rounded-lg border border-white/25 bg-surface/[0.08] text-xs text-white/60">
 {t('login.captchaLoading')}
                     </div>
                   )}
                   <button
                     type="button"
                     onClick={loadCaptcha}
-                    className="rounded-lg p-2 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                    className="rounded-lg p-2 text-white/60 transition-colors hover:bg-surface/10 hover:text-white"
                     title={t('login.refreshCaptcha')}
                   >
                     <RefreshCw className="h-4 w-4" />
@@ -311,7 +311,7 @@ export default function LoginPage() {
                 type="checkbox"
                 checked={remember}
                 onChange={(e) => setRemember(e.target.checked)}
-                className="h-4 w-4 rounded border-white/30 bg-white/10 text-primary focus:ring-primary/30"
+                className="h-4 w-4 rounded border-white/30 bg-surface/10 text-primary focus:ring-primary/30"
               />
 {t('login.rememberMe')}
             </label>

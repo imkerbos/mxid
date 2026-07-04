@@ -45,7 +45,7 @@ function TreeNode({
       <button
         onClick={() => onSelect(node)}
         className={cn(
-          'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-gray-100',
+          'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-surface-muted',
           selectedId === node.id && 'bg-primary/10 text-primary font-medium'
         )}
         style={{ paddingLeft: `${depth * 20 + 12}px` }}
@@ -64,15 +64,15 @@ function TreeNode({
             className="shrink-0 cursor-pointer"
           >
             {expanded ? (
-              <ChevronDown className="h-4 w-4 text-gray-400" />
+              <ChevronDown className="h-4 w-4 text-faint" />
             ) : (
-              <ChevronRight className="h-4 w-4 text-gray-400" />
+              <ChevronRight className="h-4 w-4 text-faint" />
             )}
           </span>
         ) : (
           <span className="w-4" />
         )}
-        <Building2 className="h-4 w-4 shrink-0 text-gray-400" />
+        <Building2 className="h-4 w-4 shrink-0 text-faint" />
         <span className="truncate">{node.name}</span>
       </button>
       {expanded && hasChildren && (
@@ -122,8 +122,8 @@ function SelectableTreeNode({
         className={cn(
           'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
           isDisabled || isDescendant
-            ? 'cursor-not-allowed text-gray-300'
-            : 'hover:bg-gray-100',
+            ? 'cursor-not-allowed text-faint'
+            : 'hover:bg-surface-muted',
           selectedId === node.id && !isDisabled && 'bg-primary/10 text-primary font-medium'
         )}
         style={{ paddingLeft: `${depth * 20 + 12}px` }}
@@ -137,15 +137,15 @@ function SelectableTreeNode({
             className="shrink-0 cursor-pointer"
           >
             {expanded ? (
-              <ChevronDown className="h-4 w-4 text-gray-400" />
+              <ChevronDown className="h-4 w-4 text-faint" />
             ) : (
-              <ChevronRight className="h-4 w-4 text-gray-400" />
+              <ChevronRight className="h-4 w-4 text-faint" />
             )}
           </span>
         ) : (
           <span className="w-4" />
         )}
-        <Building2 className="h-4 w-4 shrink-0 text-gray-400" />
+        <Building2 className="h-4 w-4 shrink-0 text-faint" />
         <span className="truncate">{node.name}</span>
       </button>
       {expanded && hasChildren && (
@@ -465,12 +465,12 @@ export default function OrgsPage() {
 
       <div className="flex gap-6">
         {/* ───── Tree panel ───── */}
-        <div className="w-80 shrink-0 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-          <h3 className="mb-3 text-sm font-semibold text-gray-700">{t('orgs.structure')}</h3>
+        <div className="w-80 shrink-0 rounded-xl border border-border bg-surface p-4 shadow-sm">
+          <h3 className="mb-3 text-sm font-semibold text-ink">{t('orgs.structure')}</h3>
           {loading ? (
-            <p className="py-8 text-center text-sm text-gray-400">{t('common.loading')}</p>
+            <p className="py-8 text-center text-sm text-faint">{t('common.loading')}</p>
           ) : tree.length === 0 ? (
-            <p className="py-8 text-center text-sm text-gray-400">{t('orgs.empty')}</p>
+            <p className="py-8 text-center text-sm text-faint">{t('orgs.empty')}</p>
           ) : (
             <div className="space-y-0.5">
               {tree.map((node) => (
@@ -489,14 +489,14 @@ export default function OrgsPage() {
         </div>
 
         {/* ───── Detail panel ───── */}
-        <div className="flex-1 rounded-xl border border-gray-100 bg-white shadow-sm">
+        <div className="flex-1 rounded-xl border border-border bg-surface shadow-sm">
           {selected ? (
             <div>
               {/* Header with actions */}
-              <div className="flex items-start justify-between border-b border-gray-100 p-6">
+              <div className="flex items-start justify-between border-b border-border p-6">
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-900">{selected.name}</h2>
-                  <p className="mt-1 text-sm text-gray-500">{t('orgs.codePrefix', { code: selected.code })}</p>
+                  <h2 className="text-xl font-semibold text-ink">{selected.name}</h2>
+                  <p className="mt-1 text-sm text-muted">{t('orgs.codePrefix', { code: selected.code })}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
@@ -504,7 +504,7 @@ export default function OrgsPage() {
                       setMoveTargetId(selected.parent_id)
                       setShowMove(true)
                     }}
-                    className="rounded-lg border border-gray-200 p-2 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                    className="rounded-lg border border-border p-2 text-muted hover:bg-surface-muted hover:text-ink"
                     title={t('orgs.moveTo')}
                   >
                     <FolderTree className="h-4 w-4" />
@@ -514,14 +514,14 @@ export default function OrgsPage() {
                       setEditName(selected.name)
                       setShowEdit(true)
                     }}
-                    className="rounded-lg border border-gray-200 p-2 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                    className="rounded-lg border border-border p-2 text-muted hover:bg-surface-muted hover:text-ink"
                     title={t('orgs.edit')}
                   >
                     <Pencil className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => setShowDeleteOrg(true)}
-                    className="rounded-lg border border-gray-200 p-2 text-gray-500 hover:bg-red-50 hover:text-red-500"
+                    className="rounded-lg border border-border p-2 text-muted hover:bg-red-50 hover:text-red-500"
                     title={t('orgs.delete')}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -530,14 +530,14 @@ export default function OrgsPage() {
               </div>
 
               {/* Tabs */}
-              <div className="flex border-b border-gray-100">
+              <div className="flex border-b border-border">
                 <button
                   onClick={() => setActiveTab('info')}
                   className={cn(
                     'px-6 py-3 text-sm font-medium transition-colors',
                     activeTab === 'info'
                       ? 'border-b-2 border-primary text-primary'
-                      : 'text-gray-500 hover:text-gray-700'
+                      : 'text-muted hover:text-ink'
                   )}
                 >
                   {t('orgs.tabInfo')}
@@ -548,7 +548,7 @@ export default function OrgsPage() {
                     'px-6 py-3 text-sm font-medium transition-colors',
                     activeTab === 'members'
                       ? 'border-b-2 border-primary text-primary'
-                      : 'text-gray-500 hover:text-gray-700'
+                      : 'text-muted hover:text-ink'
                   )}
                 >
                   <span className="inline-flex items-center gap-1.5">
@@ -562,27 +562,27 @@ export default function OrgsPage() {
               <div className="p-6">
                 {activeTab === 'info' && (
                   <dl className="grid grid-cols-2 gap-4">
-                    <div className="rounded-lg bg-gray-50 p-4">
-                      <dt className="text-xs font-medium text-gray-500">ID</dt>
-                      <dd className="mt-1 text-sm font-medium text-gray-900">{selected.id}</dd>
+                    <div className="rounded-lg bg-surface-muted p-4">
+                      <dt className="text-xs font-medium text-muted">ID</dt>
+                      <dd className="mt-1 text-sm font-medium text-ink">{selected.id}</dd>
                     </div>
-                    <div className="rounded-lg bg-gray-50 p-4">
-                      <dt className="text-xs font-medium text-gray-500">{t('orgs.fields.path')}</dt>
-                      <dd className="mt-1 text-sm font-medium text-gray-900">{selected.path}</dd>
+                    <div className="rounded-lg bg-surface-muted p-4">
+                      <dt className="text-xs font-medium text-muted">{t('orgs.fields.path')}</dt>
+                      <dd className="mt-1 text-sm font-medium text-ink">{selected.path}</dd>
                     </div>
-                    <div className="rounded-lg bg-gray-50 p-4">
-                      <dt className="text-xs font-medium text-gray-500">{t('orgs.fields.sortOrder')}</dt>
-                      <dd className="mt-1 text-sm font-medium text-gray-900">{selected.sort_order}</dd>
+                    <div className="rounded-lg bg-surface-muted p-4">
+                      <dt className="text-xs font-medium text-muted">{t('orgs.fields.sortOrder')}</dt>
+                      <dd className="mt-1 text-sm font-medium text-ink">{selected.sort_order}</dd>
                     </div>
-                    <div className="rounded-lg bg-gray-50 p-4">
-                      <dt className="text-xs font-medium text-gray-500">{t('orgs.fields.status')}</dt>
+                    <div className="rounded-lg bg-surface-muted p-4">
+                      <dt className="text-xs font-medium text-muted">{t('orgs.fields.status')}</dt>
                       <dd className={cn('mt-1 text-sm font-medium', statusColor(selected.status))}>
                         {statusLabel(selected.status)}
                       </dd>
                     </div>
-                    <div className="rounded-lg bg-gray-50 p-4">
-                      <dt className="text-xs font-medium text-gray-500">{t('orgs.fields.parentId')}</dt>
-                      <dd className="mt-1 text-sm font-medium text-gray-900">
+                    <div className="rounded-lg bg-surface-muted p-4">
+                      <dt className="text-xs font-medium text-muted">{t('orgs.fields.parentId')}</dt>
+                      <dd className="mt-1 text-sm font-medium text-ink">
                         {selected.parent_id ?? t('orgs.rootNode')}
                       </dd>
                     </div>
@@ -593,7 +593,7 @@ export default function OrgsPage() {
                   <div>
                     {/* Add member button */}
                     <div className="mb-4 flex items-center justify-between">
-                      <p className="text-sm text-gray-500">
+                      <p className="text-sm text-muted">
                         {t('orgs.memberTotal', { total: members.total })}
                       </p>
                       <button
@@ -610,10 +610,10 @@ export default function OrgsPage() {
                     </div>
 
                     {/* Members table */}
-                    <div className="rounded-lg border border-gray-100">
+                    <div className="rounded-lg border border-border">
                       <table className="w-full">
                         <thead>
-                          <tr className="border-b border-gray-100 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                          <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-muted">
                             <th className="px-4 py-3">{t('orgs.columns.userId')}</th>
                             <th className="px-4 py-3">{t('orgs.columns.username')}</th>
                             <th className="px-4 py-3">{t('orgs.columns.displayName')}</th>
@@ -621,16 +621,16 @@ export default function OrgsPage() {
                             <th className="px-4 py-3 text-right">{t('orgs.columns.actions')}</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-50">
+                        <tbody className="divide-y divide-border">
                           {membersLoading ? (
                             <tr>
-                              <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">
-                                <Loader2 className="mx-auto h-5 w-5 animate-spin text-gray-300" />
+                              <td colSpan={5} className="px-4 py-8 text-center text-sm text-faint">
+                                <Loader2 className="mx-auto h-5 w-5 animate-spin text-faint" />
                               </td>
                             </tr>
                           ) : members.items.length === 0 ? (
                             <tr>
-                              <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">
+                              <td colSpan={5} className="px-4 py-8 text-center text-sm text-faint">
                                 {t('orgs.emptyMembers')}
                               </td>
                             </tr>
@@ -638,21 +638,21 @@ export default function OrgsPage() {
                             members.items.map((userId) => {
                               const user = memberUsers.get(userId)
                               return (
-                                <tr key={userId} className="hover:bg-gray-50/50">
-                                  <td className="px-4 py-3 text-sm text-gray-600">{userId}</td>
-                                  <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                                <tr key={userId} className="hover:bg-surface-muted/50">
+                                  <td className="px-4 py-3 text-sm text-muted">{userId}</td>
+                                  <td className="px-4 py-3 text-sm font-medium text-ink">
                                     {user?.username ?? '-'}
                                   </td>
-                                  <td className="px-4 py-3 text-sm text-gray-600">
+                                  <td className="px-4 py-3 text-sm text-muted">
                                     {user?.display_name ?? '-'}
                                   </td>
-                                  <td className="px-4 py-3 text-sm text-gray-600">
+                                  <td className="px-4 py-3 text-sm text-muted">
                                     {user?.email ?? '-'}
                                   </td>
                                   <td className="px-4 py-3 text-right">
                                     <button
                                       onClick={() => setDelMemberId(userId)}
-                                      className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-500"
+                                      className="rounded p-1 text-faint hover:bg-red-50 hover:text-red-500"
                                       title={t('orgs.removeMember')}
                                     >
                                       <UserMinus className="h-4 w-4" />
@@ -667,22 +667,22 @@ export default function OrgsPage() {
 
                       {/* Pagination */}
                       {members.total > 0 && (
-                        <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3">
-                          <p className="text-sm text-gray-500">
+                        <div className="flex items-center justify-between border-t border-border px-4 py-3">
+                          <p className="text-sm text-muted">
                             {t('orgs.pagingSummary', { total: members.total, page: memberPage, pages: memberTotalPages })}
                           </p>
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => setMemberPage((p) => Math.max(1, p - 1))}
                               disabled={memberPage <= 1}
-                              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-gray-50"
+                              className="rounded-lg border border-border px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-surface-muted"
                             >
                               {t('orgs.prevPage')}
                             </button>
                             <button
                               onClick={() => setMemberPage((p) => Math.min(memberTotalPages, p + 1))}
                               disabled={memberPage >= memberTotalPages}
-                              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-gray-50"
+                              className="rounded-lg border border-border px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-surface-muted"
                             >
                               {t('orgs.nextPage')}
                             </button>
@@ -695,7 +695,7 @@ export default function OrgsPage() {
               </div>
             </div>
           ) : (
-            <div className="flex h-48 items-center justify-center text-sm text-gray-400">
+            <div className="flex h-48 items-center justify-center text-sm text-faint">
               {t('orgs.selectNodeHint')}
             </div>
           )}
@@ -708,34 +708,34 @@ export default function OrgsPage() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl"
+            className="w-full max-w-md rounded-xl bg-surface p-6 shadow-xl"
           >
             <h3 className="mb-4 text-lg font-semibold">
               {selected ? t('orgs.createModal.titleWithParent', { name: selected.name }) : t('orgs.createModal.title')}
             </h3>
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">{t('orgs.createModal.nameRequired')}</label>
+                <label className="mb-1 block text-sm font-medium text-ink">{t('orgs.createModal.nameRequired')}</label>
                 <input
                   type="text"
                   value={createForm.name}
                   onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   required
                 />
-                <p className="mt-1 text-xs text-gray-400">{t('orgs.createModal.nameHint')}</p>
+                <p className="mt-1 text-xs text-faint">{t('orgs.createModal.nameHint')}</p>
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">{t('orgs.createModal.codeRequired')}</label>
+                <label className="mb-1 block text-sm font-medium text-ink">{t('orgs.createModal.codeRequired')}</label>
                 <input
                   type="text"
                   value={createForm.code}
                   onChange={(e) => setCreateForm((f) => ({ ...f, code: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   required
                 />
-                <p className="mt-1 text-xs text-gray-400">
-                  {t('orgs.createModal.codeHint1')}<code className="rounded bg-gray-100 px-1">tech-team</code>{t('orgs.createModal.codeHint2')}<code className="rounded bg-gray-100 px-1">root.tech-team</code>{t('orgs.createModal.codeHint3')}<span className="text-amber-600">{t('orgs.createModal.codeImmutable')}</span>
+                <p className="mt-1 text-xs text-faint">
+                  {t('orgs.createModal.codeHint1')}<code className="rounded bg-surface-muted px-1">tech-team</code>{t('orgs.createModal.codeHint2')}<code className="rounded bg-surface-muted px-1">root.tech-team</code>{t('orgs.createModal.codeHint3')}<span className="text-amber-600">{t('orgs.createModal.codeImmutable')}</span>
                 </p>
               </div>
               <div className="flex justify-end gap-3 pt-2">
@@ -757,21 +757,21 @@ export default function OrgsPage() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl"
+            className="w-full max-w-sm rounded-xl bg-surface p-6 shadow-xl"
           >
             <h3 className="mb-4 text-lg font-semibold">{t('orgs.editModal.title')}</h3>
             <form onSubmit={handleEdit} className="space-y-4">
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">{t('orgs.editModal.nameLabel')}</label>
+                <label className="mb-1 block text-sm font-medium text-ink">{t('orgs.editModal.nameLabel')}</label>
                 <input
                   type="text"
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   required
                   autoFocus
                 />
-                <p className="mt-1 text-xs text-gray-400">{t('orgs.editModal.nameHint')}</p>
+                <p className="mt-1 text-xs text-faint">{t('orgs.editModal.nameHint')}</p>
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <Button type="button" variant="secondary" onClick={() => setShowEdit(false)}>
@@ -792,9 +792,9 @@ export default function OrgsPage() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-md rounded-xl bg-white shadow-xl"
+            className="w-full max-w-md rounded-xl bg-surface shadow-xl"
           >
-            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+            <div className="flex items-center justify-between border-b border-border px-6 py-4">
               <h3 className="text-lg font-semibold">
                 {t('orgs.moveModal.title', { name: selected.name })}
               </h3>
@@ -803,14 +803,14 @@ export default function OrgsPage() {
                   setShowMove(false)
                   setMoveTargetId(null)
                 }}
-                className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                className="rounded p-1 text-faint hover:bg-surface-muted hover:text-muted"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             <div className="px-6 py-4">
-              <p className="mb-3 text-sm text-gray-500">
+              <p className="mb-3 text-sm text-muted">
                 {t('orgs.moveModal.hint')}
               </p>
 
@@ -818,16 +818,16 @@ export default function OrgsPage() {
               <button
                 onClick={() => setMoveTargetId(null)}
                 className={cn(
-                  'mb-2 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-gray-100',
+                  'mb-2 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-surface-muted',
                   moveTargetId === null && 'bg-primary/10 text-primary font-medium'
                 )}
               >
-                <Building2 className="h-4 w-4 shrink-0 text-gray-400" />
+                <Building2 className="h-4 w-4 shrink-0 text-faint" />
                 <span>{t('orgs.rootNode')}</span>
               </button>
 
               {/* Tree selector */}
-              <div className="max-h-64 overflow-y-auto rounded-lg border border-gray-100 p-2">
+              <div className="max-h-64 overflow-y-auto rounded-lg border border-border p-2">
                 {tree.map((node) => (
                   <SelectableTreeNode
                     key={node.id}
@@ -840,7 +840,7 @@ export default function OrgsPage() {
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4">
+            <div className="flex justify-end gap-3 border-t border-border px-6 py-4">
               <Button
                 variant="secondary"
                 onClick={() => {
@@ -864,9 +864,9 @@ export default function OrgsPage() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-lg rounded-xl bg-white shadow-xl"
+            className="w-full max-w-lg rounded-xl bg-surface shadow-xl"
           >
-            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+            <div className="flex items-center justify-between border-b border-border px-6 py-4">
               <h3 className="text-lg font-semibold">{t('orgs.addMemberModal.title', { name: selected.name })}</h3>
               <button
                 onClick={() => {
@@ -874,7 +874,7 @@ export default function OrgsPage() {
                   setUserSearch('')
                   setUserSearchResults([])
                 }}
-                className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                className="rounded p-1 text-faint hover:bg-surface-muted hover:text-muted"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -883,13 +883,13 @@ export default function OrgsPage() {
             <div className="px-6 py-4">
               {/* Search input */}
               <div className="relative mb-4">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
                 <input
                   type="text"
                   value={userSearch}
                   onChange={(e) => handleUserSearch(e.target.value)}
                   placeholder={t('orgs.addMemberModal.searchPlaceholder')}
-                  className="w-full rounded-lg border border-gray-200 py-2 pl-10 pr-4 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  className="w-full rounded-lg border border-border py-2 pl-10 pr-4 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   autoFocus
                 />
               </div>
@@ -898,10 +898,10 @@ export default function OrgsPage() {
               <div className="max-h-72 overflow-y-auto">
                 {userSearchLoading ? (
                   <div className="flex items-center justify-center py-8">
-                    <Loader2 className="h-5 w-5 animate-spin text-gray-300" />
+                    <Loader2 className="h-5 w-5 animate-spin text-faint" />
                   </div>
                 ) : userSearchResults.length === 0 ? (
-                  <p className="py-8 text-center text-sm text-gray-400">
+                  <p className="py-8 text-center text-sm text-faint">
                     {userSearch.trim() ? t('orgs.addMemberModal.noMatch') : t('orgs.addMemberModal.noCandidates')}
                   </p>
                 ) : (
@@ -911,19 +911,19 @@ export default function OrgsPage() {
                       return (
                         <div
                           key={user.id}
-                          className="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-gray-50"
+                          className="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-surface-muted"
                         >
                           <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-gray-900">
+                            <p className="text-sm font-medium text-ink">
                               {user.display_name || user.username}
                             </p>
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-muted">
                               {user.username}
                               {user.email ? ` / ${user.email}` : ''}
                             </p>
                           </div>
                           {alreadyMember ? (
-                            <span className="shrink-0 rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-500">
+                            <span className="shrink-0 rounded-full bg-surface-muted px-3 py-1 text-xs text-muted">
                               {t('orgs.addMemberModal.added')}
                             </span>
                           ) : (
@@ -948,7 +948,7 @@ export default function OrgsPage() {
               </div>
             </div>
 
-            <div className="flex justify-end border-t border-gray-100 px-6 py-4">
+            <div className="flex justify-end border-t border-border px-6 py-4">
               <Button
                 variant="secondary"
                 onClick={() => {

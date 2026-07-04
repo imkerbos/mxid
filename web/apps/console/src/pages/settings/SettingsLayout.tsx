@@ -80,10 +80,10 @@ export default function SettingsLayout() {
 
       <div className="grid grid-cols-12 gap-6">
         <aside className="col-span-12 md:col-span-3 xl:col-span-2">
-          <nav className="space-y-4 rounded-xl border border-gray-200 bg-white p-3">
+          <nav className="space-y-4 rounded-xl border border-border bg-surface p-3">
             {NAV.map((sec) => (
               <div key={sec.group}>
-                <div className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                <div className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-wider text-faint">
                   {sec.group}
                 </div>
                 <div className="space-y-0.5">
@@ -96,7 +96,7 @@ export default function SettingsLayout() {
                           'flex items-start gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors',
                           isActive
                             ? 'bg-primary/10 text-primary'
-                            : 'text-gray-700 hover:bg-gray-50',
+                            : 'text-ink hover:bg-surface-muted',
                         )
                       }
                     >
@@ -108,7 +108,7 @@ export default function SettingsLayout() {
                             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
                           )}
                         </div>
-                        {it.hint && <div className="truncate text-[11px] text-gray-400">{it.hint}</div>}
+                        {it.hint && <div className="truncate text-[11px] text-faint">{it.hint}</div>}
                       </div>
                     </NavLink>
                   ))}

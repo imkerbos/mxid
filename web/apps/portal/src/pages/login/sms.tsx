@@ -105,7 +105,7 @@ export default function SMSLoginPage() {
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="+8613800138000"
                   autoFocus
-                  className="w-full rounded-lg border border-white/25 bg-white/[0.08] px-3 py-2.5 text-sm text-white placeholder:text-white/50 outline-none transition-colors focus:border-white/60 focus:bg-white/[0.12]"
+                  className="w-full rounded-lg border border-white/25 bg-surface/[0.08] px-3 py-2.5 text-sm text-white placeholder:text-white/50 outline-none transition-colors focus:border-white/60 focus:bg-surface/[0.12]"
                 />
               </div>
               <div>
@@ -121,13 +121,13 @@ export default function SMSLoginPage() {
                     value={code}
                     onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     placeholder="123456"
-                    className="flex-1 rounded-lg border border-white/25 bg-white/[0.08] px-3 py-2.5 text-center font-mono tracking-widest text-white placeholder:text-white/40 outline-none transition-colors focus:border-white/60 focus:bg-white/[0.12]"
+                    className="flex-1 rounded-lg border border-white/25 bg-surface/[0.08] px-3 py-2.5 text-center font-mono tracking-widest text-white placeholder:text-white/40 outline-none transition-colors focus:border-white/60 focus:bg-surface/[0.12]"
                   />
                   <button
                     type="button"
                     onClick={onSend}
                     disabled={sending || cooldown > 0 || !phone.trim()}
-                    className="rounded-lg border border-white/25 bg-white/[0.08] px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-white/[0.14] disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-lg border border-white/25 bg-surface/[0.08] px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-surface/[0.14] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {cooldown > 0 ? `${cooldown}s` : sending ? t('login.sms.sending') : t('login.sms.sendCode')}
                   </button>

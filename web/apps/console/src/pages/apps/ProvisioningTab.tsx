@@ -58,7 +58,7 @@ export default function ProvisioningTab({ appId }: { appId: string }) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+        <Loader2 className="h-6 w-6 animate-spin text-faint" />
       </div>
     )
   }
@@ -75,9 +75,9 @@ export default function ProvisioningTab({ appId }: { appId: string }) {
           type="checkbox"
           checked={cfg.enabled}
           onChange={(e) => setCfg({ ...cfg, enabled: e.target.checked })}
-          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/20"
+          className="h-4 w-4 rounded border-border text-primary focus:ring-primary/20"
         />
-        <span className="text-sm font-medium text-gray-800">{t('apps.detail.provisioning.enabled')}</span>
+        <span className="text-sm font-medium text-ink">{t('apps.detail.provisioning.enabled')}</span>
       </label>
 
       <Field label={t('apps.detail.provisioning.baseUrl')} hint={t('apps.detail.provisioning.baseUrlHint')}>
