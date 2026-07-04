@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -26,6 +27,89 @@ func randomHex(n int) string {
 	b := make([]byte, n)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+// parseRawRedirectParam returns the raw, still-percent-encoded value of key from
+// a redirect-binding query string, preserving the exact bytes the SP signed.
+// url.ParseQuery would percent-decode (and reorder) the value, breaking the
+// byte-for-byte signature recomputation, so we scan the raw pairs instead.
+func parseRawRedirectParam(rawQuery, key string) (string, bool) {
+	for _, pair := range strings.Split(rawQuery, "&") {
+		if eq := strings.IndexByte(pair, '='); eq >= 0 && pair[:eq] == key {
+			return pair[eq+1:], true
+		}
+	}
+	return "", false
+}
+
+// rsaPublicKeyFromCertPEM parses a PEM X.509 certificate and returns its RSA
+// public key.
+func rsaPublicKeyFromCertPEM(certPEM string) (*rsa.PublicKey, error) {
+	der, err := pemCertBytes(certPEM)
+	if err != nil {
+		return nil, err
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		return nil, fmt.Errorf("parse SP cert: %w", err)
+	}
+	pub, ok := cert.PublicKey.(*rsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("SP cert public key is not RSA")
+	}
+	return pub, nil
+}
+
+// verifyRedirectSignature authenticates an incoming HTTP-Redirect binding SAML
+// message (an SP-initiated LogoutRequest) against the SP's configured signing
+// certificate. Per SAML bindings §3.4.4.1 the SP signs the octet string
+// {SAMLRequest, RelayState?, SigAlg} in that canonical order using the exact
+// percent-encoding it transmitted, so the signed string is reconstructed from
+// the raw query pairs (not url.ParseQuery, which would decode/reorder them).
+// Only RSA-SHA256 is accepted — the single SigAlg this IdP advertises and signs.
+func verifyRedirectSignature(rawQuery, certPEM string) error {
+	sigRaw, ok := parseRawRedirectParam(rawQuery, "Signature")
+	if !ok {
+		return fmt.Errorf("missing Signature")
+	}
+	sigB64, err := url.QueryUnescape(sigRaw)
+	if err != nil {
+		return fmt.Errorf("decode Signature: %w", err)
+	}
+	sig, err := base64.StdEncoding.DecodeString(sigB64)
+	if err != nil {
+		return fmt.Errorf("base64 Signature: %w", err)
+	}
+
+	sigAlgRaw, ok := parseRawRedirectParam(rawQuery, "SigAlg")
+	if !ok {
+		return fmt.Errorf("missing SigAlg")
+	}
+	sigAlg, err := url.QueryUnescape(sigAlgRaw)
+	if err != nil {
+		return fmt.Errorf("decode SigAlg: %w", err)
+	}
+	if sigAlg != rsaSHA256SigAlg {
+		return fmt.Errorf("unsupported SigAlg %q", sigAlg)
+	}
+
+	reqRaw, ok := parseRawRedirectParam(rawQuery, "SAMLRequest")
+	if !ok {
+		return fmt.Errorf("missing SAMLRequest")
+	}
+	// Canonical signed order: SAMLRequest, RelayState (if sent), SigAlg.
+	signed := "SAMLRequest=" + reqRaw
+	if rsRaw, ok := parseRawRedirectParam(rawQuery, "RelayState"); ok {
+		signed += "&RelayState=" + rsRaw
+	}
+	signed += "&SigAlg=" + sigAlgRaw
+
+	pub, err := rsaPublicKeyFromCertPEM(certPEM)
+	if err != nil {
+		return err
+	}
+	sum := sha256.Sum256([]byte(signed))
+	return rsa.VerifyPKCS1v15(pub, crypto.SHA256, sum[:], sig)
 }
 
 // buildLogoutResponseRedirect assembles a SAML LogoutResponse for an SP-initiated
