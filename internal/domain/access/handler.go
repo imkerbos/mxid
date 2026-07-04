@@ -2,13 +2,13 @@ package access
 
 import (
 	"context"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/authn"
 	"github.com/imkerbos/mxid/internal/middleware"
 	"github.com/imkerbos/mxid/pkg/authz"
 	"github.com/imkerbos/mxid/pkg/ee/license"
+	"github.com/imkerbos/mxid/pkg/ginutil"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/tenantctx"
 )
@@ -150,7 +150,10 @@ func (h *Handler) createEligibility(c *gin.Context) {
 }
 
 func (h *Handler) updateEligibility(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := ginutil.ParseInt64Param(c, "id")
+	if !ok {
+		return
+	}
 	var body CreateEligibilityRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
 		response.BadRequest(c, 40010, "invalid request body")
@@ -175,7 +178,10 @@ func (h *Handler) listEligibility(c *gin.Context) {
 }
 
 func (h *Handler) deleteEligibility(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := ginutil.ParseInt64Param(c, "id")
+	if !ok {
+		return
+	}
 	if err := h.svc.repo.DeleteEligibility(c.Request.Context(), id, h.tenantID(c)); err != nil {
 		response.InternalError(c, "delete failed", err)
 		return
@@ -194,7 +200,10 @@ func (h *Handler) listRequests(c *gin.Context) {
 }
 
 func (h *Handler) approve(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := ginutil.ParseInt64Param(c, "id")
+	if !ok {
+		return
+	}
 	var body DecisionRequest
 	_ = c.ShouldBindJSON(&body)
 
@@ -242,7 +251,10 @@ func (h *Handler) approve(c *gin.Context) {
 }
 
 func (h *Handler) reject(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := ginutil.ParseInt64Param(c, "id")
+	if !ok {
+		return
+	}
 	var body DecisionRequest
 	_ = c.ShouldBindJSON(&body)
 	if err := h.svc.Reject(c.Request.Context(), h.tenantID(c), id, h.userID(c), body.Reason); err != nil {
@@ -253,7 +265,10 @@ func (h *Handler) reject(c *gin.Context) {
 }
 
 func (h *Handler) revoke(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := ginutil.ParseInt64Param(c, "id")
+	if !ok {
+		return
+	}
 	if err := h.svc.Revoke(c.Request.Context(), h.tenantID(c), id, h.userID(c)); err != nil {
 		response.BadRequest(c, 40007, err.Error())
 		return
@@ -303,7 +318,10 @@ func (h *Handler) createRequest(c *gin.Context) {
 }
 
 func (h *Handler) cancel(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := ginutil.ParseInt64Param(c, "id")
+	if !ok {
+		return
+	}
 	if err := h.svc.Cancel(c.Request.Context(), h.tenantID(c), id, h.userID(c)); err != nil {
 		response.BadRequest(c, 40006, err.Error())
 		return
