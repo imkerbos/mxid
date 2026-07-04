@@ -27,6 +27,10 @@ type Repository interface {
 	// GetMembers returns enriched member rows joined against mxid_user.
 	GetMembers(ctx context.Context, groupID int64, page, pageSize int) ([]*MemberInfo, int64, error)
 	CountMembers(ctx context.Context, groupID int64) (int64, error)
+	// CountMembersByGroupIDs returns member counts for many groups in ONE grouped
+	// query, avoiding the N+1 of calling CountMembers per group in a list loop.
+	// Groups with zero members are absent from the map (caller treats missing as 0).
+	CountMembersByGroupIDs(ctx context.Context, groupIDs []int64) (map[int64]int64, error)
 	// AllMemberIDs returns every user_id in the group, unpaged. Used by the
 	// dynamic-group sync engine to compute the diff against the rule's
 	// matched set; group memberships rarely exceed a few thousand rows.

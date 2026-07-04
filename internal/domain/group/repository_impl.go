@@ -236,6 +236,29 @@ func (r *repository) CountMembers(ctx context.Context, groupID int64) (int64, er
 	return count, nil
 }
 
+func (r *repository) CountMembersByGroupIDs(ctx context.Context, groupIDs []int64) (map[int64]int64, error) {
+	out := make(map[int64]int64, len(groupIDs))
+	if len(groupIDs) == 0 {
+		return out, nil
+	}
+	var rows []struct {
+		GroupID int64
+		Cnt     int64
+	}
+	if err := r.db.WithContext(ctx).
+		Model(&UserGroupMember{}).
+		Select("group_id, COUNT(*) AS cnt").
+		Where("group_id IN ?", groupIDs).
+		Group("group_id").
+		Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("count group members batch: %w", err)
+	}
+	for _, row := range rows {
+		out[row.GroupID] = row.Cnt
+	}
+	return out, nil
+}
+
 // AllMemberIDs returns every user_id in a group. Used by the dynamic-group
 // sync engine to diff against the matched set.
 func (r *repository) AllMemberIDs(ctx context.Context, groupID int64) ([]int64, error) {
