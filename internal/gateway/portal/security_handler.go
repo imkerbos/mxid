@@ -5,9 +5,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/imkerbos/mxid/internal/domain/apitoken"
 	"github.com/imkerbos/mxid/internal/domain/authn"
-	"github.com/imkerbos/mxid/internal/domain/user"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/ginutil"
 	"github.com/imkerbos/mxid/pkg/response"
@@ -181,11 +179,7 @@ func (h *SecurityHandler) revokeAPIToken(c *gin.Context) {
 		return
 	}
 	if err := h.apiTokenQuerier.Revoke(c.Request.Context(), userID, tokenID); err != nil {
-		if errors.Is(err, apitoken.ErrNotFound) {
-			response.NotFound(c, 40401, err.Error())
-			return
-		}
-		response.InternalError(c, "failed to revoke", err)
+		response.MapError(c, err)
 		return
 	}
 	h.publish(c, event.APITokenRevoked, map[string]any{
@@ -404,11 +398,7 @@ func (h *SecurityHandler) setupTOTP(c *gin.Context) {
 
 	secret, qrURL, err := h.mfaQuerier.SetupTOTP(c.Request.Context(), userID)
 	if err != nil {
-		if errors.Is(err, user.ErrMFAAlreadyExists) {
-			response.Conflict(c, 40901, err.Error())
-			return
-		}
-		response.InternalError(c, "failed to setup totp", err)
+		response.MapError(c, err)
 		return
 	}
 
