@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/imkerbos/mxid/pkg/crypto"
+	"github.com/imkerbos/mxid/pkg/dberr"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/tenantscope"
-	"gorm.io/gorm"
 )
 
 // Service wraps Repository with typed accessors, in-process cache, and
@@ -126,7 +126,7 @@ func (s *Service) getRaw(ctx context.Context, key string, tenantID int64) ([]byt
 
 	row, err := s.repo.Get(ctx, key, tenantID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrNotFound
 		}
 		return nil, err

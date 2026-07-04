@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/imkerbos/mxid/pkg/dberr"
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
-	"gorm.io/gorm"
 )
 
 // TOTP errors.
@@ -36,14 +36,14 @@ func (s *Service) SetupTOTP(ctx context.Context, userID int64) (secret, otpauthU
 
 	u, err := s.repo.GetByID(ctx, userID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return "", "", ErrUserNotFound
 		}
 		return "", "", fmt.Errorf("get user: %w", err)
 	}
 
 	existing, err := s.repo.GetMFA(ctx, userID, MFATypeTotp)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil && !dberr.IsNotFound(err) {
 		return "", "", fmt.Errorf("get mfa: %w", err)
 	}
 	if existing != nil && existing.Verified {
@@ -108,7 +108,7 @@ func (s *Service) VerifyTOTP(ctx context.Context, userID int64, code string) err
 	}
 	mfa, err := s.repo.GetMFA(ctx, userID, MFATypeTotp)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrMFANotEnrolled
 		}
 		return fmt.Errorf("get mfa: %w", err)
@@ -160,7 +160,7 @@ func (s *Service) VerifyTOTP(ctx context.Context, userID int64, code string) err
 func (s *Service) HasVerifiedTOTP(ctx context.Context, userID int64) (bool, error) {
 	mfa, err := s.repo.GetMFA(ctx, userID, MFATypeTotp)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return false, nil
 		}
 		return false, fmt.Errorf("get mfa: %w", err)

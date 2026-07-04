@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/imkerbos/mxid/pkg/dberr"
 	"github.com/imkerbos/mxid/pkg/snowflake"
 	"github.com/lib/pq"
 	"gorm.io/gorm"
@@ -40,7 +41,7 @@ func (s *Service) Get(ctx context.Context, tenantID, userID, appID int64) (*User
 		Where("tenant_id = ? AND user_id = ? AND app_id = ? AND revoked_at IS NULL", tenantID, userID, appID).
 		First(&row).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("get consent: %w", err)
@@ -82,7 +83,7 @@ func (s *Service) Grant(ctx context.Context, tenantID, userID, appID int64, scop
 
 	mergedScopes := mergeScopeSets(row.Scopes, scopes)
 
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	if dberr.IsNotFound(err) {
 		row = UserAppConsent{
 			ID:        s.idGen.Generate(),
 			TenantID:  tenantID,

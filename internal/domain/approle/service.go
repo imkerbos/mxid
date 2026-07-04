@@ -6,8 +6,7 @@ import (
 	"fmt"
 	"maps"
 
-	"gorm.io/gorm"
-
+	"github.com/imkerbos/mxid/pkg/dberr"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/snowflake"
 )
@@ -91,7 +90,7 @@ func (s *Service) validateParent(ctx context.Context, appID, groupID *int64) err
 func (s *Service) validateAppRoleParent(ctx context.Context, appRoleID, tenantID int64, appID, groupID *int64) error {
 	role, err := s.repo.GetRoleByID(ctx, appRoleID, tenantID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrAppRoleNotInParent
 		}
 		return fmt.Errorf("get app role: %w", err)
