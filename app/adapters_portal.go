@@ -453,13 +453,17 @@ func (a *portalAppQuerierAdapter) GetAppLaunchURL(ctx context.Context, appID, us
 			return *ap.HomeURL, nil
 		}
 		if ap.ClientID != nil {
-			return fmt.Sprintf("%s/protocol/oidc/authorize?client_id=%s&response_type=code&scope=openid+profile+email", a.issuer, *ap.ClientID), nil
+			// idp_initiated=1 marks this as a portal app-list launch so /authorize
+			// skips the SSO login-confirmation screen (seamless). SP-initiated
+			// logins (the app sends the user to /authorize) omit it and confirm.
+			return fmt.Sprintf("%s/protocol/oidc/authorize?client_id=%s&response_type=code&scope=openid+profile+email&idp_initiated=1", a.issuer, *ap.ClientID), nil
 		}
 	case app.ProtocolSAML:
 		return fmt.Sprintf("%s/protocol/saml/%s/sso", a.issuer, ap.Code), nil
 	case app.ProtocolCAS:
 		if ap.LoginURL != nil {
-			return fmt.Sprintf("%s/protocol/cas/%s/login?service=%s", a.issuer, ap.Code, *ap.LoginURL), nil
+			// idp_initiated=1 → portal launch skips the SSO confirmation (seamless).
+			return fmt.Sprintf("%s/protocol/cas/%s/login?service=%s&idp_initiated=1", a.issuer, ap.Code, *ap.LoginURL), nil
 		}
 	}
 	if ap.HomeURL != nil && *ap.HomeURL != "" {
@@ -526,6 +530,10 @@ func (a *portalSessionQuerierAdapter) DeleteAllByUserExcept(ctx context.Context,
 		_ = a.sessionMgr.Delete(ctx, namespace, s.ID)
 	}
 	return nil
+}
+
+func (a *portalSessionQuerierAdapter) MarkStepUpFresh(ctx context.Context, namespace, sessionID string) error {
+	return a.sessionMgr.MarkMFAVerified(ctx, namespace, sessionID)
 }
 
 /* ─────────── MFA ─────────── */

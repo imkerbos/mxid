@@ -3,6 +3,7 @@ package cas
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/protocol/resolver"
+	"github.com/imkerbos/mxid/pkg/ssoflow"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
@@ -23,11 +24,14 @@ func Register(
 	idRes resolver.IdentityResolver,
 	sessRes resolver.SessionResolver,
 	tenantRes resolver.TenantResolver,
+	appRoles AppRoleResolver,
 	logger *zap.Logger,
 ) *Module {
 	store := NewTicketStore(rdb)
 	serviceRegistry := NewServiceRegistry(rdb)
 	handler := NewHandler(issuer, portalURL, appRes, idRes, sessRes, tenantRes, store, serviceRegistry, logger)
+	handler.confirm = ssoflow.NewConfirmStore(rdb)
+	handler.appRoles = appRoles
 	handler.RegisterRoutes(rg)
 	return &Module{
 		Handler: handler,

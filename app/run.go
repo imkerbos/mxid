@@ -232,10 +232,15 @@ func registerModules(a *bootstrap.App) {
 			if u.DisplayName != nil {
 				displayName = *u.DisplayName
 			}
+			avatar := ""
+			if u.Avatar != nil {
+				avatar = *u.Avatar
+			}
 			return &authn.UserInfo{
 				ID:          u.ID,
 				Username:    u.Username,
 				DisplayName: displayName,
+				Avatar:      avatar,
 				Status:      int(u.Status),
 			}, nil
 		},
@@ -900,6 +905,9 @@ func registerModules(a *bootstrap.App) {
 	// provider (internal/protocol/oidcop); anything else keeps the hand-rolled
 	// engine. Both occupy /protocol/oidc, so exactly one is mounted.
 	var oidcModule *oidc.Module
+	// Dev only: allow http redirect_uris on private LAN IPs (e.g. a Grafana demo
+	// on http://192.168.x.x:port). Production (release mode) stays loopback+https.
+	oidc.SetAllowPrivateHTTPRedirect(!a.Config.Server.IsRelease())
 	if os.Getenv("MXID_OIDC_ENGINE") == "zitadel" {
 		if err := wireOIDCOP(a, issuer, appResolver, idResolver, sessResolver, consentModule.Service); err != nil {
 			a.Logger.Fatal("wire zitadel OIDC engine: " + err.Error())
@@ -907,8 +915,8 @@ func registerModules(a *bootstrap.App) {
 	} else {
 		oidcModule = oidc.Register(a.ProtocolGroup, issuer, a.Config.Server.PortalURL, a.Redis, appResolver, idResolver, sessResolver, tenantResolver, consentModule.Service, accessAdapter, appRolesAdapter, sessionMgr, a.EventBus)
 	}
-	samlModule := saml.Register(a.ProtocolGroup, issuer, a.Config.Server.PortalURL, appResolver, idResolver, sessResolver, tenantResolver, saml.NewSessionIndexStore(a.Redis), a.Logger)
-	casModule := cas.Register(a.ProtocolGroup, issuer, a.Config.Server.PortalURL, a.Redis, appResolver, idResolver, sessResolver, tenantResolver, a.Logger)
+	samlModule := saml.Register(a.ProtocolGroup, issuer, a.Config.Server.PortalURL, appResolver, idResolver, sessResolver, tenantResolver, saml.NewSessionIndexStore(a.Redis), appRolesAdapter, a.Redis, a.Logger)
+	casModule := cas.Register(a.ProtocolGroup, issuer, a.Config.Server.PortalURL, a.Redis, appResolver, idResolver, sessResolver, tenantResolver, appRolesAdapter, a.Logger)
 
 	// One-click offboarding (L1 access cutoff): disable account + back-channel
 	// logout the user's apps + kill all sessions. Wired here (after oidc) so it

@@ -78,7 +78,9 @@ export default function ConsentPage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!appId || scopes.length === 0) {
+    // scopes may be empty: SAML/CAS have no scopes, the page is then a pure
+    // "log in to App X?" confirmation (OIDC carries scopes to grant).
+    if (!appId) {
       setError(t('common.error'))
       setLoading(false)
       return
@@ -98,8 +100,11 @@ export default function ConsentPage() {
     if (submitting) return
     setSubmitting('allow')
     try {
-      await portalApi.grantConsent(appId, scopes)
-      window.location.href = returnTo
+      // Backend records the scope grant, mints a one-time confirm token, and
+      // returns the protocol replay URL with it appended — follow that so the
+      // SSO flow proceeds without re-confirming.
+      const { redirect } = await portalApi.grantConsent(appId, scopes, returnTo)
+      window.location.href = redirect || returnTo
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : t('common.failed')
       setError(msg)
@@ -109,8 +114,10 @@ export default function ConsentPage() {
 
   const handleDeny = () => {
     setSubmitting('deny')
-    // 用户拒绝 — 取消 OIDC 流程, 回应用库 (规范: RP 会从 authorize 收到 access_denied)
-    window.location.href = '/apps'
+    // 用户拒绝 → 回 /authorize 带 sso_deny=1; 后端用已校验的 redirect_uri 给 RP
+    // 发 access_denied (规范), 不在前端构造重定向 (避免开放重定向).
+    const sep = returnTo.includes('?') ? '&' : '?'
+    window.location.href = returnTo + sep + 'sso_deny=1'
   }
 
   if (loading) {
@@ -152,21 +159,26 @@ export default function ConsentPage() {
           </div>
         </div>
 
-        <p className="mb-3 text-sm font-medium text-ink">{t('portal.consent.subtitle')}</p>
-        <ul className="mb-8 space-y-2">
-          {scopeItems.map((s) => (
-            <li
-              key={s.scope}
-              className="flex items-start gap-3 rounded-lg border border-border bg-surface-muted px-3 py-2.5"
-            >
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-              <div className="min-w-0">
-                <p className="text-sm text-ink">{s.label}</p>
-                <p className="font-mono text-[10px] text-faint">{s.scope}</p>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <p className="mb-3 text-sm font-medium text-ink">
+          {scopeItems.length > 0 ? t('portal.consent.subtitle') : t('portal.consent.loginPrompt')}
+        </p>
+        {scopeItems.length > 0 && (
+          <ul className="mb-8 space-y-2">
+            {scopeItems.map((s) => (
+              <li
+                key={s.scope}
+                className="flex items-start gap-3 rounded-lg border border-border bg-surface-muted px-3 py-2.5"
+              >
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <div className="min-w-0">
+                  <p className="text-sm text-ink">{s.label}</p>
+                  <p className="font-mono text-[10px] text-faint">{s.scope}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        {scopeItems.length === 0 && <div className="mb-8" />}
 
         <div className="flex gap-3">
           <Button type="button" variant="secondary" className="flex-1" onClick={handleDeny} disabled={!!submitting}>

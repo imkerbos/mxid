@@ -15,6 +15,7 @@ type SAMLConfig struct {
 	SignResponse       bool              `json:"sign_response"`       // sign entire SAML response (default true)
 	EncryptAssertion   bool              `json:"encrypt_assertion"`   // encrypt assertion with SP cert (default false)
 	AttributeMapping   map[string]string `json:"attribute_mapping"`   // user attr -> SAML attribute name
+	RoleAttribute      string            `json:"role_attribute"`      // multi-value attribute name carrying the user's app roles (JIT-first). Default "roles"; set "groups"/"memberOf"/"Role" to match the SP.
 	SessionTTL         int               `json:"session_ttl"`         // seconds, default 28800 (8h)
 	DigestAlgorithm    string            `json:"digest_algorithm"`    // sha256
 	SignatureAlgorithm string            `json:"signature_algorithm"` // RSA-SHA256
@@ -26,6 +27,7 @@ func Defaults() *SAMLConfig {
 		NameIDFormat:     "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
 		SignAssertions:   true,
 		SignResponse:     true,
+		RoleAttribute:    "roles",
 		SessionTTL:       28800,
 		DigestAlgorithm:  "sha256",
 		SignatureAlgorithm: "RSA-SHA256",

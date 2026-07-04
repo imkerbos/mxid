@@ -163,15 +163,25 @@ export default function AppsPage() {
   const handleLaunch = async (app: PortalApp) => {
     if (launching) return
     setLaunching(app.id)
+    // Open the tab NOW, synchronously inside the click gesture. A window.open()
+    // AFTER `await` is treated as non-user-initiated and silently killed by the
+    // popup blocker (the "clicking does nothing" bug). We open about:blank here,
+    // sever its opener (tabnabbing defense — replaces the noopener flag, which
+    // would make open() return null and leave us nothing to navigate), then
+    // point it at the resolved launch URL once the API returns.
+    const win = window.open('about:blank', '_blank')
+    if (win) win.opener = null
     try {
       const { launch_url } = await portalApi.launchApp(app.id)
-      window.open(launch_url, '_blank', 'noopener,noreferrer')
+      if (win) win.location.replace(launch_url)
+      else window.location.href = launch_url // popup blocked → same-tab fallback
       // Best-effort refresh of recent — server has logged the launch.
       portalApi
         .listRecentApps(4)
         .then(setRecent)
         .catch(() => {})
     } catch (err: unknown) {
+      if (win) win.close()
       const msg = err instanceof Error ? err.message : t('portal.launchFailed')
       toast.error(t('portal.launchFailed'), msg)
     } finally {

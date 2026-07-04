@@ -2,13 +2,16 @@ package portal
 
 import (
 	"context"
+	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/authn"
 	"github.com/imkerbos/mxid/internal/domain/consent"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/response"
+	"github.com/imkerbos/mxid/pkg/ssoflow"
 )
 
 // ConsentApp carries the public-facing details a portal consent UI needs to
@@ -33,6 +36,9 @@ type consentHandler struct {
 	queryier   ConsentQuerier
 	tenantID   int64
 	bus        *event.Bus
+	// confirm mints the one-time SSO login-confirmation token that the protocol
+	// replay consumes; set so approve can issue it. nil = feature off.
+	confirm *ssoflow.ConfirmStore
 }
 
 // scopeDescriptions provides a Chinese-language label per OIDC scope. Tracked
@@ -105,16 +111,37 @@ func (h *consentHandler) grant(c *gin.Context) {
 		return
 	}
 	var req struct {
-		AppID  int64    `json:"app_id,string" binding:"required"`
-		Scopes []string `json:"scopes" binding:"required"`
+		AppID    int64    `json:"app_id,string" binding:"required"`
+		Scopes   []string `json:"scopes"`
+		ReturnTo string   `json:"return_to" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
-	if _, err := h.consentSvc.Grant(c.Request.Context(), h.tenantID, userID, req.AppID, req.Scopes); err != nil {
-		response.InternalError(c, "failed to record consent", err)
-		return
+	// Record the scope grant. Empty for non-OIDC confirmations (SAML/CAS carry
+	// no scopes) — the login confirmation itself is what matters there.
+	if len(req.Scopes) > 0 {
+		if _, err := h.consentSvc.Grant(c.Request.Context(), h.tenantID, userID, req.AppID, req.Scopes); err != nil {
+			response.InternalError(c, "failed to record consent", err)
+			return
+		}
+	}
+	// Mint the one-time confirm token and hand back the protocol replay URL with
+	// it appended, so the SPA redirects there and /authorize (or /sso, /login)
+	// consumes it once and proceeds without re-confirming.
+	redirect := req.ReturnTo
+	if h.confirm != nil {
+		tok, err := h.confirm.Issue(c.Request.Context(), userID, req.AppID)
+		if err != nil {
+			response.InternalError(c, "failed to issue confirmation", err)
+			return
+		}
+		sep := "?"
+		if strings.Contains(redirect, "?") {
+			sep = "&"
+		}
+		redirect += sep + "sso_confirm=" + url.QueryEscape(tok)
 	}
 	if h.bus != nil {
 		h.bus.Publish(c.Request.Context(), event.Event{
@@ -125,7 +152,7 @@ func (h *consentHandler) grant(c *gin.Context) {
 			},
 		})
 	}
-	response.OK(c, nil)
+	response.OK(c, gin.H{"redirect": redirect})
 }
 
 // list returns the user's active consents for "my authorizations" page.
