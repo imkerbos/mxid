@@ -8,10 +8,10 @@ import (
 
 	"github.com/imkerbos/mxid/internal/bootstrap"
 	"github.com/imkerbos/mxid/pkg/crypto"
+	"github.com/imkerbos/mxid/pkg/dberr"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/snowflake"
 	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
 )
 
 // Service errors.
@@ -258,7 +258,7 @@ func (s *Service) Create(ctx context.Context, tenantID int64, req *CreateUserReq
 	// Check username uniqueness
 	if _, err := s.repo.GetByUsername(ctx, tenantID, req.Username); err == nil {
 		return nil, ErrUsernameExists
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+	} else if !dberr.IsNotFound(err) {
 		return nil, fmt.Errorf("check username: %w", err)
 	}
 
@@ -266,7 +266,7 @@ func (s *Service) Create(ctx context.Context, tenantID int64, req *CreateUserReq
 	if req.Email != nil && *req.Email != "" {
 		if _, err := s.repo.GetByEmail(ctx, tenantID, *req.Email); err == nil {
 			return nil, ErrEmailExists
-		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		} else if !dberr.IsNotFound(err) {
 			return nil, fmt.Errorf("check email: %w", err)
 		}
 	}
@@ -275,7 +275,7 @@ func (s *Service) Create(ctx context.Context, tenantID int64, req *CreateUserReq
 	if req.Phone != nil && *req.Phone != "" {
 		if _, err := s.repo.GetByPhone(ctx, tenantID, *req.Phone); err == nil {
 			return nil, ErrPhoneExists
-		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		} else if !dberr.IsNotFound(err) {
 			return nil, fmt.Errorf("check phone: %w", err)
 		}
 	}
@@ -359,7 +359,7 @@ func (s *Service) Create(ctx context.Context, tenantID int64, req *CreateUserReq
 func (s *Service) GetByID(ctx context.Context, id int64) (*User, error) {
 	user, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrUserNotFound
 		}
 		return nil, fmt.Errorf("get user: %w", err)
@@ -371,7 +371,7 @@ func (s *Service) GetByID(ctx context.Context, id int64) (*User, error) {
 func (s *Service) Update(ctx context.Context, id int64, tenantID int64, req *UpdateUserRequest) (*User, error) {
 	user, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrUserNotFound
 		}
 		return nil, fmt.Errorf("get user: %w", err)
@@ -382,7 +382,7 @@ func (s *Service) Update(ctx context.Context, id int64, tenantID int64, req *Upd
 		if user.Email == nil || *user.Email != *req.Email {
 			if _, err := s.repo.GetByEmail(ctx, tenantID, *req.Email); err == nil {
 				return nil, ErrEmailExists
-			} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			} else if !dberr.IsNotFound(err) {
 				return nil, fmt.Errorf("check email: %w", err)
 			}
 		}
@@ -394,7 +394,7 @@ func (s *Service) Update(ctx context.Context, id int64, tenantID int64, req *Upd
 		if user.Phone == nil || *user.Phone != *req.Phone {
 			if _, err := s.repo.GetByPhone(ctx, tenantID, *req.Phone); err == nil {
 				return nil, ErrPhoneExists
-			} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			} else if !dberr.IsNotFound(err) {
 				return nil, fmt.Errorf("check phone: %w", err)
 			}
 		}
@@ -428,7 +428,7 @@ func (s *Service) Update(ctx context.Context, id int64, tenantID int64, req *Upd
 // Delete soft-deletes a user.
 func (s *Service) Delete(ctx context.Context, id int64) error {
 	if _, err := s.repo.GetByID(ctx, id); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrUserNotFound
 		}
 		return fmt.Errorf("get user: %w", err)
@@ -458,7 +458,7 @@ func (s *Service) List(ctx context.Context, tenantID int64, params ListParams) (
 // UpdateStatus updates a user's status.
 func (s *Service) UpdateStatus(ctx context.Context, id int64, status int) error {
 	if err := s.repo.UpdateStatus(ctx, id, status); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrUserNotFound
 		}
 		return fmt.Errorf("update status: %w", err)
@@ -484,7 +484,7 @@ func (s *Service) UpdateStatus(ctx context.Context, id int64, status int) error 
 func (s *Service) ChangePassword(ctx context.Context, id int64, req *ChangePasswordRequest) error {
 	user, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrUserNotFound
 		}
 		return fmt.Errorf("get user: %w", err)
@@ -543,7 +543,7 @@ func (s *Service) ChangePassword(ctx context.Context, id int64, req *ChangePassw
 func (s *Service) ResetPassword(ctx context.Context, id int64, req *ResetPasswordRequest) error {
 	u, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrUserNotFound
 		}
 		return fmt.Errorf("get user: %w", err)
@@ -603,7 +603,7 @@ func (s *Service) ResetPassword(ctx context.Context, id int64, req *ResetPasswor
 // cannot filter them directly.
 func (s *Service) requireUser(ctx context.Context, userID int64) error {
 	if _, err := s.repo.GetByID(ctx, userID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrUserNotFound
 		}
 		return fmt.Errorf("get user: %w", err)
@@ -618,7 +618,7 @@ func (s *Service) GetDetail(ctx context.Context, userID int64) (*UserDetail, err
 	}
 	detail, err := s.repo.GetDetailByUserID(ctx, userID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrDetailNotFound
 		}
 		return nil, fmt.Errorf("get user detail: %w", err)
@@ -642,7 +642,7 @@ func (s *Service) UpdateDetail(ctx context.Context, detail *UserDetail) error {
 // the existing value untouched; explicit "" clears the field.
 func (s *Service) UpsertDetail(ctx context.Context, userID int64, req *UpdateDetailRequest) (*UserDetail, error) {
 	if _, err := s.repo.GetByID(ctx, userID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrUserNotFound
 		}
 		return nil, fmt.Errorf("get user: %w", err)
@@ -651,7 +651,7 @@ func (s *Service) UpsertDetail(ctx context.Context, userID int64, req *UpdateDet
 	detail, err := s.repo.GetDetailByUserID(ctx, userID)
 	created := false
 	if err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
+		if !dberr.IsNotFound(err) {
 			return nil, fmt.Errorf("get user detail: %w", err)
 		}
 		now := time.Now()
@@ -726,7 +726,7 @@ func (s *Service) UpsertDetail(ctx context.Context, userID int64, req *UpdateDet
 // another user — the repo query is scoped to both ids).
 func (s *Service) UnbindIdentity(ctx context.Context, userID, identityID int64) error {
 	if err := s.repo.DeleteIdentity(ctx, userID, identityID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrIdentityNotFound
 		}
 		return fmt.Errorf("delete identity: %w", err)
@@ -744,7 +744,7 @@ func (s *Service) UnbindIdentity(ctx context.Context, userID, identityID int64) 
 // from policy-driven lockouts.
 func (s *Service) LockUser(ctx context.Context, id int64, reason string, actorID int64) error {
 	if err := s.repo.UpdateStatus(ctx, id, StatusLocked); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrUserNotFound
 		}
 		return fmt.Errorf("lock user: %w", err)
@@ -766,7 +766,7 @@ func (s *Service) LockUser(ctx context.Context, id int64, reason string, actorID
 // for the lockout window to elapse.
 func (s *Service) UnlockUser(ctx context.Context, id int64, actorID int64) error {
 	if err := s.repo.UpdateStatus(ctx, id, StatusActive); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrUserNotFound
 		}
 		return fmt.Errorf("unlock user: %w", err)

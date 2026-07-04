@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/imkerbos/mxid/pkg/dberr"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/snowflake"
-	"gorm.io/gorm"
 )
 
 // Service errors.
@@ -123,7 +123,7 @@ func (s *Service) CreateRole(ctx context.Context, tenantID int64, req *CreateRol
 	// Check code uniqueness within the tenant.
 	if _, err := s.repo.GetRoleByCode(ctx, tenantID, req.Code); err == nil {
 		return nil, ErrRoleCodeExists
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+	} else if !dberr.IsNotFound(err) {
 		return nil, fmt.Errorf("check role code: %w", err)
 	}
 
@@ -155,7 +155,7 @@ func (s *Service) CreateRole(ctx context.Context, tenantID int64, req *CreateRol
 func (s *Service) GetRole(ctx context.Context, id int64) (*Role, error) {
 	role, err := s.repo.GetRoleByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrRoleNotFound
 		}
 		return nil, fmt.Errorf("get role: %w", err)
@@ -167,7 +167,7 @@ func (s *Service) GetRole(ctx context.Context, id int64) (*Role, error) {
 func (s *Service) UpdateRole(ctx context.Context, id int64, req *UpdateRoleRequest) (*Role, error) {
 	role, err := s.repo.GetRoleByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrRoleNotFound
 		}
 		return nil, fmt.Errorf("get role: %w", err)
@@ -197,7 +197,7 @@ func (s *Service) UpdateRole(ctx context.Context, id int64, req *UpdateRoleReque
 func (s *Service) DeleteRole(ctx context.Context, id int64) error {
 	role, err := s.repo.GetRoleByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrRoleNotFound
 		}
 		return fmt.Errorf("get role: %w", err)
@@ -235,7 +235,7 @@ func (s *Service) ListRoles(ctx context.Context, tenantID int64, params RoleList
 func (s *Service) GetRolePermissions(ctx context.Context, roleID int64) ([]*Permission, error) {
 	// Verify role exists
 	if _, err := s.repo.GetRoleByID(ctx, roleID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrRoleNotFound
 		}
 		return nil, fmt.Errorf("get role: %w", err)
@@ -267,7 +267,7 @@ func (s *Service) GetRolePermissions(ctx context.Context, roleID int64) ([]*Perm
 func (s *Service) SetRolePermissions(ctx context.Context, roleID int64, permissionIDs []int64) error {
 	// Verify role exists
 	if _, err := s.repo.GetRoleByID(ctx, roleID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrRoleNotFound
 		}
 		return fmt.Errorf("get role: %w", err)
@@ -313,7 +313,7 @@ func (s *Service) SetRolePermissions(ctx context.Context, roleID int64, permissi
 // — half-set scopes would be ambiguous.
 func (s *Service) AddMember(ctx context.Context, roleID int64, req *AddMemberRequest) (*RoleBinding, error) {
 	if _, err := s.repo.GetRoleByID(ctx, roleID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, ErrRoleNotFound
 		}
 		return nil, fmt.Errorf("get role: %w", err)
@@ -372,14 +372,14 @@ func (s *Service) AddMember(ctx context.Context, roleID int64, req *AddMemberReq
 func (s *Service) RemoveMember(ctx context.Context, roleID int64, memberID int64) error {
 	// Verify role exists
 	if _, err := s.repo.GetRoleByID(ctx, roleID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrRoleNotFound
 		}
 		return fmt.Errorf("get role: %w", err)
 	}
 
 	if err := s.repo.RemoveMember(ctx, memberID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return ErrMemberNotFound
 		}
 		return fmt.Errorf("remove member: %w", err)
@@ -397,7 +397,7 @@ func (s *Service) RemoveMember(ctx context.Context, roleID int64, memberID int64
 func (s *Service) ListMembers(ctx context.Context, roleID int64, params MemberListParams) ([]*RoleBinding, int64, error) {
 	// Verify role exists
 	if _, err := s.repo.GetRoleByID(ctx, roleID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dberr.IsNotFound(err) {
 			return nil, 0, ErrRoleNotFound
 		}
 		return nil, 0, fmt.Errorf("get role: %w", err)

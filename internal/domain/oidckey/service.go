@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/imkerbos/mxid/pkg/crypto"
+	"github.com/imkerbos/mxid/pkg/dberr"
 	"github.com/imkerbos/mxid/pkg/snowflake"
 	"gorm.io/gorm"
 )
@@ -212,7 +213,7 @@ func (s *Service) activeKey(ctx context.Context) (*ProviderKey, error) {
 		Where("status = ?", StatusActive).
 		Order("created_at DESC").
 		First(&key).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	if dberr.IsNotFound(err) {
 		return nil, ErrNoActiveKey
 	}
 	if err != nil {

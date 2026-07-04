@@ -2,9 +2,9 @@ package app
 
 import (
 	"context"
-	"errors"
 	"time"
 
+	"github.com/imkerbos/mxid/pkg/dberr"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -63,7 +63,7 @@ func (r *favoriteRepo) Remove(ctx context.Context, userID, appID int64) error {
 	err := r.db.WithContext(ctx).
 		Where("user_id = ? AND app_id = ?", userID, appID).
 		Delete(&UserAppFavorite{}).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	if dberr.IsNotFound(err) {
 		return nil
 	}
 	return err
