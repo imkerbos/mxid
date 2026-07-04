@@ -163,8 +163,8 @@ type TenantConfig struct {
 // KeyEncryptionKey is a base64-encoded 32-byte (256-bit) AES master key.
 // Source (priority order):
 //
-//   1. Env var MXID_CRYPTO_KEY_ENCRYPTION_KEY
-//   2. YAML key crypto.key_encryption_key
+//  1. Env var MXID_CRYPTO_KEY_ENCRYPTION_KEY
+//  2. YAML key crypto.key_encryption_key
 //
 // Missing or malformed key MUST cause server startup to fail fast.
 type CryptoConfig struct {
@@ -311,6 +311,16 @@ func (c *Config) validateSecrets() error {
 	}
 	if !c.Session.CookieSecure {
 		return fmt.Errorf("session.cookie_secure must be true in release mode (HTTPS required)")
+	}
+	// Fail fast on a misconfigured deployment host rather than silently degrading:
+	// an empty allow-list collapses CORS/CSRF to localhost defaults, and a
+	// localhost/empty issuer mints tokens with an unreachable iss.
+	if len(c.Server.AllowedOrigins) == 0 {
+		return fmt.Errorf("server.allowed_origins must be set in release mode; export MXID_ALLOWED_ORIGINS")
+	}
+	iss := strings.TrimSpace(c.Server.IssuerURL)
+	if iss == "" || strings.Contains(iss, "localhost") || strings.Contains(iss, "127.0.0.1") {
+		return fmt.Errorf("server.issuer_url must be an externally-reachable URL in release mode (not empty/localhost); export MXID_ISSUER_URL")
 	}
 	return nil
 }
