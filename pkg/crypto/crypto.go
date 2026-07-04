@@ -12,9 +12,15 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// passwordBcryptCost is above bcrypt.DefaultCost (10) to raise the work factor
+// for user passwords toward commercial-IAM norms. CompareHashAndPassword reads
+// the cost from the stored hash, so existing cost-10 hashes keep verifying and
+// only migrate to the higher cost when the password is next set.
+const passwordBcryptCost = 12
+
 // HashPassword hashes a password using bcrypt.
 func HashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), passwordBcryptCost)
 	if err != nil {
 		return "", fmt.Errorf("hash password: %w", err)
 	}
