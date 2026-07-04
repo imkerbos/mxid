@@ -270,7 +270,20 @@ curl -X POST {{ISSUER}}/protocol/oidc/token \\
 共享应用（cross-tenant）务必读 \`tenant_code\` 区分用户来源。`,
       },
       {
-        title: '7. End Session（RP-Initiated Logout）',
+        title: '7. 角色权限（app_roles claim）',
+        body: `用户对该应用的**有效角色 code** 以 \`app_roles\` claim（字符串数组）注入 id_token 和 userinfo：
+
+\`\`\`json
+{ "sub": "kerbos@solidleisure", "app_roles": ["admin", "dev"] }
+\`\`\`
+
+- **JIT 临时提权的角色排在数组最前**（\`app_roles[0]\`）。取"单个主角色"的 SP（如 Grafana 的 \`role_attribute_path\`）读 \`app_roles[0]\` 即拿到当前提权角色；求权限并集的 SP（如 Jenkins matrix）遍历整个数组即可。
+- 角色到期（JIT 授权失效）后，该角色自动从 \`app_roles\` 消失。
+- 无任何角色绑定时回退到应用的默认角色。
+- SP 侧示例（Grafana generic_oauth）：\`role_attribute_path: app_roles[0] == 'admin' && 'Admin' || 'Viewer'\`。`,
+      },
+      {
+        title: '8. End Session（RP-Initiated Logout）',
         body: `\`\`\`
 GET {{ISSUER}}/protocol/oidc/end-session?
     id_token_hint=<id_token>
@@ -382,7 +395,22 @@ console 端 app.\`protocol_config\` 填：
 想换名字就改 \`attribute_mapping\`，例如 SP 期望 \`email\` 而非 \`mail\`，配 \`{"email":"email"}\` 即可。`,
       },
       {
-        title: '5. SLO（Single Logout）',
+        title: '5. 角色权限（多值 role 属性）',
+        body: `用户对该应用的有效角色 code 作为一个**多值 Attribute** 输出，属性名由 \`role_attribute\` 决定（默认 \`roles\`；可改成 SP 惯例名 \`memberOf\` / \`groups\` / \`Role\`）：
+
+\`\`\`xml
+<saml:Attribute Name="roles">
+  <saml:AttributeValue>admin</saml:AttributeValue>
+  <saml:AttributeValue>dev</saml:AttributeValue>
+</saml:Attribute>
+\`\`\`
+
+- **JIT 临时提权的角色排在最前**（第一个 \`AttributeValue\`）。
+- 到期后该角色自动消失。SP 端按属性做权限映射（如 Jenkins SAML plugin 的 Group Attribute）。
+- 在应用的 SAML 协议配置里设 \`"role_attribute": "memberOf"\` 即可对齐目标 SP。`,
+      },
+      {
+        title: '6. SLO（Single Logout）',
         body: `两种触发方向：
 
 **IDP-initiated**：用户在 MXID portal 登出 → MXID 向所有 SP 推送 LogoutRequest
@@ -391,7 +419,7 @@ console 端 app.\`protocol_config\` 填：
 SLO 依赖 SP 端实现完整，很多商业 SaaS（如 Jira Cloud）不支持 SLO。`,
       },
       {
-        title: '6. 验证 metadata',
+        title: '7. 验证 metadata',
         body: `部署完成后浏览器直接打开应该看到 XML：
 
 \`\`\`
@@ -463,12 +491,14 @@ GET {{ISSUER}}/protocol/cas/<app_code>/p3/serviceValidate?
       <cas:mail>kerbos@solidleisure.com</cas:mail>
       <cas:displayName>Kerbos</cas:displayName>
       <cas:tenant_code>solidleisure</cas:tenant_code>
+      <cas:roles>admin</cas:roles>
+      <cas:roles>dev</cas:roles>
     </cas:attributes>
   </cas:authenticationSuccess>
 </cas:serviceResponse>
 \`\`\`
 
-CAS **只输出** username/email/display_name/phone（按 mapping 改名）+ tenant_code，**不发 groups**。需要组信息走 OIDC/SAML。
+除 username/email/display_name/phone（按 mapping 改名）+ tenant_code 外，用户对该应用的**有效角色 code** 也作为**多值属性**输出（每个角色一个 \`<cas:roles>\` 元素）。属性名由 \`role_attribute\` 决定（默认 \`roles\`，可改 \`memberOf\` / \`groups\`）。**JIT 临时提权的角色排在最前**，到期自动消失。
 
 失败：
 
@@ -822,6 +852,7 @@ extra_hosts:
       '⚠️ MXID app 必须加 claim_mapper {claim:"groups", source:"user.groups.codes"}, 否则 userinfo 无 groups, Grafana 永远 Viewer',
       '⚠️ docker 环境下 auth_url=localhost, token/api=host.docker.internal (Linux 加 extra_hosts: host-gateway)',
       'role_attribute_path 是 JMESPath, contains(groups[*], "x") 检查 group code 命中',
+      'JIT 感知的角色映射: 把 role_attribute_path 指向 `app_roles` 而非 `groups`(如 `app_roles[0] == \'admin\' && \'Admin\' || \'Viewer\'`)。JIT 提权的应用角色排在 app_roles 最前, 授权期内 Grafana 升为 Admin, 到期自动回落 —— 无需 claim_mapper',
       '默认 ALLOW_SIGN_UP=true 才会 SSO 自动建 grafana 用户. false 则需先手建',
       'subject_strategy=username 即可, grafana 用 sub 做唯一标识',
     ],
