@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/microcosm-cc/bluemonday"
+
 	"github.com/imkerbos/mxid/internal/domain/platformconfig"
 	"github.com/imkerbos/mxid/internal/domain/setting"
 	"github.com/imkerbos/mxid/internal/middleware"
@@ -207,9 +209,24 @@ func (h *Handler) getBranding(c *gin.Context) {
 	v := setting.DefaultBranding()
 	h.genericGet(c, setting.KeyBranding, &v)
 }
+// brandingSanitizer strips scripts/event-handlers/javascript: URIs from the
+// admin-authored login_footer_html, which the login pages render with
+// dangerouslySetInnerHTML on the PRE-AUTH page — raw HTML would be stored XSS
+// executing in every visitor's browser (including a super_admin logging in).
+var brandingSanitizer = bluemonday.UGCPolicy()
+
 func (h *Handler) putBranding(c *gin.Context) {
 	var v setting.Branding
-	h.genericPut(c, setting.KeyBranding, &v)
+	if err := c.ShouldBindJSON(&v); err != nil {
+		response.BadRequest(c, 40001, err.Error())
+		return
+	}
+	v.LoginFooterHTML = brandingSanitizer.Sanitize(v.LoginFooterHTML)
+	if err := h.service.Set(c.Request.Context(), setting.KeyBranding, h.tenantID(c), &v, h.userID(c)); err != nil {
+		response.InternalError(c, "", err)
+		return
+	}
+	response.OK(c, gin.H{"saved": true})
 }
 
 func (h *Handler) getLoginMethods(c *gin.Context) {
