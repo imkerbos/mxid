@@ -209,15 +209,15 @@ func (h *Handler) discovery(c *gin.Context) {
 	urls := h.resolveURLs(c.Request.Context(), c.Request.Host)
 	iss := urls.Issuer
 	c.JSON(http.StatusOK, gin.H{
-		"issuer":                                iss,
-		"authorization_endpoint":                iss + "/protocol/oidc/authorize",
-		"token_endpoint":                        iss + "/protocol/oidc/token",
-		"userinfo_endpoint":                     iss + "/protocol/oidc/userinfo",
-		"jwks_uri":                              iss + "/protocol/oidc/jwks",
-		"revocation_endpoint":                   iss + "/protocol/oidc/revoke",
-		"introspection_endpoint":                iss + "/protocol/oidc/introspect",
-		"end_session_endpoint":                  iss + "/protocol/oidc/end-session",
-		"scopes_supported":                      []string{"openid", "profile", "email", "phone", "groups", "offline_access"},
+		"issuer":                 iss,
+		"authorization_endpoint": iss + "/protocol/oidc/authorize",
+		"token_endpoint":         iss + "/protocol/oidc/token",
+		"userinfo_endpoint":      iss + "/protocol/oidc/userinfo",
+		"jwks_uri":               iss + "/protocol/oidc/jwks",
+		"revocation_endpoint":    iss + "/protocol/oidc/revoke",
+		"introspection_endpoint": iss + "/protocol/oidc/introspect",
+		"end_session_endpoint":   iss + "/protocol/oidc/end-session",
+		"scopes_supported":       []string{"openid", "profile", "email", "phone", "groups", "offline_access"},
 		"response_types_supported": []string{
 			"code",
 			"id_token",
@@ -226,13 +226,13 @@ func (h *Handler) discovery(c *gin.Context) {
 			"code token",
 			"code id_token token",
 		},
-		"response_modes_supported":              []string{"query", "fragment", "form_post"},
-		"grant_types_supported":                 []string{"authorization_code", "refresh_token", "client_credentials"},
-		"subject_types_supported":               []string{"public", "pairwise"},
-		"id_token_signing_alg_values_supported": []string{"RS256"},
-		"token_endpoint_auth_methods_supported":              []string{"client_secret_basic", "client_secret_post", "client_secret_jwt", "private_key_jwt", "none"},
+		"response_modes_supported":                         []string{"query", "fragment", "form_post"},
+		"grant_types_supported":                            []string{"authorization_code", "refresh_token", "client_credentials"},
+		"subject_types_supported":                          []string{"public", "pairwise"},
+		"id_token_signing_alg_values_supported":            []string{"RS256"},
+		"token_endpoint_auth_methods_supported":            []string{"client_secret_basic", "client_secret_post", "client_secret_jwt", "private_key_jwt", "none"},
 		"token_endpoint_auth_signing_alg_values_supported": []string{"RS256", "HS256"},
-		"code_challenge_methods_supported":      []string{"S256"},
+		"code_challenge_methods_supported":                 []string{"S256"},
 		"claims_supported": []string{
 			"sub", "iss", "aud", "exp", "iat", "auth_time", "nonce",
 			"at_hash", "c_hash", "azp", "amr", "acr",
@@ -540,9 +540,12 @@ func (h *Handler) token(c *gin.Context) {
 		allowed, retryAfter, _ := checkRateLimit(c.Request.Context(), h.store.Redis(), clientID, limit)
 		if !allowed {
 			c.Header("Retry-After", fmt.Sprintf("%d", retryAfter))
+			// "slow_down" is the OAuth-registered error (RFC 8628 §3.5) for
+			// "back off and retry" — a strict client's error enum recognises it,
+			// unlike the non-standard "rate_limited". Retry-After carries the delay.
 			c.JSON(http.StatusTooManyRequests, gin.H{
-				"error":             "rate_limited",
-				"error_description": "client token-endpoint rate limit exceeded",
+				"error":             "slow_down",
+				"error_description": "client token-endpoint rate limit exceeded; retry after the Retry-After interval",
 			})
 			return
 		}
@@ -1096,13 +1099,13 @@ func (h *Handler) introspect(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"active":    true,
-		"sub":       claims["sub"],
-		"client_id": claims["client_id"],
-		"scope":     claims["scope"],
-		"exp":       claims["exp"],
-		"iat":       claims["iat"],
-		"iss":       claims["iss"],
+		"active":     true,
+		"sub":        claims["sub"],
+		"client_id":  claims["client_id"],
+		"scope":      claims["scope"],
+		"exp":        claims["exp"],
+		"iat":        claims["iat"],
+		"iss":        claims["iss"],
 		"token_type": "Bearer",
 	})
 }
@@ -1607,7 +1610,17 @@ func (h *Handler) redirectError(c *gin.Context, redirectURI, state, errCode, err
 }
 
 func (h *Handler) tokenError(c *gin.Context, errCode, errDesc string) {
-	c.JSON(http.StatusBadRequest, gin.H{
+	// RFC 6749 §5.2: invalid_client is a 401 (not 400), and when the client
+	// attempted to authenticate via the Authorization request header the server
+	// MUST return a WWW-Authenticate challenge. Every other token error stays 400.
+	status := http.StatusBadRequest
+	if errCode == "invalid_client" {
+		status = http.StatusUnauthorized
+		if c.GetHeader("Authorization") != "" {
+			c.Header("WWW-Authenticate", `Basic realm="oauth2"`)
+		}
+	}
+	c.JSON(status, gin.H{
 		"error":             errCode,
 		"error_description": errDesc,
 	})
