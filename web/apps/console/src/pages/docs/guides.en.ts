@@ -78,6 +78,7 @@ ${FALLBACK_BODY}`,
     notes: [
       'Supported flows: Authorization Code + PKCE, Refresh, Client Credentials, Implicit (legacy), Hybrid.',
       'Subject strategies: username, username_suffixed, email, persistent_id, pairwise.',
+      'Effective app roles ship as the `app_roles` claim (string array) in id_token + userinfo. JIT-elevated roles come first (app_roles[0]); an expired grant drops out automatically. Single-primary-role SPs read app_roles[0]; permission-union SPs iterate the whole array.',
     ],
   },
   {
@@ -102,6 +103,7 @@ ${FALLBACK_BODY}`,
     notes: [
       'Assertions signed with SHA-256.',
       'EntityID equals the issuer URL.',
+      'Effective app roles ship as a multi-value attribute named by `role_attribute` (default `roles`; set `memberOf`/`groups`/`Role` to match the SP). JIT-elevated roles come first; an expired grant drops out automatically.',
     ],
   },
   {
@@ -127,6 +129,7 @@ ${FALLBACK_BODY}`,
     notes: [
       'CAS 3.0 returns XML with <cas:user> and <cas:attributes>.',
       'service_urls allow-list in protocol_config defaults to wide-open ([]).',
+      'Effective app roles ship as multi-value <cas:roles> elements (name configurable via `role_attribute`, default `roles`). JIT-elevated roles come first; an expired grant drops out automatically.',
     ],
   },
 
@@ -410,6 +413,7 @@ extra_hosts:
       '⚠️ The MXID app must include the claim_mapper {claim:"groups", source:"user.groups.codes"}, otherwise Grafana never sees groups and everyone is Viewer.',
       '⚠️ In docker, auth_url=localhost, token/api=host.docker.internal (on Linux add extra_hosts: host-gateway).',
       'role_attribute_path is JMESPath; contains(groups[*], "x") matches a group code.',
+      'For JIT-aware roles, point role_attribute_path at `app_roles` instead of `groups` (e.g. `app_roles[0] == \'admin\' && \'Admin\' || \'Viewer\'`). The JIT-elevated app role sits first in app_roles, so Grafana promotes to Admin for the grant window and drops back when it expires — no claim_mapper needed.',
       'ALLOW_SIGN_UP=true is required for Grafana to auto-create users on SSO. If false, users must already exist locally.',
       'subject_strategy=username is sufficient — Grafana uses sub as the unique identifier.',
     ],
