@@ -1,11 +1,10 @@
 package permission
 
 import (
-	"strconv"
-
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/bootstrap"
 	"github.com/imkerbos/mxid/pkg/authz"
+	"github.com/imkerbos/mxid/pkg/ginutil"
 	"github.com/imkerbos/mxid/pkg/response"
 )
 
@@ -37,9 +36,8 @@ func RegisterEffectiveRolesRoute(app *bootstrap.App, svc *Service, groups GroupL
 	// requires the same permission as any other user-detail read (previously it
 	// carried no authz.Require at all — an open admin endpoint).
 	app.ConsoleGroup.GET("/users/:id/roles", authz.Require("user.read", nil), func(c *gin.Context) {
-		uid, err := strconv.ParseInt(c.Param("id"), 10, 64)
-		if err != nil {
-			response.BadRequest(c, 40001, "invalid user id")
+		uid, ok := ginutil.ParseInt64Param(c, "id")
+		if !ok {
 			return
 		}
 		items, err := svc.EffectiveRolesForUser(c.Request.Context(), tenantID, uid, groups, orgs)
