@@ -154,7 +154,7 @@ func (h *appsHandler) reorderFavorites(c *gin.Context) {
 		AppIDs []string `json:"app_ids" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, err.Error())
+		response.BadRequest(c, 40001, "invalid request body")
 		return
 	}
 	parsedIDs := make([]int64, 0, len(req.AppIDs))
