@@ -197,15 +197,10 @@ func (s *Service) List(ctx context.Context, tenantID int64, keyword string, page
 		return nil, 0, fmt.Errorf("list user groups: %w", err)
 	}
 
-	responses := make([]*GroupResponse, len(groups))
-	for i, g := range groups {
-		count, err := s.repo.CountMembers(ctx, g.ID)
-		if err != nil {
-			return nil, 0, fmt.Errorf("count members for group %d: %w", g.ID, err)
-		}
-		responses[i] = ToGroupResponse(g, count)
+	responses, err := s.buildGroupResponsesWithCounts(ctx, groups)
+	if err != nil {
+		return nil, 0, err
 	}
-
 	return responses, total, nil
 }
 
@@ -215,15 +210,24 @@ func (s *Service) ListByUserID(ctx context.Context, tenantID, userID int64) ([]*
 	if err != nil {
 		return nil, fmt.Errorf("list groups by user: %w", err)
 	}
+	// Member counts resolved in one batched query (informational on this listing).
+	return s.buildGroupResponsesWithCounts(ctx, groups)
+}
+
+// buildGroupResponsesWithCounts maps groups to responses, resolving all member
+// counts in ONE grouped query instead of an N+1 CountMembers-per-group loop.
+func (s *Service) buildGroupResponsesWithCounts(ctx context.Context, groups []*UserGroup) ([]*GroupResponse, error) {
+	ids := make([]int64, len(groups))
+	for i, g := range groups {
+		ids[i] = g.ID
+	}
+	counts, err := s.repo.CountMembersByGroupIDs(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("count group members: %w", err)
+	}
 	responses := make([]*GroupResponse, len(groups))
 	for i, g := range groups {
-		// Member count on the per-user listing is informational; the join
-		// already proved the user is in the group.
-		count, err := s.repo.CountMembers(ctx, g.ID)
-		if err != nil {
-			return nil, fmt.Errorf("count members for group %d: %w", g.ID, err)
-		}
-		responses[i] = ToGroupResponse(g, count)
+		responses[i] = ToGroupResponse(g, counts[g.ID])
 	}
 	return responses, nil
 }
