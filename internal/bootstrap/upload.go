@@ -31,15 +31,15 @@ const (
 	iconPrefix = "/static/app-icons/"
 )
 
-// allowedIconMime caps the accepted formats. svg+xml is included because many
-// open-source brands ship logos as SVG; everything else is raster. Rejecting
-// unknown types keeps users from uploading PDFs or HEIC that don't render.
+// allowedIconMime caps the accepted formats. Raster only — SVG is deliberately
+// excluded: it can embed <script>, and icons are served same-origin and
+// unauthenticated, so a scripted SVG would be stored XSS. Rejecting unknown
+// types also keeps users from uploading PDFs or HEIC that don't render.
 var allowedIconMime = map[string]string{
-	"image/png":     ".png",
-	"image/jpeg":    ".jpg",
-	"image/svg+xml": ".svg",
-	"image/webp":    ".webp",
-	"image/gif":     ".gif",
+	"image/png":  ".png",
+	"image/jpeg": ".jpg",
+	"image/webp": ".webp",
+	"image/gif":  ".gif",
 }
 
 // RegisterUpload wires the icon upload endpoint and the DB-backed static serve.
@@ -70,6 +70,11 @@ func RegisterUpload(r *gin.Engine, consoleGroup *gin.RouterGroup, idGen *snowfla
 		}
 		c.Header("Cache-Control", "public, max-age=31536000, immutable")
 		c.Header("ETag", etag)
+		// Defense-in-depth for the unauthenticated same-origin asset serve:
+		// never let the browser sniff a different type, and sandbox/deny any
+		// active content if the URL is navigated to directly.
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("Content-Security-Policy", "default-src 'none'; sandbox")
 		c.Data(http.StatusOK, u.Mime, u.Data)
 	})
 

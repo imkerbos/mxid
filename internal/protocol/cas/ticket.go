@@ -73,16 +73,16 @@ func (s *TicketStore) CreateTicket(ctx context.Context, userID, tenantID int64, 
 // ConsumeTicket retrieves and deletes a service ticket (single-use).
 func (s *TicketStore) ConsumeTicket(ctx context.Context, ticket string) (*ServiceTicket, error) {
 	key := ticketPrefix + ticket
-	data, err := s.rdb.Get(ctx, key).Bytes()
+	// GETDEL is atomic: a captured ST can't be validated twice via a
+	// Get-then-Del race (both concurrent validations would otherwise read it
+	// before either deletes it).
+	data, err := s.rdb.GetDel(ctx, key).Bytes()
 	if err != nil {
 		if err == redis.Nil {
 			return nil, fmt.Errorf("ticket not found or expired")
 		}
 		return nil, fmt.Errorf("get ticket: %w", err)
 	}
-
-	// Delete immediately (single-use)
-	s.rdb.Del(ctx, key)
 
 	var st ServiceTicket
 	if err := json.Unmarshal(data, &st); err != nil {
