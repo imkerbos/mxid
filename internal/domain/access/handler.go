@@ -2,6 +2,7 @@ package access
 
 import (
 	"context"
+	"errors"
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/authn"
@@ -130,6 +131,7 @@ func (h *Handler) RegisterPortal(rg *gin.RouterGroup) {
 //	40009 — createRequest (portal): service/validation error
 //	40010 — updateEligibility: bad request body
 //	40011 — updateEligibility: service/validation error
+//	40012 — approve: self-approval refused (separation of duties, 403)
 //	40101 — createRequest (portal): no authenticated user in context
 
 // ─── console handlers ─────────────────────────────────────────────────────────
@@ -244,6 +246,13 @@ func (h *Handler) approve(c *gin.Context) {
 
 	out, err := h.svc.Approve(ctx, tenantID, id, h.userID(c), body.Reason)
 	if err != nil {
+		// Separation-of-duties rejection is a policy refusal, not a bad request:
+		// surface it as 403 with its own code so the console can localize a clear
+		// "can't approve your own request" message.
+		if errors.Is(err, ErrSelfApproval) {
+			response.Forbidden(c, 40012, err.Error())
+			return
+		}
 		response.BadRequest(c, 40004, err.Error())
 		return
 	}
