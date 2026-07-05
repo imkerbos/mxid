@@ -25,7 +25,10 @@ func (p *CapturePlugin) Initialize(db *gorm.DB) error {
 	if err := db.Callback().Create().Before("gorm:create").Register("mxid:audit:create", p.captureCreate); err != nil {
 		return err
 	}
-	return db.Callback().Update().Before("gorm:update").Register("mxid:audit:update", p.captureUpdate)
+	if err := db.Callback().Update().Before("gorm:update").Register("mxid:audit:update", p.captureUpdate); err != nil {
+		return err
+	}
+	return db.Callback().Delete().Before("gorm:delete").Register("mxid:audit:delete", p.captureDelete)
 }
 
 // captureCreate records a <resource>.created event with the full new row as
@@ -91,9 +94,36 @@ func (p *CapturePlugin) captureUpdate(cb *gorm.DB) {
 		ChainClass:   "data",
 		EventType:    res + ".updated",
 		ResourceType: res,
-		ResourceID:   primaryKeyOf(cb),
+		ResourceID:   resourceIDOf(cb, firstRow(before)),
 		Before:       redactMap(firstRow(before)),
 		After:        redactMap(updateDelta(cb)),
+	}
+	if err := p.emit(cb, ev); err != nil {
+		cb.AddError(err)
+	}
+}
+
+// captureDelete records a <resource>.deleted event: before = the full prior
+// row(s), no after.
+func (p *CapturePlugin) captureDelete(cb *gorm.DB) {
+	if cb.Statement == nil || cb.Statement.Schema == nil {
+		return
+	}
+	res, ok := auditedResourceOf(cb.Statement.Schema)
+	if !ok {
+		return
+	}
+	before, err := beforeSnapshot(cb)
+	if err != nil {
+		cb.AddError(fmt.Errorf("audit before-snapshot %s: %w", res, err))
+		return
+	}
+	ev := Event{
+		ChainClass:   "data",
+		EventType:    res + ".deleted",
+		ResourceType: res,
+		ResourceID:   resourceIDOf(cb, firstRow(before)),
+		Before:       redactMap(firstRow(before)),
 	}
 	if err := p.emit(cb, ev); err != nil {
 		cb.AddError(err)
@@ -196,6 +226,27 @@ func primaryKeyOf(cb *gorm.DB) int64 {
 	}
 	if id, ok := v.(int64); ok {
 		return id
+	}
+	return 0
+}
+
+// resourceIDOf returns the statement's primary key, falling back to the id from
+// the before-snapshot when the model struct carried no PK (the common
+// Where("id = ?", id) update/delete idiom).
+func resourceIDOf(cb *gorm.DB, before map[string]any) int64 {
+	if id := primaryKeyOf(cb); id != 0 {
+		return id
+	}
+	if before == nil {
+		return 0
+	}
+	switch v := before["id"].(type) {
+	case int64:
+		return v
+	case float64:
+		return int64(v)
+	case int:
+		return int64(v)
 	}
 	return 0
 }
