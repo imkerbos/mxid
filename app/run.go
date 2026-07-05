@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/base64"
 	"flag"
 	"fmt"
 	"os"
@@ -69,6 +70,21 @@ func Run() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to initialize application: %v\n", err)
 		os.Exit(1)
+	}
+
+	// Operator subcommand: `verify-audit` walks every audit chain head and
+	// recomputes its HMAC chain from genesis, printing per-chain status, then
+	// exits — it must NOT build the portal group, register modules, start the
+	// chainer goroutine, or serve traffic (that would be a second writer on
+	// the same chain). Flags must precede the subcommand (Go's flag package
+	// stops parsing at the first non-flag arg): `mxid-server -config=configs
+	// verify-audit`.
+	if flag.Arg(0) == "verify-audit" {
+		if err := runVerifyAudit(a); err != nil {
+			fmt.Fprintf(os.Stderr, "verify-audit failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	// Public portal group MUST be created before registerModules so the
@@ -804,6 +820,23 @@ func registerModules(a *bootstrap.App) {
 
 	// EE handlers (if any) are now registered — start the outbox worker.
 	go outboxWorker.Run(context.Background())
+
+	// Audit hash-chain writer — single goroutine, single writer (Chainer's
+	// own invariant: never run two of these against the same DB). Drains
+	// mxid_audit_pending into the tamper-evident mxid_audit_entry chain.
+	// The HMAC key is release-mode fail-closed in validateSecrets; a
+	// non-empty-but-malformed value fails startup here rather than running
+	// silently with a zero/garbage key that would produce an
+	// unverifiable chain.
+	auditChainKey, err := base64.StdEncoding.DecodeString(a.Config.Crypto.AuditChainKey)
+	if err != nil {
+		a.Logger.Fatal("decode crypto.audit_chain_key (set MXID_CRYPTO_AUDIT_CHAIN_KEY to base64(32 random bytes))", zap.Error(err))
+	}
+	if len(auditChainKey) == 0 {
+		a.Logger.Fatal("crypto.audit_chain_key is empty; export MXID_CRYPTO_AUDIT_CHAIN_KEY=$(openssl rand -base64 32)")
+	}
+	chainer := audit.NewChainer(a.DB, auditChainKey, "default", a.Logger)
+	go chainer.Run(context.Background(), 2*time.Second)
 
 	// Mount the per-app provisioning config API on the console group.
 	provisioningModule.RegisterRoutes(a)
