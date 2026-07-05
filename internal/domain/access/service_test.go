@@ -369,6 +369,62 @@ func mustApprovedRequest(t *testing.T, s *Service) *Request {
 
 // ── tests ──────────────────────────────────────────────────────────────────────
 
+// TestApprove_RejectsSelfApproval locks the separation-of-duties guard: a
+// requester approving their own request is refused with ErrSelfApproval and the
+// request stays pending (no grant activated).
+func TestApprove_RejectsSelfApproval(t *testing.T) {
+	s, fakes := newServiceWithFakes(t)
+	req := mustCreateRequest(t, s, 3600)
+
+	_, err := s.Approve(testCtx, testTenant, req.ID, testRequester, "self")
+	if !errors.Is(err, ErrSelfApproval) {
+		t.Fatalf("want ErrSelfApproval, got %v", err)
+	}
+
+	got, err := fakes.repo.GetRequest(testCtx, req.ID, testTenant)
+	if err != nil {
+		t.Fatalf("GetRequest: %v", err)
+	}
+	if got.Status != StatusPending {
+		t.Errorf("status = %s, want pending (self-approval must not grant)", got.Status)
+	}
+}
+
+// TestApprove_AutoApprovalNotBlockedBySoD proves the SoD guard does not break
+// explicit auto-approval: that path calls Approve with approverID=0 (system),
+// which never equals the requester's id, so a self-service request against an
+// auto-approve eligibility still activates.
+func TestApprove_AutoApprovalNotBlockedBySoD(t *testing.T) {
+	s, fakes := newServiceWithFakes(t)
+
+	autoElig := &Eligibility{
+		ID:                   999999,
+		TenantID:             testTenant,
+		TargetKind:           TargetConsole,
+		RoleID:               7,
+		RequesterSubjectType: "any",
+		AllowedDurations:     IntSlice{3600},
+		MaxDurationSeconds:   3600,
+		ApproverSubjectType:  ApproverAuto,
+		RequireJustification: false,
+		Status:               1,
+	}
+	if err := fakes.repo.CreateEligibility(testCtx, autoElig); err != nil {
+		t.Fatalf("seed auto eligibility: %v", err)
+	}
+
+	req, err := s.CreateRequest(testCtx, testTenant, testRequester, CreateAccessRequest{
+		EligibilityID:    autoElig.ID,
+		RequestedSeconds: 3600,
+	})
+	if err != nil {
+		t.Fatalf("CreateRequest (auto): %v", err)
+	}
+	if req.Status != StatusApproved {
+		t.Errorf("status = %s, want approved (auto-approval must not be blocked by SoD)", req.Status)
+	}
+}
+
 func TestCreateRequest_RejectsDurationNotAllowed(t *testing.T) {
 	s, _ := newServiceWithFakes(t)
 	// eligibility allows only 3600; 7200 is not in the allowed set

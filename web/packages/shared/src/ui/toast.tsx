@@ -63,6 +63,7 @@ export const toast = {
 // fallback). Keep in sync with api/client.ts CODE_* constants.
 const LOCALIZED_CODES: Record<number, string> = {
   40003: 'errors.totpCodeReused', // TOTP code already consumed this window — wait for the next
+  40012: 'errors.selfApproval', // JIT approve: separation of duties — can't approve own request
   40332: 'errors.eeFeatureRequired', // CODE_EE_FEATURE_REQUIRED
 }
 
