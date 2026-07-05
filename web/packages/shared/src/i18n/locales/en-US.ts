@@ -10,6 +10,7 @@ export default {
   errors: {
     eeFeatureRequired: 'This is an Enterprise Edition feature and requires a valid enterprise license. Activate one under Settings → License.',
     totpCodeReused: 'That code was just used. Wait for your authenticator to show the next 6-digit code and try again.',
+    selfApproval: 'You can\'t approve your own access request — it must be approved by someone else (separation of duties).',
   },
   common: {
     save: 'Save',

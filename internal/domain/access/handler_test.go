@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -276,6 +277,33 @@ func TestPortalCancelRequest_Returns200(t *testing.T) {
 	w := doPOST(r, fmt.Sprintf("/api/v1/portal/access-requests/%d/cancel", req.ID), "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestConsoleApprove_SelfApproval_Returns403 drives the approve handler as the
+// same identity that owns the request (consoleEngine acts as testApprover) and
+// asserts the separation-of-duties refusal surfaces as 403 with code 40012.
+func TestConsoleApprove_SelfApproval_Returns403(t *testing.T) {
+	h, fakes := newHandlerWithFakeSvc(t)
+	idGen, _ := snowflake.New(9)
+	elig := seedElig(t, fakes, idGen)
+
+	// Request owned by testApprover — the identity consoleEngine authenticates as.
+	req, err := h.svc.CreateRequest(testCtx, testTenant, testApprover, CreateAccessRequest{
+		EligibilityID:    elig.ID,
+		RequestedSeconds: 3600,
+	})
+	if err != nil {
+		t.Fatalf("CreateRequest: %v", err)
+	}
+
+	r := consoleEngine(h)
+	w := doPOST(r, fmt.Sprintf("/api/v1/console/access-requests/%d/approve", req.ID), "")
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("want 403, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "40012") {
+		t.Errorf("body missing self-approval code 40012: %s", w.Body.String())
 	}
 }
 

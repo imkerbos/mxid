@@ -13,6 +13,7 @@ export default {
   errors: {
     eeFeatureRequired: '该功能为企业版功能,需有效的企业版授权。请在「设置 → 许可信息」激活授权。',
     totpCodeReused: '该验证码刚使用过,请等待认证器刷新出新的 6 位验证码再试。',
+    selfApproval: '不能审批自己提交的提权申请,需由他人审批(职责分离)。',
   },
   common: {
     save: '保存',

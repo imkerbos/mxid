@@ -2,6 +2,7 @@ package access
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"time"
@@ -11,6 +12,16 @@ import (
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/snowflake"
 )
+
+// ErrSelfApproval is returned by Approve when the approver is the same identity
+// as the requester. Separation of duties (SoD): a person approving their own
+// privilege elevation defeats the approval gate and forges a "compliant" audit
+// trail, so it is refused unconditionally regardless of eligibility config. The
+// sanctioned "no second person" paths are explicit auto-approval (ApproverAuto,
+// which calls Approve with approverID=0/system) or a purpose-built break-glass
+// flow — never a silent self-approval on the normal path. Handlers should map
+// this to 403 Forbidden.
+var ErrSelfApproval = errors.New("access: approver must differ from requester (self-approval is not allowed)")
 
 // CacheInvalidator drops the authz cache entry for a (tenant, user) pair so
 // the newly-granted or revoked role takes effect immediately without re-login.
@@ -315,6 +326,15 @@ func (s *Service) Approve(ctx context.Context, tenantID, requestID, approverID i
 	}
 	if req.Status != StatusPending {
 		return nil, fmt.Errorf("access: request %d is not pending (status=%s)", requestID, req.Status)
+	}
+
+	// Separation of duties: the approver must never be the requester. This is a
+	// hard, config-independent guard — it holds even if an eligibility's approver
+	// set wrongly includes the requester. Auto-approval is unaffected: it calls
+	// Approve with approverID=0 (system), which can never equal a real
+	// requester's snowflake id.
+	if approverID == req.RequesterID {
+		return nil, ErrSelfApproval
 	}
 
 	expiresAt := time.Now().Add(time.Duration(req.RequestedSeconds) * time.Second)
