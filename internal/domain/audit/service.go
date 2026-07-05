@@ -388,6 +388,24 @@ func (s *Service) ResourceEventHandler(eventType, defaultResourceType string) ev
 			rid = s.toInt64(payload["id"])
 		}
 
+		// JIT access rows name the SUBJECT (requester), not the actor: expiry and
+		// revoke are fired by the sweeper / an admin, so without this the row
+		// can't say WHOSE grant ended. Denormalize the requester username into
+		// both ResourceName and the detail (before marshaling) so the lifecycle
+		// reads start-to-end — created → approved → expired all name the same
+		// beneficiary. No-op for events without a requester_id (e.g. eligibility
+		// config writes). Best-effort: a nil / empty resolver leaves the id-only
+		// trail intact.
+		var resourceName string
+		if name := s.toString(payload["name"]); name != "" {
+			resourceName = name
+		} else if reqID := s.toInt64(payload["requester_id"]); reqID != 0 && s.nameResolver != nil {
+			if uname := s.nameResolver(ctx, reqID); uname != "" {
+				resourceName = uname
+				payload["requester_name"] = uname
+			}
+		}
+
 		log := &AuditLog{
 			ID:           s.idGen.Generate(),
 			TenantID:     s.toInt64OrDefault(payload["tenant_id"], s.tenantID),
@@ -398,8 +416,8 @@ func (s *Service) ResourceEventHandler(eventType, defaultResourceType string) ev
 			Detail:       s.marshalDetailFor(eventType, payload),
 			CreatedAt:    time.Now(),
 		}
-		if name := s.toString(payload["name"]); name != "" {
-			log.ResourceName = &name
+		if resourceName != "" {
+			log.ResourceName = &resourceName
 		}
 		s.createLog(ctx, log)
 	}

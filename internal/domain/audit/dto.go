@@ -35,6 +35,9 @@ type ListAuditRequest struct {
 	ResourceType string `form:"resource_type"`
 	StartTime    string `form:"start_time"`
 	EndTime      string `form:"end_time"`
+	// Keyword is a free-text filter matched (case-insensitively) against
+	// actor_name, resource_name, event_type, resource_id, and the detail JSON.
+	Keyword string `form:"keyword"`
 	// HideAPI drops the generic api.* catch-all rows from the result. Default
 	// false to preserve the full trail for API clients; the console sets it.
 	HideAPI bool `form:"hide_api"`
