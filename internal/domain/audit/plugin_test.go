@@ -111,6 +111,34 @@ func TestPlugin_CaptureCreateWithOmitDoesNotLeak(t *testing.T) {
 	}
 }
 
+func TestPlugin_CaptureUpdate(t *testing.T) {
+	db := newPluginDB(t)
+	ctx := actorCtx()
+	if err := db.WithContext(ctx).Create(&widget{ID: 1, Name: "old"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	// clear the create event so we assert only the update
+	db.Where("1=1").Delete(&AuditPending{})
+
+	if err := db.WithContext(ctx).Model(&widget{}).Where("id = ?", 1).
+		Update("name", "new").Error; err != nil {
+		t.Fatal(err)
+	}
+	var p AuditPending
+	if err := db.First(&p).Error; err != nil {
+		t.Fatalf("no update event: %v", err)
+	}
+	if p.EventType != "widget.updated" || p.ResourceType != "widget" {
+		t.Fatalf("bad update event: %+v", p)
+	}
+	if len(p.Before) == 0 || !containsStr(string(p.Before), "old") {
+		t.Fatalf("before-state not captured: %s", p.Before)
+	}
+	if len(p.After) == 0 || !containsStr(string(p.After), "new") {
+		t.Fatalf("after delta not captured: %s", p.After)
+	}
+}
+
 func containsStr(h, n string) bool {
 	return len(n) > 0 && len(h) >= len(n) && (func() bool {
 		for i := 0; i+len(n) <= len(h); i++ {
