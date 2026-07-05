@@ -22,7 +22,10 @@ func NewCapturePlugin(c *Capturer) *CapturePlugin { return &CapturePlugin{captur
 func (p *CapturePlugin) Name() string { return "mxid:auditcapture" }
 
 func (p *CapturePlugin) Initialize(db *gorm.DB) error {
-	return db.Callback().Create().Before("gorm:create").Register("mxid:audit:create", p.captureCreate)
+	if err := db.Callback().Create().Before("gorm:create").Register("mxid:audit:create", p.captureCreate); err != nil {
+		return err
+	}
+	return db.Callback().Update().Before("gorm:update").Register("mxid:audit:update", p.captureUpdate)
 }
 
 // captureCreate records a <resource>.created event with the full new row as
@@ -47,6 +50,73 @@ func (p *CapturePlugin) captureCreate(cb *gorm.DB) {
 	if err := p.emit(cb, ev); err != nil {
 		cb.AddError(err)
 	}
+}
+
+// beforeSnapshot re-queries the rows the current Update/Delete statement targets,
+// BEFORE the mutation runs, using the statement's WHERE. Verified incantation:
+// Model-based NewDB session + the WHERE clause's inner Expression.
+func beforeSnapshot(cb *gorm.DB) ([]map[string]any, error) {
+	if cb.Statement.Schema == nil || cb.Statement.Schema.ModelType == nil {
+		return nil, nil
+	}
+	sess := cb.Session(&gorm.Session{NewDB: true})
+	mdl := reflect.New(cb.Statement.Schema.ModelType).Interface()
+	q := sess.Model(mdl)
+	if wh, ok := cb.Statement.Clauses["WHERE"]; ok {
+		q = q.Clauses(wh.Expression)
+	}
+	var before []map[string]any
+	if err := q.Find(&before).Error; err != nil {
+		return nil, err
+	}
+	return before, nil
+}
+
+// captureUpdate records a <resource>.updated event: before = the full prior row(s),
+// after = the SET delta (Dest holds only the changed fields in an update).
+func (p *CapturePlugin) captureUpdate(cb *gorm.DB) {
+	if cb.Statement == nil || cb.Statement.Schema == nil {
+		return
+	}
+	res, ok := auditedResourceOf(cb.Statement.Schema)
+	if !ok {
+		return
+	}
+	before, err := beforeSnapshot(cb)
+	if err != nil {
+		cb.AddError(fmt.Errorf("audit before-snapshot %s: %w", res, err))
+		return
+	}
+	ev := Event{
+		ChainClass:   "data",
+		EventType:    res + ".updated",
+		ResourceType: res,
+		ResourceID:   primaryKeyOf(cb),
+		Before:       redactMap(firstRow(before)),
+		After:        redactMap(updateDelta(cb)),
+	}
+	if err := p.emit(cb, ev); err != nil {
+		cb.AddError(err)
+	}
+}
+
+// firstRow returns the first snapshot row (single-entity updates/deletes are the
+// dominant case). Batch writes affecting many rows still record one event with
+// the first row's before-state; see the plan's batch note.
+func firstRow(rows []map[string]any) map[string]any {
+	if len(rows) == 0 {
+		return nil
+	}
+	return rows[0]
+}
+
+// updateDelta renders the update's SET fields (Dest) as a column map. For a map
+// update Dest is already the map; for a struct update it round-trips via JSON.
+func updateDelta(cb *gorm.DB) map[string]any {
+	if m, ok := cb.Statement.Dest.(map[string]any); ok {
+		return m
+	}
+	return modelToMap(cb)
 }
 
 // emit writes the pending row on the caller's tx via a NewDB session (fresh
