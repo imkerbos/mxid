@@ -425,6 +425,77 @@ func TestApprove_AutoApprovalNotBlockedBySoD(t *testing.T) {
 	}
 }
 
+// seedApproverUserElig seeds an eligibility whose approver_subject is a specific
+// user id, so approver-scoping can be exercised without the always-true matcher.
+func seedApproverUserElig(t *testing.T, s *Service, fakes *testFakes, approverUserID int64) *Eligibility {
+	t.Helper()
+	e := &Eligibility{
+		ID:                   700000000000000001,
+		TenantID:             testTenant,
+		TargetKind:           TargetConsole,
+		RoleID:               42,
+		RequesterSubjectType: "any",
+		AllowedDurations:     IntSlice{3600},
+		MaxDurationSeconds:   3600,
+		ApproverSubjectType:  ApproverUser,
+		ApproverSubjectID:    approverUserID,
+		RequireJustification: false,
+		Status:               1,
+	}
+	if err := fakes.repo.CreateEligibility(testCtx, e); err != nil {
+		t.Fatalf("seed approver-user eligibility: %v", err)
+	}
+	return e
+}
+
+// TestApprove_RejectsApproverNotInSubject locks per-eligibility approver
+// scoping: an approver who is not the designated approver_subject (and not a
+// super-admin) is refused, and the request stays pending.
+func TestApprove_RejectsApproverNotInSubject(t *testing.T) {
+	s, fakes := newServiceWithFakes(t)
+	elig := seedApproverUserElig(t, s, fakes, 555) // only user 555 may approve
+	req, err := s.CreateRequest(testCtx, testTenant, testRequester, CreateAccessRequest{
+		EligibilityID:    elig.ID,
+		RequestedSeconds: 3600,
+	})
+	if err != nil {
+		t.Fatalf("CreateRequest: %v", err)
+	}
+
+	// testApprover (not 555, not super-admin) must be refused.
+	_, err = s.Approve(testCtx, testTenant, req.ID, testApprover, "ok")
+	if !errors.Is(err, ErrApproverNotEligible) {
+		t.Fatalf("want ErrApproverNotEligible, got %v", err)
+	}
+	got, _ := fakes.repo.GetRequest(testCtx, req.ID, testTenant)
+	if got.Status != StatusPending {
+		t.Errorf("status = %s, want pending", got.Status)
+	}
+}
+
+// TestApprove_SuperAdminBypassesApproverScoping proves the break-glass
+// exemption: a super-admin approves even when not the designated approver.
+func TestApprove_SuperAdminBypassesApproverScoping(t *testing.T) {
+	s, fakes := newServiceWithFakes(t)
+	s.SetSuperAdminChecker(func(_ context.Context, uid int64) bool { return uid == testApprover })
+	elig := seedApproverUserElig(t, s, fakes, 555) // designated approver is 555
+	req, err := s.CreateRequest(testCtx, testTenant, testRequester, CreateAccessRequest{
+		EligibilityID:    elig.ID,
+		RequestedSeconds: 3600,
+	})
+	if err != nil {
+		t.Fatalf("CreateRequest: %v", err)
+	}
+
+	out, err := s.Approve(testCtx, testTenant, req.ID, testApprover, "break-glass")
+	if err != nil {
+		t.Fatalf("super-admin approve should succeed, got %v", err)
+	}
+	if out.Status != StatusApproved {
+		t.Errorf("status = %s, want approved", out.Status)
+	}
+}
+
 func TestCreateRequest_RejectsDurationNotAllowed(t *testing.T) {
 	s, _ := newServiceWithFakes(t)
 	// eligibility allows only 3600; 7200 is not in the allowed set

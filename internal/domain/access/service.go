@@ -23,6 +23,22 @@ import (
 // this to 403 Forbidden.
 var ErrSelfApproval = errors.New("access: approver must differ from requester (self-approval is not allowed)")
 
+// ErrApproverNotEligible is returned by Approve when the approver is neither a
+// super-admin (break-glass) nor a member of the eligibility's designated
+// approver_subject (role / group / user). Without this the per-eligibility
+// approver designation is decorative — route-level authz + SoD would let ANY
+// holder of access.request.approve approve ANY request, defeating the intent of
+// scoping approval authority per eligibility. Handlers should map it to 403.
+var ErrApproverNotEligible = errors.New("access: approver is not authorized to approve this eligibility")
+
+// SuperAdminChecker reports whether a user holds the global super-admin flag.
+// Super-admins get a break-glass exemption from the per-eligibility approver
+// scoping (they can already approve anything via the wildcard authz policy;
+// this keeps the service-level guard consistent with that). Optional — a nil
+// checker means no exemption (strict scoping), which is the safe default for
+// tests.
+type SuperAdminChecker func(ctx context.Context, userID int64) bool
+
 // CacheInvalidator drops the authz cache entry for a (tenant, user) pair so
 // the newly-granted or revoked role takes effect immediately without re-login.
 // Implementations must be safe for concurrent use. The error return must be
@@ -74,8 +90,14 @@ type Service struct {
 	cache      CacheInvalidator
 	matcher    SubjectMatcher
 	terminator DownstreamTerminator
+	superAdmin SuperAdminChecker
 	logger     *zap.Logger
 }
+
+// SetSuperAdminChecker wires the break-glass super-admin exemption used by the
+// per-eligibility approver check. Best-effort: nil leaves strict scoping (only
+// the designated approver_subject may approve).
+func (s *Service) SetSuperAdminChecker(fn SuperAdminChecker) { s.superAdmin = fn }
 
 // NewService constructs a Service. bus may be nil (events are silently skipped
 // when there are no subscribers; *event.Bus.Publish is nil-safe).
@@ -265,6 +287,29 @@ func (s *Service) requesterEligible(ctx context.Context, tenantID, userID int64,
 	}
 }
 
+// approverAllowed reports whether approverID may approve requests against e.
+// Super-admins are exempt (break-glass). Otherwise the approver must satisfy the
+// eligibility's approver_subject: hold the role, be in the group, or be the
+// named user. "auto" eligibilities have no human approver gate (they are
+// policy-approved; the auto path calls Approve with approverID=0), so they pass.
+func (s *Service) approverAllowed(ctx context.Context, tenantID, approverID int64, e *Eligibility) bool {
+	if s.superAdmin != nil && s.superAdmin(ctx, approverID) {
+		return true
+	}
+	switch e.ApproverSubjectType {
+	case ApproverAuto:
+		return true
+	case ApproverUser:
+		return e.ApproverSubjectID == approverID
+	case ApproverRole:
+		return s.matcher.UserHasRole(ctx, tenantID, approverID, e.ApproverSubjectID)
+	case ApproverGroup:
+		return s.matcher.UserInGroup(ctx, tenantID, approverID, e.ApproverSubjectID)
+	default:
+		return false
+	}
+}
+
 // ─── Request ──────────────────────────────────────────────────────────────────
 
 // CreateRequest validates eligibility and duration, persists a pending request,
@@ -335,6 +380,18 @@ func (s *Service) Approve(ctx context.Context, tenantID, requestID, approverID i
 	// requester's snowflake id.
 	if approverID == req.RequesterID {
 		return nil, ErrSelfApproval
+	}
+
+	// Per-eligibility approver scoping: the approver must belong to the
+	// eligibility's designated approver_subject (role / group / user), unless
+	// they are a super-admin (break-glass). Enforced here so the designation is
+	// real governance, not just a displayed field.
+	elig, err := s.repo.GetEligibility(ctx, req.EligibilityID, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	if !s.approverAllowed(ctx, tenantID, approverID, elig) {
+		return nil, ErrApproverNotEligible
 	}
 
 	expiresAt := time.Now().Add(time.Duration(req.RequestedSeconds) * time.Second)

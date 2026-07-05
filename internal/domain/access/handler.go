@@ -132,6 +132,7 @@ func (h *Handler) RegisterPortal(rg *gin.RouterGroup) {
 //	40010 — updateEligibility: bad request body
 //	40011 — updateEligibility: service/validation error
 //	40012 — approve: self-approval refused (separation of duties, 403)
+//	40013 — approve: approver not in eligibility's approver_subject (403)
 //	40101 — createRequest (portal): no authenticated user in context
 
 // ─── console handlers ─────────────────────────────────────────────────────────
@@ -251,6 +252,10 @@ func (h *Handler) approve(c *gin.Context) {
 		// "can't approve your own request" message.
 		if errors.Is(err, ErrSelfApproval) {
 			response.Forbidden(c, 40012, err.Error())
+			return
+		}
+		if errors.Is(err, ErrApproverNotEligible) {
+			response.Forbidden(c, 40013, err.Error())
 			return
 		}
 		response.BadRequest(c, 40004, err.Error())

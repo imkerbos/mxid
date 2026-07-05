@@ -985,6 +985,12 @@ func registerModules(a *bootstrap.App) {
 		accessTerminator,
 		a.Logger,
 	)
+	// Break-glass: super-admins are exempt from per-eligibility approver scoping
+	// (they already approve anything via the wildcard authz policy).
+	accessJITSvc.SetSuperAdminChecker(func(ctx context.Context, userID int64) bool {
+		u, err := userModule.Repo.GetByID(ctx, userID)
+		return err == nil && u != nil && u.IsSuperAdmin
+	})
 	accessJITHandler := access.NewHandler(accessJITSvc, a.Config.Tenant.DefaultID, authn.NewStepUpChecker(stepUpDeps))
 	accessJITHandler.RegisterConsole(a.ConsoleGroup)
 	accessJITHandler.RegisterPortal(a.PortalGroup)
