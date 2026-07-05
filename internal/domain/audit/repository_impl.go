@@ -51,6 +51,7 @@ func (r *gormRepository) List(ctx context.Context, params ListParams) ([]*AuditL
 		eventTypesScope(params.EventTypes),
 		actorIDScope(params.ActorID),
 		resourceTypeScope(params.ResourceType),
+		keywordScope(params.Keyword),
 		timeRangeScope(params.StartTime, params.EndTime),
 		hideAPIScope(params.HideAPI),
 	)
@@ -149,6 +150,25 @@ func actorIDScope(actorID *int64) func(db *gorm.DB) *gorm.DB {
 			return db
 		}
 		return db.Where("actor_id = ?", *actorID)
+	}
+}
+
+// keywordScope applies a free-text, case-insensitive filter across the actor,
+// resource, event_type, resource_id and the detail JSONB. detail is cast to
+// text so a term appearing in any projected key/value (role_id, requester_id,
+// approver_id, …) still matches — no per-key index, so this is a sequential
+// scan by design; acceptable at current audit volume and swappable for a
+// pg_trgm GIN index if the table grows.
+func keywordScope(keyword string) func(db *gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		if keyword == "" {
+			return db
+		}
+		like := "%" + keyword + "%"
+		return db.Where(
+			"actor_name ILIKE ? OR resource_name ILIKE ? OR event_type ILIKE ? OR CAST(resource_id AS TEXT) ILIKE ? OR CAST(detail AS TEXT) ILIKE ?",
+			like, like, like, like, like,
+		)
 	}
 }
 

@@ -182,7 +182,7 @@ func (h *Handler) deleteEligibility(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.svc.repo.DeleteEligibility(c.Request.Context(), id, h.tenantID(c)); err != nil {
+	if err := h.svc.DeleteEligibility(c.Request.Context(), id, h.tenantID(c)); err != nil {
 		response.InternalError(c, "delete failed", err)
 		return
 	}

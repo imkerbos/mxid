@@ -1005,6 +1005,14 @@ func registerModules(a *bootstrap.App) {
 	} {
 		a.EventBus.Subscribe(et, auditModule.Service.ResourceEventHandler(et, "access_request"))
 	}
+	// Eligibility (policy-config) writes self-describe as resource_type
+	// "access_eligibility"; keep them on a separate default so a payload that
+	// somehow omits the key still attributes to the right resource.
+	for _, et := range []string{
+		access.EventEligibilityCreated, access.EventEligibilityUpdated, access.EventEligibilityDeleted,
+	} {
+		a.EventBus.Subscribe(et, auditModule.Service.ResourceEventHandler(et, "access_eligibility"))
+	}
 
 	// 8. Register portal gateway (user-facing API)
 	portalUserQ := buildPortalUserQuerier(userModule)

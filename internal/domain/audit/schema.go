@@ -158,13 +158,18 @@ var detailSchemas = map[string]detailSchema{
 	// different person under the column's name and contradict it. Where a
 	// distinct acting identity is worth recording in detail, it uses an
 	// explicit key like "approver_id" (see access.grant.activated).
-	"access.request.created":   {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "target_kind", "role_id", "app_id", "expires_at"}},
-	"access.request.approved":  {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "target_kind", "role_id", "app_id", "expires_at"}},
-	"access.request.rejected":  {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "target_kind", "role_id", "app_id"}},
-	"access.request.cancelled": {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "target_kind", "role_id", "app_id"}},
-	"access.grant.activated":   {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "approver_id", "target_kind", "role_id", "app_id", "expires_at"}},
-	"access.grant.expired":     {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "target_kind", "role_id", "app_id", "expires_at"}},
-	"access.grant.revoked":     {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "target_kind", "role_id", "app_id"}},
+	"access.request.created":   {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "requester_name", "target_kind", "role_id", "app_id", "expires_at"}},
+	"access.request.approved":  {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "requester_name", "target_kind", "role_id", "app_id", "expires_at"}},
+	"access.request.rejected":  {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "requester_name", "target_kind", "role_id", "app_id"}},
+	"access.request.cancelled": {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "requester_name", "target_kind", "role_id", "app_id"}},
+	"access.grant.activated":   {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "requester_name", "approver_id", "target_kind", "role_id", "app_id", "expires_at"}},
+	"access.grant.expired":     {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "requester_name", "target_kind", "role_id", "app_id", "expires_at"}},
+	"access.grant.revoked":     {allow: []string{"resource_id", "resource_type", "tenant_id", "request_id", "requester_id", "requester_name", "target_kind", "role_id", "app_id"}},
+
+	// Eligibility (policy config) writes: who may request elevation and how.
+	"access.eligibility.created": {allow: []string{"resource_id", "resource_type", "tenant_id", "target_kind", "role_id", "app_id"}},
+	"access.eligibility.updated": {allow: []string{"resource_id", "resource_type", "tenant_id", "target_kind", "role_id", "app_id"}},
+	"access.eligibility.deleted": {allow: []string{"resource_id", "resource_type", "tenant_id", "target_kind", "role_id", "app_id"}},
 }
 
 // projectDetail picks the schema-allowed subset of payload for the given

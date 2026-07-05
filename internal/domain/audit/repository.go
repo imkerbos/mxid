@@ -21,6 +21,9 @@ type ListParams struct {
 	ResourceType string
 	StartTime    *time.Time
 	EndTime      *time.Time
+	// Keyword is a free-text ILIKE filter across actor_name, resource_name,
+	// event_type, resource_id (cast to text) and the detail JSONB (cast to text).
+	Keyword string
 	// HideAPI excludes the generic api.* catch-all rows (the safety-net entries
 	// RecordAPIRequest writes for every non-GET request). They duplicate the
 	// richer domain events for any route that emits one, so the console hides
