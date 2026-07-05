@@ -4,6 +4,17 @@ MXID has been deployed!
 NEXT STEPS
 ===========================================================================
 
+0. PREREQUISITES (this chart does NOT bundle them)
+   - PostgreSQL reachable at database.host={{ .Values.database.host }}:{{ .Values.database.port }}
+   - Redis reachable at redis.host={{ .Values.redis.host }}:{{ .Values.redis.port }}
+   Use a managed DB/Redis (RDS/CloudSQL, ElastiCache/MemoryStore) or install
+   one separately. With nothing at those hosts the backend will not start.
+
+   Canonical URL: host={{ .Values.host | quote }} drives the OIDC issuer / SAML
+   EntityID / portal / console and the CORS allow-list. It MUST be your real
+   externally-reachable HTTPS host (release mode rejects localhost). Override
+   per-URL via config.issuerUrl / portalUrl / consoleUrl for split domains.
+
 1. SET SECRETS
    If you used secrets.create=true, make sure all required secret values are
    set before the pods start:
