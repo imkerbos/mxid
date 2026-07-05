@@ -3,6 +3,7 @@ package audit
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/imkerbos/mxid/pkg/auditctx"
@@ -33,15 +34,15 @@ func NewCapturer(idGen *snowflake.Generator) *Capturer {
 	return &Capturer{idGen: idGen}
 }
 
-func mustJSON(m map[string]any) json.RawMessage {
+func toJSON(m map[string]any) (json.RawMessage, error) {
 	if m == nil {
-		return nil
+		return nil, nil
 	}
 	b, err := json.Marshal(m)
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	return b
+	return b, nil
 }
 
 // Capture inserts one pending row on tx. actor/ip/session are read from
@@ -52,6 +53,18 @@ func (c *Capturer) Capture(ctx context.Context, tx *gorm.DB, ev Event) error {
 	if detail == nil {
 		detail = map[string]any{}
 	}
+	beforeJSON, err := toJSON(ev.Before)
+	if err != nil {
+		return fmt.Errorf("marshal audit before: %w", err)
+	}
+	afterJSON, err := toJSON(ev.After)
+	if err != nil {
+		return fmt.Errorf("marshal audit after: %w", err)
+	}
+	detailJSON, err := toJSON(detail)
+	if err != nil {
+		return fmt.Errorf("marshal audit detail: %w", err)
+	}
 	row := &AuditPending{
 		ID:           c.idGen.Generate(),
 		TenantID:     actor.TenantID,
@@ -61,12 +74,12 @@ func (c *Capturer) Capture(ctx context.Context, tx *gorm.DB, ev Event) error {
 		EventType:    ev.EventType,
 		ResourceType: ev.ResourceType,
 		ResourceID:   ev.ResourceID,
-		Before:       mustJSON(ev.Before),
-		After:        mustJSON(ev.After),
+		Before:       beforeJSON,
+		After:        afterJSON,
 		IP:           actor.IP,
 		UserAgent:    actor.UserAgent,
 		SessionID:    actor.SessionID,
-		Detail:       mustJSON(detail),
+		Detail:       detailJSON,
 		OccurredAt:   time.Now().UTC(),
 	}
 	return tx.WithContext(ctx).Create(row).Error
