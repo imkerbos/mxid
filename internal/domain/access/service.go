@@ -160,6 +160,7 @@ func (s *Service) CreateEligibility(ctx context.Context, tenantID int64, created
 	if err := s.repo.CreateEligibility(ctx, e); err != nil {
 		return nil, err
 	}
+	s.publishEligibility(ctx, EventEligibilityCreated, e)
 	return e, nil
 }
 
@@ -197,7 +198,24 @@ func (s *Service) UpdateEligibility(ctx context.Context, tenantID, id int64, req
 	if err := s.repo.UpdateEligibility(ctx, existing); err != nil {
 		return nil, err
 	}
+	s.publishEligibility(ctx, EventEligibilityUpdated, existing)
 	return existing, nil
+}
+
+// DeleteEligibility loads the rule first (so the audit event can carry its
+// shape), removes it, then publishes a typed delete event. Fetching before the
+// delete is deliberate: a delete-then-nothing would leave the audit trail
+// unable to say WHICH role/target the removed rule elevated.
+func (s *Service) DeleteEligibility(ctx context.Context, id, tenantID int64) error {
+	existing, err := s.repo.GetEligibility(ctx, id, tenantID)
+	if err != nil {
+		return err
+	}
+	if err := s.repo.DeleteEligibility(ctx, id, tenantID); err != nil {
+		return err
+	}
+	s.publishEligibility(ctx, EventEligibilityDeleted, existing)
+	return nil
 }
 
 // ListEligibilityForRequester returns enabled eligibilities that the given
@@ -452,6 +470,29 @@ func (s *Service) publish(ctx context.Context, eventType string, req *Request, e
 		"expires_at":    req.ExpiresAt,
 	}
 	maps.Copy(payload, extra)
+	s.busAdp.Publish(ctx, event.Event{
+		Type:    eventType,
+		Payload: payload,
+	})
+}
+
+// publishEligibility emits a domain event for an eligibility (policy-config)
+// write. Like publish(), the base payload carries NO "actor_id": the admin who
+// made the change is owned by the audit row's actor COLUMN via enrich() from the
+// request-scoped auditctx. resource_type is "access_eligibility" so the audit
+// UI can filter policy changes apart from the request lifecycle.
+func (s *Service) publishEligibility(ctx context.Context, eventType string, e *Eligibility) {
+	if s.busAdp == nil {
+		return
+	}
+	payload := map[string]any{
+		"resource_type": "access_eligibility",
+		"resource_id":   e.ID,
+		"tenant_id":     e.TenantID,
+		"target_kind":   e.TargetKind,
+		"role_id":       e.RoleID,
+		"app_id":        e.AppID,
+	}
 	s.busAdp.Publish(ctx, event.Event{
 		Type:    eventType,
 		Payload: payload,

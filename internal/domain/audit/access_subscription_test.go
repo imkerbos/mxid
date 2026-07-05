@@ -82,6 +82,42 @@ func TestResourceEventHandler_AccessPayloadMapping(t *testing.T) {
 	}
 }
 
+// TestResourceEventHandler_ResolvesRequesterName verifies the SUBJECT
+// (requester) is denormalized into ResourceName and the detail, so an
+// expiry/revoke row — whose actor is the sweeper/admin, not the beneficiary —
+// still says WHOSE grant ended. Closes the "有始有终" lifecycle loop.
+func TestResourceEventHandler_ResolvesRequesterName(t *testing.T) {
+	idGen, _ := snowflake.New(1)
+	repo := &captureRepo{}
+	svc := NewService(repo, idGen, nil, zap.NewNop(), 1)
+	svc.SetUserNameResolver(func(_ context.Context, userID int64) string {
+		if userID == 6 {
+			return "alice"
+		}
+		return ""
+	})
+
+	h := svc.ResourceEventHandler("access.grant.expired", "access_request")
+	h(context.Background(), event.Event{
+		Type: "access.grant.expired",
+		Payload: map[string]any{
+			"resource_id":  int64(777),
+			"tenant_id":    int64(9),
+			"requester_id": int64(6),
+			"role_id":      int64(123),
+		},
+	})
+
+	got := repo.last
+	if got.ResourceName == nil || *got.ResourceName != "alice" {
+		t.Errorf("resource_name = %v, want alice", got.ResourceName)
+	}
+	detail := decode(t, got.Detail)
+	if detail["requester_name"] != "alice" {
+		t.Errorf("detail requester_name = %v, want alice", detail["requester_name"])
+	}
+}
+
 // TestResourceEventHandler_DefaultsResourceType ensures the default is used
 // when the payload omits resource_type, and id falls back from resource_id.
 func TestResourceEventHandler_DefaultsResourceType(t *testing.T) {

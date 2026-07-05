@@ -29,6 +29,7 @@ function eventTypeTint(eventType: string): string {
   if (eventType.startsWith('role.')) return 'bg-warning/10 text-warning'
   if (eventType.startsWith('group.')) return 'bg-teal-500/10 text-teal-500'
   if (eventType.startsWith('org.')) return 'bg-success/10 text-success'
+  if (eventType.startsWith('access.')) return 'bg-warning/10 text-warning'
   return 'bg-muted/10 text-muted'
 }
 
@@ -59,6 +60,28 @@ function useEventTypes() {
     { value: 'group.member_remove', label: t('audit.events.groupMemberRemove') },
     { value: 'org.create', label: t('audit.events.orgCreate') },
     { value: 'org.delete', label: t('audit.events.orgDelete') },
+    { value: 'access.request.created', label: t('audit.events.accessRequestCreated') },
+    { value: 'access.request.approved', label: t('audit.events.accessRequestApproved') },
+    { value: 'access.request.rejected', label: t('audit.events.accessRequestRejected') },
+    { value: 'access.request.cancelled', label: t('audit.events.accessRequestCancelled') },
+    { value: 'access.grant.activated', label: t('audit.events.accessGrantActivated') },
+    { value: 'access.grant.revoked', label: t('audit.events.accessGrantRevoked') },
+    { value: 'access.grant.expired', label: t('audit.events.accessGrantExpired') },
+    { value: 'access.eligibility.created', label: t('audit.events.accessEligibilityCreated') },
+    { value: 'access.eligibility.updated', label: t('audit.events.accessEligibilityUpdated') },
+    { value: 'access.eligibility.deleted', label: t('audit.events.accessEligibilityDeleted') },
+  ]), [t])
+}
+
+// Resource-type quick filter. "access_request" + "access_eligibility" together
+// surface the whole JIT privileged-access trail regardless of which lifecycle
+// event fired; backend maps this straight to the resource_type column.
+function useResourceTypes() {
+  const { t } = useTranslation()
+  return useMemo(() => ([
+    { value: '', label: t('audit.resources.all') },
+    { value: 'access_request', label: t('audit.resources.accessRequest') },
+    { value: 'access_eligibility', label: t('audit.resources.accessEligibility') },
   ]), [t])
 }
 
@@ -95,8 +118,9 @@ function DetailModal({ log, onClose }: { log: AuditLog; onClose: () => void }) {
         <DetailRow label={t('audit.fields.ip')}>{log.ip || '-'}</DetailRow>
         <DetailRow label={t('audit.fields.resourceType')}>{log.resource_type}</DetailRow>
         <div>
-          <p className="text-xs font-medium text-faint">{t('audit.fields.resourceId')}</p>
-          <p className="mt-1">
+          <p className="text-xs font-medium text-faint">{t('audit.fields.resource')}</p>
+          <p className="mt-1 flex items-center gap-2">
+            {log.resource_name && <span className="text-sm text-ink">{log.resource_name}</span>}
             <code className="rounded bg-surface-muted px-2 py-0.5 text-xs text-muted">{log.resource_id}</code>
           </p>
         </div>
@@ -123,10 +147,11 @@ function DetailModal({ log, onClose }: { log: AuditLog; onClose: () => void }) {
 export default function AuditPage() {
   const { t } = useTranslation()
   const eventTypes = useEventTypes()
+  const resourceTypes = useResourceTypes()
   const getEventLabel = (et: string) => eventTypes.find((x) => x.value === et)?.label ?? et
 
   // Filters + pagination live in the URL (shareable / back-forward safe).
-  const [q, setQ] = useUrlState({ page: 1, event_type: '', keyword: '', start: '', end: '', hide_api: 1 })
+  const [q, setQ] = useUrlState({ page: 1, event_type: '', resource_type: '', keyword: '', start: '', end: '', hide_api: 1 })
   const [data, setData] = useState<PaginatedData<AuditLog>>({ items: [], total: 0, page: 1, page_size: 20 })
   const [loading, setLoading] = useState(true)
   const [detailLog, setDetailLog] = useState<AuditLog | null>(null)
@@ -140,6 +165,7 @@ export default function AuditPage() {
     try {
       const params: Record<string, unknown> = { page: q.page, page_size: 20 }
       if (q.event_type) params.event_type = q.event_type
+      if (q.resource_type) params.resource_type = q.resource_type
       if (q.start) params.start_time = q.start
       if (q.end) params.end_time = q.end
       if (q.keyword) params.keyword = q.keyword
@@ -151,7 +177,7 @@ export default function AuditPage() {
     } finally {
       setLoading(false)
     }
-  }, [q.page, q.event_type, q.start, q.end, q.keyword, q.hide_api])
+  }, [q.page, q.event_type, q.resource_type, q.start, q.end, q.keyword, q.hide_api])
 
   useEffect(() => {
     loadData()
@@ -180,8 +206,16 @@ export default function AuditPage() {
     { key: 'resource_type', title: t('audit.cols.resourceType'), render: (l) => <span className="text-muted">{l.resource_type}</span> },
     {
       key: 'resource_id',
-      title: t('audit.cols.resourceId'),
-      render: (l) => <code className="rounded bg-surface-muted px-2 py-0.5 text-xs text-muted">{l.resource_id}</code>,
+      title: t('audit.cols.resource'),
+      render: (l) =>
+        l.resource_name ? (
+          <span className="text-muted">
+            {l.resource_name}
+            <code className="ml-1.5 rounded bg-surface-muted px-1.5 py-0.5 text-[11px] text-faint">{l.resource_id}</code>
+          </span>
+        ) : (
+          <code className="rounded bg-surface-muted px-2 py-0.5 text-xs text-muted">{l.resource_id}</code>
+        ),
     },
     { key: 'ip', title: t('audit.cols.ip'), render: (l) => <span className="text-faint">{l.ip || '-'}</span> },
     {
@@ -222,6 +256,15 @@ export default function AuditPage() {
             placeholder={t('audit.filters.keywordPlaceholder')}
             className="w-56"
           />
+          <Select
+            value={q.resource_type}
+            onChange={(e) => setQ({ resource_type: e.target.value, page: 1 })}
+            className="w-auto"
+          >
+            {resourceTypes.map((rt) => (
+              <option key={rt.value} value={rt.value}>{rt.label}</option>
+            ))}
+          </Select>
           <Select
             value={q.event_type}
             onChange={(e) => setQ({ event_type: e.target.value, page: 1 })}

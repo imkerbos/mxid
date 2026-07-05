@@ -365,6 +365,7 @@ export interface AuditLog {
   actor_name: string | null
   resource_type: string
   resource_id: string
+  resource_name: string | null
   detail: Record<string, unknown>
   ip: string | null
   user_agent: string | null
