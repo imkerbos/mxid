@@ -69,14 +69,24 @@ backend:
   # Extra labels to add to the StatefulSet pods.
   podLabels: {}
 
-  # Security context for the pod.
-  podSecurityContext: {}
-  # fsGroup: 2000
+  # Pod security context. Non-root by default — the backend is a static Go
+  # binary listening on :8080 (an unprivileged port), so it needs no root and no
+  # capabilities. If you run a custom image that must write outside /tmp or bind
+  # a privileged port, relax these.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
 
-  # Security context for the backend container.
-  securityContext: {}
-  # runAsNonRoot: true
-  # runAsUser: 1000
+  # Backend container security context.
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
 
   # Node selector, tolerations, and affinity.
   nodeSelector: {}
@@ -104,6 +114,9 @@ web:
 
   podAnnotations: {}
   podLabels: {}
+  # Left empty on purpose: the web image is stock nginx:1.27-alpine binding :80,
+  # which needs root (or the nginx-unprivileged image + a high port). Don't set
+  # runAsNonRoot here unless you switch to an unprivileged nginx image.
   podSecurityContext: {}
   securityContext: {}
   nodeSelector: {}
