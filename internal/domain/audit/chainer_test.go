@@ -79,3 +79,31 @@ func TestChainer_SeparateChainsPerClass(t *testing.T) {
 		t.Fatalf("each class should start at seq 1: data=%d auth=%d", dataHead.LastSeq, authHead.LastSeq)
 	}
 }
+
+func TestChainer_ZeroTenantChainDoesNotLivelock(t *testing.T) {
+	db := newTestDB(t)
+	gen := newTestIDGen(t)
+	// tenant 0 = the unauthenticated/system attribution path (auditctx zero Actor)
+	seedPending(t, db, gen, 0, "auth", "login.failed")
+	seedPending(t, db, gen, 0, "auth", "login.failed")
+	seedPending(t, db, gen, 0, "auth", "login.failed")
+
+	c := NewChainer(db, []byte("key"), "default", zap.NewNop())
+	n, err := c.ProcessBatch(context.Background(), 100)
+	if err != nil {
+		t.Fatalf("ProcessBatch errored on zero-tenant chain (livelock bug): %v", err)
+	}
+	if n != 3 {
+		t.Fatalf("processed %d, want 3", n)
+	}
+	var entries []AuditEntry
+	db.Where("tenant_id = ? AND chain_class = ?", 0, "auth").Order("seq asc").Find(&entries)
+	if len(entries) != 3 || entries[0].Seq != 1 || entries[2].Seq != 3 {
+		t.Fatalf("zero-tenant chain not contiguous 1..3: %+v", entries)
+	}
+	var pend int64
+	db.Model(&AuditPending{}).Count(&pend)
+	if pend != 0 {
+		t.Fatalf("pending not drained (livelock): %d left", pend)
+	}
+}

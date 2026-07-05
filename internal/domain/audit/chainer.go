@@ -8,6 +8,7 @@ import (
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // Chainer drains mxid_audit_pending FIFO and appends to mxid_audit_entry,
@@ -54,11 +55,14 @@ func (c *Chainer) ProcessBatch(ctx context.Context, limit int) (int, error) {
 func (c *Chainer) chainOne(tx *gorm.DB, p *AuditPending) error {
 	// Load or init the chain head for this (tenant, class).
 	var head ChainHead
-	err := tx.Where("tenant_id = ? AND chain_class = ?", p.TenantID, p.ChainClass).First(&head).Error
-	if err == gorm.ErrRecordNotFound {
-		head = ChainHead{TenantID: p.TenantID, ChainClass: p.ChainClass, LastSeq: 0, LastEntryHash: GenesisPrevHash}
-	} else if err != nil {
+	if err := tx.Where("tenant_id = ? AND chain_class = ?", p.TenantID, p.ChainClass).
+		Limit(1).Find(&head).Error; err != nil {
 		return err
+	}
+	if head.LastSeq == 0 { // no existing head (or genesis) -> initialize
+		head.TenantID = p.TenantID
+		head.ChainClass = p.ChainClass
+		head.LastEntryHash = GenesisPrevHash
 	}
 
 	seq := head.LastSeq + 1
@@ -102,7 +106,10 @@ func (c *Chainer) chainOne(tx *gorm.DB, p *AuditPending) error {
 	head.LastSeq = seq
 	head.LastEntryHash = entryHash
 	head.UpdatedAt = time.Now().UTC()
-	return tx.Save(&head).Error
+	return tx.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "chain_class"}},
+		DoUpdates: clause.AssignmentColumns([]string{"last_seq", "last_entry_hash", "updated_at"}),
+	}).Create(&head).Error
 }
 
 // Run ticks ProcessBatch every interval until ctx is cancelled. Single
