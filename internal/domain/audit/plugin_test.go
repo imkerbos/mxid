@@ -139,6 +139,81 @@ func TestPlugin_CaptureUpdate(t *testing.T) {
 	}
 }
 
+func TestPlugin_CaptureDelete(t *testing.T) {
+	db := newPluginDB(t)
+	ctx := actorCtx()
+	if err := db.WithContext(ctx).Create(&widget{ID: 1, Name: "doomed"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	db.Where("1=1").Delete(&AuditPending{}) // clear create event
+
+	if err := db.WithContext(ctx).Delete(&widget{}, 1).Error; err != nil {
+		t.Fatal(err)
+	}
+	var p AuditPending
+	if err := db.First(&p).Error; err != nil {
+		t.Fatalf("no delete event: %v", err)
+	}
+	if p.EventType != "widget.deleted" || p.ResourceType != "widget" {
+		t.Fatalf("bad delete event: %+v", p)
+	}
+	if len(p.Before) == 0 || !containsStr(string(p.Before), "doomed") {
+		t.Fatalf("before-state not captured on delete: %s", p.Before)
+	}
+	if len(p.After) != 0 {
+		t.Fatalf("delete must have no after-state: %s", p.After)
+	}
+}
+
+func TestPlugin_UpdateResourceIDFromWhere(t *testing.T) {
+	db := newPluginDB(t)
+	ctx := actorCtx()
+	if err := db.WithContext(ctx).Create(&widget{ID: 1, Name: "old"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	// clear the create event so we assert only the update
+	db.Where("1=1").Delete(&AuditPending{})
+
+	if err := db.WithContext(ctx).Model(&widget{}).Where("id = ?", 1).
+		Update("name", "new").Error; err != nil {
+		t.Fatal(err)
+	}
+	var p AuditPending
+	if err := db.First(&p).Error; err != nil {
+		t.Fatalf("no update event: %v", err)
+	}
+	if p.EventType != "widget.updated" {
+		t.Fatalf("bad update event: %+v", p)
+	}
+	if p.ResourceID != 1 {
+		t.Fatalf("resource_id not resolved from before-snapshot: got %d, want 1", p.ResourceID)
+	}
+}
+
+func TestPlugin_DeleteResourceIDFromWhere(t *testing.T) {
+	db := newPluginDB(t)
+	ctx := actorCtx()
+	if err := db.WithContext(ctx).Create(&widget{ID: 1, Name: "doomed"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	// clear the create event so we assert only the delete
+	db.Where("1=1").Delete(&AuditPending{})
+
+	if err := db.WithContext(ctx).Where("id = ?", 1).Delete(&widget{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	var p AuditPending
+	if err := db.First(&p).Error; err != nil {
+		t.Fatalf("no delete event: %v", err)
+	}
+	if p.EventType != "widget.deleted" {
+		t.Fatalf("bad delete event: %+v", p)
+	}
+	if p.ResourceID != 1 {
+		t.Fatalf("resource_id not resolved from before-snapshot: got %d, want 1", p.ResourceID)
+	}
+}
+
 func containsStr(h, n string) bool {
 	return len(n) > 0 && len(h) >= len(n) && (func() bool {
 		for i := 0; i+len(n) <= len(h); i++ {
