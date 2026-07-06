@@ -44,3 +44,35 @@ func TestFileSink_AppendsJSONLine(t *testing.T) {
 		t.Fatalf("want 2 appended lines, got %d", n)
 	}
 }
+
+func TestFileSink_ListRoundTrips(t *testing.T) {
+	dir := t.TempDir()
+	sink := NewFileSink(dir + "/anchors.log")
+	recs := []AnchorRecord{
+		{TenantID: 7, ChainClass: "data", FromSeq: 1, ToSeq: 3, MerkleRoot: []byte{1}, Signature: []byte{2}, KeyID: "k1"},
+		{TenantID: 7, ChainClass: "data", FromSeq: 4, ToSeq: 4, MerkleRoot: []byte{3}, Signature: []byte{4}, KeyID: "k1"},
+	}
+	for _, r := range recs {
+		if _, err := sink.Put(context.Background(), r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := sink.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].FromSeq != 1 || got[1].ToSeq != 4 {
+		t.Fatalf("list round-trip wrong: %+v", got)
+	}
+}
+
+func TestFileSink_ListEmptyWhenNoFile(t *testing.T) {
+	sink := NewFileSink(t.TempDir() + "/none.log")
+	got, err := sink.List(context.Background())
+	if err != nil {
+		t.Fatalf("missing file should be empty, not error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("want empty, got %d", len(got))
+	}
+}

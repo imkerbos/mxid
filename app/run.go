@@ -68,10 +68,37 @@ func Run() {
 	configPath := flag.String("config", "configs", "path to config directory")
 	flag.Parse()
 
+	// Operator subcommand: `verify-export` proves a third-party export bundle
+	// OFFLINE — no DB, no HMAC key, no config. It must run BEFORE
+	// bootstrap.NewApp so it never depends on a live database (a third party
+	// running this against an exported directory + a trusted public key has
+	// neither): `mxid-server verify-export -dir=/path/to/export -trust=<b64pub>`.
+	if flag.Arg(0) == "verify-export" {
+		if err := runVerifyExport(flag.Args()[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
 	a, err := bootstrap.NewApp(*configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to initialize application: %v\n", err)
 		os.Exit(1)
+	}
+
+	// Operator subcommand: `audit-export` builds a third-party-verifiable
+	// export bundle (entries + anchors + pubkeys) for one chain range and
+	// writes it to --out, then exits — it needs the DB (hence after NewApp)
+	// but must NOT start the chainer/anchorer/server (same rationale as
+	// verify-audit below): `mxid-server -config=configs audit-export
+	// -tenant=7 -class=data -from=1 -to=100 -out=/path/to/export`.
+	if flag.Arg(0) == "audit-export" {
+		if err := runAuditExport(a, flag.Args()[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	// Operator subcommand: `verify-audit` walks every audit chain head and

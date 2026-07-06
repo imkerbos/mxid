@@ -99,6 +99,10 @@ crypto:
   # committed. Injected via MXID_CRYPTO_AUDIT_ANCHOR_KEY (.env in dev, secret
   # manager in prod). Generate: openssl rand -base64 32
   audit_anchor_key: ""
+  # Comma-separated base64-encoded ed25519 public keys retired from anchoring;
+  # keep so their old anchors still verify. Injected via
+  # MXID_CRYPTO_AUDIT_ANCHOR_RETIRED_PUBKEYS. Optional.
+  audit_anchor_retired_pubkeys: ""
 
 # Periodic signed checkpoints of the audit hash chain, written to an
 # out-of-band sink so a full DB compromise (which could rewrite

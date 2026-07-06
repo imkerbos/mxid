@@ -123,7 +123,7 @@ func TestZZ_E2E_Postgres(t *testing.T) {
 	if err != nil || anch == nil || anch.FromSeq != 1 || anch.ToSeq != 3 {
 		t.Fatalf("anchor create failed: anch=%+v err=%v", anch, err)
 	}
-	ares, err := VerifyAnchors(ctx, db, anchorPub, 7, "data")
+	ares, err := VerifyAnchors(ctx, db, NewKeyRegistry(anchorPub), 7, "data")
 	if err != nil || !ares.OK || ares.AnchoredThrough != 3 {
 		t.Fatalf("anchor verify failed: %+v err=%v", ares, err)
 	}
@@ -133,7 +133,7 @@ func TestZZ_E2E_Postgres(t *testing.T) {
 	if err := db.Exec("UPDATE mxid_audit_anchor SET merkle_root = ? WHERE tenant_id = 7 AND chain_class = 'data'", []byte("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")).Error; err != nil {
 		t.Fatal(err)
 	}
-	bad, _ := VerifyAnchors(ctx, db, anchorPub, 7, "data")
+	bad, _ := VerifyAnchors(ctx, db, NewKeyRegistry(anchorPub), 7, "data")
 	if bad.OK {
 		t.Fatal("tampered anchor root not caught by VerifyAnchors")
 	}
