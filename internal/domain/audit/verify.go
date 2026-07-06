@@ -3,7 +3,6 @@ package audit
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
 
 	"gorm.io/gorm"
 )
@@ -52,7 +51,7 @@ type AnchorVerifyResult struct {
 	OK              bool
 	AnchoredThrough int64
 	FailFromSeq     int64
-	Reason          string // "", "root mismatch", "bad signature", "missing entries", "anchor gap"
+	Reason          string // "", "root mismatch", "bad signature", "missing entries", "anchor gap", "unknown key"
 }
 
 // VerifyAnchors recomputes each anchor's Merkle root from the stored entries and
@@ -67,7 +66,7 @@ type AnchorVerifyResult struct {
 // the tail of the chain is simply not yet anchored, this online check cannot
 // tell the two apart — that requires diffing against the external sink
 // (Phase 4 export).
-func VerifyAnchors(ctx context.Context, db *gorm.DB, pub ed25519.PublicKey, tenantID int64, class string) (AnchorVerifyResult, error) {
+func VerifyAnchors(ctx context.Context, db *gorm.DB, keys KeyRegistry, tenantID int64, class string) (AnchorVerifyResult, error) {
 	var anchors []AuditAnchor
 	if err := db.WithContext(ctx).
 		Where("tenant_id = ? AND chain_class = ?", tenantID, class).
@@ -80,6 +79,10 @@ func VerifyAnchors(ctx context.Context, db *gorm.DB, pub ed25519.PublicKey, tena
 		a := &anchors[i]
 		if a.FromSeq != expectedFrom {
 			return AnchorVerifyResult{OK: false, AnchoredThrough: expectedFrom - 1, FailFromSeq: a.FromSeq, Reason: "anchor gap"}, nil
+		}
+		pub, ok := keys.For(a.KeyID)
+		if !ok {
+			return AnchorVerifyResult{OK: false, AnchoredThrough: through, FailFromSeq: a.FromSeq, Reason: "unknown key"}, nil
 		}
 		if !VerifyAnchorSig(pub, a) {
 			return AnchorVerifyResult{OK: false, AnchoredThrough: through, FailFromSeq: a.FromSeq, Reason: "bad signature"}, nil
@@ -104,4 +107,81 @@ func VerifyAnchors(ctx context.Context, db *gorm.DB, pub ed25519.PublicKey, tena
 		through = a.ToSeq
 	}
 	return AnchorVerifyResult{OK: true, AnchoredThrough: through}, nil
+}
+
+// VerifyAnchorsWithSink runs the DB-side anchor verification, then cross-checks
+// the external sink so that DELETING a DB anchor row (which VerifyAnchors alone
+// reports only as a coverage gap, and not at all if the whole tail is dropped)
+// is caught: the signed copy in the sink survives a DB compromise.
+//
+// The two directions are reconciled differently:
+//   - DB -> sink: every DB anchor MUST have an exact sink match on
+//     (from_seq, to_seq, root, sig). Any miss or mismatch means the DB row was
+//     tampered with or forged after the fact — flagged unconditionally.
+//   - sink -> DB: a sink record with no identical (from_seq, to_seq) DB row is
+//     flagged as a deletion UNLESS some DB anchor at that from_seq is at least
+//     as WIDE (to_seq >= the sink record's to_seq). This tolerates the
+//     anchorer's benign retry-orphans: Anchorer.AnchorChain does sink.Put then
+//     db.Create, not atomically, so a transient DB failure after a successful
+//     Put leaves an orphan sink record whose from_seq is later re-anchored
+//     over an equal-or-wider range by the next tick. A retry-orphan is by
+//     construction narrower than (or equal to) the DB anchor that superseded
+//     it, so width-aware coverage is required: tolerating ANY DB anchor at the
+//     same from_seq (regardless of width) would let an attacker delete a wide
+//     DB anchor, splice in a narrower pre-existing signed sink record as its
+//     replacement, and silently drop the uncovered tail of the range from
+//     AnchoredThrough coverage.
+func VerifyAnchorsWithSink(ctx context.Context, db *gorm.DB, sink AnchorSink, keys KeyRegistry, tenantID int64, class string) (AnchorVerifyResult, error) {
+	res, err := VerifyAnchors(ctx, db, keys, tenantID, class)
+	if err != nil || !res.OK {
+		return res, err
+	}
+
+	var dbAnchors []AuditAnchor
+	if err := db.WithContext(ctx).
+		Where("tenant_id = ? AND chain_class = ?", tenantID, class).
+		Order("from_seq asc").Find(&dbAnchors).Error; err != nil {
+		return AnchorVerifyResult{}, err
+	}
+	sinkAll, err := sink.List(ctx)
+	if err != nil {
+		return AnchorVerifyResult{}, err
+	}
+	// index the sink by (tenant,class,from,to)
+	type k struct {
+		t    int64
+		c    string
+		f, o int64
+	}
+	sinkIdx := make(map[k]AnchorRecord)
+	for _, r := range sinkAll {
+		if r.TenantID == tenantID && r.ChainClass == class {
+			sinkIdx[k{r.TenantID, r.ChainClass, r.FromSeq, r.ToSeq}] = r
+		}
+	}
+	dbIdx := make(map[k]bool)
+	maxDBToSeqAt := make(map[int64]int64, len(dbAnchors))
+	for i := range dbAnchors {
+		a := &dbAnchors[i]
+		dbIdx[k{a.TenantID, a.ChainClass, a.FromSeq, a.ToSeq}] = true
+		if a.ToSeq > maxDBToSeqAt[a.FromSeq] {
+			maxDBToSeqAt[a.FromSeq] = a.ToSeq
+		}
+		sr, ok := sinkIdx[k{a.TenantID, a.ChainClass, a.FromSeq, a.ToSeq}]
+		if !ok || !bytes.Equal(sr.MerkleRoot, a.MerkleRoot) || !bytes.Equal(sr.Signature, a.Signature) {
+			return AnchorVerifyResult{OK: false, AnchoredThrough: res.AnchoredThrough, FailFromSeq: a.FromSeq, Reason: "sink mismatch"}, nil
+		}
+	}
+	for key, r := range sinkIdx {
+		if dbIdx[key] {
+			continue // exact match already validated in the DB->sink loop
+		}
+		// a sink record with no exact DB match is a benign retry-orphan ONLY if a
+		// DB anchor at the same from_seq covers at least as wide a range; a wider
+		// orphan (or one with no covering DB anchor) means a DB row was deleted.
+		if maxTo, ok := maxDBToSeqAt[r.FromSeq]; !ok || maxTo < r.ToSeq {
+			return AnchorVerifyResult{OK: false, AnchoredThrough: res.AnchoredThrough, FailFromSeq: r.FromSeq, Reason: "sink mismatch"}, nil
+		}
+	}
+	return res, nil
 }
