@@ -6,6 +6,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -104,7 +106,14 @@ func Run() {
 	// non-nil group to mount on.
 	publicPortalGroup = a.Router.Group("/api/v1/portal-public")
 
-	registerModules(a)
+	// workerCtx is cancelled on SIGINT/SIGTERM so the background workers
+	// (outbox, audit chainer, audit anchorer, retention purge) drain and stop
+	// on shutdown instead of being killed mid-tick. a.Run() independently
+	// handles the same signal for graceful HTTP shutdown; both react to it.
+	workerCtx, workerStop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer workerStop()
+
+	registerModules(a, workerCtx)
 
 	// Public metadata endpoint — both portal and console SPAs fetch this
 	// before login to learn the canonical issuer / portal / console URLs.
@@ -135,7 +144,7 @@ var (
 	publicPortalGroup *gin.RouterGroup
 )
 
-func registerModules(a *bootstrap.App) {
+func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	// 0a. Catch-all audit middleware. Installed on the console + portal GROUPS
 	// at the very top of registerModules — before any route is registered on
 	// them — so it sits in their handler chain. (Router-level .Use here would
@@ -661,7 +670,7 @@ func registerModules(a *bootstrap.App) {
 	// every 6h. Hourly would be wasteful (no SLA on prompt deletion); daily
 	// risks losing the window during long maintenance. Default-tenant scope
 	// because retention is a global compliance knob.
-	go runAuditRetention(a, settingService, auditModule.Repo)
+	go runAuditRetention(workerCtx, a, settingService, auditModule.Repo)
 
 	// Transactional outbox worker — durable at-least-once delivery for side
 	// effects that must survive a crash (offboarding webhooks, later L2 SCIM
@@ -831,7 +840,7 @@ func registerModules(a *bootstrap.App) {
 	}
 
 	// EE handlers (if any) are now registered — start the outbox worker.
-	go outboxWorker.Run(context.Background())
+	go outboxWorker.Run(workerCtx)
 
 	// Audit hash-chain writer — single goroutine, single writer (Chainer's
 	// own invariant: never run two of these against the same DB). Drains
@@ -848,7 +857,7 @@ func registerModules(a *bootstrap.App) {
 		a.Logger.Fatal("crypto.audit_chain_key is empty; export MXID_CRYPTO_AUDIT_CHAIN_KEY=$(openssl rand -base64 32)")
 	}
 	chainer := audit.NewChainer(a.DB, auditChainKey, "default", a.Logger)
-	go chainer.Run(context.Background(), 2*time.Second)
+	go chainer.Run(workerCtx, 2*time.Second)
 
 	// Audit anchorer — periodically seals the un-anchored tail of each chain
 	// into a signed Merkle root written to an external sink, so a full DB
@@ -867,7 +876,7 @@ func registerModules(a *bootstrap.App) {
 		}
 		auditAnchorSink := audit.NewFileSink(a.Config.Audit.AnchorSinkPath)
 		anchorer := audit.NewAnchorer(a.DB, auditAnchorPriv, auditAnchorSink, a.IDGen, a.Logger)
-		go anchorer.Run(context.Background(), 60*time.Second)
+		go anchorer.Run(workerCtx, 60*time.Second)
 	}
 
 	// Mount the per-app provisioning config API on the console group.
@@ -1564,7 +1573,7 @@ func buildIdentityResolver(userModule *user.Module, a *bootstrap.App) resolver.I
 // the purge for that tick (admin can opt out by setting 0). Cron lives in
 // the binary process, not a separate worker, so OSS deployments don't have
 // to wire a job scheduler.
-func runAuditRetention(a *bootstrap.App, ss *setting.Service, repo audit.Repository) {
+func runAuditRetention(stopCtx context.Context, a *bootstrap.App, ss *setting.Service, repo audit.Repository) {
 	const tickEvery = 6 * time.Hour
 	ticker := time.NewTicker(tickEvery)
 	defer ticker.Stop()
@@ -1591,7 +1600,11 @@ func runAuditRetention(a *bootstrap.App, ss *setting.Service, repo audit.Reposit
 					zap.Int64("deleted", deleted))
 			}
 		}
-		<-ticker.C
+		select {
+		case <-stopCtx.Done():
+			return
+		case <-ticker.C:
+		}
 	}
 }
 
