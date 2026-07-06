@@ -2,6 +2,7 @@ package audit
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/imkerbos/mxid/pkg/event"
@@ -64,5 +65,28 @@ func TestBridge_SurvivesCanceledContext(t *testing.T) {
 	}
 	if p.ChainClass != "auth" || p.TenantID != 7 {
 		t.Fatalf("bad chained event: %+v", p)
+	}
+}
+
+func TestBridge_ForwardsRedactedDetail(t *testing.T) {
+	db := newTestDB(t)
+	svc := NewService(&captureRepo{}, newTestIDGen(t), event.NewBus(zap.NewNop()), zap.NewNop(), 0)
+	svc.SetChainBridge(db, NewCapturer(newTestIDGen(t)))
+
+	aid := int64(42)
+	svc.bridgeToChain(context.Background(), &AuditLog{
+		TenantID: 7, ActorID: &aid, ActorType: "user", EventType: "oidc.token.reuse_detected",
+		Detail: json.RawMessage(`{"client_id":"acme","secret":"SHOULD_BE_REDACTED"}`),
+	})
+	var p AuditPending
+	if err := db.First(&p).Error; err != nil {
+		t.Fatal(err)
+	}
+	got := string(p.Detail)
+	if !containsStr(got, "acme") {
+		t.Fatalf("client_id not forwarded into chain detail: %s", got)
+	}
+	if containsStr(got, "SHOULD_BE_REDACTED") || containsStr(got, "\"secret\"") {
+		t.Fatalf("secret not redacted in chain detail: %s", got)
 	}
 }
