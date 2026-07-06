@@ -1,3 +1,8 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+
+# Force a patched @babel/core (transitive via eslint-plugin-react-hooks) to close
+# GHSA-4x5r-pxfx-6jf8 (arbitrary file read via sourceMappingURL, <= 7.29.0).
+overrides:
+  '@babel/core': '^7.29.6'
