@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/microcosm-cc/bluemonday"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/imkerbos/mxid/internal/domain/platformconfig"
 	"github.com/imkerbos/mxid/internal/domain/setting"
@@ -25,15 +26,22 @@ import (
 	"github.com/imkerbos/mxid/pkg/tenantctx"
 )
 
+// licenseReloadChannel mirrors app.licenseReloadChannel ("license:reload").
+// Duplicated (not imported) because internal/gateway/console/settings can't
+// import package app without an import cycle; app owns the subscriber side
+// (startLicenseReloadSubscriber), this handler only publishes.
+const licenseReloadChannel = "license:reload"
+
 type Handler struct {
 	service    *setting.Service
 	platform   *platformconfig.Service
 	mailer     *mailer.Mailer
 	defaultTID int64
+	rdb        *redis.Client
 }
 
-func NewHandler(svc *setting.Service, platform *platformconfig.Service, mailer *mailer.Mailer, defaultTID int64) *Handler {
-	return &Handler{service: svc, platform: platform, mailer: mailer, defaultTID: defaultTID}
+func NewHandler(svc *setting.Service, platform *platformconfig.Service, mailer *mailer.Mailer, defaultTID int64, rdb *redis.Client) *Handler {
+	return &Handler{service: svc, platform: platform, mailer: mailer, defaultTID: defaultTID, rdb: rdb}
 }
 
 func (h *Handler) Register(rg *gin.RouterGroup) {
@@ -479,6 +487,16 @@ func (h *Handler) putLicense(c *gin.Context) {
 		return
 	}
 	license.SetCurrent(mgr)
+
+	// Cross-pod reload: license.SetCurrent above only updates THIS pod's
+	// process-global pointer. Broadcast so every other replica re-reads
+	// platform config and converges on the same edition without a restart
+	// (app.startLicenseReloadSubscriber). Best-effort: this pod is already
+	// correct even if the publish fails, so we don't fail the request over
+	// it — peers just pick up the change on their next restart instead.
+	if h.rdb != nil {
+		_ = h.rdb.Publish(c.Request.Context(), licenseReloadChannel, "1").Err()
+	}
 
 	errStr := ""
 	if e := mgr.LoadErr(); e != nil {

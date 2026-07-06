@@ -80,6 +80,8 @@ values (it rejects dev placeholders). Compose aborts if any is missing.
 | Variable | Purpose | How to generate |
 |----------|---------|-----------------|
 | `MXID_CRYPTO_KEY_ENCRYPTION_KEY` | Master KEK — AES-encrypts OIDC signing keys + sensitive settings (SMTP/SMS secrets, OAuth client secrets) at rest. **Unique per deployment; rotating it invalidates existing app signing keys.** | `openssl rand -base64 32` |
+| `MXID_CRYPTO_AUDIT_CHAIN_KEY` | HMAC key for the tamper-proof audit hash-chain. **Generate ONCE and never change — rotating it makes every existing audit entry fail verification** (same stability class as the KEK). | `openssl rand -base64 32` |
+| `MXID_CRYPTO_AUDIT_ANCHOR_KEY` | Ed25519 seed that signs the external Merkle anchors. Required when `audit.anchorSink.enabled` (the default). May be rotated only if the old public key is kept in `crypto.audit_anchor_retired_pubkeys` so old anchors still verify. | `openssl rand -base64 32` |
 | `POSTGRES_PASSWORD` (→ `MXID_DATABASE_PASSWORD`) | PostgreSQL password. | strong random |
 | `REDIS_PASSWORD` (→ `MXID_REDIS_PASSWORD`) | Redis password. | strong random |
 
@@ -462,8 +464,16 @@ helm install mxid deploy/helm/mxid \
   --set redis.host=redis.internal \
   --set secrets.databasePassword=<db-pw> \
   --set secrets.redisPassword=<redis-pw> \
-  --set secrets.cryptoKeyEncryptionKey=$(openssl rand -base64 32)
+  --set secrets.cryptoKeyEncryptionKey=$(openssl rand -base64 32) \
+  --set secrets.auditChainKey=$(openssl rand -base64 32) \
+  --set secrets.auditAnchorKey=$(openssl rand -base64 32)
 ```
+
+> The two `audit*Key` secrets are **required in release mode** (the chart's
+> Secret template fails the install without them). Generate `auditChainKey`
+> **once** and store it durably — changing it later invalidates the existing
+> audit chain. For production, prefer `secrets.create: false` + an
+> `existingSecret` created via a secret manager (see below) over `--set`.
 
 #### Minimum production values file
 
@@ -490,20 +500,57 @@ redis:
   port: "6379"
 
 secrets:
+  # For production prefer create: false + existingSecret (see below) so no
+  # plaintext secret ever lands in this file. create: true is shown here for
+  # completeness.
   create: true
   databasePassword: ""            # MUST set — DB password
   redisPassword: ""               # MUST set — Redis password (empty = no auth)
   cryptoKeyEncryptionKey: ""      # MUST set — openssl rand -base64 32
+  auditChainKey: ""               # MUST set — openssl rand -base64 32 (never change)
+  auditAnchorKey: ""              # MUST set — openssl rand -base64 32
 
 routing:
-  type: istio                     # istio | gatewayapi | ingress
-  istio:
-    gateway: "istio-system/mxid-gateway"
+  type: gatewayapi                # gatewayapi (default) | istio | ingress | none
+  gatewayapi:
+    name: "mxid-gateway"          # existing Gateway name
+    namespace: ""                 # Gateway namespace (empty = same as release)
+    sectionName: ""               # optional listener, e.g. "https"
+
+backend:
+  replicaCount: 2                 # default 2 (HA); leader-elected background jobs
 ```
 
 > **Do not commit `values-prod.yaml` to git if it contains plain-text secrets.**
 > Use `--set` flags in CI, Sealed Secrets, External Secrets Operator, or Vault
 > agent injection instead.
+
+#### Production secrets via `existingSecret` (recommended)
+
+Keep secrets out of Helm values entirely: create a Kubernetes Secret out of
+band (via a secret manager) and reference it. The Secret **must** contain all
+five keys:
+
+```bash
+kubectl create secret generic mxid-secrets -n mxid \
+  --from-literal=MXID_DATABASE_PASSWORD='<db-pw>' \
+  --from-literal=MXID_REDIS_PASSWORD='<redis-pw>' \
+  --from-literal=MXID_CRYPTO_KEY_ENCRYPTION_KEY='<openssl rand -base64 32>' \
+  --from-literal=MXID_CRYPTO_AUDIT_CHAIN_KEY='<openssl rand -base64 32>' \
+  --from-literal=MXID_CRYPTO_AUDIT_ANCHOR_KEY='<openssl rand -base64 32>'
+```
+
+```yaml
+# values-prod.yaml
+secrets:
+  create: false
+  existingSecret: mxid-secrets
+```
+
+Prefer the External Secrets Operator (pulls from Vault / AWS Secrets Manager /
+GCP SM) or Sealed Secrets over a manual `kubectl create secret`. When
+`create: false`, the chart does NOT validate the keys — the app still
+fails-closed at boot if any are missing.
 
 #### Key values reference
 
@@ -514,7 +561,7 @@ routing:
 | `image.tag` | `1.0.0` | Image tag for both backend and web (pin to a release) |
 | `image.pullPolicy` | `IfNotPresent` | Image pull policy |
 | `imagePullSecrets` | `[]` | Pull-secret names for private registries (needed for `edition: ee`) |
-| `backend.replicaCount` | `1` | Backend replica count; each pod gets a unique Snowflake nodeID from its ordinal |
+| `backend.replicaCount` | `2` | Backend replica count (default 2 for HA); each pod gets a unique Snowflake nodeID from its ordinal. Single-writer jobs are leader-elected, so >1 is safe |
 | `backend.autoscaling.enabled` | `false` | Enable HPA on the backend StatefulSet |
 | `backend.autoscaling.minReplicas` | `1` | HPA minimum |
 | `backend.autoscaling.maxReplicas` | `5` | HPA maximum |
@@ -525,11 +572,16 @@ routing:
 | `redis.host` | `redis` | Redis hostname |
 | `redis.port` | `6379` | Redis port |
 | `secrets.create` | `true` | Create a Secret from the values below; set `false` to reference `secrets.existingSecret` instead |
-| `secrets.existingSecret` | `""` | Name of a pre-existing Secret (requires keys `MXID_DATABASE_PASSWORD`, `MXID_REDIS_PASSWORD`, `MXID_CRYPTO_KEY_ENCRYPTION_KEY`) |
+| `secrets.keepOnUninstall` | `true` | When `create: true`, annotate the Secret `helm.sh/resource-policy: keep` so `helm uninstall` does NOT delete it (protects the KEK + audit-chain key). The kept Secret retains Helm ownership metadata, so a same-name/same-namespace reinstall adopts it (no "already exists" error) |
+| `secrets.preserveExisting` | `true` | When `create: true`, make the Secret idempotent: if it already exists, reuse its per-key values instead of overwriting from `values`. A reinstall/upgrade (incl. after an uninstall that kept the Secret) never clobbers the existing KEK / audit-chain key. Set `false` to force `values` to win (e.g. to rotate a password) |
+| `secrets.existingSecret` | `""` | Name of a pre-existing Secret (requires keys `MXID_DATABASE_PASSWORD`, `MXID_REDIS_PASSWORD`, `MXID_CRYPTO_KEY_ENCRYPTION_KEY`, `MXID_CRYPTO_AUDIT_CHAIN_KEY`, `MXID_CRYPTO_AUDIT_ANCHOR_KEY`) |
 | `secrets.databasePassword` | `""` | DB password (used when `secrets.create: true`) |
 | `secrets.redisPassword` | `""` | Redis password (empty = no auth) |
 | `secrets.cryptoKeyEncryptionKey` | `""` | Master KEK — `openssl rand -base64 32` |
-| `routing.type` | `istio` | Routing backend: `istio`, `gatewayapi`, `ingress`, or `none` |
+| `secrets.auditChainKey` | `""` | Audit hash-chain HMAC key — `openssl rand -base64 32`; **generate once, never change** |
+| `secrets.auditAnchorKey` | `""` | Audit anchor Ed25519 seed — `openssl rand -base64 32`; required when `audit.anchorSink.enabled` |
+| `audit.anchorSink.enabled` | `true` | Persist signed external audit anchors to a per-pod PVC (StatefulSet `volumeClaimTemplates`) |
+| `routing.type` | `gatewayapi` | Routing backend: `gatewayapi` (default), `istio`, `ingress`, or `none` |
 | `config.serverMode` | `release` | `release` or `debug` |
 | `config.allowedOrigins` | `""` | CORS allow-list; defaults to `https://<host>` when empty |
 
