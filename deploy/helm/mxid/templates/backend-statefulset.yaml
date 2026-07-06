@@ -9,6 +9,14 @@ spec:
   # serviceName must match the headless Service name for stable pod DNS.
   serviceName: mxid-headless
   replicas: {{ .Values.backend.replicaCount }}
+  {{- if .Values.audit.anchorSink.enabled }}
+  # Retain the audit anchor-sink PVCs on StatefulSet deletion (helm uninstall)
+  # AND on scale-down, so the external audit-anchor evidence is never lost with
+  # the pod. Retain is the Kubernetes default; set explicitly to guard intent.
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  {{- end }}
   selector:
     matchLabels:
       {{- include "mxid.backendSelectorLabels" . | nindent 6 }}
@@ -77,6 +85,29 @@ spec:
                 secretKeyRef:
                   name: {{ include "mxid.secretName" . }}
                   key: MXID_CRYPTO_KEY_ENCRYPTION_KEY
+            - name: MXID_CRYPTO_AUDIT_CHAIN_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "mxid.secretName" . }}
+                  key: MXID_CRYPTO_AUDIT_CHAIN_KEY
+            - name: MXID_CRYPTO_AUDIT_ANCHOR_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "mxid.secretName" . }}
+                  key: MXID_CRYPTO_AUDIT_ANCHOR_KEY
+            {{- if .Values.audit.anchorSink.enabled }}
+            # Anchor sink lives on the mounted PersistentVolume (the pod
+            # filesystem is ephemeral). Written only by the leader replica.
+            - name: MXID_AUDIT_ANCHOR_ENABLED
+              value: "true"
+            - name: MXID_AUDIT_ANCHOR_SINK_PATH
+              value: {{ .Values.audit.anchorSink.path | quote }}
+            {{- end }}
+          {{- if .Values.audit.anchorSink.enabled }}
+          volumeMounts:
+            - name: audit-anchor-sink
+              mountPath: {{ .Values.audit.anchorSink.mountPath | quote }}
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /health
@@ -119,5 +150,22 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-  # No volumeClaimTemplates — the backend is stateless (data lives in PostgreSQL
-  # and Redis; no local disk state).
+  {{- if .Values.audit.anchorSink.enabled }}
+  # The backend is otherwise stateless (data lives in PostgreSQL and Redis), but
+  # the tamper-proof audit anchor sink needs durable local storage: the pod
+  # filesystem is ephemeral, and losing the external anchor copy defeats the
+  # "catch a full DB compromise against the external record" guarantee. A
+  # per-ordinal PVC (StatefulSet reattaches the same PVC to the same pod across
+  # restarts/reschedules) persists it. Only the leader replica writes.
+  volumeClaimTemplates:
+    - metadata:
+        name: audit-anchor-sink
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if .Values.audit.anchorSink.persistence.storageClass }}
+        storageClassName: {{ .Values.audit.anchorSink.persistence.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.audit.anchorSink.persistence.size | quote }}
+  {{- end }}

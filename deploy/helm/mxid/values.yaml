@@ -34,7 +34,11 @@ imagePullSecrets: []
 backend:
   # Number of replicas. Each pod gets a unique Snowflake nodeID derived from
   # its ordinal index (0, 1, 2, …), so nodeIDs are always unique across pods.
-  replicaCount: 1
+  # Default 2 for high availability: single-writer background jobs (audit
+  # chainer/anchorer, OIDC key rotation, JIT sweeper) are leader-elected via a
+  # Postgres advisory lock, and cross-pod caches invalidate over Redis pub/sub,
+  # so >1 replica is safe and gives failover.
+  replicaCount: 2
 
   # Graceful shutdown. On pod termination the kubelet sends SIGTERM while the
   # Service/mesh endpoint is still being removed (the two happen in parallel) —
@@ -97,7 +101,9 @@ backend:
 # Web frontend (Deployment — stateless nginx + SPA)
 # ---------------------------------------------------------------------------
 web:
-  replicaCount: 1
+  # Default 2 for HA — the web tier is stateless nginx + static SPA, so
+  # multiple replicas are always safe.
+  replicaCount: 2
 
   # Graceful shutdown — same rationale as backend.preStopSleep above. nginx
   # serves short static requests, so a smaller grace period is fine.
@@ -180,6 +186,21 @@ redis:
 secrets:
   create: true
 
+  # When create: true, annotate the generated Secret with
+  # helm.sh/resource-policy: keep so `helm uninstall` does NOT delete it —
+  # protecting the irreplaceable KEK + audit-chain key from an accidental or
+  # temporary uninstall.
+  keepOnUninstall: true
+
+  # When create: true, make the Secret idempotent: if it already exists in the
+  # cluster, reuse its current per-key values instead of overwriting them from
+  # these values. So a repeat install/upgrade — including after an
+  # uninstall that kept the Secret — never clobbers the existing KEK /
+  # audit-chain key, no matter what these values say. First install (Secret
+  # absent) uses the values below. Set false to force these values to win
+  # (e.g. to deliberately rotate a password).
+  preserveExisting: true
+
   # Reference to a pre-existing Secret (used when create: false).
   existingSecret: ""
 
@@ -193,6 +214,38 @@ secrets:
   # Generate with: openssl rand -base64 32
   cryptoKeyEncryptionKey: ""
 
+  # MUST set — tamper-proof audit hash-chain HMAC key (base64 of 32 random bytes).
+  # Generate with: openssl rand -base64 32
+  auditChainKey: ""
+
+  # Required when audit.anchorSink.enabled — Ed25519 seed (base64 of 32 bytes)
+  # that signs the external Merkle anchors. Generate with: openssl rand -base64 32
+  auditAnchorKey: ""
+
+# ---------------------------------------------------------------------------
+# Audit anchor sink
+#
+# The anchorer (a single leader-elected replica) seals the audit hash-chain
+# tail into signed Merkle anchors and appends them to an external sink. On K8s
+# the pod filesystem is ephemeral, so the sink is backed by a per-pod
+# PersistentVolume. NOTE: only the leader replica writes anchors, so sink files
+# are distributed across the replicas' PVCs over the lifetime of the deployment
+# (a leadership move writes to a different ordinal's PVC). Offline verification
+# must aggregate the sink files from every replica's PVC. A shared object-store
+# sink (S3 with Object Lock) is the durable alternative and is future work.
+# ---------------------------------------------------------------------------
+audit:
+  anchorSink:
+    enabled: true
+    # File the signed anchors are appended to (must live under the mount path).
+    path: /app/data/audit-anchors.log
+    # Mount point for the anchor-sink PersistentVolume.
+    mountPath: /app/data
+    persistence:
+      size: 1Gi
+      # Empty => cluster default StorageClass.
+      storageClass: ""
+
 # ---------------------------------------------------------------------------
 # Ingress / routing
 #
@@ -202,7 +255,9 @@ secrets:
 #       none        — No ingress resource created
 # ---------------------------------------------------------------------------
 routing:
-  type: istio
+  # Default gatewayapi — HTTPRoute against an existing Gateway (see gatewayapi
+  # block below). Switch to istio / ingress / none as your cluster requires.
+  type: gatewayapi
 
   # --- Istio settings (used when type=istio) ---
   istio:

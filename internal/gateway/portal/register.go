@@ -39,7 +39,7 @@ func Register(
 	// One-time wiring of the SSE broker to the in-process event bus.
 	// Subsequent Register calls (e.g. in tests) would double-subscribe,
 	// but Register is only called once per server lifetime.
-	AttachBusSubscribers(bus)
+	AttachBusSubscribers(bus, rdb, logger)
 	// Apps
 	registerAppsRoutes(rg, &appsHandler{
 		appQuerier: appQ,

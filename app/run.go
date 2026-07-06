@@ -46,6 +46,7 @@ import (
 	"github.com/imkerbos/mxid/internal/protocol/saml"
 	"github.com/imkerbos/mxid/pkg/authz"
 	"github.com/imkerbos/mxid/pkg/crypto"
+	"github.com/imkerbos/mxid/pkg/dlock"
 	"github.com/imkerbos/mxid/pkg/ee/license"
 	"github.com/imkerbos/mxid/pkg/ee/registry"
 	"github.com/imkerbos/mxid/pkg/event"
@@ -196,6 +197,7 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	settingRepo := setting.NewRepositoryWithIDGen(a.DB, a.IDGen)
 	settingService = setting.NewService(settingRepo, a.MasterKey)
 	settingService.SetEventBus(a.EventBus)
+	settingService.SetRedisInvalidation(workerCtx, a.Redis)
 	mailerSvc = mailer.New(settingService)
 
 	// Platform-level config (license + install fingerprint) lives in a dedicated
@@ -224,13 +226,7 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	// No token → CE; expired → CE limits with existing data grandfathered. The
 	// signature is checked against the embedded vendor public key, so the old
 	// admin-editable enable_enterprise boolean can no longer unlock EE.
-	licToken := ""
-	var lic setting.License
-	if err := platformConfigService.Get(context.Background(), platformconfig.KeyLicense, &lic); err == nil {
-		licToken = lic.Key
-	}
-	licMgr := license.Load(licToken, time.Now())
-	license.SetCurrent(licMgr)
+	licMgr := reloadLicense(context.Background(), platformConfigService)
 	if err := licMgr.LoadErr(); err != nil {
 		a.Logger.Warn("license invalid — running as Community Edition", zap.Error(err))
 	}
@@ -239,11 +235,18 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 		zap.String("customer", licMgr.Customer()),
 		zap.Int("features", len(licMgr.EnabledFeatures())))
 
+	// A local reloadLicense only fixes the pod that served the console's
+	// putLicense request — every other replica keeps enforcing the OLD
+	// edition until restart. Subscribe every pod (including this one) so a
+	// license change broadcast over Redis converges the whole fleet; mirrors
+	// the Casbin resync subscriber's design (wireCasbinSync).
+	startLicenseReloadSubscriber(workerCtx, a.Redis, platformConfigService, a.Logger)
+
 	// Build the handler now; its ROUTES are mounted later (after AuthMiddleware
 	// + authz are on the console group) so settings endpoints aren't reachable
 	// unauthenticated. The service above is constructed early because other
 	// modules read config defaults from it during bootstrap.
-	settingsHandler := settings.NewHandler(settingService, platformConfigService, mailerSvc, a.Config.Tenant.DefaultID)
+	settingsHandler := settings.NewHandler(settingService, platformConfigService, mailerSvc, a.Config.Tenant.DefaultID, a.Redis)
 
 	// 1. Session manager
 	sessionMgr := session.NewManager(
@@ -774,7 +777,7 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 			a.Logger.Error("casbin initial sync failed, using legacy perm matching: " + err.Error())
 		} else {
 			authzSvc = authzSvc.WithCasbin(casbinEngine)
-			wireCasbinSync(a, casbinEngine, loader)
+			wireCasbinSync(workerCtx, a, casbinEngine, loader)
 		}
 	}
 	// Tell authn /auth/me whether the caller is admin-eligible so the
@@ -884,7 +887,12 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 		a.Logger.Fatal("crypto.audit_chain_key is empty; export MXID_CRYPTO_AUDIT_CHAIN_KEY=$(openssl rand -base64 32)")
 	}
 	chainer := audit.NewChainer(a.DB, auditChainKey, "default", a.Logger)
-	go chainer.Run(workerCtx, 2*time.Second)
+	// Single-writer: the chainer assigns contiguous seq numbers, so exactly one
+	// replica may run it. The advisory-lock leader guarantees that across pods
+	// (others idle until failover), preventing duplicate-seq PK collisions.
+	go dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyAuditChainer, a.Logger, func(ctx context.Context) {
+		chainer.Run(ctx, 2*time.Second)
+	})
 
 	// Audit anchorer — periodically seals the un-anchored tail of each chain
 	// into a signed Merkle root written to an external sink, so a full DB
@@ -903,7 +911,11 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 		}
 		auditAnchorSink := audit.NewFileSink(a.Config.Audit.AnchorSinkPath)
 		anchorer := audit.NewAnchorer(a.DB, auditAnchorPriv, auditAnchorSink, a.IDGen, a.Logger)
-		go anchorer.Run(workerCtx, 60*time.Second)
+		// Single-writer like the chainer: one replica anchors, others idle until
+		// failover. Also avoids two pods writing anchors to their own local sinks.
+		go dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyAuditAnchorer, a.Logger, func(ctx context.Context) {
+			anchorer.Run(ctx, 60*time.Second)
+		})
 	}
 
 	// Mount the per-app provisioning config API on the console group.
@@ -1010,7 +1022,7 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	// on http://192.168.x.x:port). Production (release mode) stays loopback+https.
 	oidc.SetAllowPrivateHTTPRedirect(!a.Config.Server.IsRelease())
 	if os.Getenv("MXID_OIDC_ENGINE") == "zitadel" {
-		if err := wireOIDCOP(a, issuer, appResolver, idResolver, sessResolver, consentModule.Service); err != nil {
+		if err := wireOIDCOP(workerCtx, a, issuer, appResolver, idResolver, sessResolver, consentModule.Service); err != nil {
 			a.Logger.Fatal("wire zitadel OIDC engine: " + err.Error())
 		}
 	} else {
@@ -1098,7 +1110,15 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 
 	// Sweeper: end grants whose expires_at has passed (cache-bust + audit
 	// event). context.Background() — there is no app lifecycle context.
-	access.StartSweeper(context.Background(), accessJITSvc, accessJITRepo, 30*time.Second, a.Logger)
+	// Leader-only: without a claim, every replica sweeps the same due grants and
+	// each publishes access.grant.expired, duplicating the tamper-evident audit
+	// trail and double-firing downstream logout. One replica sweeps; others idle
+	// until failover. StartSweeper spawns its own goroutine and returns, so the
+	// leader callback blocks on ctx.Done() to hold leadership for its lifetime.
+	go dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyAccessSweeper, a.Logger, func(ctx context.Context) {
+		access.StartSweeper(ctx, accessJITSvc, accessJITRepo, 30*time.Second, a.Logger)
+		<-ctx.Done()
+	})
 
 	// Audit subscriptions — defense-in-depth over the catch-all RecordAPIRequest.
 	// The access.* payloads self-describe via resource_type/resource_id, so the

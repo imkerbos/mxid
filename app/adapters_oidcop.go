@@ -15,12 +15,14 @@ import (
 	"github.com/imkerbos/mxid/internal/domain/oidckey"
 	"github.com/imkerbos/mxid/internal/protocol/oidcop"
 	"github.com/imkerbos/mxid/internal/protocol/resolver"
+	"github.com/imkerbos/mxid/pkg/dlock"
 )
 
 // wireOIDCOP builds and mounts the zitadel OpenID Provider plus the BFF login
 // bridge, and starts provider-keyset rotation. issuer is the full external base
 // (e.g. https://host/protocol/oidc).
 func wireOIDCOP(
+	workerCtx context.Context,
 	a *bootstrap.App,
 	issuer string,
 	appResolver resolver.AppResolver,
@@ -29,10 +31,15 @@ func wireOIDCOP(
 	consent oidcop.ConsentChecker,
 ) error {
 	// Provider keyset + auto-rotation (90d default). EnsureActive mints the
-	// first signing key on startup.
+	// first signing key on startup. Rotation runs under the leader lock so
+	// only one replica drives it — without this, N pods could concurrently
+	// rotate and disagree on which key is active (see migration 000053's
+	// partial unique index, the last-resort DB guard against that).
 	keySvc := oidckey.NewService(a.DB, a.IDGen, a.MasterKey)
-	go keySvc.RunRotation(context.Background(), oidckey.DefaultRotationEvery, func(err error) {
-		a.Logger.Error("oidc keyset rotation", zap.Error(err))
+	go dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyOIDCRotation, a.Logger, func(ctx context.Context) {
+		keySvc.RunRotation(ctx, oidckey.DefaultRotationEvery, func(err error) {
+			a.Logger.Error("oidc keyset rotation", zap.Error(err))
+		})
 	})
 
 	// The OIDC issuer is the discovery base, which per spec equals the path the

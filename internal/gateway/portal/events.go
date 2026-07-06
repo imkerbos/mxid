@@ -11,7 +11,13 @@ import (
 	"github.com/imkerbos/mxid/internal/domain/authn"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/response"
+	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
+
+// portalEventsChannel is the Redis pub/sub channel used to fan SSE broker
+// events out to every replica. See AttachBusSubscribers.
+const portalEventsChannel = "portal:events"
 
 // SSE event channel for the portal. Pushes notifications when admin
 // actions invalidate the user's view — e.g. access policy mutated,
@@ -87,22 +93,68 @@ func (b *broker) unsubscribe(ch chan brokerEvent) {
 	b.del <- ch
 }
 
-// AttachBusSubscribers wires the in-process event bus to the SSE broker.
-// Called once at bootstrap from portal.Register so events emitted by any
-// domain module (access policy, tenant, etc) reach connected portal SPAs.
-func AttachBusSubscribers(bus *event.Bus) {
+// AttachBusSubscribers wires the in-process event bus to the SSE broker. When
+// rdb is non-nil, bus events are published to Redis and fanned out on EVERY
+// replica (so a client connected to any pod sees events triggered on any other
+// pod); the local broker then receives them via startBrokerRedisSubscriber.
+// When rdb is nil, events are pushed straight to the local broker (dev/tests).
+func AttachBusSubscribers(bus *event.Bus, rdb *redis.Client, logger *zap.Logger) {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+	emit := func(ev brokerEvent) {
+		if rdb != nil {
+			// Local delivery is contingent on this Redis round-trip (to avoid
+			// double delivery), so a publish/marshal failure drops the event on
+			// EVERY pod including this one — log it rather than swallow silently.
+			data, err := json.Marshal(ev)
+			if err != nil {
+				logger.Warn("portal SSE: marshal event failed", zap.String("type", ev.Type), zap.Error(err))
+				return
+			}
+			if err := rdb.Publish(context.Background(), portalEventsChannel, data).Err(); err != nil {
+				logger.Warn("portal SSE: publish event failed", zap.String("type", ev.Type), zap.Error(err))
+			}
+			return // fanned back in via the Redis subscriber — do not also push locally (avoids double delivery)
+		}
+		sseBroker.pub <- ev
+	}
 	bus.Subscribe("app_access.changed", func(ctx context.Context, e event.Event) {
-		_ = ctx
-		sseBroker.pub <- brokerEvent{Type: "apps_updated", Payload: e.Payload}
+		emit(brokerEvent{Type: "apps_updated", Payload: e.Payload})
 	})
 	bus.Subscribe("tenant.updated", func(ctx context.Context, e event.Event) {
-		_ = ctx
-		sseBroker.pub <- brokerEvent{Type: "tenants_updated"}
+		emit(brokerEvent{Type: "tenants_updated"})
 	})
 	bus.Subscribe("tenant.deleted", func(ctx context.Context, e event.Event) {
-		_ = ctx
-		sseBroker.pub <- brokerEvent{Type: "tenants_updated"}
+		emit(brokerEvent{Type: "tenants_updated"})
 	})
+	if rdb != nil {
+		startBrokerRedisSubscriber(rdb, logger)
+	}
+}
+
+// startBrokerRedisSubscriber fans Redis portal:events messages into the local
+// SSE broker. Runs on context.Background(): the SSE broker (newBroker's run
+// goroutine) is itself an unmanaged process-lifetime singleton, so this
+// mirrors that lifecycle rather than threading a ctx through the 14-param
+// Register.
+func startBrokerRedisSubscriber(rdb *redis.Client, logger *zap.Logger) {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+	sub := rdb.Subscribe(context.Background(), portalEventsChannel)
+	go func() {
+		defer sub.Close()
+		ch := sub.Channel()
+		for msg := range ch {
+			var ev brokerEvent
+			if err := json.Unmarshal([]byte(msg.Payload), &ev); err != nil {
+				logger.Warn("portal SSE: decode broadcast event failed", zap.Error(err))
+				continue
+			}
+			sseBroker.pub <- ev
+		}
+	}()
 }
 
 func registerEventsRoutes(rg *gin.RouterGroup, h *eventsHandler) {

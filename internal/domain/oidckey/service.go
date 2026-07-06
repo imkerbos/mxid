@@ -25,6 +25,16 @@ const (
 	// is rotated once it is older than this. Operator-overridable.
 	DefaultRotationEvery = 90 * 24 * time.Hour
 	rsaKeyBits           = 2048
+
+	// uniqueActiveKeyConstraint is the Postgres partial unique index name
+	// (migration 000053) enforcing at most one status=active row. Swallowing a
+	// unique violation on THIS constraint (a concurrent rotator/minter won) is
+	// safe; a violation on any other constraint (e.g. the kid UNIQUE) must
+	// surface as a real error, not be masked as a lost race.
+	uniqueActiveKeyConstraint = "uq_oidc_keyset_one_active"
+	// uniqueActiveKeyColumn is how sqlite names the same violation
+	// ("UNIQUE constraint failed: mxid_oidc_keyset.status") in unit tests.
+	uniqueActiveKeyColumn = "mxid_oidc_keyset.status"
 )
 
 var (
@@ -53,13 +63,11 @@ type VerificationKey struct {
 	Public    *rsa.PublicKey
 }
 
-// Generate mints a fresh RSA keypair, encrypts the private PEM with the KEK, and
-// inserts a new ACTIVE keyset row.
-func (s *Service) Generate(ctx context.Context) (*ProviderKey, error) {
-	if s.masterKey == nil {
-		return nil, ErrMasterKeyMissing
-	}
-
+// buildKey mints a fresh RSA keypair and encrypts the private PEM with the
+// KEK, assembling an ACTIVE ProviderKey ready to insert. It does no DB access,
+// so callers can build the row first and decide how to commit it (a plain
+// Create for Generate, or as part of a demote+insert transaction for Rotate).
+func (s *Service) buildKey(_ context.Context) (*ProviderKey, error) {
 	priv, err := rsa.GenerateKey(rand.Reader, rsaKeyBits)
 	if err != nil {
 		return nil, fmt.Errorf("generate rsa key: %w", err)
@@ -87,7 +95,7 @@ func (s *Service) Generate(ctx context.Context) (*ProviderKey, error) {
 
 	now := time.Now()
 	expiresAt := now.Add(SigningTTL)
-	key := &ProviderKey{
+	return &ProviderKey{
 		ID:         s.idGen.Generate(),
 		KID:        kid,
 		Algorithm:  "RS256",
@@ -97,8 +105,28 @@ func (s *Service) Generate(ctx context.Context) (*ProviderKey, error) {
 		NotBefore:  now,
 		ExpiresAt:  &expiresAt,
 		CreatedAt:  now,
+	}, nil
+}
+
+// Generate mints a fresh RSA keypair, encrypts the private PEM with the KEK, and
+// inserts a new ACTIVE keyset row. If another replica concurrently mints the
+// first key (unique-violation on insert, guarded by the partial unique index
+// on status=active), the loser reloads and returns the winner's active key
+// instead of erroring.
+func (s *Service) Generate(ctx context.Context) (*ProviderKey, error) {
+	if s.masterKey == nil {
+		return nil, ErrMasterKeyMissing
 	}
+
+	key, err := s.buildKey(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	if err := s.db.WithContext(ctx).Create(key).Error; err != nil {
+		if dberr.IsUniqueViolationOn(err, uniqueActiveKeyConstraint, uniqueActiveKeyColumn) {
+			return s.activeKey(ctx) // someone else minted the active key concurrently
+		}
 		return nil, fmt.Errorf("insert keyset row: %w", err)
 	}
 	return key, nil
@@ -118,23 +146,37 @@ func (s *Service) EnsureActive(ctx context.Context) (*ProviderKey, error) {
 }
 
 // Rotate mints a new active key and demotes the previous active to ROTATING so
-// its public key stays in the JWKS until tokens it signed expire. Aborts cleanly
-// on error (the new key is removed) so the keyset never ends up with two actives.
+// its public key stays in the JWKS until tokens it signed expire. Demote-then-
+// insert runs in a single transaction so the keyset is never left with two
+// committed ACTIVE rows (the previous Generate-then-demote order had a window
+// with two actives, which the partial unique index on status=active would now
+// reject). If a concurrent rotator committed first, the insert's unique
+// violation is swallowed and the winner's active key is returned instead of
+// erroring.
 func (s *Service) Rotate(ctx context.Context) (*ProviderKey, error) {
 	if s.masterKey == nil {
 		return nil, ErrMasterKeyMissing
 	}
-	newKey, err := s.Generate(ctx)
+	newKey, err := s.buildKey(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("rotate: mint new key: %w", err)
 	}
-	res := s.db.WithContext(ctx).
-		Model(&ProviderKey{}).
-		Where("status = ? AND id <> ?", StatusActive, newKey.ID).
-		Update("status", StatusRotating)
-	if res.Error != nil {
-		_ = s.db.WithContext(ctx).Delete(&ProviderKey{}, newKey.ID).Error
-		return nil, fmt.Errorf("rotate: demote previous active: %w", res.Error)
+
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Demote first so at no committed point are there two ACTIVE rows.
+		if e := tx.Model(&ProviderKey{}).
+			Where("status = ?", StatusActive).
+			Update("status", StatusRotating).Error; e != nil {
+			return e
+		}
+		return tx.Create(newKey).Error
+	})
+	if err != nil {
+		if dberr.IsUniqueViolationOn(err, uniqueActiveKeyConstraint, uniqueActiveKeyColumn) {
+			// Another rotator committed the active key first; reload and treat as done.
+			return s.activeKey(ctx)
+		}
+		return nil, fmt.Errorf("rotate: %w", err)
 	}
 	return newKey, nil
 }

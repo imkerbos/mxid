@@ -12,19 +12,27 @@ import (
 	"github.com/imkerbos/mxid/pkg/dberr"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/tenantscope"
+	"github.com/redis/go-redis/v9"
 )
+
+// settingsInvalidateChannel is the Redis pub/sub channel used to broadcast
+// local cache invalidations to every pod. The message payload IS the cache
+// key (see cacheKeyFor), so subscribers can evict directly without an extra
+// re-fetch.
+const settingsInvalidateChannel = "settings:invalidate"
 
 // Service wraps Repository with typed accessors, in-process cache, and
 // transparent AES encryption for sensitive fields.
 //
-// Cache strategy: read-through with 60s TTL. Settings change rarely; 60s
-// staleness across multiple backend instances is acceptable. Future could
-// add Redis pub-sub invalidation if multi-node deploys need stronger
-// consistency.
+// Cache strategy: read-through with a 60s TTL as the fallback bound, plus
+// optional Redis pub/sub invalidation (SetRedisInvalidation) so a change on
+// one pod evicts the entry on every pod immediately instead of waiting out
+// the TTL.
 type Service struct {
 	repo      Repository
 	masterKey *crypto.MasterKey
 	eventBus  *event.Bus
+	rdb       *redis.Client
 
 	mu    sync.RWMutex
 	cache map[string]cacheEntry
@@ -33,6 +41,40 @@ type Service struct {
 // SetEventBus wires the event bus so settings changes emit a settings.updated
 // audit event. Optional — a nil bus disables the emission.
 func (s *Service) SetEventBus(bus *event.Bus) { s.eventBus = bus }
+
+// SetRedisInvalidation wires cross-pod cache invalidation: local invalidations
+// are broadcast on settingsInvalidateChannel, and this pod evicts its own
+// cache entry when a peer broadcasts one. Optional — nil rdb keeps
+// in-process-only behavior (60s TTL staleness across pods). ctx bounds the
+// subscriber goroutine (pass the app worker context).
+func (s *Service) SetRedisInvalidation(ctx context.Context, rdb *redis.Client) {
+	s.rdb = rdb
+	if rdb == nil {
+		return
+	}
+	sub := rdb.Subscribe(ctx, settingsInvalidateChannel)
+	go func() {
+		defer sub.Close()
+		ch := sub.Channel()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case msg, ok := <-ch:
+				if !ok {
+					return
+				}
+				s.deleteLocal(msg.Payload) // payload IS the cache key
+			}
+		}
+	}()
+}
+
+func (s *Service) deleteLocal(cacheKey string) {
+	s.mu.Lock()
+	delete(s.cache, cacheKey)
+	s.mu.Unlock()
+}
 
 type cacheEntry struct {
 	value     []byte
@@ -140,9 +182,13 @@ func (s *Service) getRaw(ctx context.Context, key string, tenantID int64) ([]byt
 }
 
 func (s *Service) invalidate(key string, tenantID int64) {
-	s.mu.Lock()
-	delete(s.cache, cacheKeyFor(key, tenantID))
-	s.mu.Unlock()
+	ck := cacheKeyFor(key, tenantID)
+	s.deleteLocal(ck)
+	if s.rdb != nil {
+		// Best-effort; the local delete above already keeps THIS pod
+		// correct even if the publish fails (redis blip).
+		_ = s.rdb.Publish(context.Background(), settingsInvalidateChannel, ck).Err()
+	}
 }
 
 func cacheKeyFor(key string, tenantID int64) string {
