@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -26,6 +27,9 @@ type AnchorRecord struct {
 // production deployment implements this against S3 Object Lock (WORM).
 type AnchorSink interface {
 	Put(ctx context.Context, rec AnchorRecord) (uri string, err error)
+	// List returns all records previously Put, in append order. A missing file
+	// is an empty list, not an error.
+	List(ctx context.Context) ([]AnchorRecord, error)
 }
 
 // FileSink appends one JSON line per record to a local file. Best-effort WORM
@@ -58,4 +62,35 @@ func (s *FileSink) Put(_ context.Context, rec AnchorRecord) (string, error) {
 		return "", fmt.Errorf("append anchor: %w", err)
 	}
 	return fmt.Sprintf("file://%s#%d", s.path, off), nil
+}
+
+func (s *FileSink) List(_ context.Context) ([]AnchorRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, err := os.Open(s.path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("open anchor sink: %w", err)
+	}
+	defer f.Close()
+	var out []AnchorRecord
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024) // anchors can be a few KB
+	for sc.Scan() {
+		line := sc.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		var rec AnchorRecord
+		if err := json.Unmarshal(line, &rec); err != nil {
+			return nil, fmt.Errorf("parse anchor line: %w", err)
+		}
+		out = append(out, rec)
+	}
+	if err := sc.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
