@@ -45,6 +45,30 @@ spec:
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.backend.waitForDeps.enabled }}
+      # Block startup until Postgres + Redis accept TCP connections, so the pod
+      # waits in Init instead of the main container crash-looping (the app
+      # fail-fasts on an unreachable DB/Redis at boot). Just a TCP reachability
+      # gate — the app still does the real auth/ping on connect.
+      initContainers:
+        - name: wait-for-deps
+          image: {{ .Values.backend.waitForDeps.image }}
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z {{ .Values.database.host }} {{ .Values.database.port }}; do
+                echo "waiting for postgres {{ .Values.database.host }}:{{ .Values.database.port }}..."; sleep 2;
+              done
+              until nc -z {{ .Values.redis.host }} {{ .Values.redis.port }}; do
+                echo "waiting for redis {{ .Values.redis.host }}:{{ .Values.redis.port }}..."; sleep 2;
+              done
+              echo "postgres + redis reachable"
+          {{- with .Values.backend.waitForDeps.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- end }}
       containers:
         - name: backend
           image: {{ include "mxid.backendImage" . }}
@@ -108,6 +132,8 @@ spec:
             - name: audit-anchor-sink
               mountPath: {{ .Values.audit.anchorSink.mountPath | quote }}
           {{- end }}
+          # Liveness = "is the process alive" → the cheap /health (no dep check),
+          # so a DB/Redis blip never restarts the pod.
           livenessProbe:
             httpGet:
               path: /health
@@ -115,9 +141,11 @@ spec:
             initialDelaySeconds: 15
             periodSeconds: 20
             failureThreshold: 3
+          # Readiness = "can this pod serve" → /readyz pings DB + Redis (503 if
+          # either is down), so an unhealthy pod is pulled from the Service.
           readinessProbe:
             httpGet:
-              path: /health
+              path: /readyz
               port: 8080
             initialDelaySeconds: 5
             periodSeconds: 10

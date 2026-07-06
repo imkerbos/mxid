@@ -1,14 +1,18 @@
 package bootstrap
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"runtime/debug"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/version"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 // InitRouter creates the Gin engine with base middleware and route groups.
@@ -76,6 +80,28 @@ func InitRouter(cfg *ServerConfig, logger *zap.Logger) *gin.Engine {
 	})
 
 	return r
+}
+
+// RegisterReadyz adds the /readyz readiness probe. Kept separate from InitRouter
+// because it needs the DB + Redis handles (available only after they are
+// initialized). Unlike /health (liveness — is the process alive), /readyz pings
+// both dependencies so a pod whose DB or Redis connection is broken returns 503
+// and is pulled from the Service instead of serving errors. Register it before
+// the heavy middleware (rate-limit / CSRF) so the probe is never throttled.
+func RegisterReadyz(r *gin.Engine, db *gorm.DB, rdb *redis.Client) {
+	r.GET("/readyz", func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+		defer cancel()
+		if sqlDB, err := db.DB(); err != nil || sqlDB.PingContext(ctx) != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not ready", "reason": "database"})
+			return
+		}
+		if err := rdb.Ping(ctx).Err(); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not ready", "reason": "redis"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ready"})
+	})
 }
 
 // RegisterRouteGroups creates the main API and protocol route groups.

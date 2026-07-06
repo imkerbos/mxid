@@ -121,6 +121,10 @@ func NewApp(configPath string) (*App, error) {
 	// Init router
 	router := InitRouter(&cfg.Server, logger)
 
+	// Readiness probe pings DB + Redis. Registered here (before the heavy
+	// middleware below) so it escapes rate-limit / CSRF, same as /health.
+	RegisterReadyz(router, db, rdb)
+
 	// Resolve trusted-origins list. Single source of truth for both CORS
 	// and CSRF so the two cannot drift apart.
 	origins := cfg.Server.AllowedOrigins

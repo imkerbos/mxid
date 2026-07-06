@@ -59,6 +59,19 @@ backend:
       cpu: "1000m"
       memory: "512Mi"
 
+  # Init container that blocks pod startup until Postgres + Redis accept TCP
+  # connections, so the main container doesn't crash-loop while deps come up.
+  waitForDeps:
+    enabled: true
+    image: busybox:1.37
+    resources:
+      requests:
+        cpu: "10m"
+        memory: "16Mi"
+      limits:
+        cpu: "50m"
+        memory: "32Mi"
+
   # Horizontal Pod Autoscaler — scales the StatefulSet.
   autoscaling:
     enabled: false
