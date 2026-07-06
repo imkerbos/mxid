@@ -35,6 +35,11 @@ type ExportBundle struct {
 // entries in [fromSeq,toSeq], the signed anchors overlapping that range, and the
 // public keys (by key_id) needed to verify them. The HMAC key is never included;
 // verification rests entirely on the Ed25519 anchors.
+//
+// Caveat: [fromSeq,toSeq] should align to anchor boundaries. A range that splits
+// an anchor's [FromSeq,ToSeq] fails VerifyExport closed ("missing entries" or
+// "anchor gap") rather than partially proving it — export anchor-aligned ranges
+// (or the full anchored range) for a clean proof.
 func BuildExport(ctx context.Context, db *gorm.DB, keys KeyRegistry, tenantID int64, class string, fromSeq, toSeq int64) (*ExportBundle, error) {
 	var entries []AuditEntry
 	if err := db.WithContext(ctx).
@@ -140,15 +145,15 @@ func VerifyExport(b *ExportBundle, trusted KeyRegistry) (AnchorVerifyResult, err
 		// the bundle's declared pubkey for this key_id must itself be trusted
 		pubB64, ok := b.PubKeys[a.KeyID]
 		if !ok {
-			return AnchorVerifyResult{OK: false, FailFromSeq: a.FromSeq, Reason: "unknown key"}, nil
+			return AnchorVerifyResult{OK: false, AnchoredThrough: through, FailFromSeq: a.FromSeq, Reason: "unknown key"}, nil
 		}
 		raw, err := base64.StdEncoding.DecodeString(pubB64)
 		if err != nil {
-			return AnchorVerifyResult{OK: false, FailFromSeq: a.FromSeq, Reason: "unknown key"}, nil
+			return AnchorVerifyResult{OK: false, AnchoredThrough: through, FailFromSeq: a.FromSeq, Reason: "unknown key"}, nil
 		}
 		pub := ed25519.PublicKey(raw)
 		if tp, ok := trusted.For(a.KeyID); !ok || !tp.Equal(pub) {
-			return AnchorVerifyResult{OK: false, FailFromSeq: a.FromSeq, Reason: "untrusted key"}, nil
+			return AnchorVerifyResult{OK: false, AnchoredThrough: through, FailFromSeq: a.FromSeq, Reason: "untrusted key"}, nil
 		}
 		if a.FromSeq != expectedFrom {
 			return AnchorVerifyResult{OK: false, AnchoredThrough: through, FailFromSeq: a.FromSeq, Reason: "anchor gap"}, nil
