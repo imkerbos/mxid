@@ -56,3 +56,13 @@ func TestVerifyAnchors_WrongKeyFailsSig(t *testing.T) {
 		t.Fatalf("wrong key not caught: %+v", res)
 	}
 }
+
+func TestVerifyAnchors_MissingEntryDetected(t *testing.T) {
+	db, pub := anchoredDB(t)
+	// delete an entry inside the anchored range -> count mismatch
+	db.Where("tenant_id = ? AND chain_class = ? AND seq = ?", 7, "data", 2).Delete(&AuditEntry{})
+	res, _ := VerifyAnchors(context.Background(), db, pub, 7, "data")
+	if res.OK || res.Reason != "missing entries" {
+		t.Fatalf("missing entry not caught: %+v", res)
+	}
+}

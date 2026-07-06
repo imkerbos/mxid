@@ -39,7 +39,9 @@ func TestSignVerifyAnchor(t *testing.T) {
 
 func TestKeyIDStable(t *testing.T) {
 	pub := testKey(t).Public().(ed25519.PublicKey)
-	if KeyIDForPublic(pub) != KeyIDForPublic(pub) || len(KeyIDForPublic(pub)) != 16 {
+	id1 := KeyIDForPublic(pub)
+	id2 := KeyIDForPublic(pub)
+	if id1 != id2 || len(id1) != 16 {
 		t.Fatal("key id unstable or wrong length")
 	}
 }

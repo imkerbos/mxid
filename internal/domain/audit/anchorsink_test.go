@@ -37,6 +37,9 @@ func TestFileSink_AppendsJSONLine(t *testing.T) {
 			n++
 		}
 	}
+	if err := sc.Err(); err != nil {
+		t.Fatal(err)
+	}
 	if n != 2 {
 		t.Fatalf("want 2 appended lines, got %d", n)
 	}
