@@ -75,8 +75,12 @@ func beforeSnapshot(cb *gorm.DB) ([]map[string]any, error) {
 	return before, nil
 }
 
-// captureUpdate records a <resource>.updated event: before = the full prior row(s),
-// after = the SET delta (Dest holds only the changed fields in an update).
+// captureUpdate records one <resource>.updated event PER row the statement's
+// WHERE targets: before = that row's full prior state, after = the SET delta
+// (Dest holds only the changed fields in an update, shared by every affected
+// row in a batch). A batch UPDATE ... WHERE hitting N rows must produce N
+// audit events, not one — otherwise N-1 mutations go unrecorded. If any emit
+// fails, abort immediately (cb.AddError) rather than emit a partial set.
 func (p *CapturePlugin) captureUpdate(cb *gorm.DB) {
 	if cb.Statement == nil || cb.Statement.Schema == nil {
 		return
@@ -90,21 +94,27 @@ func (p *CapturePlugin) captureUpdate(cb *gorm.DB) {
 		cb.AddError(fmt.Errorf("audit before-snapshot %s: %w", res, err))
 		return
 	}
-	ev := Event{
-		ChainClass:   "data",
-		EventType:    res + ".updated",
-		ResourceType: res,
-		ResourceID:   resourceIDOf(cb, firstRow(before)),
-		Before:       redactMap(firstRow(before)),
-		After:        redactMap(updateDelta(cb)),
-	}
-	if err := p.emit(cb, ev); err != nil {
-		cb.AddError(err)
+	after := redactMap(updateDelta(cb))
+	for _, beforeRow := range before {
+		ev := Event{
+			ChainClass:   "data",
+			EventType:    res + ".updated",
+			ResourceType: res,
+			ResourceID:   resourceIDOf(cb, beforeRow),
+			Before:       redactMap(beforeRow),
+			After:        after,
+		}
+		if err := p.emit(cb, ev); err != nil {
+			cb.AddError(err)
+			return
+		}
 	}
 }
 
-// captureDelete records a <resource>.deleted event: before = the full prior
-// row(s), no after.
+// captureDelete records one <resource>.deleted event PER row the statement's
+// WHERE targets: before = that row's full prior state, no after. Same
+// per-row rationale as captureUpdate — a batch DELETE must not collapse to a
+// single event. If any emit fails, abort immediately.
 func (p *CapturePlugin) captureDelete(cb *gorm.DB) {
 	if cb.Statement == nil || cb.Statement.Schema == nil {
 		return
@@ -118,26 +128,19 @@ func (p *CapturePlugin) captureDelete(cb *gorm.DB) {
 		cb.AddError(fmt.Errorf("audit before-snapshot %s: %w", res, err))
 		return
 	}
-	ev := Event{
-		ChainClass:   "data",
-		EventType:    res + ".deleted",
-		ResourceType: res,
-		ResourceID:   resourceIDOf(cb, firstRow(before)),
-		Before:       redactMap(firstRow(before)),
+	for _, beforeRow := range before {
+		ev := Event{
+			ChainClass:   "data",
+			EventType:    res + ".deleted",
+			ResourceType: res,
+			ResourceID:   resourceIDOf(cb, beforeRow),
+			Before:       redactMap(beforeRow),
+		}
+		if err := p.emit(cb, ev); err != nil {
+			cb.AddError(err)
+			return
+		}
 	}
-	if err := p.emit(cb, ev); err != nil {
-		cb.AddError(err)
-	}
-}
-
-// firstRow returns the first snapshot row (single-entity updates/deletes are the
-// dominant case). Batch writes affecting many rows still record one event with
-// the first row's before-state; see the plan's batch note.
-func firstRow(rows []map[string]any) map[string]any {
-	if len(rows) == 0 {
-		return nil
-	}
-	return rows[0]
 }
 
 // updateDelta renders the update's SET fields (Dest) as a column map. For a map

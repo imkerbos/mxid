@@ -236,6 +236,77 @@ func TestPlugin_CoexistsWithTenantscope(t *testing.T) {
 	}
 }
 
+func TestPlugin_BatchUpdateEmitsPerRow(t *testing.T) {
+	db := newPluginDB(t)
+	ctx := actorCtx()
+	for _, id := range []int64{1, 2, 3} {
+		if err := db.WithContext(ctx).Create(&widget{ID: id, Name: "old"}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Where("1=1").Delete(&AuditPending{}) // clear create events
+
+	if err := db.WithContext(ctx).Model(&widget{}).Where("id IN ?", []int64{1, 2, 3}).
+		Update("name", "batch").Error; err != nil {
+		t.Fatal(err)
+	}
+
+	var rows []AuditPending
+	if err := db.Where("event_type = ?", "widget.updated").Find(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("want 3 update events for a 3-row batch update, got %d", len(rows))
+	}
+	seen := map[int64]bool{}
+	for _, r := range rows {
+		if r.ResourceID == 0 {
+			t.Fatalf("resource_id not resolved: %+v", r)
+		}
+		seen[r.ResourceID] = true
+	}
+	for _, id := range []int64{1, 2, 3} {
+		if !seen[id] {
+			t.Fatalf("missing update event for id=%d, seen=%v", id, seen)
+		}
+	}
+}
+
+func TestPlugin_BatchDeleteEmitsPerRow(t *testing.T) {
+	db := newPluginDB(t)
+	ctx := actorCtx()
+	for _, id := range []int64{1, 2} {
+		if err := db.WithContext(ctx).Create(&widget{ID: id, Name: "doomed"}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Where("1=1").Delete(&AuditPending{}) // clear create events
+
+	if err := db.WithContext(ctx).Where("id IN ?", []int64{1, 2}).Delete(&widget{}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	var rows []AuditPending
+	if err := db.Where("event_type = ?", "widget.deleted").Find(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("want 2 delete events for a 2-row batch delete, got %d", len(rows))
+	}
+	seen := map[int64]bool{}
+	for _, r := range rows {
+		if r.ResourceID == 0 {
+			t.Fatalf("resource_id not resolved: %+v", r)
+		}
+		seen[r.ResourceID] = true
+	}
+	for _, id := range []int64{1, 2} {
+		if !seen[id] {
+			t.Fatalf("missing delete event for id=%d, seen=%v", id, seen)
+		}
+	}
+}
+
 func containsStr(h, n string) bool {
 	return len(n) > 0 && len(h) >= len(n) && (func() bool {
 		for i := 0; i+len(n) <= len(h); i++ {
