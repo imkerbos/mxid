@@ -75,6 +75,56 @@ func TestVerifyAnchorsWithSink_ToleratesRetryOrphan(t *testing.T) {
 	}
 }
 
+// TestVerifyAnchorsWithSink_WiderOrphanDetected covers the attack the
+// width-aware sink-diff rule closes: a sink record at a from_seq that is
+// WIDER than every DB anchor starting there is not a benign retry-orphan (a
+// retry-orphan is by construction narrower than the DB anchor that
+// superseded it) — it means the DB anchor that used to cover that width was
+// deleted (e.g. an attacker deleted the wide DB anchor and spliced in a
+// narrower pre-existing signed sink record). This must be flagged, unlike
+// the narrower orphan in TestVerifyAnchorsWithSink_ToleratesRetryOrphan.
+func TestVerifyAnchorsWithSink_WiderOrphanDetected(t *testing.T) {
+	db := newTestDB(t)
+	gen := newTestIDGen(t)
+	for i := 0; i < 5; i++ {
+		seedPending(t, db, gen, 7, "data", "e")
+	}
+	NewChainer(db, []byte("k"), "default", zap.NewNop()).ProcessBatch(context.Background(), 100)
+	priv := testKey(t)
+	sink := NewFileSink(t.TempDir() + "/a.log")
+	an := NewAnchorer(db, priv, sink, gen, zap.NewNop())
+	if _, err := an.AnchorChain(context.Background(), 7, "data"); err != nil {
+		t.Fatal(err)
+	}
+	reg := NewKeyRegistry(priv.Public().(ed25519.PublicKey))
+
+	// clean: sink and DB agree, DB max to_seq at from_seq=1 is 5
+	res, err := VerifyAnchorsWithSink(context.Background(), db, sink, reg, 7, "data")
+	if err != nil || !res.OK {
+		t.Fatalf("clean sink-diff should pass: %+v err=%v", res, err)
+	}
+
+	// Manually append a WIDER sink record at from_seq=1 than any DB anchor
+	// covers (DB max to_seq at from_seq=1 is 5; this sink record claims 9).
+	// No DB anchor is at least as wide, so this must NOT be tolerated as a
+	// retry-orphan.
+	if _, err := sink.Put(context.Background(), AnchorRecord{
+		TenantID: 7, ChainClass: "data", FromSeq: 1, ToSeq: 9,
+		MerkleRoot: []byte("wider-root"), Signature: []byte("wider-sig"),
+		KeyID: "wider-key",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	bad, err := VerifyAnchorsWithSink(context.Background(), db, sink, reg, 7, "data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bad.OK || bad.Reason != "sink mismatch" {
+		t.Fatalf("wider sink orphan (uncovered by any DB anchor) not detected: %+v", bad)
+	}
+}
+
 // TestVerifyAnchorsWithSink_ExtraDBAnchorNotInSink covers the DB -> sink
 // direction: a DB anchor row with no sink counterpart at all (never Put, e.g.
 // forged directly in the DB) must be caught even though VerifyAnchors alone
