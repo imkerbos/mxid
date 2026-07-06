@@ -3,7 +3,6 @@ package audit
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
 
 	"gorm.io/gorm"
 )
@@ -52,7 +51,7 @@ type AnchorVerifyResult struct {
 	OK              bool
 	AnchoredThrough int64
 	FailFromSeq     int64
-	Reason          string // "", "root mismatch", "bad signature", "missing entries", "anchor gap"
+	Reason          string // "", "root mismatch", "bad signature", "missing entries", "anchor gap", "unknown key"
 }
 
 // VerifyAnchors recomputes each anchor's Merkle root from the stored entries and
@@ -67,7 +66,7 @@ type AnchorVerifyResult struct {
 // the tail of the chain is simply not yet anchored, this online check cannot
 // tell the two apart — that requires diffing against the external sink
 // (Phase 4 export).
-func VerifyAnchors(ctx context.Context, db *gorm.DB, pub ed25519.PublicKey, tenantID int64, class string) (AnchorVerifyResult, error) {
+func VerifyAnchors(ctx context.Context, db *gorm.DB, keys KeyRegistry, tenantID int64, class string) (AnchorVerifyResult, error) {
 	var anchors []AuditAnchor
 	if err := db.WithContext(ctx).
 		Where("tenant_id = ? AND chain_class = ?", tenantID, class).
@@ -80,6 +79,10 @@ func VerifyAnchors(ctx context.Context, db *gorm.DB, pub ed25519.PublicKey, tena
 		a := &anchors[i]
 		if a.FromSeq != expectedFrom {
 			return AnchorVerifyResult{OK: false, AnchoredThrough: expectedFrom - 1, FailFromSeq: a.FromSeq, Reason: "anchor gap"}, nil
+		}
+		pub, ok := keys.For(a.KeyID)
+		if !ok {
+			return AnchorVerifyResult{OK: false, AnchoredThrough: through, FailFromSeq: a.FromSeq, Reason: "unknown key"}, nil
 		}
 		if !VerifyAnchorSig(pub, a) {
 			return AnchorVerifyResult{OK: false, AnchoredThrough: through, FailFromSeq: a.FromSeq, Reason: "bad signature"}, nil
