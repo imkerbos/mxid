@@ -132,6 +132,12 @@ func ReadExport(dir string) (*ExportBundle, error) {
 // each anchor: resolve+trust its key, verify the Ed25519 signature, and recompute
 // the Merkle root over the EXPORTED entries in its range. Returns the highest
 // anchored seq proven.
+//
+// This proves the anchored ENTRY-HASH chain is authentic and non-repudiable;
+// it does NOT bind Payload to EntryHash (the HMAC key is not exported) —
+// payload<->hash integrity is verified operator-side by VerifyChain. An
+// offline reviewer who trusts this export alone cannot detect a doctored
+// Payload sitting next to its original, correct EntryHash.
 func VerifyExport(b *ExportBundle, trusted KeyRegistry) (AnchorVerifyResult, error) {
 	// index exported entries by seq
 	bySeq := make(map[int64]ExportEntry, len(b.Entries))
