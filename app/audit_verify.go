@@ -65,7 +65,7 @@ func runVerifyAudit(a *bootstrap.App) error {
 			h.TenantID, h.ChainClass, res.VerifiedThrough, status)
 
 		if anchorPub != nil {
-			ares, aerr := audit.VerifyAnchors(ctx, a.DB, anchorPub, h.TenantID, h.ChainClass)
+			ares, aerr := audit.VerifyAnchors(ctx, a.DB, audit.NewKeyRegistry(anchorPub), h.TenantID, h.ChainClass)
 			if aerr != nil {
 				return aerr
 			}
