@@ -2,6 +2,7 @@ package audit
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/imkerbos/mxid/pkg/auditctx"
 	"go.uber.org/zap"
@@ -51,6 +52,16 @@ func (s *Service) bridgeToChain(ctx context.Context, log *AuditLog) {
 		actor.SessionID = *log.SessionID
 	}
 	detail := map[string]any{"event_status": log.EventStatus}
+	if len(log.Detail) > 0 {
+		var d map[string]any
+		if err := json.Unmarshal(log.Detail, &d); err == nil {
+			for k, v := range redactMap(d) {
+				if k != "event_status" { // don't let payload clobber the status we set
+					detail[k] = v
+				}
+			}
+		}
+	}
 	ev := Event{ChainClass: class, EventType: log.EventType, Detail: detail}
 	if log.ResourceType != nil {
 		ev.ResourceType = *log.ResourceType
