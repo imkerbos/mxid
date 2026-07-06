@@ -3,6 +3,7 @@ package audit
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/base64"
 	"testing"
 
 	"go.uber.org/zap"
@@ -51,5 +52,84 @@ func TestVerifyExport_UntrustedKeyFails(t *testing.T) {
 	res, _ := VerifyExport(b, NewKeyRegistry(wrong))
 	if res.OK {
 		t.Fatal("export verified against an untrusted key")
+	}
+}
+
+func TestReadExport_RoundTrip(t *testing.T) {
+	b, pub := exportFixture(t)
+	dir := t.TempDir()
+	if err := WriteExport(dir, b); err != nil {
+		t.Fatalf("WriteExport: %v", err)
+	}
+	readBack, err := ReadExport(dir)
+	if err != nil {
+		t.Fatalf("ReadExport: %v", err)
+	}
+	if len(readBack.Entries) != len(b.Entries) {
+		t.Fatalf("entry count mismatch: got %d want %d", len(readBack.Entries), len(b.Entries))
+	}
+	res, err := VerifyExport(readBack, NewKeyRegistry(pub))
+	if err != nil || !res.OK || res.AnchoredThrough != 3 {
+		t.Fatalf("disk round-tripped export should prove offline: %+v err=%v", res, err)
+	}
+}
+
+func TestVerifyExport_FabricatedBundleRejected(t *testing.T) {
+	// Attacker mints their own keypair and self-signs an entirely fabricated
+	// bundle: internally consistent (signature verifies, Merkle root matches),
+	// but signed by a key the verifier does not trust.
+	attackerSeed := make([]byte, ed25519.SeedSize)
+	for i := range attackerSeed {
+		attackerSeed[i] = byte(200 + i)
+	}
+	attackerPriv := ed25519.NewKeyFromSeed(attackerSeed)
+	attackerPub := attackerPriv.Public().(ed25519.PublicKey)
+	attackerKeyID := KeyIDForPublic(attackerPub)
+
+	entries := []ExportEntry{
+		{Seq: 1, EntryHash: []byte("fabricated-hash-000000000000001")},
+		{Seq: 2, EntryHash: []byte("fabricated-hash-000000000000002")},
+	}
+	leaves := make([][]byte, 0, len(entries))
+	for _, e := range entries {
+		leaves = append(leaves, e.EntryHash)
+	}
+	root := MerkleRoot(leaves)
+	sig := SignAnchor(attackerPriv, 7, "data", 1, 2, root)
+
+	fakeBundle := &ExportBundle{
+		TenantID:   7,
+		ChainClass: "data",
+		FromSeq:    1,
+		ToSeq:      2,
+		Entries:    entries,
+		Anchors: []AuditAnchor{{
+			TenantID:   7,
+			ChainClass: "data",
+			FromSeq:    1,
+			ToSeq:      2,
+			MerkleRoot: root,
+			Signature:  sig,
+			KeyID:      attackerKeyID,
+		}},
+		PubKeys: map[string]string{
+			attackerKeyID: base64.StdEncoding.EncodeToString(attackerPub),
+		},
+	}
+
+	// The real registry only trusts the legitimate key, never the attacker's.
+	legitPriv := testKey(t)
+	legitPub := legitPriv.Public().(ed25519.PublicKey)
+	trusted := NewKeyRegistry(legitPub)
+
+	res, err := VerifyExport(fakeBundle, trusted)
+	if err != nil {
+		t.Fatalf("VerifyExport returned error: %v", err)
+	}
+	if res.OK {
+		t.Fatal("fabricated bundle self-certified against an untrusted registry")
+	}
+	if res.Reason != "untrusted key" {
+		t.Fatalf("expected reason 'untrusted key', got %q", res.Reason)
 	}
 }
