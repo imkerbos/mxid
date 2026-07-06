@@ -7,6 +7,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
+
 	"github.com/imkerbos/mxid/internal/bootstrap"
 	"github.com/imkerbos/mxid/internal/domain/group"
 	"github.com/imkerbos/mxid/internal/domain/org"
@@ -14,6 +17,14 @@ import (
 	"github.com/imkerbos/mxid/pkg/authz"
 	"github.com/imkerbos/mxid/pkg/event"
 )
+
+// casbinResyncChannel is the Redis pub/sub channel used to fan a Casbin
+// policy resync out to every replica. Each pod's in-process event bus only
+// sees mutations that happened locally, so a role/permission/super-admin
+// change on pod A would otherwise leave pods B/C enforcing the stale,
+// possibly more-permissive policy until restart. Payload is unused (a
+// resync always does a full reload), so any message is a trigger.
+const casbinResyncChannel = "authz:casbin:resync"
 
 type permissionGroupLookupAdapter struct{ groupModule *group.Module }
 
@@ -227,13 +238,29 @@ func (l *casbinPolicyLoader) LoadPolicies(ctx context.Context) ([]authz.RolePoli
 // Go side resolves those edges), so they only invalidate the cache, not the
 // enforcer. Each handler does a full reload: cheap (a couple of joins) and
 // guarantees the enforcer never drifts from the DB.
-func wireCasbinSync(a *bootstrap.App, engine *authz.CasbinEngine, loader authz.PolicyLoader) {
+//
+// A local resync only fixes the pod that observed the mutation. Every other
+// replica's in-process event bus never saw it, so resync also publishes to
+// casbinResyncChannel; startCasbinResyncSubscriber (subscribed by every pod,
+// including this one) reloads on receipt. The publishing pod's own
+// subscriber will also receive its own message and redundantly re-Sync —
+// harmless (Sync is idempotent) and mirrors the existing binding-cache
+// design (pkg/authz/cache.go).
+func wireCasbinSync(ctx context.Context, a *bootstrap.App, engine *authz.CasbinEngine, loader authz.PolicyLoader) {
 	if a == nil || engine == nil || loader == nil || a.EventBus == nil {
 		return
 	}
 	resync := func(_ context.Context, _ event.Event) {
 		if err := engine.Sync(context.Background(), loader); err != nil && a.Logger != nil {
 			a.Logger.Error("casbin resync failed: " + err.Error())
+		}
+		// Best-effort broadcast: the local sync above already keeps THIS pod
+		// correct even if Redis is unavailable, so a publish failure is
+		// logged, not propagated.
+		if a.Redis != nil {
+			if err := a.Redis.Publish(context.Background(), casbinResyncChannel, "1").Err(); err != nil && a.Logger != nil {
+				a.Logger.Warn("casbin resync broadcast failed: " + err.Error())
+			}
 		}
 	}
 	for _, t := range []string{
@@ -247,6 +274,38 @@ func wireCasbinSync(a *bootstrap.App, engine *authz.CasbinEngine, loader authz.P
 	} {
 		a.EventBus.Subscribe(t, resync)
 	}
+	startCasbinResyncSubscriber(ctx, a.Redis, engine, loader, a.Logger)
+}
+
+// startCasbinResyncSubscriber reloads the local Casbin enforcer whenever a
+// peer replica broadcasts a resync over casbinResyncChannel. It does NOT
+// re-publish — this is the receive-only half of the fan-out, so there is no
+// broadcast loop. Takes rdb/logger explicitly (rather than a *bootstrap.App)
+// so it can be unit-tested against miniredis without standing up a full app.
+// Nil-safe: a nil rdb means Redis isn't configured, so this pod stays
+// in-process-only (same behavior as before this change).
+func startCasbinResyncSubscriber(ctx context.Context, rdb *redis.Client, engine *authz.CasbinEngine, loader authz.PolicyLoader, logger *zap.Logger) {
+	if rdb == nil {
+		return
+	}
+	sub := rdb.Subscribe(ctx, casbinResyncChannel)
+	ch := sub.Channel()
+	go func() {
+		defer sub.Close()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case _, ok := <-ch:
+				if !ok {
+					return
+				}
+				if err := engine.Sync(context.Background(), loader); err != nil && logger != nil {
+					logger.Error("casbin resync (peer broadcast) failed: " + err.Error())
+				}
+			}
+		}
+	}()
 }
 
 type authzOrgAncestry struct{ orgModule *org.Module }

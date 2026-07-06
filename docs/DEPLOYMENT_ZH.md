@@ -77,6 +77,8 @@ nginx pod 持有 SPA 静态(烤进 `mxid-web` 镜像);后端 pod 是无状态 Go
 | 变量 | 用途 | 生成 |
 |------|------|------|
 | `MXID_CRYPTO_KEY_ENCRYPTION_KEY` | 主 KEK —— AES 加密 OIDC 签名密钥 + 敏感设置(SMTP/SMS 密钥、OAuth client secret)。**每部署唯一;轮换会使已有应用签名密钥失效。** | `openssl rand -base64 32` |
+| `MXID_CRYPTO_AUDIT_CHAIN_KEY` | 防篡改审计哈希链的 HMAC 密钥。**只生成一次、永不更改 —— 轮换会使所有已有审计条目验证失败**(与 KEK 同级稳定性要求)。 | `openssl rand -base64 32` |
+| `MXID_CRYPTO_AUDIT_ANCHOR_KEY` | 签名外部 Merkle 锚的 Ed25519 seed。`audit.anchorSink.enabled`(默认开)时必填。若要轮换,须把旧公钥保留在 `crypto.audit_anchor_retired_pubkeys` 里,否则旧锚验不过。 | `openssl rand -base64 32` |
 | `POSTGRES_PASSWORD`(→ `MXID_DATABASE_PASSWORD`) | PostgreSQL 密码 | 强随机 |
 | `REDIS_PASSWORD`(→ `MXID_REDIS_PASSWORD`) | Redis 密码 | 强随机 |
 
@@ -387,7 +389,9 @@ helm install mxid deploy/helm/mxid \
   --set redis.host=redis.internal \
   --set secrets.databasePassword=<db-pw> \
   --set secrets.redisPassword=<redis-pw> \
-  --set secrets.cryptoKeyEncryptionKey=$(openssl rand -base64 32)
+  --set secrets.cryptoKeyEncryptionKey=$(openssl rand -base64 32) \
+  --set secrets.auditChainKey=$(openssl rand -base64 32) \
+  --set secrets.auditAnchorKey=$(openssl rand -base64 32)
 ```
 
 #### 最小生产 values 文件
@@ -414,20 +418,56 @@ redis:
   port: "6379"
 
 secrets:
+  # 生产优先 create: false + existingSecret(见下),让明文密钥不落进本文件。
+  # 这里 create: true 仅为示例完整性。
   create: true
   databasePassword: ""            # 必填 — DB 密码
   redisPassword: ""               # 必填 — Redis 密码(无认证则留空)
   cryptoKeyEncryptionKey: ""      # 必填 — openssl rand -base64 32
+  auditChainKey: ""               # 必填 — openssl rand -base64 32(永不更改)
+  auditAnchorKey: ""              # 必填 — openssl rand -base64 32
 
 routing:
-  type: istio                     # istio | gatewayapi | ingress
-  istio:
-    gateway: "istio-system/mxid-gateway"
+  type: gatewayapi                # gatewayapi(默认)| istio | ingress | none
+  gatewayapi:
+    name: "mxid-gateway"          # 已存在的 Gateway 名
+    namespace: ""                 # Gateway 命名空间(同 ns 留空)
+    sectionName: ""               # 可选 listener,如 "https"
+
+backend:
+  replicaCount: 2                 # 默认 2(HA);后台单写任务已 leader 选举
 ```
 
 > **不要把含明文密钥的 `values-prod.yaml` 提交到 git。**
 > CI 中改用 `--set` 传参,或用 Sealed Secrets、External Secrets Operator、
 > Vault agent 注入。
+
+#### 生产用 `existingSecret`(推荐)
+
+让密钥完全不进 Helm values:自己在集群外建 Secret(经密钥管理系统),chart 只引用。
+Secret **必须**含全部 5 个 key:
+
+```bash
+kubectl create secret generic mxid-secrets -n mxid \
+  --from-literal=MXID_DATABASE_PASSWORD='<db-pw>' \
+  --from-literal=MXID_REDIS_PASSWORD='<redis-pw>' \
+  --from-literal=MXID_CRYPTO_KEY_ENCRYPTION_KEY='<openssl rand -base64 32>' \
+  --from-literal=MXID_CRYPTO_AUDIT_CHAIN_KEY='<openssl rand -base64 32>' \
+  --from-literal=MXID_CRYPTO_AUDIT_ANCHOR_KEY='<openssl rand -base64 32>'
+```
+
+```yaml
+# values-prod.yaml
+secrets:
+  create: false
+  existingSecret: mxid-secrets
+```
+
+优先 External Secrets Operator(从 Vault / AWS Secrets Manager / GCP SM 拉)或
+Sealed Secrets,而非手动 `kubectl create secret`。`create: false` 时 chart
+不校验这些 key —— app boot 时仍会 fail-closed(缺任一即起不来)。**且
+`helm uninstall` 不会删这个自建 Secret(它不归 Helm 管),KEK / 审计链密钥不会
+被误删。**
 
 #### 关键 values 说明
 
@@ -438,7 +478,7 @@ routing:
 | `image.tag` | `1.0.0` | 后端与前端共用的镜像 tag(钉发布版) |
 | `image.pullPolicy` | `IfNotPresent` | 镜像拉取策略 |
 | `imagePullSecrets` | `[]` | 私有仓库拉取 Secret 名列表(`edition: ee` 时需要) |
-| `backend.replicaCount` | `1` | 后端副本数;每个 pod 从序号自动派生唯一 Snowflake nodeID |
+| `backend.replicaCount` | `2` | 后端副本数(默认 2,HA);每个 pod 从序号派生唯一 Snowflake nodeID。单写后台任务已 leader 选举,>1 安全 |
 | `backend.autoscaling.enabled` | `false` | 开启对后端 StatefulSet 的 HPA |
 | `backend.autoscaling.minReplicas` | `1` | HPA 最小副本数 |
 | `backend.autoscaling.maxReplicas` | `5` | HPA 最大副本数 |
@@ -449,11 +489,16 @@ routing:
 | `redis.host` | `redis` | Redis 主机名 |
 | `redis.port` | `6379` | Redis 端口 |
 | `secrets.create` | `true` | 从 values 创建 Secret;设 `false` 时改用 `secrets.existingSecret` 引用已有 Secret |
-| `secrets.existingSecret` | `""` | 已有 Secret 名(需包含 `MXID_DATABASE_PASSWORD`、`MXID_REDIS_PASSWORD`、`MXID_CRYPTO_KEY_ENCRYPTION_KEY`) |
+| `secrets.keepOnUninstall` | `true` | `create: true` 时给 Secret 加 `helm.sh/resource-policy: keep`,`helm uninstall` 不删它(保护 KEK + 审计链密钥)。被保留的 Secret 仍带 Helm ownership 元数据,同名同 ns 重装会直接接管(不报 already exists) |
+| `secrets.preserveExisting` | `true` | `create: true` 时让 Secret 幂等:若已存在则复用其现有各 key 值,不用 values 覆盖。重装/升级(含 uninstall 保留后)绝不覆盖已有 KEK / 审计链密钥。设 `false` 则强制用 values(如主动轮换密码) |
+| `secrets.existingSecret` | `""` | 已有 Secret 名(需包含 `MXID_DATABASE_PASSWORD`、`MXID_REDIS_PASSWORD`、`MXID_CRYPTO_KEY_ENCRYPTION_KEY`、`MXID_CRYPTO_AUDIT_CHAIN_KEY`、`MXID_CRYPTO_AUDIT_ANCHOR_KEY`) |
 | `secrets.databasePassword` | `""` | DB 密码(`secrets.create: true` 时使用) |
 | `secrets.redisPassword` | `""` | Redis 密码(无认证则留空) |
 | `secrets.cryptoKeyEncryptionKey` | `""` | 主 KEK — `openssl rand -base64 32` |
-| `routing.type` | `istio` | 路由后端:`istio`、`gatewayapi`、`ingress` 或 `none` |
+| `secrets.auditChainKey` | `""` | 审计哈希链 HMAC 密钥 — `openssl rand -base64 32`;**只生成一次、永不更改** |
+| `secrets.auditAnchorKey` | `""` | 审计锚 Ed25519 seed — `openssl rand -base64 32`;`audit.anchorSink.enabled` 时必填 |
+| `audit.anchorSink.enabled` | `true` | 把签名的外部审计锚持久化到 per-pod PVC(StatefulSet `volumeClaimTemplates`) |
+| `routing.type` | `gatewayapi` | 路由后端:`gatewayapi`(默认)、`istio`、`ingress` 或 `none` |
 | `config.serverMode` | `release` | `release` 或 `debug` |
 | `config.allowedOrigins` | `""` | CORS 白名单;留空则默认 `https://<host>` |
 

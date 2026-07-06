@@ -6,6 +6,7 @@ import (
 	"crypto/ed25519"
 	"time"
 
+	"github.com/imkerbos/mxid/pkg/dberr"
 	"github.com/imkerbos/mxid/pkg/snowflake"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -71,6 +72,15 @@ func (a *Anchorer) AnchorChain(ctx context.Context, tenantID int64, class string
 		KeyID: a.keyID, ExternalURI: uri, CreatedAt: time.Now().UTC(),
 	}
 	if err := a.db.WithContext(ctx).Create(anchor).Error; err != nil {
+		// Last-resort guard: another anchorer (a failover overlap) already
+		// recorded this exact span. Treat as done rather than erroring so the
+		// tick doesn't spin. The leader lock makes this path rare.
+		if dberr.IsUniqueViolationOn(err, "uq_audit_anchor_span", "mxid_audit_anchor.tenant_id") {
+			a.logger.Info("audit anchorer: span already anchored, skipping",
+				zap.Int64("tenant_id", tenantID), zap.String("chain_class", class),
+				zap.Int64("from_seq", fromSeq), zap.Int64("to_seq", toSeq))
+			return nil, nil
+		}
 		return nil, err
 	}
 	return anchor, nil
