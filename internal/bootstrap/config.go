@@ -219,10 +219,21 @@ type TenantConfig struct {
 // audit.anchor_enabled is true (see validateSecrets), for the same reason
 // as AuditChainKey: an unanchored or unverifiably-anchored chain defeats
 // the tamper-evidence guarantee.
+//
+// AuditAnchorRetiredPubKeys is a comma-separated list of base64-encoded
+// ed25519 public keys retired from anchoring. When a key is rotated, the old
+// key is added here so that anchors signed with it can still be verified by
+// the audit verifier. Source:
+//
+//  1. Env var MXID_CRYPTO_AUDIT_ANCHOR_RETIRED_PUBKEYS
+//  2. YAML key crypto.audit_anchor_retired_pubkeys
+//
+// Optional; when empty, only the active AuditAnchorKey's public key can verify.
 type CryptoConfig struct {
-	KeyEncryptionKey string `mapstructure:"key_encryption_key"`
-	AuditChainKey    string `mapstructure:"audit_chain_key"`
-	AuditAnchorKey   string `mapstructure:"audit_anchor_key"`
+	KeyEncryptionKey           string `mapstructure:"key_encryption_key"`
+	AuditChainKey              string `mapstructure:"audit_chain_key"`
+	AuditAnchorKey             string `mapstructure:"audit_anchor_key"`
+	AuditAnchorRetiredPubKeys  string `mapstructure:"audit_anchor_retired_pubkeys"`
 }
 
 // GeoIPConfig points the audit subsystem at a MaxMind GeoLite2-City
