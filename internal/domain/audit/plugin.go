@@ -51,7 +51,7 @@ func (p *CapturePlugin) captureCreate(cb *gorm.DB) {
 		After:        after,
 	}
 	if err := p.emit(cb, ev); err != nil {
-		cb.AddError(err)
+		_ = cb.AddError(err)
 	}
 }
 
@@ -91,7 +91,7 @@ func (p *CapturePlugin) captureUpdate(cb *gorm.DB) {
 	}
 	before, err := beforeSnapshot(cb)
 	if err != nil {
-		cb.AddError(fmt.Errorf("audit before-snapshot %s: %w", res, err))
+		_ = cb.AddError(fmt.Errorf("audit before-snapshot %s: %w", res, err))
 		return
 	}
 	after := redactMap(updateDelta(cb))
@@ -105,7 +105,7 @@ func (p *CapturePlugin) captureUpdate(cb *gorm.DB) {
 			After:        after,
 		}
 		if err := p.emit(cb, ev); err != nil {
-			cb.AddError(err)
+			_ = cb.AddError(err)
 			return
 		}
 	}
@@ -125,7 +125,7 @@ func (p *CapturePlugin) captureDelete(cb *gorm.DB) {
 	}
 	before, err := beforeSnapshot(cb)
 	if err != nil {
-		cb.AddError(fmt.Errorf("audit before-snapshot %s: %w", res, err))
+		_ = cb.AddError(fmt.Errorf("audit before-snapshot %s: %w", res, err))
 		return
 	}
 	for _, beforeRow := range before {
@@ -137,7 +137,7 @@ func (p *CapturePlugin) captureDelete(cb *gorm.DB) {
 			Before:       redactMap(beforeRow),
 		}
 		if err := p.emit(cb, ev); err != nil {
-			cb.AddError(err)
+			_ = cb.AddError(err)
 			return
 		}
 	}

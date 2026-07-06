@@ -573,13 +573,6 @@ func (e *Engine) trackFailureLegacy(ctx context.Context, userID int64, req *Auth
 	}
 }
 
-// clearFailureCount removes all brute-force failure state after a successful
-// login — both the new limiter keys (per-user + per-IP) and the legacy
-// per-user counter.
-func (e *Engine) clearFailureCount(ctx context.Context, userID int64) {
-	e.clearFailureCountIP(ctx, userID, "")
-}
-
 // clearFailureCountIP clears the limiter keys for the user AND the supplied IP
 // (so a legitimate login also relieves the per-IP budget), plus the legacy
 // per-user counter.
