@@ -113,6 +113,20 @@ func VerifyAnchors(ctx context.Context, db *gorm.DB, keys KeyRegistry, tenantID 
 // the external sink so that DELETING a DB anchor row (which VerifyAnchors alone
 // reports only as a coverage gap, and not at all if the whole tail is dropped)
 // is caught: the signed copy in the sink survives a DB compromise.
+//
+// The two directions are reconciled differently:
+//   - DB -> sink: every DB anchor MUST have an exact sink match on
+//     (from_seq, to_seq, root, sig). Any miss or mismatch means the DB row was
+//     tampered with or forged after the fact — flagged unconditionally.
+//   - sink -> DB: a sink record with no identical (from_seq, to_seq) DB row is
+//     flagged as a deletion ONLY if no DB anchor starts at that from_seq at
+//     all. This tolerates the anchorer's benign retry-orphans: Anchorer.
+//     AnchorChain does sink.Put then db.Create, not atomically, so a transient
+//     DB failure after a successful Put leaves an orphan sink record whose
+//     from_seq is later re-anchored (possibly over a wider range) by the next
+//     tick. A from_seq that is still the start of some DB anchor is treated as
+//     a tolerated retry, not a deletion; a from_seq absent from every DB
+//     anchor means the DB row was genuinely removed.
 func VerifyAnchorsWithSink(ctx context.Context, db *gorm.DB, sink AnchorSink, keys KeyRegistry, tenantID int64, class string) (AnchorVerifyResult, error) {
 	res, err := VerifyAnchors(ctx, db, keys, tenantID, class)
 	if err != nil || !res.OK {
@@ -142,17 +156,23 @@ func VerifyAnchorsWithSink(ctx context.Context, db *gorm.DB, sink AnchorSink, ke
 		}
 	}
 	dbIdx := make(map[k]bool)
+	dbFroms := make(map[int64]bool, len(dbAnchors))
 	for i := range dbAnchors {
 		a := &dbAnchors[i]
 		dbIdx[k{a.TenantID, a.ChainClass, a.FromSeq, a.ToSeq}] = true
+		dbFroms[a.FromSeq] = true
 		sr, ok := sinkIdx[k{a.TenantID, a.ChainClass, a.FromSeq, a.ToSeq}]
 		if !ok || !bytes.Equal(sr.MerkleRoot, a.MerkleRoot) || !bytes.Equal(sr.Signature, a.Signature) {
 			return AnchorVerifyResult{OK: false, AnchoredThrough: res.AnchoredThrough, FailFromSeq: a.FromSeq, Reason: "sink mismatch"}, nil
 		}
 	}
-	// sink record not present in DB -> a DB anchor row was deleted
-	for key := range sinkIdx {
-		if !dbIdx[key] {
+	// A sink record absent from the DB is a deletion signal only if its
+	// from_seq is not the start of ANY DB anchor. A retry-orphan (the
+	// anchorer's sink.Put succeeded but the following db.Create failed
+	// transiently) shares its from_seq with the DB anchor that later
+	// re-anchored the same range, so it is tolerated rather than flagged.
+	for key, r := range sinkIdx {
+		if !dbIdx[key] && !dbFroms[r.FromSeq] {
 			return AnchorVerifyResult{OK: false, AnchoredThrough: res.AnchoredThrough, FailFromSeq: key.f, Reason: "sink mismatch"}, nil
 		}
 	}
