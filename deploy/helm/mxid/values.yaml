@@ -292,6 +292,18 @@ routing:
     # Optional sectionName if the Gateway has multiple listeners.
     sectionName: ""
 
+  # --- GKE-specific: backend health check (used on GKE Gateway API) ---
+  # GKE provisions a Google Cloud LB behind the Gateway; its backend health
+  # check defaults to probing "/", which the backend does not serve → 404 →
+  # the backend is marked UNHEALTHY and the LB stops routing to it. Enable this
+  # on GKE to emit a HealthCheckPolicy that points the check at /health.
+  # No-op on non-GKE clusters (the CRD networking.gke.io/v1 won't exist there,
+  # so keep it disabled unless you're on GKE).
+  gke:
+    healthCheck:
+      enabled: false
+      path: /health
+
   # --- Standard Ingress settings (used when type=ingress) ---
   ingress:
     className: ""
