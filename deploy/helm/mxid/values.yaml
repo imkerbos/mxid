@@ -158,6 +158,16 @@ config:
   # Blank → derived as "https://<host>". Override for split-domain / extra origins.
   allowedOrigins: ""
 
+  # Trusted reverse-proxy / load-balancer CIDRs (list). Behind an internal LB or
+  # ingress, set this to the edge proxy CIDR(s) so the app resolves the REAL
+  # client IP from X-Forwarded-For instead of collapsing every intranet client
+  # onto the LB IP — which otherwise breaks per-client audit / rate-limit /
+  # conditional access. Empty → broad RFC1918 default (logs a release-mode warning).
+  #   trustedProxies:
+  #     - "10.0.0.0/8"
+  #     - "35.191.0.0/16"     # e.g. GCP LB / health-check range
+  trustedProxies: []
+
   # Canonical external URLs. These are the OIDC issuer (`iss`) / SAML EntityID
   # base / CAS root, plus the portal and console origins that third parties
   # (Lark and other IdPs/SPs) redirect back to. Blank → derived from `host`:

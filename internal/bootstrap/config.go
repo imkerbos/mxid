@@ -318,6 +318,16 @@ func LoadConfig(configPath string) (*Config, error) {
 		cfg.Server.AllowedOrigins = splitAndTrim(raw)
 	}
 
+	// MXID_SERVER_TRUSTED_PROXIES="10.0.0.0/8,192.168.1.0/24" → []string. Same
+	// list-can't-ride-AutomaticEnv reason. Behind a reverse proxy / internal LB
+	// this MUST be narrowed to the edge proxy CIDR(s) so c.ClientIP() resolves the
+	// real client from X-Forwarded-For instead of collapsing every intranet client
+	// onto the LB IP (which would break per-client audit / rate-limit / conditional
+	// access). Unset → the broad RFC1918 default (with a release-mode warning).
+	if raw := os.Getenv("MXID_SERVER_TRUSTED_PROXIES"); raw != "" {
+		cfg.Server.TrustedProxies = splitAndTrim(raw)
+	}
+
 	if err := cfg.validateSecrets(); err != nil {
 		return nil, fmt.Errorf("config secrets: %w", err)
 	}
