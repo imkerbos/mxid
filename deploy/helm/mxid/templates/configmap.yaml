@@ -11,6 +11,11 @@ data:
   MXID_SERVER_PORT: "8080"
   MXID_SERVER_MODE: {{ .Values.config.serverMode | quote }}
   MXID_SERVER_ALLOWED_ORIGINS: {{ .Values.config.allowedOrigins | default (printf "https://%s" .Values.host) | quote }}
+  {{- with .Values.config.trustedProxies }}
+  # Reverse-proxy / internal-LB CIDRs whose X-Forwarded-For is trusted, so the
+  # real client IP is resolved instead of the LB IP. Narrow to the edge only.
+  MXID_SERVER_TRUSTED_PROXIES: {{ join "," . | quote }}
+  {{- end }}
 
   # Canonical external URLs — blank values derive from .Values.host. These drive
   # the OIDC issuer / SAML EntityID / CAS root and CORS/CSRF auto-trust, so a
