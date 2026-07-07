@@ -1,0 +1,24 @@
+{{- if and (eq .Values.routing.type "gatewayapi") .Values.routing.gke.healthCheck.enabled }}
+# GKE HealthCheckPolicy — points the Google LB's backend health check at the
+# backend's /health (liveness) endpoint. Without it the LB probes "/", which the
+# backend does not serve (that path routes to mxid-web), gets a 404, and marks
+# the backend UNHEALTHY so the LB stops routing /api /protocol to it. GKE-only
+# (networking.gke.io/v1); gated behind routing.gke.healthCheck.enabled.
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: {{ include "mxid.fullname" . }}-backend-hc
+  labels:
+    {{- include "mxid.labels" . | nindent 4 }}
+spec:
+  targetRef:
+    group: ""
+    kind: Service
+    name: {{ include "mxid.fullname" . }}
+  default:
+    config:
+      type: HTTP
+      httpHealthCheck:
+        requestPath: {{ .Values.routing.gke.healthCheck.path | quote }}
+        port: 8080
+{{- end }}
