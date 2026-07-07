@@ -20,8 +20,13 @@ host: id.example.com
 # Image settings
 # ---------------------------------------------------------------------------
 image:
+  # Registry + namespace prefix for all images (backend CE/EE + web). Override
+  # to pull from a private registry / Harbor; a mirror must keep the same repo
+  # names (mxid, mxid-ee, mxid-web) under this prefix.
+  # Example (Harbor): registry: harbor.yourco.com/mxid
+  registry: "ghcr.io/imkerbos"
   # Tag applied to BOTH backend and web images.
-  tag: "1.0.0"
+  tag: "v1.1.1"
   pullPolicy: IfNotPresent
 
 # Image pull secrets (list of secret names) — needed for private registries.

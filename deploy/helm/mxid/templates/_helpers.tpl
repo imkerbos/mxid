@@ -66,13 +66,25 @@ app.kubernetes.io/component: web
 {{- end }}
 
 {{/*
+Image registry+namespace prefix. Override image.registry to pull from a private
+registry / Harbor (air-gapped). Default is the canonical GHCR namespace. The
+image NAMES (mxid, mxid-ee, mxid-web) are appended by the helpers below, so a
+mirror must keep the same repo names under image.registry.
+*/}}
+{{- define "mxid.imageRegistry" -}}
+{{- .Values.image.registry | default "ghcr.io/imkerbos" }}
+{{- end }}
+
+{{/*
 Backend image repository — switches between CE and EE based on .Values.edition.
 */}}
 {{- define "mxid.backendImage" -}}
+{{- $reg := include "mxid.imageRegistry" . }}
+{{- $tag := .Values.image.tag | default .Chart.AppVersion }}
 {{- if eq .Values.edition "ee" }}
-{{- printf "ghcr.io/imkerbos/mxid-ee:%s" (.Values.image.tag | default .Chart.AppVersion) }}
+{{- printf "%s/mxid-ee:%s" $reg $tag }}
 {{- else }}
-{{- printf "ghcr.io/imkerbos/mxid:%s" (.Values.image.tag | default .Chart.AppVersion) }}
+{{- printf "%s/mxid:%s" $reg $tag }}
 {{- end }}
 {{- end }}
 
@@ -80,7 +92,7 @@ Backend image repository — switches between CE and EE based on .Values.edition
 Web image.
 */}}
 {{- define "mxid.webImage" -}}
-{{- printf "ghcr.io/imkerbos/mxid-web:%s" (.Values.image.tag | default .Chart.AppVersion) }}
+{{- printf "%s/mxid-web:%s" (include "mxid.imageRegistry" .) (.Values.image.tag | default .Chart.AppVersion) }}
 {{- end }}
 
 {{/*

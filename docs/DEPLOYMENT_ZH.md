@@ -475,7 +475,8 @@ Sealed Secrets,而非手动 `kubectl create secret`。`create: false` 时 chart
 |----|--------|------|
 | `edition` | `ce` | `ce` → 后端镜像 `ghcr.io/imkerbos/mxid`;`ee` → `ghcr.io/imkerbos/mxid-ee` |
 | `host` | `id.example.com` | 对外域名,用于所有路由资源 |
-| `image.tag` | `1.0.0` | 后端与前端共用的镜像 tag(钉发布版) |
+| `image.registry` | `ghcr.io/imkerbos` | 所有镜像的仓库+命名空间前缀。改它即可指向私有仓库 / Harbor(隔离环境)——需把 `mxid`/`mxid-ee`/`mxid-web`(及 `backend.waitForDeps.image` 的 busybox)镜像到该前缀下,repo 名保持一致 |
+| `image.tag` | `v1.1.1` | 后端与前端共用的镜像 tag(钉发布版) |
 | `image.pullPolicy` | `IfNotPresent` | 镜像拉取策略 |
 | `imagePullSecrets` | `[]` | 私有仓库拉取 Secret 名列表(`edition: ee` 时需要) |
 | `backend.replicaCount` | `2` | 后端副本数(默认 2,HA);每个 pod 从序号派生唯一 Snowflake nodeID。单写后台任务已 leader 选举,>1 安全 |

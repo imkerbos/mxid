@@ -558,7 +558,8 @@ fails-closed at boot if any are missing.
 |-----|---------|---------|
 | `edition` | `ce` | `ce` → backend image `ghcr.io/imkerbos/mxid`; `ee` → `ghcr.io/imkerbos/mxid-ee` |
 | `host` | `id.example.com` | Public hostname used in all routing resources |
-| `image.tag` | `1.0.0` | Image tag for both backend and web (pin to a release) |
+| `image.registry` | `ghcr.io/imkerbos` | Registry + namespace prefix for all images. Override to pull from a private registry / Harbor (air-gapped) — mirror `mxid`/`mxid-ee`/`mxid-web` (and `backend.waitForDeps.image` busybox) under it |
+| `image.tag` | `v1.1.1` | Image tag for both backend and web (pin to a release) |
 | `image.pullPolicy` | `IfNotPresent` | Image pull policy |
 | `imagePullSecrets` | `[]` | Pull-secret names for private registries (needed for `edition: ee`) |
 | `backend.replicaCount` | `2` | Backend replica count (default 2 for HA); each pod gets a unique Snowflake nodeID from its ordinal. Single-writer jobs are leader-elected, so >1 is safe |
