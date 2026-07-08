@@ -57,11 +57,18 @@ export default function LoginPage() {
   }, [])
 
   // Surface the reason when an external-IdP login bounced back (e.g. the user
-  // isn't authorized for the console, or is the built-in admin).
+  // isn't authorized for the console, or is the built-in admin). Map the known
+  // backend reason strings to friendly localized copy; fall back to the raw
+  // reason (still informative) then a generic message.
   useEffect(() => {
     const p = new URLSearchParams(window.location.search)
     if (p.get('err') === 'external') {
-      setError(p.get('reason') || t('login.externalFailed'))
+      const reason = p.get('reason') || ''
+      const friendly: Record<string, string> = {
+        'not authorized for console': t('login.externalNoConsoleAccess'),
+        'builtin account must use local login': t('login.externalBuiltinLocalOnly'),
+      }
+      setError(friendly[reason] || reason || t('login.externalFailed'))
     }
   }, [t])
 
