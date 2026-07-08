@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -181,48 +182,51 @@ func TestRateLimit_LimitFuncAppliesPerRequestLimit(t *testing.T) {
 func TestRateLimit_LimitFuncPerUserIsolation(t *testing.T) {
 	rdb, _ := newRedis(t)
 	gin.SetMode(gin.TestMode)
+	// Mirror production exactly: AuthMiddleware stores an int64 user id under
+	// authn.CtxUserID ("user_id"); KeyByUserID reads it via its int64 branch.
+	// We replicate the const value here to avoid an import cycle (authn depends
+	// on middleware).
+	const ctxUserID = "user_id"
 	r := gin.New()
 	r.Use(func(c *gin.Context) {
-		if uid := c.GetHeader("X-Test-User"); uid != "" {
-			c.Set("uid", uid)
+		if h := c.GetHeader("X-Test-User"); h != "" {
+			uid, _ := strconv.ParseInt(h, 10, 64)
+			c.Set(ctxUserID, uid) // int64, as AuthMiddleware sets it
 		}
 		c.Next()
 	})
 	r.Use(RateLimiter(rdb, RateLimitRule{
 		Name: "user", Window: time.Minute,
-		KeyFunc:   KeyByUserID("uid"),
+		KeyFunc:   KeyByUserID(ctxUserID),
 		LimitFunc: func(*gin.Context) int { return 1 },
 	}))
 	r.POST("/x", func(c *gin.Context) { c.String(200, "ok") })
 
-	req1 := httptest.NewRequest(http.MethodPost, "/x", nil)
-	req1.Header.Set("X-Test-User", "alice")
-	w1 := httptest.NewRecorder()
-	r.ServeHTTP(w1, req1)
-	if w1.Code != 200 {
-		t.Fatalf("alice first request should pass, got %d", w1.Code)
+	post := func(user string) int {
+		req := httptest.NewRequest(http.MethodPost, "/x", nil)
+		if user != "" {
+			req.Header.Set("X-Test-User", user)
+		}
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w.Code
 	}
 
-	req1b := httptest.NewRequest(http.MethodPost, "/x", nil)
-	req1b.Header.Set("X-Test-User", "alice")
-	w1b := httptest.NewRecorder()
-	r.ServeHTTP(w1b, req1b)
-	if w1b.Code != http.StatusTooManyRequests {
-		t.Fatalf("alice second request should 429, got %d", w1b.Code)
+	// user 1001 (int64): first passes, second trips the limit of 1.
+	if code := post("1001"); code != 200 {
+		t.Fatalf("user 1001 first request should pass, got %d", code)
+	}
+	if code := post("1001"); code != http.StatusTooManyRequests {
+		t.Fatalf("user 1001 second request should 429, got %d", code)
 	}
 
-	req2 := httptest.NewRequest(http.MethodPost, "/x", nil)
-	req2.Header.Set("X-Test-User", "bob")
-	w2 := httptest.NewRecorder()
-	r.ServeHTTP(w2, req2)
-	if w2.Code != 200 {
-		t.Fatalf("bob should have an independent bucket, got %d", w2.Code)
+	// user 1002 (a DIFFERENT int64 id): independent bucket, still passes.
+	if code := post("1002"); code != 200 {
+		t.Fatalf("user 1002 should have an independent bucket, got %d", code)
 	}
 
-	req3 := httptest.NewRequest(http.MethodPost, "/x", nil)
-	w3 := httptest.NewRecorder()
-	r.ServeHTTP(w3, req3)
-	if w3.Code != 200 {
-		t.Fatalf("unauthenticated request (no uid) should skip the rule, got %d", w3.Code)
+	// unauthenticated request (no uid in context) → KeyByUserID returns "" → rule skipped.
+	if code := post(""); code != 200 {
+		t.Fatalf("unauthenticated request (no uid) should skip the rule, got %d", code)
 	}
 }

@@ -517,6 +517,10 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 		Name:    "user",
 		Window:  time.Minute,
 		KeyFunc: middleware.KeyByUserID(authn.CtxUserID),
+		// Exempt the long-lived, self-reconnecting SSE event streams, matching
+		// the sibling global per-IP limiter (internal/bootstrap/app.go): a
+		// reconnect storm must not burn a legitimate user's per-user budget.
+		SkipPaths: []string{"/api/v1/portal/events", "/api/v1/console/events"},
 		LimitFunc: func(c *gin.Context) int {
 			pol, err := settingService.SecurityPolicy(c.Request.Context(), a.Config.Tenant.DefaultID)
 			if err != nil {

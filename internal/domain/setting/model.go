@@ -141,7 +141,10 @@ type SessionPolicy struct {
 
 // RateLimitPolicy configures per-authenticated-user request rate limiting,
 // layered on top of the global per-IP cap. PerUserPerMinute == 0 disables it
-// (unlimited); the per-IP cap still applies as a backstop.
+// (unlimited); the per-IP cap still applies as a backstop. Legacy security.policy
+// rows saved before this field existed inherit the DefaultSecurityPolicy value
+// (600), not 0: SecurityPolicy is read as default-then-unmarshal, so a field
+// absent from the stored JSON keeps its default.
 type RateLimitPolicy struct {
 	PerUserPerMinute int `json:"per_user_per_minute"`
 }
