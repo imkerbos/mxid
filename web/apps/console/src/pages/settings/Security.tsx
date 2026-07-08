@@ -166,6 +166,20 @@ export default function SecurityPage() {
         </div>
       </Section>
 
+      <Section title={t('settings.security.rateLimitTitle')} desc={t('settings.security.rateLimitDesc')}>
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+          <Field label={t('settings.security.perUserPerMinute')} hint={t('settings.security.perUserPerMinuteHint')}>
+            <Input
+              type="number"
+              value={v.rate_limit.per_user_per_minute}
+              onChange={(e) =>
+                setV({ ...v, rate_limit: { ...v.rate_limit, per_user_per_minute: Number(e.target.value) } })
+              }
+            />
+          </Field>
+        </div>
+      </Section>
+
       <div className="flex justify-end">
         <Button onClick={save} loading={saving} icon={<Save className="h-4 w-4" />}>
           {saving ? t('common.saving') : t('settings.security.saveBtn')}

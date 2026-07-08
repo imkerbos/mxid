@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -126,5 +127,102 @@ func TestRateLimit_KeyFuncEmptySkips(t *testing.T) {
 		if w.Code != 200 {
 			t.Fatalf("empty key should skip rule, got %d", w.Code)
 		}
+	}
+}
+
+func TestRateLimit_LimitFuncZeroDisables(t *testing.T) {
+	rdb, _ := newRedis(t)
+	// Static Limit is low (1) but LimitFunc returns 0 => unlimited, should
+	// always override the static Limit.
+	r := newRLRouter(rdb, RateLimitRule{
+		Name: "user", Limit: 1, Window: time.Minute, KeyFunc: KeyByClientIP,
+		LimitFunc: func(*gin.Context) int { return 0 },
+	})
+	for i := 0; i < 10; i++ {
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/x", nil))
+		if w.Code != 200 {
+			t.Fatalf("hit %d: LimitFunc()==0 must disable the rule, got %d", i+1, w.Code)
+		}
+	}
+}
+
+func TestRateLimit_LimitFuncAppliesPerRequestLimit(t *testing.T) {
+	rdb, _ := newRedis(t)
+	r := newRLRouter(rdb, RateLimitRule{
+		Name: "user", Window: time.Minute, KeyFunc: KeyByClientIP,
+		LimitFunc: func(*gin.Context) int { return 2 },
+	})
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest(http.MethodPost, "/x", nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != 200 {
+			t.Fatalf("hit %d should pass, got %d", i+1, w.Code)
+		}
+	}
+	req := httptest.NewRequest(http.MethodPost, "/x", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("third request over LimitFunc cap must 429, got %d", w.Code)
+	}
+	var body struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body.Code != 42901 {
+		t.Fatalf("want code 42901, got %d", body.Code)
+	}
+}
+
+func TestRateLimit_LimitFuncPerUserIsolation(t *testing.T) {
+	rdb, _ := newRedis(t)
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		if uid := c.GetHeader("X-Test-User"); uid != "" {
+			c.Set("uid", uid)
+		}
+		c.Next()
+	})
+	r.Use(RateLimiter(rdb, RateLimitRule{
+		Name: "user", Window: time.Minute,
+		KeyFunc:   KeyByUserID("uid"),
+		LimitFunc: func(*gin.Context) int { return 1 },
+	}))
+	r.POST("/x", func(c *gin.Context) { c.String(200, "ok") })
+
+	req1 := httptest.NewRequest(http.MethodPost, "/x", nil)
+	req1.Header.Set("X-Test-User", "alice")
+	w1 := httptest.NewRecorder()
+	r.ServeHTTP(w1, req1)
+	if w1.Code != 200 {
+		t.Fatalf("alice first request should pass, got %d", w1.Code)
+	}
+
+	req1b := httptest.NewRequest(http.MethodPost, "/x", nil)
+	req1b.Header.Set("X-Test-User", "alice")
+	w1b := httptest.NewRecorder()
+	r.ServeHTTP(w1b, req1b)
+	if w1b.Code != http.StatusTooManyRequests {
+		t.Fatalf("alice second request should 429, got %d", w1b.Code)
+	}
+
+	req2 := httptest.NewRequest(http.MethodPost, "/x", nil)
+	req2.Header.Set("X-Test-User", "bob")
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, req2)
+	if w2.Code != 200 {
+		t.Fatalf("bob should have an independent bucket, got %d", w2.Code)
+	}
+
+	req3 := httptest.NewRequest(http.MethodPost, "/x", nil)
+	w3 := httptest.NewRecorder()
+	r.ServeHTTP(w3, req3)
+	if w3.Code != 200 {
+		t.Fatalf("unauthenticated request (no uid) should skip the rule, got %d", w3.Code)
 	}
 }

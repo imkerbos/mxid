@@ -316,6 +316,9 @@ func DefaultSecurityPolicy() SecurityPolicy {
 		Session: SessionPolicy{
 			IdleMinutes: 480, AbsoluteHours: 24, RememberMeHours: 168,
 		},
+		RateLimit: RateLimitPolicy{
+			PerUserPerMinute: 600,
+		},
 	}
 }
 
