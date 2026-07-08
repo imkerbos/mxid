@@ -794,7 +794,7 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	// Mandatory-MFA-enrollment gate predicate: does the MFA policy require THIS
 	// user to hold a factor? all → everyone; admin_only → console-eligible
 	// admins; off → no one. Pairs with the EnrollGate middleware mounted above.
-	authnModule.Handler.SetMFAEnrollGate(func(ctx context.Context, tenantID, userID int64) bool {
+	mfaPolicyRequires := func(ctx context.Context, tenantID, userID int64) bool {
 		pol, err := settingService.MFAPolicy(ctx, tenantID)
 		if err != nil {
 			return false
@@ -811,6 +811,22 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 		default:
 			return false
 		}
+	}
+	authnModule.Handler.SetMFAEnrollGate(mfaPolicyRequires)
+
+	// Enforce mandatory MFA enrollment at the single session-creation chokepoint
+	// so EVERY login method is covered — not just the local password handler.
+	// SMS OTP, magic link and external IdP (Lark) all funnel through
+	// SessionMgr.Create; without this they bypassed the enroll flag entirely and
+	// a "force MFA for all" policy silently did nothing for federated users.
+	// Only flag users who actually need to enrol (policy requires it AND they
+	// hold no factor yet), so already-enrolled logins aren't needlessly gated.
+	sessionMgr.SetEnrollDecider(func(ctx context.Context, tenantID, userID int64) bool {
+		if !mfaPolicyRequires(ctx, tenantID, userID) {
+			return false
+		}
+		hasMFA, err := authnModule.Engine.HasMFA(ctx, userID)
+		return err == nil && !hasMFA
 	})
 
 	// External IdP is an EE feature: the implementation lives ONLY in the
@@ -989,6 +1005,12 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 		Group: groupValidator,
 		Org:   orgValidator,
 	})
+	// Enrich the role member list with subject display names (user/group/org)
+	// so the console shows "who" instead of a raw snowflake id.
+	permissionModule.Service.SetSubjectResolvers(subjectNameResolvers(userModule, groupModule, orgModule))
+	// The built-in super_admin role is a façade over mxid_user.is_super_admin:
+	// add/remove/list a member there grants/revokes/lists that flag.
+	permissionModule.Service.SetSuperAdminManager(superAdminManagerAdapter{userM: userModule})
 	appModule.Service.SetAccessSubjectValidators(app.AccessSubjectValidators{
 		User:  userValidator,
 		Group: groupValidator,

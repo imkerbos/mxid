@@ -59,12 +59,20 @@ func (s *Session) StepUpFresh(now time.Time, window time.Duration) bool {
 // or returns zero/negative values.
 type PolicyProvider func(ctx context.Context) (idle, absolute time.Duration)
 
+// EnrollDecider reports whether a NEWLY created session must be flagged
+// MFAEnrollPending — i.e. the MFA policy requires this user to hold a factor
+// and they have none yet. Evaluated inside Create so EVERY login path (local
+// password, SMS OTP, magic link, external IdP / Lark) enforces mandatory MFA
+// uniformly, instead of each handler having to remember to set the flag.
+type EnrollDecider func(ctx context.Context, tenantID, userID int64) bool
+
 // Manager handles session lifecycle operations.
 type Manager struct {
 	redis           *redis.Client
 	idleTimeout     time.Duration
 	absoluteTimeout time.Duration
 	policy          PolicyProvider
+	enrollDecider   EnrollDecider
 }
 
 // NewManager creates a session manager.
@@ -79,6 +87,11 @@ func NewManager(rdb *redis.Client, idleTimeout, absoluteTimeout time.Duration) *
 // SetPolicyProvider installs a runtime policy lookup. Safe to call once
 // after construction; not goroutine-safe for repeated swaps.
 func (m *Manager) SetPolicyProvider(p PolicyProvider) { m.policy = p }
+
+// SetEnrollDecider installs the mandatory-MFA-enrollment predicate applied to
+// every newly created session. Nil disables mandatory enrollment. Wired once
+// after construction.
+func (m *Manager) SetEnrollDecider(d EnrollDecider) { m.enrollDecider = d }
 
 // CountActive returns the number of live session value keys in the given
 // namespace. Session values live at `namespace:<id>`; the per-user index sets
@@ -136,6 +149,14 @@ func (m *Manager) Create(ctx context.Context, namespace string, userID, tenantID
 		CreatedAt:    now,
 		ExpiresAt:    now.Add(absolute),
 		LastActiveAt: now,
+	}
+
+	// Mandatory-MFA enrollment gate, applied at the single session-creation
+	// chokepoint so it covers every login method (password / SMS / magic link /
+	// external IdP). The EnrollGate middleware then blocks a pending session from
+	// everything but the MFA-enrollment surface until a factor is bound.
+	if m.enrollDecider != nil && m.enrollDecider(ctx, tenantID, userID) {
+		sess.MFAEnrollPending = true
 	}
 
 	if err := m.save(ctx, sess); err != nil {

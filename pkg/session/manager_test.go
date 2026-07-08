@@ -106,3 +106,48 @@ func TestSetEnrollPending_PersistsAndClears(t *testing.T) {
 		t.Fatalf("pending flag not cleared")
 	}
 }
+
+// Create must flag the session MFAEnrollPending when the enroll decider fires —
+// the single chokepoint that makes mandatory MFA apply to EVERY login method
+// (password / SMS / magic link / external IdP), not just the password handler.
+func TestManager_Create_EnrollDecider(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	m := NewManager(rdb, 30*time.Minute, 12*time.Hour)
+
+	// No decider → not pending.
+	s1, err := m.Create(context.Background(), NamespaceConsole, 1, 1, "ip", "ua", "external_idp")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if s1.MFAEnrollPending {
+		t.Fatal("no decider must leave MFAEnrollPending=false")
+	}
+
+	// Decider true → pending, regardless of the auth method (here: external IdP).
+	m.SetEnrollDecider(func(_ context.Context, tenantID, userID int64) bool {
+		return tenantID == 1 && userID == 2
+	})
+	s2, err := m.Create(context.Background(), NamespaceConsole, 2, 1, "ip", "ua", "external_idp")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if !s2.MFAEnrollPending {
+		t.Fatal("decider=true must set MFAEnrollPending on the created session")
+	}
+	// And it must survive a round-trip through redis.
+	got, err := m.Get(context.Background(), NamespaceConsole, s2.ID)
+	if err != nil || got == nil || !got.MFAEnrollPending {
+		t.Fatalf("persisted session must keep MFAEnrollPending: %+v err=%v", got, err)
+	}
+
+	// Decider false for a different user → not pending.
+	s3, _ := m.Create(context.Background(), NamespaceConsole, 3, 1, "ip", "ua", "sms_otp")
+	if s3.MFAEnrollPending {
+		t.Fatal("decider=false must leave the session unflagged")
+	}
+}
