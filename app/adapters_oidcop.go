@@ -8,19 +8,25 @@ import (
 	"context"
 	"net/url"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/imkerbos/mxid/internal/bootstrap"
 	"github.com/imkerbos/mxid/internal/domain/oidckey"
+	"github.com/imkerbos/mxid/internal/protocol/oidclogout"
 	"github.com/imkerbos/mxid/internal/protocol/oidcop"
 	"github.com/imkerbos/mxid/internal/protocol/resolver"
 	"github.com/imkerbos/mxid/pkg/dlock"
+	"github.com/imkerbos/mxid/pkg/safehttp"
+	"github.com/imkerbos/mxid/pkg/session"
+	"github.com/imkerbos/mxid/pkg/ssoflow"
 )
 
 // wireOIDCOP builds and mounts the zitadel OpenID Provider plus the BFF login
 // bridge, and starts provider-keyset rotation. issuer is the full external base
-// (e.g. https://host/protocol/oidc).
+// (e.g. https://host/protocol/oidc). Returns the WS2 back-channel logout fan-out
+// service so run.go can wire it into offboarding + JIT downstream teardown.
 func wireOIDCOP(
 	workerCtx context.Context,
 	a *bootstrap.App,
@@ -28,8 +34,11 @@ func wireOIDCOP(
 	appResolver resolver.AppResolver,
 	idResolver resolver.IdentityResolver,
 	sessResolver resolver.SessionResolver,
-	consent oidcop.ConsentChecker,
-) error {
+	sessionMgr *session.Manager,
+	access oidcop.AccessChecker,
+	tenantResolver resolver.TenantResolver,
+	appRoles oidcop.AppRoleResolver,
+) (*oidclogout.Service, error) {
 	// Provider keyset + auto-rotation (90d default). EnsureActive mints the
 	// first signing key on startup. Rotation runs under the leader lock so
 	// only one replica drives it — without this, N pods could concurrently
@@ -49,7 +58,7 @@ func wireOIDCOP(
 	opIssuer := strings.TrimSuffix(issuer, "/") + "/protocol/oidc"
 	issURL, err := url.Parse(opIssuer)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	issuerPath := issURL.Path // /protocol/oidc
 
@@ -64,17 +73,30 @@ func wireOIDCOP(
 	}
 
 	clients := oidcop.NewClientStore(appResolver, loginURL)
-	claims := oidcop.NewClaimsStore(idResolver, appResolver)
-	storage := oidcop.NewStorage(a.Redis, keySvc, clients, claims, oidcop.DefaultConfig())
+	claims := oidcop.NewClaimsStore(idResolver, appResolver, tenantResolver, appRoles)
+	// claims doubles as the UserStatusResolver (WS3-A disabled-account
+	// guard) — it already wraps idResolver, the same source the hand-rolled
+	// engine reads user.Status from. a.EventBus carries the WS3-B
+	// reuse-detection audit signal (event.OIDCTokenReuse); nil-safe if ever
+	// unwired.
+	storage := oidcop.NewStorage(a.Redis, keySvc, clients, claims, claims, a.EventBus, oidcop.DefaultConfig())
 
 	cryptoKey := a.MasterKey.Derive("oidc-op-crypto-v1")
 	provider, err := oidcop.NewProvider(opIssuer, storage, cryptoKey, true)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
+	// WS8: per-client_id token-endpoint rate limit, ported from the
+	// hand-rolled engine's checkRateLimit (internal/protocol/oidc/handler.go:558)
+	// so /protocol/oidc/token throttles abusive clients identically under
+	// either engine. Wrapped around provider here (rather than threading
+	// a.Redis/appResolver into Mount) so Mount keeps composing only
+	// self-contained request/response wrappers.
+	rateLimited := oidcop.WithTokenRateLimit(a.Redis, appResolver)(provider)
+
 	// op endpoints under the issuer path; login bridge at the sibling path.
-	oidcop.Mount(a.ProtocolGroup, issuerPath, provider)
+	oidcop.Mount(a.ProtocolGroup, issuerPath, rateLimited)
 
 	// op.AuthCallbackURL returns an op-root-relative path (/authorize/callback?id=…)
 	// because op is mounted under a stripped prefix. Prepend only the issuer PATH
@@ -84,14 +106,40 @@ func wireOIDCOP(
 	callbackURL := func(ctx context.Context, id string) string {
 		return issuerPath + opCallback(ctx, id)
 	}
-	// portalURL "" → the bridge redirects to relative /login and /consent, which
-	// the browser resolves against the nginx host it is already on.
+
+	// WS2: back-channel logout fan-out for offboarding + JIT downstream
+	// teardown. The signer uses the SAME provider keyset (keySvc) that signs
+	// id_tokens above — NOT a per-app cert — so RPs validate the logout_token
+	// against the JWKS they already trust for id_token verification. Outbound
+	// POSTs go through the SSRF-guarded safehttp client; production
+	// backchannel_logout_uri values are admin-configured, arbitrary hosts.
+	participationIndex := oidclogout.NewIndex(a.Redis)
+	logoutSvc := oidclogout.NewService(
+		sessionMgr,
+		participationIndex,
+		appResolver,
+		oidclogout.NewProviderKeysetSigner(keySvc),
+		opIssuer,
+		safehttp.New(safehttp.WithTimeout(5*time.Second)),
+	)
+
+	// SSO login-confirmation store (Google-style, product requirement). SAME
+	// Redis-backed keyspace (ssoconfirm:) the portal confirm page mints into
+	// (internal/gateway/portal/consent_handler.go) and the hand-rolled engine
+	// consumes from — ssoflow.ConfirmStore is a stateless wrapper over the
+	// shared client, so this is one logical store, NOT a second one. The bridge
+	// consumes a valid one-time token to satisfy the SP-initiated confirm gate.
+	confirm := ssoflow.NewConfirmStore(a.Redis)
+
+	// portalURL "" → the bridge redirects to relative /login, /consent, and
+	// /no-access, which the browser resolves against the nginx host it is
+	// already on.
 	bridge := oidcop.NewLoginBridge(
-		storage, appResolver, sessResolver, consent,
+		storage, appResolver, sessResolver, confirm, access, participationIndex,
 		callbackURL, loginURL, "",
 	)
 	a.ProtocolGroup.GET("/oidc-login", bridge.Handle)
 
 	a.Logger.Info("OIDC engine: zitadel/oidc", zap.String("issuer", opIssuer))
-	return nil
+	return logoutSvc, nil
 }

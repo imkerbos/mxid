@@ -171,10 +171,19 @@ config:
   # ingress, set this to the edge proxy CIDR(s) so the app resolves the REAL
   # client IP from X-Forwarded-For instead of collapsing every intranet client
   # onto the LB IP — which otherwise breaks per-client audit / rate-limit /
-  # conditional access. Empty → broad RFC1918 default (logs a release-mode warning).
+  # conditional access. Empty → broad RFC1918 default (logs a release-mode
+  # warning), which starves the shared per-IP rate-limit bucket and causes
+  # spurious 429s for whole offices/clusters behind one egress IP.
+  #
+  # GKE Gateway API (gatewayapi) / Google Cloud LB: the LB reaches the pod from
+  # Google's proxy ranges below and puts the client IP in X-Forwarded-For, so
+  # trust those plus your Pod CIDR (kube-proxy hop). Copy-paste for GKE:
   #   trustedProxies:
-  #     - "10.0.0.0/8"
-  #     - "35.191.0.0/16"     # e.g. GCP LB / health-check range
+  #     - "130.211.0.0/22"    # GCP L7 LB proxy range
+  #     - "35.191.0.0/16"     # GCP L7 LB proxy + health-check range
+  #     - "10.0.0.0/8"        # cluster Pod/Service CIDR (narrow to yours if known)
+  # ingress-nginx: set to the ingress controller Pod CIDR. Plain external LB:
+  # set to the LB's egress CIDR.
   trustedProxies: []
 
   # Canonical external URLs. These are the OIDC issuer (`iss`) / SAML EntityID
@@ -296,6 +305,16 @@ routing:
   # block below). Switch to istio / ingress / none as your cluster requires.
   type: gatewayapi
 
+  # Force `X-Forwarded-Proto: https` on backend routes (/api, /protocol, ...).
+  # The TLS-terminating Gateway/LB forwards plaintext HTTP to the backend pod;
+  # without this header the OIDC (zitadel) engine sees scheme=http, mismatches
+  # the https issuer_url, and rejects discovery/authorize with HTTP 403.
+  # Applied by the gatewayapi (HTTPRoute filter) and istio (VirtualService
+  # header) templates. Ingress controllers inject this header themselves — see
+  # the ingress block below. Set false only if your edge already forwards a
+  # trustworthy X-Forwarded-Proto to the backend.
+  forwardedProtoHttps: true
+
   # --- Istio settings (used when type=istio) ---
   istio:
     # Reference to the existing Istio Gateway.
@@ -330,6 +349,12 @@ routing:
     # Example annotations:
     #   nginx.ingress.kubernetes.io/proxy-body-size: "10m"
     #   cert-manager.io/cluster-issuer: "letsencrypt-prod"   # auto-issue + renew TLS
+    # NOTE: the backend needs X-Forwarded-Proto=https (see routing.forwardedProtoHttps
+    # above). ingress-nginx sets it automatically from the TLS listener, and the GCE
+    # LB sets it too — so no extra config is needed for those controllers. If yours
+    # does not, force it (ingress-nginx example):
+    #   nginx.ingress.kubernetes.io/configuration-snippet: |
+    #     proxy_set_header X-Forwarded-Proto https;
     tls:
       # Enable HTTPS. With cert-manager (annotation above) the named secret is
       # created + renewed automatically; otherwise create it yourself:

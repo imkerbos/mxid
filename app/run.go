@@ -41,7 +41,6 @@ import (
 	"github.com/imkerbos/mxid/internal/middleware"
 	"github.com/imkerbos/mxid/internal/outbox"
 	"github.com/imkerbos/mxid/internal/protocol/cas"
-	"github.com/imkerbos/mxid/internal/protocol/oidc"
 	"github.com/imkerbos/mxid/internal/protocol/resolver"
 	"github.com/imkerbos/mxid/internal/protocol/saml"
 	"github.com/imkerbos/mxid/pkg/authz"
@@ -1036,33 +1035,25 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 
 	// 7. Register protocol modules
 	//
-	// OIDC engine select: MXID_OIDC_ENGINE=zitadel mounts the zitadel/oidc-based
-	// provider (internal/protocol/oidcop); anything else keeps the hand-rolled
-	// engine. Both occupy /protocol/oidc, so exactly one is mounted.
-	var oidcModule *oidc.Module
-	// Dev only: allow http redirect_uris on private LAN IPs (e.g. a Grafana demo
-	// on http://192.168.x.x:port). Production (release mode) stays loopback+https.
-	oidc.SetAllowPrivateHTTPRedirect(!a.Config.Server.IsRelease())
-	if os.Getenv("MXID_OIDC_ENGINE") == "zitadel" {
-		if err := wireOIDCOP(workerCtx, a, issuer, appResolver, idResolver, sessResolver, consentModule.Service); err != nil {
-			a.Logger.Fatal("wire zitadel OIDC engine: " + err.Error())
-		}
-	} else {
-		oidcModule = oidc.Register(a.ProtocolGroup, issuer, a.Config.Server.PortalURL, a.Redis, appResolver, idResolver, sessResolver, tenantResolver, consentModule.Service, accessAdapter, appRolesAdapter, sessionMgr, a.EventBus)
+	// OIDC engine: the zitadel/oidc-based provider (internal/protocol/oidcop)
+	// is the sole OIDC engine, mounted unconditionally at /protocol/oidc.
+	// oidcLogoutSvc is the WS2 back-channel logout fan-out service
+	// (internal/protocol/oidclogout) that restores offboarding + JIT
+	// downstream teardown (see the offboardLogout / oidcLogout dispatch
+	// below).
+	oidcLogoutSvc, err := wireOIDCOP(workerCtx, a, issuer, appResolver, idResolver, sessResolver, sessionMgr, accessAdapter, tenantResolver, appRolesAdapter)
+	if err != nil {
+		a.Logger.Fatal("wire zitadel OIDC engine: " + err.Error())
 	}
 	samlModule := saml.Register(a.ProtocolGroup, issuer, a.Config.Server.PortalURL, appResolver, idResolver, sessResolver, tenantResolver, saml.NewSessionIndexStore(a.Redis), appRolesAdapter, a.Redis, a.Logger)
 	casModule := cas.Register(a.ProtocolGroup, issuer, a.Config.Server.PortalURL, a.Redis, appResolver, idResolver, sessResolver, tenantResolver, appRolesAdapter, a.Logger)
 
 	// One-click offboarding (L1 access cutoff): disable account + back-channel
 	// logout the user's apps + kill all sessions. Wired here (after oidc) so it
-	// can borrow the OIDC handler's back-channel fan-out; the notifier is nil
-	// under the zitadel engine, which degrades to disable + session-kill.
+	// can borrow the OIDC back-channel fan-out (oidcLogoutSvc, WS2).
 	// Registered on the console group, which already carries the step-up MFA +
 	// authz middleware chain.
-	var offboardLogout offboarding.LogoutNotifier
-	if oidcModule != nil {
-		offboardLogout = offboarding.LogoutNotifierFunc(oidcModule.Handler.LogoutUserBackchannel)
-	}
+	offboardLogout := offboarding.LogoutNotifierFunc(oidcLogoutSvc.LogoutUser)
 	offboardFP := offboardFootprint{access: accessSvc, apps: appModule.Service, provisioning: provisioningModule.Service}
 	offboardMod := offboarding.Register(a, userModule.Service, sessionMgr, offboardLogout, offboardFP)
 	offboardMod.Service.SetWebhookDispatcher(offboardWebhookDispatcher{settings: settingService, outbox: outboxRepo})
@@ -1080,9 +1071,6 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 		}
 		return urlswap.URLs{Issuer: v.IssuerURL, Portal: v.PortalURL, Console: v.ConsoleURL}
 	}
-	if oidcModule != nil { // nil when the zitadel engine is active
-		oidcModule.Handler.SetURLProvider(urlProvider)
-	}
 	samlModule.Handler.SetURLProvider(urlProvider)
 	casModule.Handler.SetURLProvider(urlProvider)
 
@@ -1097,12 +1085,8 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	// protocol (OIDC back-channel / SAML IdP-initiated / CAS SLO) so the elevated
 	// role can't outlive the grant inside the app's own session.
 	//
-	// The OIDC dispatcher is a closure because oidcModule is nil under the
-	// zitadel engine (MXID_OIDC_ENGINE=zitadel); it degrades to a no-op there.
-	oidcLogout := func(ctx context.Context, userID, appID int64) {}
-	if oidcModule != nil {
-		oidcLogout = oidcModule.Handler.LogoutUserAppBackchannel
-	}
+	// The OIDC dispatcher is the WS2 oidclogout.Service fan-out.
+	oidcLogout := oidcLogoutSvc.LogoutUserApp
 	accessTerminator := access.NewCompositeTerminator(
 		appProtocolResolver{svc: appModule.Service},
 		oidcLogout,

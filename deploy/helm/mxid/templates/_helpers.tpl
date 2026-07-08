@@ -97,6 +97,21 @@ the web image independently (e.g. skip re-tagging an unchanged SPA build).
 {{- end }}
 
 {{/*
+Gateway API RequestHeaderModifier that forces X-Forwarded-Proto=https on backend
+routes. The TLS-terminating Gateway forwards plaintext HTTP to the backend pod;
+without this the OIDC (zitadel) engine sees scheme=http, mismatches the https
+issuer_url, and rejects discovery/authorize with 403. Gated by
+routing.forwardedProtoHttps.
+*/}}
+{{- define "mxid.gatewayapiProtoFilter" -}}
+- type: RequestHeaderModifier
+  requestHeaderModifier:
+    set:
+      - name: X-Forwarded-Proto
+        value: https
+{{- end }}
+
+{{/*
 Name of the Secret that holds sensitive env vars.
 */}}
 {{- define "mxid.secretName" -}}

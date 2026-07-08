@@ -24,6 +24,10 @@ spec:
         - path:
             type: PathPrefix
             value: /api
+      {{- if .Values.routing.forwardedProtoHttps }}
+      filters:
+        {{- include "mxid.gatewayapiProtoFilter" . | nindent 8 }}
+      {{- end }}
       backendRefs:
         - name: mxid
           port: 8080
@@ -33,6 +37,10 @@ spec:
         - path:
             type: PathPrefix
             value: /protocol
+      {{- if .Values.routing.forwardedProtoHttps }}
+      filters:
+        {{- include "mxid.gatewayapiProtoFilter" . | nindent 8 }}
+      {{- end }}
       backendRefs:
         - name: mxid
           port: 8080
@@ -42,6 +50,10 @@ spec:
         - path:
             type: PathPrefix
             value: /static
+      {{- if .Values.routing.forwardedProtoHttps }}
+      filters:
+        {{- include "mxid.gatewayapiProtoFilter" . | nindent 8 }}
+      {{- end }}
       backendRefs:
         - name: mxid
           port: 8080
@@ -51,6 +63,10 @@ spec:
         - path:
             type: PathPrefix
             value: /openapi
+      {{- if .Values.routing.forwardedProtoHttps }}
+      filters:
+        {{- include "mxid.gatewayapiProtoFilter" . | nindent 8 }}
+      {{- end }}
       backendRefs:
         - name: mxid
           port: 8080
@@ -60,6 +76,10 @@ spec:
         - path:
             type: Exact
             value: /health
+      {{- if .Values.routing.forwardedProtoHttps }}
+      filters:
+        {{- include "mxid.gatewayapiProtoFilter" . | nindent 8 }}
+      {{- end }}
       backendRefs:
         - name: mxid
           port: 8080
