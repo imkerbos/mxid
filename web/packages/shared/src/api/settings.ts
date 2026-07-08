@@ -48,6 +48,9 @@ export interface SecurityPolicy {
     absolute_hours: number
     remember_me_hours: number
   }
+  rate_limit: {
+    per_user_per_minute: number
+  }
 }
 
 // ─── Branding ───

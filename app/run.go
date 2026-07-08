@@ -506,6 +506,28 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	a.ConsoleGroup.Use(authn.AuthMiddleware(authnModule.SessionMgr, session.NamespaceConsole))
 	a.PortalGroup.Use(authn.AuthMiddleware(authnModule.SessionMgr, session.NamespacePortal))
 
+	// 4a-rl. Per-authenticated-user rate limit, layered on top of the global
+	// per-IP cap (registered earlier in registerModules/bootstrap). Admin
+	// configurable at runtime via SecurityPolicy.RateLimit (0 = unlimited).
+	// Must be registered AFTER AuthMiddleware above so authn.CtxUserID is set
+	// in the gin context by the time KeyByUserID reads it — gin only applies
+	// .Use to routes registered after the call, but middleware ORDER within a
+	// request still runs top-to-bottom, so this must come after auth too.
+	perUserRL := middleware.RateLimiter(a.Redis, middleware.RateLimitRule{
+		Name:    "user",
+		Window:  time.Minute,
+		KeyFunc: middleware.KeyByUserID(authn.CtxUserID),
+		LimitFunc: func(c *gin.Context) int {
+			pol, err := settingService.SecurityPolicy(c.Request.Context(), a.Config.Tenant.DefaultID)
+			if err != nil {
+				return 0 // fail-open: never break the app on a settings read; the IP cap backstops
+			}
+			return pol.RateLimit.PerUserPerMinute
+		},
+	})
+	a.ConsoleGroup.Use(perUserRL)
+	a.PortalGroup.Use(perUserRL)
+
 	// 4a. Mandatory-MFA-enrollment gate — a session flagged at login (policy
 	// requires MFA but the user has none) is blocked from everything except the
 	// MFA enrollment surface until they bind a factor. Runs right after auth so
