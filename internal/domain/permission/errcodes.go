@@ -15,6 +15,7 @@ var (
 	codePermissionNotFound = errcode.Code{HTTP: 400, Num: 40002}
 	codeScopeIncomplete    = errcode.Code{HTTP: 400, Num: 40003}
 	codeSystemRoleDelete   = errcode.Code{HTTP: 403, Num: 40301}
+	codeSuperAdminUserOnly = errcode.Code{HTTP: 400, Num: 40005}
 	codeRoleCodeExists     = errcode.Code{HTTP: 409, Num: 40901}
 )
 
@@ -26,5 +27,6 @@ func init() {
 	errcode.Bind(ErrPermissionNotFound, codePermissionNotFound)
 	errcode.Bind(ErrScopeIncomplete, codeScopeIncomplete)
 	errcode.Bind(ErrSystemRoleDelete, codeSystemRoleDelete)
+	errcode.Bind(ErrSuperAdminUserOnly, codeSuperAdminUserOnly)
 	errcode.Bind(ErrRoleCodeExists, codeRoleCodeExists)
 }

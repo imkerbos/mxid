@@ -47,6 +47,9 @@ type Repository interface {
 	// the tenant — used by SetSuperAdmin to refuse revoking the last
 	// one (otherwise the tenant becomes unmanageable).
 	CountSuperAdmins(ctx context.Context, tenantID int64) (int64, error)
+	// ListSuperAdmins returns the active super-admin users of the tenant.
+	// Powers the super_admin role's member list (a façade over the flag).
+	ListSuperAdmins(ctx context.Context, tenantID int64) ([]*User, error)
 
 	// Detail
 	CreateDetail(ctx context.Context, detail *UserDetail) error

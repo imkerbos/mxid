@@ -82,6 +82,14 @@ func (h *Handler) checkAssignAllowed(c *gin.Context, roleID int64, req *AddMembe
 		return nil
 	}
 
+	// Granting the super_admin role hands out the global wildcard — only an
+	// existing super-admin (wildcard holder) may do so. A non-wildcard caller
+	// reaching here is blocked outright; the role's stored permission catalog is
+	// frozen/partial and must NOT be used for the subset check below.
+	if role, rerr := h.svc.GetRole(c.Request.Context(), roleID); rerr == nil && role.Code == SuperAdminRoleCode {
+		return errAssignBlocked("only a super admin can grant super_admin")
+	}
+
 	// 2. Resolve the role's permission codes.
 	rolePerms, err := h.svc.GetRolePermissions(c.Request.Context(), roleID)
 	if err != nil {
@@ -331,13 +339,22 @@ func (h *Handler) AddMember(c *gin.Context) {
 		return
 	}
 
-	binding, err := h.svc.AddMember(c.Request.Context(), id, &req)
+	binding, err := h.svc.AddMember(c.Request.Context(), callerID(c), id, &req)
 	if err != nil {
 		h.handleServiceError(c, err)
 		return
 	}
 
 	response.Created(c, binding)
+}
+
+// callerID extracts the authenticated user id from the gin context (set by
+// AuthMiddleware). Zero when unauthenticated — callers that need it for a
+// security decision must check separately.
+func callerID(c *gin.Context) int64 {
+	uid, _ := c.Get("user_id")
+	id, _ := uid.(int64)
+	return id
 }
 
 // RemoveMember handles DELETE /roles/:id/members/:mid.
@@ -352,7 +369,7 @@ func (h *Handler) RemoveMember(c *gin.Context) {
 		return
 	}
 
-	if err := h.svc.RemoveMember(c.Request.Context(), id, mid); err != nil {
+	if err := h.svc.RemoveMember(c.Request.Context(), callerID(c), id, mid); err != nil {
 		h.handleServiceError(c, err)
 		return
 	}
