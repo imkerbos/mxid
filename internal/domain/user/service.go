@@ -245,6 +245,13 @@ func (s *Service) SetSuperAdmin(ctx context.Context, actorID, tenantID, targetID
 	return nil
 }
 
+// ListSuperAdmins returns the active super-admin users of the tenant. Read-only
+// helper used by the permission domain to render the super_admin role's member
+// list from the authoritative is_super_admin flag.
+func (s *Service) ListSuperAdmins(ctx context.Context, tenantID int64) ([]*User, error) {
+	return s.repo.ListSuperAdmins(ctx, tenantID)
+}
+
 // Create creates a new user with hashed password and detail record.
 func (s *Service) Create(ctx context.Context, tenantID int64, req *CreateUserRequest) (*User, error) {
 	// License quota — admin can cap users via license settings. Checked

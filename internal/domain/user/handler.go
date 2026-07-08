@@ -51,7 +51,9 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 		users.POST("/:id/lock", authz.Require("user.lock", nil), h.LockUser)
 		users.POST("/:id/unlock", authz.Require("user.unlock", nil), h.UnlockUser)
 		users.PUT("/:id/password", authz.Require("user.reset_password", nil), h.ResetPassword)
-		users.PUT("/:id/super-admin", authz.Require("user.super_admin.manage", nil), h.SetSuperAdmin)
+		// Note: super-admin is managed via the Super Admin role's members
+		// (POST/DELETE /roles/:id/members), which the permission service maps to
+		// the is_super_admin flag. There is no direct per-user toggle endpoint.
 
 		users.GET("/:id/detail", authz.Require("user.read", nil), h.GetDetail)
 		users.PUT("/:id/detail", authz.Require("user.update", nil), h.UpdateDetail)
@@ -143,34 +145,6 @@ func (h *Handler) Get(c *gin.Context) {
 	}
 
 	response.OK(c, ToResponse(user, detail))
-}
-
-// SetSuperAdminRequest is the body for the toggle endpoint.
-type SetSuperAdminRequest struct {
-	IsSuperAdmin bool `json:"is_super_admin"`
-}
-
-// SetSuperAdmin handles PUT /users/:id/super-admin.
-//
-// Flips the user's is_super_admin flag. Permission: `user.super_admin.manage`.
-// Service emits a grant/revoke audit event and the wired authz cache
-// invalidator drops the user's effective bindings.
-func (h *Handler) SetSuperAdmin(c *gin.Context) {
-	id, ok := ginutil.ParseInt64Param(c, "id")
-	if !ok {
-		return
-	}
-	var req SetSuperAdminRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
-		return
-	}
-	actorID, _ := authn.GetUserID(c)
-	if err := h.svc.SetSuperAdmin(c.Request.Context(), actorID, getTenantID(c), id, req.IsSuperAdmin); err != nil {
-		h.handleServiceError(c, err)
-		return
-	}
-	response.OK(c, gin.H{"is_super_admin": req.IsSuperAdmin})
 }
 
 // Update handles PUT /users/:id.

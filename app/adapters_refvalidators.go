@@ -76,3 +76,91 @@ func validateAppInTenant(m *app.Module) func(ctx context.Context, id int64) (boo
 func validateAppGroupInTenant(m *app.Module) func(ctx context.Context, id int64) (bool, error) {
 	return existsInTenant(m.Repo.GetGroupByID)
 }
+
+// --- Subject name resolvers (role-member display) -------------------------
+//
+// These batch-resolve a role binding's subject id → a human-readable name so
+// the permissions console shows "who" instead of a raw snowflake id. Backed by
+// the same tenant-scoped repo GetByID as the validators (cross-tenant / deleted
+// ids resolve to not-found and are simply omitted → caller keeps the id
+// fallback). Injected via permission.Service.SetSubjectResolvers, keeping the
+// permission domain free of user/group/org imports.
+
+// resolveByID adapts a per-id tenant-scoped GetByID into the batch
+// SubjectNameResolver shape. Ids that don't resolve (not-found) are skipped;
+// a genuine DB error aborts the batch (the service treats that as non-fatal and
+// falls back to ids for the whole page).
+func resolveByID[T any](
+	getByID func(ctx context.Context, id int64) (T, error),
+	info func(T) permission.SubjectInfo,
+) permission.SubjectNameResolver {
+	return func(ctx context.Context, ids []int64) (map[int64]permission.SubjectInfo, error) {
+		out := make(map[int64]permission.SubjectInfo, len(ids))
+		for _, id := range ids {
+			v, err := getByID(ctx, id)
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					continue
+				}
+				return nil, err
+			}
+			out[id] = info(v)
+		}
+		return out, nil
+	}
+}
+
+// deref returns *p or "" for a nil pointer — used to read optional string
+// columns (display_name / email) without panicking.
+func deref(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
+// superAdminManagerAdapter bridges the permission domain's super_admin role
+// façade to the user domain's is_super_admin flag. Set delegates to the user
+// service (which enforces tenant scope, idempotency, the last-super-admin guard
+// and emits the grant/revoke audit event); List renders the member list.
+type superAdminManagerAdapter struct{ userM *user.Module }
+
+func (a superAdminManagerAdapter) SetSuperAdmin(ctx context.Context, actorID, tenantID, targetID int64, makeSuper bool) error {
+	return a.userM.Service.SetSuperAdmin(ctx, actorID, tenantID, targetID, makeSuper)
+}
+
+func (a superAdminManagerAdapter) ListSuperAdmins(ctx context.Context, tenantID int64) ([]permission.SuperAdminInfo, error) {
+	users, err := a.userM.Service.ListSuperAdmins(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]permission.SuperAdminInfo, len(users))
+	for i, u := range users {
+		name := deref(u.DisplayName)
+		if name == "" {
+			name = u.Username
+		}
+		out[i] = permission.SuperAdminInfo{UserID: u.ID, Name: name, Secondary: deref(u.Email)}
+	}
+	return out, nil
+}
+
+// subjectNameResolvers builds the user/group/org name resolvers for the
+// permission member list.
+func subjectNameResolvers(userM *user.Module, groupM *group.Module, orgM *org.Module) permission.SubjectResolvers {
+	return permission.SubjectResolvers{
+		User: resolveByID(userM.Repo.GetByID, func(u *user.User) permission.SubjectInfo {
+			name := deref(u.DisplayName)
+			if name == "" {
+				name = u.Username
+			}
+			return permission.SubjectInfo{Name: name, Secondary: deref(u.Email)}
+		}),
+		Group: resolveByID(groupM.Repo.GetByID, func(g *group.UserGroup) permission.SubjectInfo {
+			return permission.SubjectInfo{Name: g.Name}
+		}),
+		Org: resolveByID(orgM.Repo.GetByID, func(o *org.Organization) permission.SubjectInfo {
+			return permission.SubjectInfo{Name: o.Name}
+		}),
+	}
+}

@@ -31,7 +31,39 @@ var (
 	// set on an AddMember request — a half-set scope is ambiguous and must
 	// be rejected as a client error, not silently accepted.
 	ErrScopeIncomplete = errors.New("scope_type and scope_id must be set together")
+	// ErrSuperAdminUserOnly is returned when a group/org subject is added to the
+	// built-in super_admin role. Super-admin is a per-user capability (the
+	// mxid_user.is_super_admin flag), so only user subjects are meaningful.
+	ErrSuperAdminUserOnly = errors.New("super_admin can only be granted to a user")
+	// ErrSuperAdminUnavailable is returned when the super_admin role is operated
+	// on but the flag manager was not wired (misconfiguration / tests).
+	ErrSuperAdminUnavailable = errors.New("super-admin manager not configured")
 )
+
+// SuperAdminRoleCode is the reserved code of the built-in super-admin role
+// (seed migration 000006). Its power lives on the mxid_user.is_super_admin flag
+// (migration 000033), so the permission service treats this role's membership
+// as a FAÇADE over that flag: add/remove/list a member here grants/revokes/lists
+// the flag rather than writing role_binding rows. See SuperAdminManager.
+const SuperAdminRoleCode = "super_admin"
+
+// SuperAdminInfo identifies a super-admin user for the super_admin role's
+// member list (rendered from the is_super_admin flag, not role bindings).
+type SuperAdminInfo struct {
+	UserID    int64
+	Name      string
+	Secondary string
+}
+
+// SuperAdminManager bridges the super_admin role's member operations to the
+// authoritative is_super_admin flag. Injected from the app layer over the user
+// domain so the permission package does not import it. SetSuperAdmin enforces
+// the tenant scope, idempotency and the last-super-admin guard; ListSuperAdmins
+// backs the member list.
+type SuperAdminManager interface {
+	SetSuperAdmin(ctx context.Context, actorID, tenantID, targetID int64, makeSuper bool) error
+	ListSuperAdmins(ctx context.Context, tenantID int64) ([]SuperAdminInfo, error)
+}
 
 // EntityValidator reports whether a referenced entity id exists within the
 // caller's tenant. Backed by the referent's tenant-scoped GetByID (the
@@ -46,6 +78,29 @@ type RefValidators struct {
 	User  EntityValidator
 	Group EntityValidator
 	Org   EntityValidator
+}
+
+// SubjectInfo is the human-readable identity of a role-binding subject,
+// resolved for display in the member list (so admins see a name, not a raw
+// snowflake id). Secondary is an optional disambiguator (e.g. a user's email).
+type SubjectInfo struct {
+	Name      string
+	Secondary string
+}
+
+// SubjectNameResolver batch-resolves subject ids of one type (user/group/org)
+// to display info. Missing ids are simply absent from the returned map; the
+// caller falls back to the raw id. Injected so the permission service does not
+// import user/group/org (mirrors RefValidators).
+type SubjectNameResolver func(ctx context.Context, ids []int64) (map[int64]SubjectInfo, error)
+
+// SubjectResolvers bundles the per-type name resolvers used to enrich the
+// member list. Any may be nil; a nil resolver leaves those subjects showing
+// their raw id.
+type SubjectResolvers struct {
+	User  SubjectNameResolver
+	Group SubjectNameResolver
+	Org   SubjectNameResolver
 }
 
 // Event type constants.
@@ -65,12 +120,24 @@ type Service struct {
 	eventBus   *event.Bus
 	tenantID   int64
 	validators RefValidators
+	resolvers  SubjectResolvers
+	superAdmin SuperAdminManager
 }
+
+// SetSuperAdminManager injects the flag bridge used to operate the super_admin
+// role as a façade over mxid_user.is_super_admin. Wired once the user module
+// exists. When nil, super_admin member operations return ErrSuperAdminUnavailable.
+func (s *Service) SetSuperAdminManager(m SuperAdminManager) { s.superAdmin = m }
 
 // SetRefValidators injects the tenant-scoped subject/scope existence checks
 // used by AddMember to validate request-body subject and scope ids. Wired in
 // cmd/server/main.go once the user/group/org modules exist.
 func (s *Service) SetRefValidators(v RefValidators) { s.validators = v }
+
+// SetSubjectResolvers injects the per-type name resolvers used to enrich the
+// member list with display names. Wired alongside SetRefValidators once the
+// user/group/org modules exist. Nil resolvers leave subjects showing raw ids.
+func (s *Service) SetSubjectResolvers(r SubjectResolvers) { s.resolvers = r }
 
 // validateRef runs the tenant-scoped existence check for refType (user/group/
 // org). A cross-tenant id resolves to false → notFoundErr. Fails closed if the
@@ -308,15 +375,27 @@ func (s *Service) SetRolePermissions(ctx context.Context, roleID int64, permissi
 }
 
 // AddMember adds a subject to a role, optionally bound to a resource scope.
+// actorID is the caller performing the assignment — recorded on the audit event
+// for the super_admin grant path.
 //
 // Validation: if ScopeType is set, ScopeID must also be set, and vice versa
 // — half-set scopes would be ambiguous.
-func (s *Service) AddMember(ctx context.Context, roleID int64, req *AddMemberRequest) (*RoleBinding, error) {
-	if _, err := s.repo.GetRoleByID(ctx, roleID); err != nil {
+func (s *Service) AddMember(ctx context.Context, actorID, roleID int64, req *AddMemberRequest) (*RoleBinding, error) {
+	role, err := s.repo.GetRoleByID(ctx, roleID)
+	if err != nil {
 		if dberr.IsNotFound(err) {
 			return nil, ErrRoleNotFound
 		}
 		return nil, fmt.Errorf("get role: %w", err)
+	}
+
+	// The built-in super_admin role is a façade over the mxid_user.is_super_admin
+	// flag (migration 000033 moved super-admin power off role bindings onto that
+	// column, which the authz engine reads). So "adding a member" here means
+	// flipping the flag — not writing an inert role_binding that would grant
+	// nothing. Only user subjects are meaningful (the flag is per-user).
+	if role.Code == SuperAdminRoleCode {
+		return s.grantSuperAdmin(ctx, actorID, role.TenantID, roleID, req)
 	}
 
 	// scope_type and scope_id must come together.
@@ -355,6 +434,15 @@ func (s *Service) AddMember(ctx context.Context, roleID int64, req *AddMemberReq
 		"role_id":      roleID,
 		"subject_type": req.SubjectType,
 		"subject_id":   req.SubjectID,
+		"tenant_id":    role.TenantID,
+	}
+	// When the subject is a user, surface it under the "user_id" key too so the
+	// authz cache-invalidation subscriber can do a TARGETED Invalidate (which
+	// purges the L2/Redis entry immediately) instead of falling back to a coarse
+	// InvalidateAll that only clears L1 — otherwise the new binding stays stale
+	// in L2 for up to its TTL (default 5m). See app/adapters_authz.go.
+	if req.SubjectType == SubjectTypeUser {
+		payload["user_id"] = req.SubjectID
 	}
 	if req.ScopeType != nil {
 		payload["scope_type"] = *req.ScopeType
@@ -368,14 +456,54 @@ func (s *Service) AddMember(ctx context.Context, roleID int64, req *AddMemberReq
 	return binding, nil
 }
 
-// RemoveMember removes a member binding from a role.
-func (s *Service) RemoveMember(ctx context.Context, roleID int64, memberID int64) error {
-	// Verify role exists
-	if _, err := s.repo.GetRoleByID(ctx, roleID); err != nil {
+// grantSuperAdmin implements AddMember for the super_admin role: it flips the
+// target user's is_super_admin flag via the manager (which emits the grant
+// audit event and enforces tenant scope). Returns a synthetic binding whose id
+// is the user id so RemoveMember can round-trip it. Only user subjects apply.
+func (s *Service) grantSuperAdmin(ctx context.Context, actorID, tenantID, roleID int64, req *AddMemberRequest) (*RoleBinding, error) {
+	if req.SubjectType != SubjectTypeUser {
+		return nil, ErrSuperAdminUserOnly
+	}
+	if s.superAdmin == nil {
+		return nil, ErrSuperAdminUnavailable
+	}
+	// Tenant-scoped existence guard (blocks cross-tenant / missing user).
+	if err := s.validateRef(ctx, SubjectTypeUser, req.SubjectID, ErrSubjectNotInTenant); err != nil {
+		return nil, err
+	}
+	if err := s.superAdmin.SetSuperAdmin(ctx, actorID, tenantID, req.SubjectID, true); err != nil {
+		return nil, err
+	}
+	// Synthetic binding — the super_admin "membership" lives on the flag, not
+	// mxid_role_binding. id == user id so the member row is removable.
+	return &RoleBinding{
+		ID:          req.SubjectID,
+		RoleID:      roleID,
+		SubjectType: SubjectTypeUser,
+		SubjectID:   req.SubjectID,
+		CreatedAt:   time.Now(),
+	}, nil
+}
+
+// RemoveMember removes a member binding from a role. actorID is the caller,
+// recorded on the super_admin revoke audit event. For the super_admin role,
+// memberID is the target user id and removal revokes their is_super_admin flag.
+func (s *Service) RemoveMember(ctx context.Context, actorID, roleID int64, memberID int64) error {
+	role, err := s.repo.GetRoleByID(ctx, roleID)
+	if err != nil {
 		if dberr.IsNotFound(err) {
 			return ErrRoleNotFound
 		}
 		return fmt.Errorf("get role: %w", err)
+	}
+
+	// Façade: revoking a super_admin "member" clears the user's flag (the
+	// manager enforces the last-super-admin guard + emits the revoke event).
+	if role.Code == SuperAdminRoleCode {
+		if s.superAdmin == nil {
+			return ErrSuperAdminUnavailable
+		}
+		return s.superAdmin.SetSuperAdmin(ctx, actorID, role.TenantID, memberID, false)
 	}
 
 	if err := s.repo.RemoveMember(ctx, memberID); err != nil {
@@ -393,14 +521,25 @@ func (s *Service) RemoveMember(ctx context.Context, roleID int64, memberID int64
 	return nil
 }
 
-// ListMembers returns a paginated list of members for a role.
-func (s *Service) ListMembers(ctx context.Context, roleID int64, params MemberListParams) ([]*RoleBinding, int64, error) {
-	// Verify role exists
-	if _, err := s.repo.GetRoleByID(ctx, roleID); err != nil {
+// ListMembers returns a paginated list of members for a role, enriched with
+// each subject's display name so the console renders "who" instead of a raw
+// snowflake id. Names are batch-resolved per subject type via the injected
+// resolvers; an unresolved subject (deleted / no resolver) falls back to its
+// string id so the response is never blank.
+func (s *Service) ListMembers(ctx context.Context, roleID int64, params MemberListParams) ([]*MemberResponse, int64, error) {
+	role, err := s.repo.GetRoleByID(ctx, roleID)
+	if err != nil {
 		if dberr.IsNotFound(err) {
 			return nil, 0, ErrRoleNotFound
 		}
 		return nil, 0, fmt.Errorf("get role: %w", err)
+	}
+
+	// Façade: the super_admin role's "members" are the is_super_admin users, not
+	// role_binding rows. Render them from the flag so the list reflects reality
+	// (and stays consistent with grants made via the user super-admin toggle).
+	if role.Code == SuperAdminRoleCode {
+		return s.listSuperAdminMembers(ctx, role.TenantID)
 	}
 
 	bindings, total, err := s.repo.ListMembers(ctx, roleID, params)
@@ -408,7 +547,94 @@ func (s *Service) ListMembers(ctx context.Context, roleID int64, params MemberLi
 		return nil, 0, fmt.Errorf("list members: %w", err)
 	}
 
-	return bindings, total, nil
+	return s.enrichMembers(ctx, bindings), total, nil
+}
+
+// listSuperAdminMembers renders the super_admin role's member list from the
+// is_super_admin flag via the manager. Each entry's id == the user id so the
+// console's remove action round-trips to a flag revoke.
+func (s *Service) listSuperAdminMembers(ctx context.Context, tenantID int64) ([]*MemberResponse, int64, error) {
+	if s.superAdmin == nil {
+		return nil, 0, ErrSuperAdminUnavailable
+	}
+	infos, err := s.superAdmin.ListSuperAdmins(ctx, tenantID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list super admins: %w", err)
+	}
+	out := make([]*MemberResponse, len(infos))
+	for i, in := range infos {
+		name := in.Name
+		if name == "" {
+			name = fmt.Sprintf("%d", in.UserID)
+		}
+		out[i] = &MemberResponse{
+			ID:               in.UserID,
+			SubjectType:      SubjectTypeUser,
+			SubjectID:        in.UserID,
+			SubjectName:      name,
+			SubjectSecondary: in.Secondary,
+		}
+	}
+	return out, int64(len(out)), nil
+}
+
+// enrichMembers batch-resolves subject display names for a page of bindings.
+// One resolver call per subject type present on the page (≤3), each over the
+// distinct ids of that type — no per-row N+1. Resolver errors are non-fatal:
+// the affected subjects keep their id fallback rather than failing the list.
+func (s *Service) enrichMembers(ctx context.Context, bindings []*RoleBinding) []*MemberResponse {
+	// Collect distinct ids per subject type.
+	idsByType := map[string]map[int64]struct{}{}
+	for _, b := range bindings {
+		if idsByType[b.SubjectType] == nil {
+			idsByType[b.SubjectType] = map[int64]struct{}{}
+		}
+		idsByType[b.SubjectType][b.SubjectID] = struct{}{}
+	}
+
+	resolve := func(kind string, r SubjectNameResolver) map[int64]SubjectInfo {
+		set := idsByType[kind]
+		if r == nil || len(set) == 0 {
+			return nil
+		}
+		ids := make([]int64, 0, len(set))
+		for id := range set {
+			ids = append(ids, id)
+		}
+		info, err := r(ctx, ids)
+		if err != nil {
+			return nil // non-fatal: fall back to id
+		}
+		return info
+	}
+
+	infoByType := map[string]map[int64]SubjectInfo{
+		SubjectTypeUser:  resolve(SubjectTypeUser, s.resolvers.User),
+		SubjectTypeGroup: resolve(SubjectTypeGroup, s.resolvers.Group),
+		SubjectTypeOrg:   resolve(SubjectTypeOrg, s.resolvers.Org),
+	}
+
+	out := make([]*MemberResponse, len(bindings))
+	for i, b := range bindings {
+		m := &MemberResponse{
+			ID:          b.ID,
+			RoleID:      b.RoleID,
+			SubjectType: b.SubjectType,
+			SubjectID:   b.SubjectID,
+			SubjectName: fmt.Sprintf("%d", b.SubjectID), // id fallback
+			ScopeType:   b.ScopeType,
+			ScopeID:     b.ScopeID,
+			CreatedAt:   b.CreatedAt,
+		}
+		if info, ok := infoByType[b.SubjectType][b.SubjectID]; ok {
+			if info.Name != "" {
+				m.SubjectName = info.Name
+			}
+			m.SubjectSecondary = info.Secondary
+		}
+		out[i] = m
+	}
+	return out
 }
 
 // CountMembers returns the count of members for a role.

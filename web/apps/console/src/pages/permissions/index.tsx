@@ -8,6 +8,13 @@ import { RoleType } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
 import { useTabParam } from '../../hooks/useTabParam'
 import { toast, extractMessage } from '../../components/ui/toast'
+import SubjectPicker from '../../components/SubjectPicker'
+
+// Reserved code of the built-in super-admin role. Its power lives on the user's
+// is_super_admin flag (toggled via 用户 → 设为超级管理员), NOT role membership —
+// so the console blocks assigning members here to avoid the "added to Superadmin
+// but still 403" trap. Keep in sync with permission.SuperAdminRoleCode (backend).
+const SUPER_ADMIN_ROLE_CODE = 'super_admin'
 
 const DETAIL_TAB_VALUES = ['permissions', 'members'] as const
 
@@ -46,11 +53,13 @@ export default function PermissionsPage() {
   const [addMemberForm, setAddMemberForm] = useState<{
     subject_type: SubjectType
     subject_id: string
+    subject_label: string
     scope_type: '' | 'org' | 'group'
     scope_id: string
   }>({
     subject_type: 'user',
     subject_id: '',
+    subject_label: '',
     scope_type: '',
     scope_id: '',
   })
@@ -172,6 +181,14 @@ export default function PermissionsPage() {
     }
   }
 
+  // Reset the form and open the add-member modal. The super_admin role only
+  // accepts user subjects (it's a façade over the per-user is_super_admin flag),
+  // so default the subject type to user there.
+  const openAddMember = () => {
+    setAddMemberForm({ subject_type: 'user', subject_id: '', subject_label: '', scope_type: '', scope_id: '' })
+    setShowAddMember(true)
+  }
+
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedRole || !addMemberForm.subject_id) return
@@ -193,7 +210,7 @@ export default function PermissionsPage() {
       }
       await permissionApi.addMember(selectedRole.id, body as Parameters<typeof permissionApi.addMember>[1])
       setShowAddMember(false)
-      setAddMemberForm({ subject_type: 'user', subject_id: '', scope_type: '', scope_id: '' })
+      setAddMemberForm({ subject_type: 'user', subject_id: '', subject_label: '', scope_type: '', scope_id: '' })
       loadMembers(selectedRole.id, members.page)
       loadRoles()
       toast.success(t('permissions.memberAdded'))
@@ -230,6 +247,7 @@ export default function PermissionsPage() {
   }, {})
 
   const totalMemberPages = Math.max(1, Math.ceil(members.total / members.page_size))
+  const isSuperAdminRole = selectedRole?.code === SUPER_ADMIN_ROLE_CODE
 
   return (
     <motion.div {...pageMotion}>
@@ -329,7 +347,7 @@ export default function PermissionsPage() {
                   )}
                   {activeTab === 'members' && (
                     <button
-                      onClick={() => setShowAddMember(true)}
+                      onClick={() => openAddMember()}
                       className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-1.5 text-sm font-medium text-white hover:bg-primary-hover"
                     >
                       <UserPlus className="h-4 w-4" />
@@ -454,7 +472,7 @@ export default function PermissionsPage() {
                       <Users className="h-10 w-10 text-faint" />
                       <p className="mt-3 text-sm text-faint">{t('permissions.emptyMembers')}</p>
                       <button
-                        onClick={() => setShowAddMember(true)}
+                        onClick={() => openAddMember()}
                         className="mt-4 inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-surface-muted"
                       >
                         <UserPlus className="h-4 w-4" />
@@ -487,7 +505,12 @@ export default function PermissionsPage() {
                                 </span>
                               </td>
                               <td className="py-3 pr-4 text-sm text-ink">
-                                {binding.subject_id}
+                                <div className="min-w-0">
+                                  <p className="truncate font-medium">{binding.subject_name || binding.subject_id}</p>
+                                  <p className="truncate text-xs text-faint">
+                                    {binding.subject_secondary ? `${binding.subject_secondary} · #${binding.subject_id}` : `#${binding.subject_id}`}
+                                  </p>
+                                </div>
                               </td>
                               <td className="py-3 pr-4 text-sm">
                                 {binding.scope_type ? (
@@ -611,15 +634,20 @@ export default function PermissionsPage() {
             <p className="mb-4 text-sm text-muted">
               {t('permissions.addMemberModal.subtitle', { name: selectedRole.name })}
             </p>
+            {isSuperAdminRole && (
+              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                {t('permissions.superAdminRoleNotice')}
+              </div>
+            )}
             <form onSubmit={handleAddMember} className="space-y-4">
               <div>
                 <label className="mb-1 block text-sm font-medium text-ink">{t('permissions.addMemberModal.subjectTypeRequired')}</label>
                 <div className="flex gap-2">
-                  {SUBJECT_TYPES.map((st) => (
+                  {(isSuperAdminRole ? (['user'] as SubjectType[]) : SUBJECT_TYPES).map((st) => (
                     <button
                       key={st}
                       type="button"
-                      onClick={() => setAddMemberForm((f) => ({ ...f, subject_type: st }))}
+                      onClick={() => setAddMemberForm((f) => ({ ...f, subject_type: st, subject_id: '', subject_label: '' }))}
                       className={cn(
                         'flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
                         addMemberForm.subject_type === st
@@ -636,17 +664,16 @@ export default function PermissionsPage() {
                 <label className="mb-1 block text-sm font-medium text-ink">
                   {t('permissions.addMemberModal.subjectIdLabel', { type: subjectTypeLabels[addMemberForm.subject_type] })}
                 </label>
-                <input
-                  type="number"
-                  min="1"
+                <SubjectPicker
+                  subjectType={addMemberForm.subject_type}
                   value={addMemberForm.subject_id}
-                  onChange={(e) => setAddMemberForm((f) => ({ ...f, subject_id: e.target.value }))}
+                  selectedLabel={addMemberForm.subject_label}
+                  onChange={(id, label) => setAddMemberForm((f) => ({ ...f, subject_id: id, subject_label: label }))}
                   placeholder={t('permissions.addMemberModal.subjectIdPlaceholder', { type: subjectTypeLabels[addMemberForm.subject_type] })}
-                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  required
                 />
               </div>
 
+              {!isSuperAdminRole && (
               <div>
                 <label className="mb-1 block text-sm font-medium text-ink">{t('permissions.addMemberModal.scope')}</label>
                 <div className="flex gap-2">
@@ -674,8 +701,9 @@ export default function PermissionsPage() {
                   {t('permissions.addMemberModal.scopeHint')}
                 </p>
               </div>
+              )}
 
-              {addMemberForm.scope_type !== '' && (
+              {!isSuperAdminRole && addMemberForm.scope_type !== '' && (
                 <div>
                   <label className="mb-1 block text-sm font-medium text-ink">
                     {addMemberForm.scope_type === 'org' ? t('permissions.addMemberModal.scopeIdOrgLabel') : t('permissions.addMemberModal.scopeIdGroupLabel')}

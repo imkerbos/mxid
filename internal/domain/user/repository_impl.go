@@ -73,6 +73,21 @@ func (r *gormRepository) CountSuperAdmins(ctx context.Context, tenantID int64) (
 	return n, nil
 }
 
+// ListSuperAdmins returns the active super-admin users of the tenant, ordered
+// by id. Powers the super_admin role's member list, which is a façade over the
+// is_super_admin flag rather than role_binding rows.
+func (r *gormRepository) ListSuperAdmins(ctx context.Context, tenantID int64) ([]*User, error) {
+	var users []*User
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND is_super_admin IS TRUE AND deleted_at IS NULL", tenantID).
+		Order("id ASC").
+		Find(&users).Error
+	if err != nil {
+		return nil, fmt.Errorf("list super admins: %w", err)
+	}
+	return users, nil
+}
+
 // GetByID finds a user by primary key.
 func (r *gormRepository) GetByID(ctx context.Context, id int64) (*User, error) {
 	var user User

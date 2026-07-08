@@ -56,6 +56,26 @@ type AddMemberRequest struct {
 	ScopeID     *int64  `json:"scope_id,string,omitempty"`
 }
 
+// MemberResponse is the API response for one role member (a role binding),
+// enriched with the subject's display name so the console shows "who" instead
+// of a raw snowflake id. Field names/types mirror RoleBinding's JSON so the
+// existing frontend keeps working; SubjectName/SubjectSecondary are additive.
+//
+// SubjectName falls back to the string id when the resolver can't find the
+// subject (deleted user, missing resolver) — the UI always has something to
+// show. SubjectSecondary is an optional disambiguator (e.g. a user's email).
+type MemberResponse struct {
+	ID               int64     `json:"id,string"`
+	RoleID           int64     `json:"role_id,string"`
+	SubjectType      string    `json:"subject_type"`
+	SubjectID        int64     `json:"subject_id,string"`
+	SubjectName      string    `json:"subject_name"`
+	SubjectSecondary string    `json:"subject_secondary,omitempty"`
+	ScopeType        *string   `json:"scope_type,omitempty"`
+	ScopeID          *int64    `json:"scope_id,string,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+}
+
 // UpdatePermissionsRequest is the request body for setting role permissions.
 // PermissionIDs is []string for the same reason BatchMembersRequest is — the
 // `,string` json tag does not propagate into slice elements. The handler
