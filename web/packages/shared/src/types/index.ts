@@ -337,6 +337,11 @@ export interface RoleBinding {
   role_id: string
   subject_type: string
   subject_id: string
+  /** Human-readable subject name resolved by the backend; falls back to the
+   *  string id when the subject can't be resolved (deleted, etc). */
+  subject_name?: string
+  /** Optional disambiguator, e.g. a user's email. */
+  subject_secondary?: string
   scope_type?: 'org' | 'group' | null
   scope_id?: string | null
   created_at: string

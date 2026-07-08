@@ -85,11 +85,11 @@ func TestService_AddMember_CrossTenantSubjectRejected(t *testing.T) {
 	ctxA := tenantscope.WithTenant(context.Background(), 100)
 
 	// Foreign user subject (tenant 200) bound to caller's role 1.
-	if _, err := svc.AddMember(ctxA, 1, &AddMemberRequest{SubjectType: SubjectTypeUser, SubjectID: 999}); !errors.Is(err, ErrSubjectNotInTenant) {
+	if _, err := svc.AddMember(ctxA, 0, 1, &AddMemberRequest{SubjectType: SubjectTypeUser, SubjectID: 999}); !errors.Is(err, ErrSubjectNotInTenant) {
 		t.Fatalf("AddMember foreign subject: got %v want ErrSubjectNotInTenant", err)
 	}
 	// Foreign group subject.
-	if _, err := svc.AddMember(ctxA, 1, &AddMemberRequest{SubjectType: SubjectTypeGroup, SubjectID: 888}); !errors.Is(err, ErrSubjectNotInTenant) {
+	if _, err := svc.AddMember(ctxA, 0, 1, &AddMemberRequest{SubjectType: SubjectTypeGroup, SubjectID: 888}); !errors.Is(err, ErrSubjectNotInTenant) {
 		t.Fatalf("AddMember foreign group subject: got %v want ErrSubjectNotInTenant", err)
 	}
 
@@ -112,7 +112,7 @@ func TestService_AddMember_CrossTenantScopeRejected(t *testing.T) {
 
 	foreignOrg := int64(777)
 	scopeType := ScopeTypeOrg
-	if _, err := svc.AddMember(ctxA, 1, &AddMemberRequest{
+	if _, err := svc.AddMember(ctxA, 0, 1, &AddMemberRequest{
 		SubjectType: SubjectTypeUser, SubjectID: 500,
 		ScopeType: &scopeType, ScopeID: &foreignOrg,
 	}); !errors.Is(err, ErrScopeNotInTenant) {
@@ -130,7 +130,7 @@ func TestService_AddMember_HalfSetScopeRejected(t *testing.T) {
 	ctxA := tenantscope.WithTenant(context.Background(), 100)
 
 	scopeType := ScopeTypeOrg
-	if _, err := svc.AddMember(ctxA, 1, &AddMemberRequest{
+	if _, err := svc.AddMember(ctxA, 0, 1, &AddMemberRequest{
 		SubjectType: SubjectTypeUser, SubjectID: 500,
 		ScopeType: &scopeType, ScopeID: nil,
 	}); !errors.Is(err, ErrScopeIncomplete) {
@@ -147,7 +147,7 @@ func TestService_AddMember_SameTenantAllowed(t *testing.T) {
 
 	sameOrg := int64(700)
 	scopeType := ScopeTypeOrg
-	b, err := svc.AddMember(ctxA, 1, &AddMemberRequest{
+	b, err := svc.AddMember(ctxA, 0, 1, &AddMemberRequest{
 		SubjectType: SubjectTypeUser, SubjectID: 500,
 		ScopeType: &scopeType, ScopeID: &sameOrg,
 	})
