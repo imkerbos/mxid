@@ -44,6 +44,11 @@ type RateLimitRule struct {
 	// has a fail-closed DB lockout (pkg/ratelimit) independent of this
 	// middleware, so the default (fail-open) here is safe for that surface.
 	FailClosed bool
+	// LimitFunc, when non-nil, overrides Limit per request. Returning <= 0
+	// SKIPS the rule for that request (used for the admin-configurable
+	// "0 = unlimited" per-user limiter). Evaluated after the Method/Path/Skip
+	// filters and the key derivation.
+	LimitFunc func(c *gin.Context) int
 }
 
 // RateLimiter applies the given rule using a Redis-backed fixed-window
@@ -82,6 +87,15 @@ func RateLimiter(rdb *redis.Client, rule RateLimitRule) gin.HandlerFunc {
 			return
 		}
 
+		limit := rule.Limit
+		if rule.LimitFunc != nil {
+			limit = rule.LimitFunc(c)
+			if limit <= 0 {
+				c.Next()
+				return
+			}
+		}
+
 		windowSec := int64(rule.Window.Seconds())
 		now := time.Now().Unix()
 		bucket := now / windowSec
@@ -106,9 +120,9 @@ func RateLimiter(rdb *redis.Client, rule RateLimitRule) gin.HandlerFunc {
 		if count == 1 {
 			_ = rdb.Expire(c.Request.Context(), redisKey, expiresIn).Err()
 		}
-		if int(count) > rule.Limit {
+		if int(count) > limit {
 			c.Header("Retry-After", strconv.Itoa(int(expiresIn.Seconds())))
-			c.Header("X-RateLimit-Limit", strconv.Itoa(rule.Limit))
+			c.Header("X-RateLimit-Limit", strconv.Itoa(limit))
 			c.Header("X-RateLimit-Remaining", "0")
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
 				"code":    42901,
@@ -116,8 +130,8 @@ func RateLimiter(rdb *redis.Client, rule RateLimitRule) gin.HandlerFunc {
 			})
 			return
 		}
-		c.Header("X-RateLimit-Limit", strconv.Itoa(rule.Limit))
-		c.Header("X-RateLimit-Remaining", strconv.Itoa(rule.Limit-int(count)))
+		c.Header("X-RateLimit-Limit", strconv.Itoa(limit))
+		c.Header("X-RateLimit-Remaining", strconv.Itoa(limit-int(count)))
 		c.Next()
 	}
 }

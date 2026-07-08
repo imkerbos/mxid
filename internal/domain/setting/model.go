@@ -110,9 +110,10 @@ type MailTemplate struct {
 // SecurityPolicy — password rules + lockout. Mirrors config.yaml's old
 // security.* tree; migrating it here lets admins change without restart.
 type SecurityPolicy struct {
-	Password PasswordPolicy `json:"password"`
-	Login    LoginPolicy    `json:"login"`
-	Session  SessionPolicy  `json:"session"`
+	Password  PasswordPolicy  `json:"password"`
+	Login     LoginPolicy     `json:"login"`
+	Session   SessionPolicy   `json:"session"`
+	RateLimit RateLimitPolicy `json:"rate_limit"`
 }
 
 type PasswordPolicy struct {
@@ -136,6 +137,13 @@ type SessionPolicy struct {
 	IdleMinutes     int `json:"idle_minutes"`
 	AbsoluteHours   int `json:"absolute_hours"`
 	RememberMeHours int `json:"remember_me_hours"`
+}
+
+// RateLimitPolicy configures per-authenticated-user request rate limiting,
+// layered on top of the global per-IP cap. PerUserPerMinute == 0 disables it
+// (unlimited); the per-IP cap still applies as a backstop.
+type RateLimitPolicy struct {
+	PerUserPerMinute int `json:"per_user_per_minute"`
 }
 
 // Branding — UI customization shown on portal login page.
