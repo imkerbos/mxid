@@ -13,9 +13,10 @@ import AccessRequestsPage from './pages/access-requests'
 import NoAccessPage from './pages/no-access'
 import ForgotPasswordPage from './pages/password/forgot'
 import ResetPasswordPage from './pages/password/reset'
+import ForceMfaEnroll from './components/ForceMfaEnroll'
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { user, loading, setUser, clear } = useAuthStore()
+  const { user, loading, setUser, clear, mfaEnrollRequired, setMfaEnrollRequired } = useAuthStore()
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -46,13 +47,14 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   }, [clear, navigate])
 
   // Mandatory MFA enrollment: when the backend gate reports the user must bind
-  // a factor before proceeding, send them to the security page where TOTP
-  // enrollment lives.
+  // a factor (403 / code 40331), flip a global flag so the whole portal is
+  // replaced by the blocking enrollment screen — every other route/API would
+  // 403 until a factor is bound, so we must not render partial pages.
   useEffect(() => {
-    const onEnroll = () => navigate('/security', { replace: true })
+    const onEnroll = () => setMfaEnrollRequired(true)
     window.addEventListener('mxid:mfa-enroll-required', onEnroll)
     return () => window.removeEventListener('mxid:mfa-enroll-required', onEnroll)
-  }, [navigate])
+  }, [setMfaEnrollRequired])
 
   if (loading) {
     return (
@@ -63,6 +65,9 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) return null
+
+  // Block everything behind mandatory MFA enrollment until a factor is bound.
+  if (mfaEnrollRequired) return <ForceMfaEnroll />
 
   return <>{children}</>
 }
