@@ -11,6 +11,7 @@ import (
 	"github.com/zitadel/oidc/v3/pkg/op"
 
 	"github.com/imkerbos/mxid/internal/protocol/resolver"
+	"github.com/imkerbos/mxid/pkg/tenantscope"
 )
 
 // AppRoleResolver returns the role codes a user has for a given app.
@@ -62,6 +63,14 @@ func (s *ClaimsStore) IsUserActive(ctx context.Context, userID string) (bool, er
 	if err != nil {
 		return false, fmt.Errorf("invalid subject %q: %w", userID, err)
 	}
+	// The token endpoint has no session cookie, so — unlike the SAML/CAS handlers
+	// and the retired hand-rolled OIDC engine, which set tenantscope.WithTenant
+	// from the SSO session — there is no tenant in this context, and the
+	// fail-closed tenantscope plugin would reject the user lookup. The subject is
+	// a globally-unique snowflake id, so resolving it cross-tenant returns exactly
+	// that one user with no cross-tenant leak (app_roles/tenant_code below still
+	// scope by the resolved user's explicit tenant id).
+	ctx = tenantscope.WithCrossTenant(ctx)
 	info, err := s.identity.ResolveUser(ctx, uid)
 	if err != nil || info == nil {
 		return false, nil
@@ -76,6 +85,12 @@ func (s *ClaimsStore) SetUserinfo(ctx context.Context, info *oidc.UserInfo, user
 	if err != nil {
 		return fmt.Errorf("invalid subject %q: %w", userID, err)
 	}
+	// See IsUserActive: no session tenant at the token endpoint. The subject is a
+	// globally-unique id; resolve the whole claims chain (identity, mappers,
+	// subject strategy, app_roles) cross-tenant so the fail-closed tenantscope
+	// plugin admits the user lookup. app_roles/tenant_code still pass the
+	// resolved user's explicit tenant id, so no cross-tenant data is emitted.
+	ctx = tenantscope.WithCrossTenant(ctx)
 	claims, err := s.identity.ResolveClaims(ctx, uid, scopes)
 	if err != nil {
 		return err
