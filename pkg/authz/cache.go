@@ -142,13 +142,42 @@ func (c *CachedBindingProvider) InvalidateAll(ctx context.Context) error {
 	if c.rdb == nil {
 		return nil
 	}
-	// Don't scan-and-delete the L2 entries here — that's an O(N) blocking
-	// call on the redis box. The TTL is short enough (5 min default) that
-	// letting them age out is acceptable.
+	// Purge the shared L2 asynchronously. Previously we skipped this and let the
+	// entries age out on their TTL (up to 5 min) — but a coarse InvalidateAll is
+	// exactly the fallback path a role-member add hits when the affected user
+	// can't be pinpointed (group/org subjects), so leaving L2 stale meant a
+	// permission change silently took up to 5 min to apply. SCAN+UNLINK is
+	// non-blocking (UNLINK reclaims memory off the redis main thread) and runs
+	// off the request path in a goroutine, so the O(N) cost never touches the
+	// caller. l1Clear + the sentinel broadcast below already keep every pod's L1
+	// correct immediately; this just closes the L2 gap.
+	go c.purgeL2(context.WithoutCancel(ctx))
 	if err := c.rdb.Publish(ctx, invalidateChannel, invalidateAllSentinel).Err(); err != nil {
 		return fmt.Errorf("authz cache: redis publish: %w", err)
 	}
 	return nil
+}
+
+// purgeL2 deletes every cached L2 entry under the binding key prefix. Runs in a
+// background goroutine (see InvalidateAll). SCAN walks the keyspace in batches
+// so a large set never blocks redis; UNLINK frees the keys asynchronously on
+// the server. Best-effort: a scan/unlink error is swallowed because the entries
+// still carry a bounded TTL as a backstop.
+func (c *CachedBindingProvider) purgeL2(ctx context.Context) {
+	var cursor uint64
+	for {
+		keys, next, err := c.rdb.Scan(ctx, cursor, cacheKeyPrefix+"*", 256).Result()
+		if err != nil {
+			return
+		}
+		if len(keys) > 0 {
+			_ = c.rdb.Unlink(ctx, keys...).Err()
+		}
+		if next == 0 {
+			return
+		}
+		cursor = next
+	}
 }
 
 // --- L1 helpers ----------------------------------------------------------
