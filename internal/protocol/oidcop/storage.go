@@ -15,6 +15,7 @@ import (
 
 	"github.com/imkerbos/mxid/internal/domain/oidckey"
 	"github.com/imkerbos/mxid/pkg/crypto"
+	"github.com/imkerbos/mxid/pkg/event"
 )
 
 // ClientResolver resolves a client_id into an op.Client and validates client
@@ -25,6 +26,15 @@ type ClientResolver interface {
 	// ClientKey returns a client's registered public JWK for private_key_jwt
 	// client auth / JWT-profile grant. Returns an error when unknown.
 	ClientKey(ctx context.Context, keyID, clientID string) (*jose.JSONWebKey, error)
+}
+
+// UserStatusResolver resolves whether a user account is currently active. Used
+// by the refresh-token disabled-account guard: a disabled/offboarded user's
+// refresh token must stop minting new access/id tokens immediately rather
+// than lingering until the token's own expiry. Mirrors the check the
+// hand-rolled engine performs at internal/protocol/oidc/handler.go:838.
+type UserStatusResolver interface {
+	IsUserActive(ctx context.Context, userID string) (bool, error)
 }
 
 // ClaimsResolver fills id_token/userinfo claims from MXID identity, driven by
@@ -59,16 +69,30 @@ type Storage struct {
 	keys    *oidckey.Service
 	clients ClientResolver
 	claims  ClaimsResolver
-	cfg     Config
+	// users resolves account active-status for the refresh-token
+	// disabled-account guard (WS3-A). May be nil (e.g. minimal test setups),
+	// in which case the guard is skipped.
+	users UserStatusResolver
+	// events publishes the reuse/theft-detection audit signal (WS3-B) onto
+	// the shared domain event bus. A nil *event.Bus is safe — Publish
+	// no-ops — so callers that don't wire audit aren't forced to stub it.
+	events *event.Bus
+	cfg    Config
 }
 
 // NewStorage wires a Storage.
-func NewStorage(rdb *redis.Client, keys *oidckey.Service, clients ClientResolver, claims ClaimsResolver, cfg Config) *Storage {
-	return &Storage{rdb: rdb, keys: keys, clients: clients, claims: claims, cfg: cfg}
+func NewStorage(rdb *redis.Client, keys *oidckey.Service, clients ClientResolver, claims ClaimsResolver, users UserStatusResolver, events *event.Bus, cfg Config) *Storage {
+	return &Storage{rdb: rdb, keys: keys, clients: clients, claims: claims, users: users, events: events, cfg: cfg}
 }
 
 // Compile-time assertion that we satisfy the full op.Storage contract.
 var _ op.Storage = (*Storage)(nil)
+
+// Compile-time assertion that Storage implements the optional
+// op.CanSetUserinfoFromRequest hook (claims.go's SetUserinfoFromRequest),
+// which is how id_token `sid` (and any future request-scoped claim) reaches
+// the id_token — see CreateIDToken in zitadel/oidc's pkg/op/token.go.
+var _ op.CanSetUserinfoFromRequest = (*Storage)(nil)
 
 // --- Redis key helpers -------------------------------------------------------
 
@@ -77,6 +101,14 @@ func kCode(code string) string    { return "oidc:code:" + code }
 func kToken(id string) string     { return "oidc:token:" + id }
 func kRefresh(tok string) string  { return "oidc:refresh:" + tok }
 func kUserTok(u, c string) string { return "oidc:utk:" + u + ":" + c }
+
+// kRefreshConsumed marks a refresh token as spent (see renewRefreshToken):
+// its presence for a token no longer live is the reuse/theft signal.
+func kRefreshConsumed(tok string) string { return "oidc:refreshconsumed:" + tok }
+
+// kRefreshFamily indexes every live refresh token descended from the same
+// initial issuance, so reuse detection can revoke the whole chain at once.
+func kRefreshFamily(familyID string) string { return "oidc:refreshfamily:" + familyID }
 
 func (s *Storage) setJSON(ctx context.Context, key string, v any, ttl time.Duration) error {
 	b, err := json.Marshal(v)
@@ -109,6 +141,10 @@ func (s *Storage) CreateAuthRequest(ctx context.Context, req *oidc.AuthRequest, 
 		return nil, err
 	}
 	ar := authRequestFromOIDC(req, id, userID)
+	// Persist the idp_initiated flag captured off the raw request by the
+	// withIdpInitiated wrapper (provider.go). The login bridge reads it to keep
+	// portal-launched logins seamless (no SSO login-confirmation).
+	ar.IdpInitiated = idpInitiatedFromContext(ctx)
 	if err := s.setJSON(ctx, kAuthReq(id), ar, s.cfg.AuthRequestLifetime); err != nil {
 		return nil, err
 	}
@@ -148,7 +184,9 @@ func (s *Storage) DeleteAuthRequest(ctx context.Context, id string) error {
 
 // AuthRequestDone marks an auth request authenticated. Called by the login
 // bridge (P6) after the user authenticates + consents through the portal.
-func (s *Storage) AuthRequestDone(ctx context.Context, id, userID string, authTime time.Time, amr []string) error {
+// sessionID is the shared protocol-namespace session id (empty if the caller
+// has none, e.g. tests) — see authRequest.SessionID.
+func (s *Storage) AuthRequestDone(ctx context.Context, id, userID string, authTime time.Time, amr []string, sessionID string) error {
 	var ar authRequest
 	ok, err := s.getJSON(ctx, kAuthReq(id), &ar)
 	if err != nil {
@@ -163,13 +201,16 @@ func (s *Storage) AuthRequestDone(ctx context.Context, id, userID string, authTi
 	if len(amr) > 0 {
 		ar.AMR = amr
 	}
+	if sessionID != "" {
+		ar.SessionID = sessionID
+	}
 	return s.setJSON(ctx, kAuthReq(id), &ar, s.cfg.AuthRequestLifetime)
 }
 
 // --- AuthStorage: tokens -----------------------------------------------------
 
 func (s *Storage) CreateAccessToken(ctx context.Context, request op.TokenRequest) (string, time.Time, error) {
-	clientID, _, _ := getInfoFromRequest(request)
+	clientID, _, _, _ := getInfoFromRequest(request)
 	tok, err := s.storeAccessToken(ctx, clientID, "", request.GetSubject(), request.GetAudience(), request.GetScopes())
 	if err != nil {
 		return "", time.Time{}, err
@@ -178,7 +219,7 @@ func (s *Storage) CreateAccessToken(ctx context.Context, request op.TokenRequest
 }
 
 func (s *Storage) CreateAccessAndRefreshTokens(ctx context.Context, request op.TokenRequest, currentRefreshToken string) (string, string, time.Time, error) {
-	clientID, authTime, amr := getInfoFromRequest(request)
+	clientID, authTime, amr, sessionID := getInfoFromRequest(request)
 
 	// Code flow: no current refresh token → mint a fresh access + refresh pair.
 	if currentRefreshToken == "" {
@@ -190,7 +231,7 @@ func (s *Storage) CreateAccessAndRefreshTokens(ctx context.Context, request op.T
 		if err != nil {
 			return "", "", time.Time{}, err
 		}
-		refresh, err := s.storeRefreshToken(ctx, refreshID, access, amr, authTime)
+		refresh, err := s.storeRefreshToken(ctx, refreshID, access, amr, authTime, sessionID)
 		if err != nil {
 			return "", "", time.Time{}, err
 		}
@@ -212,6 +253,24 @@ func (s *Storage) CreateAccessAndRefreshTokens(ctx context.Context, request op.T
 	return access.ID, newRefresh, access.Expiration, nil
 }
 
+// TokenRequestByRefreshToken is op's first (non-mutating) gate on every
+// refresh_token grant: it loads the presented token before op decides whether
+// to proceed to rotation (CreateAccessAndRefreshTokens/renewRefreshToken). An
+// error here aborts the whole exchange — rotation never runs — which makes
+// this the right place for the two refresh-token security checks that must
+// deny the grant outright rather than merely fail to rotate:
+//
+//   - WS3-A disabled-account guard: the token is live, but its owner is no
+//     longer active. Deny and revoke the family so the token cannot be
+//     retried once denied here.
+//   - WS3-B reuse detection: the token is NOT live, but a consumed-marker
+//     shows it was already rotated away — someone just replayed a spent
+//     token (theft signal). Revoke the whole family (including the live
+//     descendant) and raise an audit event.
+//
+// The happy path (live token, active user) does not mutate anything —
+// consumption happens later, only once rotation actually succeeds, in
+// renewRefreshToken.
 func (s *Storage) TokenRequestByRefreshToken(ctx context.Context, token string) (op.RefreshTokenRequest, error) {
 	var rt refreshToken
 	ok, err := s.getJSON(ctx, kRefresh(token), &rt)
@@ -219,7 +278,15 @@ func (s *Storage) TokenRequestByRefreshToken(ctx context.Context, token string) 
 		return nil, err
 	}
 	if !ok {
+		s.checkReuse(ctx, token)
 		return nil, op.ErrInvalidRefreshToken
+	}
+	if s.users != nil {
+		active, err := s.users.IsUserActive(ctx, rt.UserID)
+		if err != nil || !active {
+			s.revokeFamily(ctx, rt.FamilyID)
+			return nil, op.ErrInvalidRefreshToken
+		}
 	}
 	return &refreshTokenRequest{&rt}, nil
 }
@@ -411,10 +478,15 @@ func (s *Storage) storeAccessToken(ctx context.Context, clientID, refreshID, sub
 	return at, nil
 }
 
-func (s *Storage) storeRefreshToken(ctx context.Context, refreshID string, access *accessToken, amr []string, authTime time.Time) (*refreshToken, error) {
+func (s *Storage) storeRefreshToken(ctx context.Context, refreshID string, access *accessToken, amr []string, authTime time.Time, sessionID string) (*refreshToken, error) {
+	familyID, err := crypto.GenerateBase62(24)
+	if err != nil {
+		return nil, err
+	}
 	rt := &refreshToken{
 		ID:            refreshID,
 		Token:         refreshID,
+		FamilyID:      familyID,
 		AuthTime:      authTime,
 		AMR:           amr,
 		Audience:      access.Audience,
@@ -422,17 +494,23 @@ func (s *Storage) storeRefreshToken(ctx context.Context, refreshID string, acces
 		ClientID:      access.ClientID,
 		Scopes:        access.Scopes,
 		AccessTokenID: access.ID,
+		SessionID:     sessionID,
 		Expiration:    time.Now().Add(s.cfg.RefreshTokenLifetime),
 	}
 	if err := s.setJSON(ctx, kRefresh(rt.Token), rt, s.cfg.RefreshTokenLifetime); err != nil {
 		return nil, err
 	}
 	s.indexAdd(ctx, rt.UserID, rt.ClientID, kRefresh(rt.Token))
+	s.familyAdd(ctx, familyID, rt.Token)
 	return rt, nil
 }
 
 // renewRefreshToken implements refresh token rotation (RFC 6819 §5.2.2.3):
-// delete the presented token + its access token, then write a new record.
+// delete the presented token + its access token, then write a new record in
+// the same family. The presented token is also marked "consumed" (kept as a
+// tombstone until its original expiry) so that if it ever resurfaces —
+// someone replayed a stolen refresh token — TokenRequestByRefreshToken's
+// checkReuse recognizes it and cascades the family revoke.
 func (s *Storage) renewRefreshToken(ctx context.Context, currentToken, newToken string, access *accessToken) error {
 	var rt refreshToken
 	ok, err := s.getJSON(ctx, kRefresh(currentToken), &rt)
@@ -440,12 +518,24 @@ func (s *Storage) renewRefreshToken(ctx context.Context, currentToken, newToken 
 		return err
 	}
 	if !ok {
+		// Not live — if it was already consumed by a prior rotation, this is
+		// a replay: cascade the family revoke here too (defense in depth
+		// alongside the same check in TokenRequestByRefreshToken, in case a
+		// caller ever reaches renewRefreshToken without going through it).
+		s.checkReuse(ctx, currentToken)
 		return oidc.ErrInvalidGrant().WithDescription("invalid refresh token")
 	}
 	if rt.Expiration.Before(time.Now()) {
 		return oidc.ErrInvalidGrant().WithDescription("expired refresh token")
 	}
 	_ = s.rdb.Del(ctx, kRefresh(currentToken), kToken(rt.AccessTokenID)).Err()
+
+	remaining := time.Until(rt.Expiration)
+	if remaining < time.Minute {
+		remaining = time.Minute
+	}
+	marker := consumedMarker{FamilyID: rt.FamilyID, UserID: rt.UserID, ClientID: rt.ClientID}
+	_ = s.setJSON(ctx, kRefreshConsumed(currentToken), &marker, remaining)
 
 	rt.ID = newToken
 	rt.Token = newToken
@@ -455,7 +545,79 @@ func (s *Storage) renewRefreshToken(ctx context.Context, currentToken, newToken 
 		return err
 	}
 	s.indexAdd(ctx, rt.UserID, rt.ClientID, kRefresh(newToken))
+
+	if rt.FamilyID != "" {
+		familyKey := kRefreshFamily(rt.FamilyID)
+		pipe := s.rdb.Pipeline()
+		pipe.SRem(ctx, familyKey, currentToken)
+		pipe.SAdd(ctx, familyKey, newToken)
+		pipe.Expire(ctx, familyKey, s.cfg.RefreshTokenLifetime)
+		_, _ = pipe.Exec(ctx)
+	}
 	return nil
+}
+
+// familyAdd registers a refresh token under its family index, used by
+// revokeFamily to find every live member to cascade-delete on reuse
+// detection or a disabled-account denial.
+func (s *Storage) familyAdd(ctx context.Context, familyID, token string) {
+	if familyID == "" {
+		return
+	}
+	familyKey := kRefreshFamily(familyID)
+	pipe := s.rdb.Pipeline()
+	pipe.SAdd(ctx, familyKey, token)
+	pipe.Expire(ctx, familyKey, s.cfg.RefreshTokenLifetime)
+	_, _ = pipe.Exec(ctx)
+}
+
+// revokeFamily deletes every live refresh token (and its paired access
+// token) belonging to familyID, plus the family index itself. Called when
+// reuse detection trips (a spent token was replayed) or when the owning
+// account is no longer active: either way the whole rotation chain must die
+// immediately, including whichever token in it is currently "live" — not
+// just the one that was presented.
+func (s *Storage) revokeFamily(ctx context.Context, familyID string) {
+	if familyID == "" {
+		return
+	}
+	familyKey := kRefreshFamily(familyID)
+	members, err := s.rdb.SMembers(ctx, familyKey).Result()
+	if err != nil {
+		return
+	}
+	for _, tok := range members {
+		var rt refreshToken
+		if ok, _ := s.getJSON(ctx, kRefresh(tok), &rt); ok && rt.AccessTokenID != "" {
+			_ = s.rdb.Del(ctx, kToken(rt.AccessTokenID)).Err()
+		}
+		_ = s.rdb.Del(ctx, kRefresh(tok)).Err()
+	}
+	_ = s.rdb.Del(ctx, familyKey).Err()
+}
+
+// checkReuse inspects the consumed-marker for a refresh token that was just
+// found NOT live. A marker present means the token was already rotated away
+// and is now being replayed — the reuse/theft signal (RFC 6819 §5.2.2.3):
+// revoke the entire family (including the live descendant token) and raise
+// an audit event so operators can see the incident. A token with no marker
+// either never existed or already expired naturally — neither is reuse, so
+// nothing is revoked (there is nothing left to revoke). Returns whether
+// reuse was detected.
+func (s *Storage) checkReuse(ctx context.Context, token string) bool {
+	var marker consumedMarker
+	ok, err := s.getJSON(ctx, kRefreshConsumed(token), &marker)
+	if err != nil || !ok || marker.FamilyID == "" {
+		return false
+	}
+	s.revokeFamily(ctx, marker.FamilyID)
+	if s.events != nil {
+		s.events.Publish(ctx, event.Event{Type: event.OIDCTokenReuse, Payload: map[string]any{
+			"user_id":   marker.UserID,
+			"client_id": marker.ClientID,
+		}})
+	}
+	return true
 }
 
 // indexAdd tracks a token key under (user, client) so TerminateSession can
@@ -469,14 +631,19 @@ func (s *Storage) indexAdd(ctx context.Context, userID, clientID, tokenKey strin
 	_ = s.rdb.Expire(ctx, idx, s.cfg.RefreshTokenLifetime).Err()
 }
 
-// getInfoFromRequest extracts client_id, auth_time and amr from the various
-// op.TokenRequest concrete types we hand back from the storage.
-func getInfoFromRequest(req op.TokenRequest) (clientID string, authTime time.Time, amr []string) {
+// getInfoFromRequest extracts client_id, auth_time, amr and the shared
+// protocol session id from the various op.TokenRequest concrete types we hand
+// back from the storage. sessionID is carried onto the refresh token so
+// id_tokens reissued via the refresh_token grant keep the same `sid`.
+func getInfoFromRequest(req op.TokenRequest) (clientID string, authTime time.Time, amr []string, sessionID string) {
 	switch r := req.(type) {
 	case *authRequest:
-		return r.ClientID, r.AuthAt, r.AMR
+		return r.ClientID, r.AuthAt, r.AMR, r.SessionID
 	case *refreshTokenRequest:
-		return r.ClientID, r.AuthTime, r.AMR
+		return r.ClientID, r.AuthTime, r.AMR, r.SessionID
+	case *clientCredentialsRequest:
+		// No user, no AMR/session — client_credentials has no login.
+		return r.clientID, time.Time{}, nil, ""
 	}
-	return "", time.Time{}, nil
+	return "", time.Time{}, nil, ""
 }

@@ -41,6 +41,24 @@ type authRequest struct {
 	// the BFF login bridge. op refuses to issue a code until Done() is true.
 	IsDone bool      `json:"is_done"`
 	AuthAt time.Time `json:"auth_at,omitempty"`
+
+	// SessionID is the shared protocol-namespace session id (session.Manager,
+	// NamespaceProtocol — same value as the mxid_proto_sid cookie), set by the
+	// login bridge alongside UserID/IsDone once the user authenticates. It is
+	// emitted as the id_token `sid` claim (claims.go) so OIDC back-channel
+	// logout (WS2) can correlate the id_token with the logout_token minted for
+	// the same session.
+	SessionID string `json:"session_id,omitempty"`
+
+	// IdpInitiated records that this authorize request carried idp_initiated=1
+	// (a portal app-list launch, set by app/adapters_portal.go's launch-URL
+	// builder). op's schema decoder drops the unknown query param, so it is
+	// captured off the raw request into the request context by the
+	// withIdpInitiated wrapper (provider.go) and persisted here in
+	// Storage.CreateAuthRequest. The login bridge reads it to keep IdP-initiated
+	// launches seamless (no SSO login-confirmation), mirroring the hand-rolled
+	// engine (internal/protocol/oidc/handler.go:397).
+	IdpInitiated bool `json:"idp_initiated,omitempty"`
 }
 
 type codeChallenge struct {
@@ -59,6 +77,7 @@ func (a *authRequest) GetRedirectURI() string { return a.CallbackURI }
 func (a *authRequest) GetState() string       { return a.TransferState }
 func (a *authRequest) GetSubject() string     { return a.UserID }
 func (a *authRequest) Done() bool             { return a.IsDone }
+func (a *authRequest) GetSessionID() string   { return a.SessionID }
 
 func (a *authRequest) GetResponseType() oidc.ResponseType { return a.ResponseType }
 func (a *authRequest) GetResponseMode() oidc.ResponseMode { return a.ResponseMode }

@@ -1,6 +1,12 @@
 # OIDC Identity Provider — Complete Vertical Design
 
-**Status**: Draft for approval
+**Status**: Superseded — this spec describes the original hand-rolled
+`internal/protocol/oidc` engine, which was fully replaced by the
+zitadel/oidc-based engine (`internal/protocol/oidcop`) and deleted in WS9 of
+the migration (see `docs/superpowers/plans/2026-07-08-zitadel-oidc-migration.md`).
+Kept for historical reference only; do not use as a guide to the current
+architecture (in particular, JWKS is now a single provider keyset, not a
+per-app aggregate — see §5.5 below).
 **Date**: 2026-05-23
 **Owner**: Backend + Frontend
 **Standard**: Commercial-grade EIAM, benchmarked against Keycloak / Auth0 / Okta / TopIAM
@@ -101,7 +107,8 @@ Adds to B:
 │  │  ─ writes to Redis: session:portal:* / session:proto:* │  │
 │  └────────────────────────────────────────────────────────┘  │
 │  ┌────────────────────────────────────────────────────────┐  │
-│  │       Protocol Layer (internal/protocol/oidc)          │  │
+│  │  Protocol Layer (HISTORICAL — deleted hand-rolled       │  │
+│  │  internal/protocol/oidc; superseded by oidcop)          │  │
 │  │  handler.go                                            │  │
 │  │  ├─ discovery        ── reads issuer + supported algs  │  │
 │  │  ├─ authorize        ── reads mxid_proto_sid           │  │
@@ -223,9 +230,14 @@ A enforces RS256 + RSA-2048 to align with OIDC default and minimum recommended s
    - Insert `mxid_app_cert` row with `status=1 active`, `kid=ULID()`, `not_before=now`, `not_after=now+1y`
 4. On failure, entire transaction rolls back; no orphan app rows
 
-### 5.5 JWKS Endpoint
+### 5.5 JWKS Endpoint (HISTORICAL — see status note above)
 
-`GET /protocol/oidc/jwks` returns a JWK Set composed of every `status IN (active, rotating)` cert across all enabled apps. Each entry includes `kid`, `kty=RSA`, `alg=RS256`, `use=sig`, `n`, `e`. Cached in-memory with 5-minute TTL invalidated on key rotation events.
+`GET /protocol/oidc/jwks` returned a JWK Set composed of every `status IN (active, rotating)` cert across all enabled apps. Each entry includes `kid`, `kty=RSA`, `alg=RS256`, `use=sig`, `n`, `e`. Cached in-memory with 5-minute TTL invalidated on key rotation events.
+
+This per-app aggregated JWKS was specific to the hand-rolled engine. The
+current zitadel engine (`internal/protocol/oidcop`) publishes a single
+provider-level keyset (`internal/domain/oidckey`) shared by all apps, with
+scheduled rotation — not a per-app cert.
 
 ### 5.6 Rotation (Milestone B)
 

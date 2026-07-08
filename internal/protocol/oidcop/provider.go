@@ -26,6 +26,11 @@ func NewProvider(issuer string, storage op.Storage, cryptoKey [32]byte, allowIns
 			"openid", "profile", "email", "phone", "address", "groups", "offline_access",
 		},
 		SupportedUILocales: []language.Tag{language.English, language.SimplifiedChinese},
+		// WS2: back-channel logout (internal/protocol/oidclogout) is wired
+		// for offboarding + JIT downstream teardown, so advertise it in
+		// discovery per spec.
+		BackChannelLogoutSupported:        true,
+		BackChannelLogoutSessionSupported: true,
 	}
 	// Mirror the hand-rolled engine's endpoint paths so existing clients
 	// (Grafana et al.) need no reconfiguration when switching engines — only
@@ -53,7 +58,48 @@ func CallbackURL(provider op.OpenIDProvider) func(context.Context, string) strin
 // Mount attaches the provider's handlers under group at the "/oidc/*" subtree.
 // stripPrefix is the issuer path (e.g. /protocol/oidc) that must be stripped so
 // op's root-relative routes (/authorize, /.well-known/...) match.
+//
+// filterDiscoveryResponse (WS6-B) is applied here, over the whole provider,
+// so the implicit-flow values zitadel/oidc's discovery handler hardcodes
+// (see discovery.go) never reach a client — without touching op's own
+// routing or the hand-rolled engine's separate /protocol/oidc surface.
 func Mount(group *gin.RouterGroup, stripPrefix string, provider http.Handler) {
-	wrapped := gin.WrapH(http.StripPrefix(stripPrefix, provider))
+	// withIdpInitiated runs OUTSIDE op so it can read the raw idp_initiated
+	// query param before op's schema decoder discards it (IgnoreUnknownKeys) —
+	// see withIdpInitiated. It stashes the flag on the request context, which
+	// op propagates into Storage.CreateAuthRequest (pkg/op's Authorize derives
+	// its ctx from r.Context()), where it is persisted onto the auth request.
+	wrapped := gin.WrapH(http.StripPrefix(stripPrefix, withIdpInitiated(filterDiscoveryResponse(provider))))
 	group.Any("/oidc/*any", wrapped)
+}
+
+// idpInitiatedCtxKey keys the idp_initiated flag on the request context.
+type idpInitiatedCtxKey struct{}
+
+// contextWithIdpInitiated returns ctx carrying the idp_initiated flag.
+func contextWithIdpInitiated(ctx context.Context, v bool) context.Context {
+	return context.WithValue(ctx, idpInitiatedCtxKey{}, v)
+}
+
+// idpInitiatedFromContext reports whether the request context was tagged as an
+// IdP-initiated (portal app-list launch) authorize request.
+func idpInitiatedFromContext(ctx context.Context) bool {
+	v, _ := ctx.Value(idpInitiatedCtxKey{}).(bool)
+	return v
+}
+
+// withIdpInitiated reads the raw idp_initiated=1 query param off the incoming
+// request (before op's schema decoder drops it as an unknown key) and stashes
+// it on the request context so Storage.CreateAuthRequest can persist it onto
+// the auth request. This is the only surviving path for the flag: op's
+// oidc.AuthRequest has no field for it, and CreateAuthRequest gets no raw
+// *http.Request. Query-string only — matches the hand-rolled engine, which
+// reads c.Query("idp_initiated") (internal/protocol/oidc/handler.go:397).
+func withIdpInitiated(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("idp_initiated") == "1" {
+			r = r.WithContext(contextWithIdpInitiated(r.Context(), true))
+		}
+		next.ServeHTTP(w, r)
+	})
 }
