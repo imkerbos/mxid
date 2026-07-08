@@ -18,6 +18,12 @@ spec:
     - match:
         - uri:
             prefix: /api
+      {{- if .Values.routing.forwardedProtoHttps }}
+      headers:
+        request:
+          set:
+            X-Forwarded-Proto: https
+      {{- end }}
       route:
         - destination:
             host: mxid
@@ -27,6 +33,12 @@ spec:
     - match:
         - uri:
             prefix: /protocol
+      {{- if .Values.routing.forwardedProtoHttps }}
+      headers:
+        request:
+          set:
+            X-Forwarded-Proto: https
+      {{- end }}
       route:
         - destination:
             host: mxid
@@ -36,6 +48,12 @@ spec:
     - match:
         - uri:
             prefix: /static
+      {{- if .Values.routing.forwardedProtoHttps }}
+      headers:
+        request:
+          set:
+            X-Forwarded-Proto: https
+      {{- end }}
       route:
         - destination:
             host: mxid
@@ -45,6 +63,12 @@ spec:
     - match:
         - uri:
             prefix: /openapi
+      {{- if .Values.routing.forwardedProtoHttps }}
+      headers:
+        request:
+          set:
+            X-Forwarded-Proto: https
+      {{- end }}
       route:
         - destination:
             host: mxid
@@ -54,6 +78,12 @@ spec:
     - match:
         - uri:
             exact: /health
+      {{- if .Values.routing.forwardedProtoHttps }}
+      headers:
+        request:
+          set:
+            X-Forwarded-Proto: https
+      {{- end }}
       route:
         - destination:
             host: mxid

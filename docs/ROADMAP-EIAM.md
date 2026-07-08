@@ -112,7 +112,7 @@
   - **CIBA**(可选,银行 / 高安全场景)。
   - **DPoP**(RFC 9449)— 令牌绑定,防重放。
   - 清理空目录 `internal/protocol/{jwt,form}`(要么实现 JWT/M2M 颁发,要么删)。
-- **架构**:扩展 `internal/protocol/oidc/`,新增 device endpoint + 轮询。
+- **架构**:扩展 `internal/protocol/oidcop/`,新增 device endpoint + 轮询。
 - **验收**:`device_code` grant 跑通;CLI 工具可登录。
 
 #### P3.3 集成生态(G8)

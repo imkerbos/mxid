@@ -28,6 +28,11 @@ type clientConfig struct {
 	JWKS                  string        `json:"jwks"`
 	JWKSURI               string        `json:"jwks_uri"`
 	ClaimMappers          []claimMapper `json:"claim_mappers"`
+	// RateLimitPerMin overrides the IdP-wide default token-endpoint rate limit
+	// (see ratelimit.go's defaultTokenRateLimitPerMin) for this client. Same
+	// field name/shape as the hand-rolled engine's oidc.Config.RateLimitPerMin
+	// so a client's configured limit carries over unchanged across engines.
+	RateLimitPerMin int `json:"rate_limit_per_min"`
 }
 
 // claimMapper is one declarative per-app claim projection (Keycloak "mapper" /
@@ -102,12 +107,15 @@ func (c *oidcClient) AuthMethod() oidc.AuthMethod {
 	}
 }
 
+// ResponseTypes: WS6-B drops implicit per the OAuth 2.1 migration decision
+// (hybrid is deferred, not built). This engine only ever offers the
+// authorization code flow (+PKCE) — "code" is returned unconditionally,
+// ignoring cfg.ResponseTypes, so a pre-migration app record (or a stray admin
+// edit) storing "id_token"/"token id_token" in protocol_config cannot
+// re-enable implicit purely through configuration. op's authorize validation
+// (ValidateAuthReqResponseType) rejects any response_type not in this list.
 func (c *oidcClient) ResponseTypes() []oidc.ResponseType {
-	out := make([]oidc.ResponseType, 0, len(c.cfg.ResponseTypes))
-	for _, rt := range c.cfg.ResponseTypes {
-		out = append(out, oidc.ResponseType(rt))
-	}
-	return out
+	return []oidc.ResponseType{oidc.ResponseTypeCode}
 }
 
 func (c *oidcClient) GrantTypes() []oidc.GrantType {

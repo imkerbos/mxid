@@ -61,6 +61,29 @@ func (r *sessionResolverImpl) GetSSOSession(ctx context.Context, sessionID strin
 	return nil, nil
 }
 
+// GetProtocolSSOSession resolves a session id ONLY within the protocol
+// namespace — no portal fallback, unlike GetSSOSession. Returns (nil, nil)
+// when no live protocol session exists for the id (expired sessions are
+// swept, matching GetSSOSession's semantics).
+func (r *sessionResolverImpl) GetProtocolSSOSession(ctx context.Context, sessionID string) (*SSOSession, error) {
+	data, err := r.rdb.Get(ctx, ssoSessionPrefix+sessionID).Bytes()
+	if err != nil {
+		if err == redis.Nil {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get protocol sso session: %w", err)
+	}
+	var sess SSOSession
+	if err := json.Unmarshal(data, &sess); err != nil {
+		return nil, fmt.Errorf("unmarshal sso session: %w", err)
+	}
+	if time.Now().After(sess.ExpiresAt) {
+		_ = r.DeleteSSOSession(ctx, sessionID)
+		return nil, nil
+	}
+	return &sess, nil
+}
+
 func (r *sessionResolverImpl) CreateSSOSession(
 	ctx context.Context,
 	userID, tenantID int64,

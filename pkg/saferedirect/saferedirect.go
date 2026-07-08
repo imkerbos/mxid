@@ -15,8 +15,8 @@
 //   - ValidateAgainstRegistered: for values bound to a pre-registered
 //     service provider (CAS `service`, SAML RelayState that carries an
 //     ACS/landing URL). Requires an exact full-URL match against the SP's
-//     registered list, mirroring the OIDC redirect_uri exact-match rules
-//     (see internal/protocol/oidc/redirect.go).
+//     registered list, mirroring the OIDC redirect_uri exact-match rule
+//     (RFC 6749 §3.1.2).
 //
 // Both validators fail closed: empty, unparseable, or unmatched input
 // returns an error and the safe string is "". Callers MUST treat any
@@ -131,9 +131,10 @@ func ValidateRelativeOrOrigin(target string, allowedOrigins []string) (string, e
 // pre-registered service provider by requiring an EXACT full-URL match
 // against registeredURIs.
 //
-// Match semantics mirror the OIDC redirect_uri rules in
-// internal/protocol/oidc/redirect.go: scheme (case-insensitive) + host
-// (case-insensitive) + path must be equal; userinfo on the target is
+// Match semantics mirror the OIDC redirect_uri exact-match rule (RFC 6749
+// §3.1.2), enforced by the zitadel/oidc provider for the OIDC client itself:
+// scheme (case-insensitive) + host (case-insensitive) + path must be equal;
+// userinfo on the target is
 // rejected. Unlike the OIDC validator, query strings here MUST also match
 // exactly, because CAS `service` and SAML RelayState landing URLs are not
 // expected to carry per-request state the way an OAuth callback does, and

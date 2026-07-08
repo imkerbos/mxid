@@ -131,7 +131,16 @@ type IdentityResolver interface {
 
 // SessionResolver manages protocol-level SSO sessions.
 type SessionResolver interface {
+	// GetSSOSession resolves a session id, checking the protocol namespace
+	// first then falling back to the portal namespace (IdP-initiated logins
+	// that only hold a portal session). Use this for "is the user logged in".
 	GetSSOSession(ctx context.Context, sessionID string) (*SSOSession, error)
+	// GetProtocolSSOSession resolves a session id ONLY within the protocol
+	// namespace (no portal fallback). Use this when the caller must be certain
+	// the id is a genuine protocol-namespace session — e.g. before emitting it
+	// as the OIDC id_token `sid`, which back-channel logout keys on the
+	// protocol namespace and must never be a portal session id.
+	GetProtocolSSOSession(ctx context.Context, sessionID string) (*SSOSession, error)
 	CreateSSOSession(ctx context.Context, userID, tenantID int64, authType, ip, userAgent string) (*SSOSession, error)
 	DeleteSSOSession(ctx context.Context, sessionID string) error
 }
