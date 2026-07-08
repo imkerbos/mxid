@@ -183,3 +183,39 @@ func TestCache_PubSubInvalidatesPeerL1(t *testing.T) {
 	}
 	t.Errorf("peer B's L1 was not invalidated within the deadline")
 }
+
+// InvalidateAll must purge the shared L2 (Redis) entries, not just clear L1.
+// Previously it left L2 to age out on its TTL (up to 5 min), so a permission
+// change routed through the coarse InvalidateAll fallback (e.g. a group/org
+// role-member add) stayed stale for minutes. purgeL2 runs async, so poll.
+func TestCache_InvalidateAllPurgesL2(t *testing.T) {
+	ctx := context.Background()
+	rdb, mr := newRedis(t)
+	stub := &stubBindings{data: sampleBindings()}
+	c := NewCachedBindingProvider(ctx, stub, rdb, CacheOptions{L1TTL: time.Minute, L2TTL: time.Hour})
+
+	// Prime L1+L2 for the user.
+	if _, err := c.EffectiveBindingsForUser(ctx, 1, 100); err != nil {
+		t.Fatalf("prime: %v", err)
+	}
+	key := cacheKey(1, 100)
+	if _, err := mr.Get(key); err != nil {
+		t.Fatalf("L2 not primed: %v", err)
+	}
+
+	if err := c.InvalidateAll(ctx); err != nil {
+		t.Fatalf("InvalidateAll: %v", err)
+	}
+
+	// purgeL2 is async — poll until the key is gone.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if !mr.Exists(key) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("InvalidateAll did not purge L2 within deadline")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
