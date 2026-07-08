@@ -149,6 +149,8 @@ export default {
     mfaBack: 'Back to password',
     socialDivider: 'Social sign-in',
     externalFailed: 'External sign-in failed, use a local account',
+    externalNoConsoleAccess: 'This account has no console access. Ask an administrator to assign you an admin role, then sign in with the third-party provider again.',
+    externalBuiltinLocalOnly: 'The built-in admin account cannot use third-party sign-in — use password login.',
     passwordDisabled: 'Password sign-in has been disabled',
     passwordDisabledHint: 'Password sign-in has been disabled by the administrator. Please use the social sign-in below.',
     refreshCaptcha: 'Refresh captcha',

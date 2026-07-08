@@ -152,6 +152,8 @@ export default {
     mfaBack: '返回密码登录',
     socialDivider: '第三方登录',
     externalFailed: '第三方登录失败，请用本地账号登录',
+    externalNoConsoleAccess: '该账号没有后台访问权限。请联系管理员为你分配管理角色后，再用第三方登录。',
+    externalBuiltinLocalOnly: '内置管理员账号不支持第三方登录，请使用密码登录。',
     passwordDisabled: '密码登录已被管理员关闭',
     passwordDisabledHint: '密码登录已被管理员关闭，请使用下方第三方登录方式',
     refreshCaptcha: '刷新验证码',
