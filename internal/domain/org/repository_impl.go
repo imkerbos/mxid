@@ -49,8 +49,13 @@ func (r *repository) Update(ctx context.Context, org *Organization) error {
 	return nil
 }
 
+// Delete HARD-deletes the org so its user assignments (mxid_user_org) cascade
+// away. Soft delete would strand them. The service layer guards against deleting
+// an org that still has sub-orgs (the parent_id self-ref has no ON DELETE, so a
+// bare delete would orphan the subtree). Org access policies (subject_type='org')
+// are removed by the OrgDeleted event subscriber.
 func (r *repository) Delete(ctx context.Context, id int64) error {
-	if err := r.db.WithContext(ctx).Delete(&Organization{}, "id = ?", id).Error; err != nil {
+	if err := r.db.WithContext(ctx).Unscoped().Delete(&Organization{}, "id = ?", id).Error; err != nil {
 		return fmt.Errorf("delete organization: %w", err)
 	}
 	return nil
@@ -146,29 +151,43 @@ func (r *repository) RemoveMember(ctx context.Context, userID, orgID int64) erro
 	return nil
 }
 
+// GetMembers lists the users of an org AND of every descendant org. A department
+// head sees everyone under them without opening each sub-department. The subtree
+// is matched on the path prefix — an org is in the subtree when its path equals
+// the root path or begins with "<root>." — expressed via CAST(path AS TEXT) so
+// it runs on both Postgres (ltree) and the SQLite test harness. A user assigned
+// to several sub-orgs is returned once (DISTINCT), ordered by first assignment
+// for stable pagination.
 func (r *repository) GetMembers(ctx context.Context, orgID int64, page, pageSize int) ([]int64, int64, error) {
+	rootPath := r.db.
+		Table("mxid_organization").
+		Select("CAST(path AS TEXT)").
+		Where("id = ? AND deleted_at IS NULL", orgID)
+	subtree := r.db.WithContext(ctx).
+		Table("mxid_organization").
+		Select("id").
+		Where("deleted_at IS NULL AND (CAST(path AS TEXT) = (?) OR CAST(path AS TEXT) LIKE (?) || '.%')", rootPath, rootPath)
+
 	var total int64
 	if err := r.db.WithContext(ctx).
 		Model(&UserOrg{}).
-		Where("org_id = ?", orgID).
+		Where("org_id IN (?)", subtree).
+		Distinct("user_id").
 		Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("count organization members: %w", err)
 	}
 
-	var rels []UserOrg
+	var userIDs []int64
 	offset := (page - 1) * pageSize
 	if err := r.db.WithContext(ctx).
-		Where("org_id = ?", orgID).
-		Order("created_at ASC").
+		Model(&UserOrg{}).
+		Where("org_id IN (?)", subtree).
+		Group("user_id").
+		Order("MIN(created_at) ASC").
 		Offset(offset).
 		Limit(pageSize).
-		Find(&rels).Error; err != nil {
+		Pluck("user_id", &userIDs).Error; err != nil {
 		return nil, 0, fmt.Errorf("get organization members: %w", err)
-	}
-
-	userIDs := make([]int64, len(rels))
-	for i, rel := range rels {
-		userIDs[i] = rel.UserID
 	}
 	return userIDs, total, nil
 }
