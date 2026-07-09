@@ -55,8 +55,12 @@ func (r *gormRepository) UpdateRole(ctx context.Context, role *Role) error {
 }
 
 // DeleteRole performs a soft delete on a role.
+// DeleteRole HARD-deletes the role so its bindings (mxid_role_binding) and
+// permission grants (mxid_role_permission) cascade away. Soft delete orphans
+// both. Role access policies (subject_type='role') are removed by the
+// RoleDeleted event subscriber. System roles are guarded in the service layer.
 func (r *gormRepository) DeleteRole(ctx context.Context, id int64) error {
-	if err := r.db.WithContext(ctx).Delete(&Role{}, id).Error; err != nil {
+	if err := r.db.WithContext(ctx).Unscoped().Delete(&Role{}, id).Error; err != nil {
 		return fmt.Errorf("delete role: %w", err)
 	}
 	return nil

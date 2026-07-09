@@ -83,8 +83,15 @@ func (r *gormRepository) Update(ctx context.Context, app *App) error {
 }
 
 // Delete performs a soft delete on an app.
+// Delete HARD-deletes the app. Config entities are not soft-deleted: the schema
+// carries ON DELETE CASCADE on every child (app_group_rel, app_access, app_cert,
+// app_account, consents, favorites), and those cascades only fire on a physical
+// delete. A soft delete (deleted_at) leaves the row alive from the FK's view and
+// strands every association as an orphan — the root cause of the "deleted app
+// still shows in its group" and access-policy "(未知)" bugs. Policy rows (no FK,
+// migration 000056 adds app_id/app_group_id FK CASCADE) go with it too.
 func (r *gormRepository) Delete(ctx context.Context, id int64) error {
-	if err := r.db.WithContext(ctx).Delete(&App{}, id).Error; err != nil {
+	if err := r.db.WithContext(ctx).Unscoped().Delete(&App{}, id).Error; err != nil {
 		return fmt.Errorf("delete app: %w", err)
 	}
 	return nil
@@ -215,8 +222,12 @@ func (r *gormRepository) UpdateGroup(ctx context.Context, group *AppGroup) error
 }
 
 // DeleteGroup performs a soft delete on an app group.
+// DeleteGroup HARD-deletes the app group so its app_group_rel links cascade away
+// and nested groups' parent_id is SET NULL. Soft delete would orphan both. The
+// group's inherited access policies (app_group_id, no FK before migration 000056)
+// cascade via that new FK.
 func (r *gormRepository) DeleteGroup(ctx context.Context, id int64) error {
-	if err := r.db.WithContext(ctx).Delete(&AppGroup{}, id).Error; err != nil {
+	if err := r.db.WithContext(ctx).Unscoped().Delete(&AppGroup{}, id).Error; err != nil {
 		return fmt.Errorf("delete app group: %w", err)
 	}
 	return nil

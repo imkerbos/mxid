@@ -40,8 +40,12 @@ func (r *repository) Update(ctx context.Context, g *UserGroup) error {
 	return nil
 }
 
+// Delete HARD-deletes the user group so its members (mxid_user_group_member) and
+// dynamic rule (mxid_user_group_rule) cascade away. Soft delete leaves both as
+// orphans. The group's access policies (subject_type='group', polymorphic
+// subject_id has no FK) are removed by the GroupDeleted event subscriber.
 func (r *repository) Delete(ctx context.Context, id int64) error {
-	if err := r.db.WithContext(ctx).Delete(&UserGroup{}, "id = ?", id).Error; err != nil {
+	if err := r.db.WithContext(ctx).Unscoped().Delete(&UserGroup{}, "id = ?", id).Error; err != nil {
 		return fmt.Errorf("delete user group: %w", err)
 	}
 	return nil
