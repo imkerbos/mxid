@@ -16,7 +16,7 @@ import (
 func (s *Service) SetLogger(l *zap.Logger) { s.logger = l }
 
 // SubscribeEvents wires policy cleanup to subject-deletion domain events. When a
-// group / org / role that a policy points at is deleted, its rules would
+// user / group / org / role that a policy points at is deleted, its rules would
 // otherwise dangle: the console renders the subject as "(unknown)" and the row
 // survives as a phantom allow/deny that can silently affect future access
 // decisions. Removing them on delete keeps the policy table referentially clean
@@ -30,6 +30,10 @@ func (s *Service) SubscribeEvents() {
 	s.eventBus.Subscribe(event.GroupDeleted, s.cleanupSubject(SubjectGroup, "id"))
 	s.eventBus.Subscribe(event.OrgDeleted, s.cleanupSubject(SubjectOrg, "id"))
 	s.eventBus.Subscribe(permission.RoleDeleted, s.cleanupSubject(SubjectRole, "role_id"))
+	// A deleted user (soft-deleted, but still "gone" for access purposes) must
+	// not keep dangling per-user allow/deny grants. subject_id has no FK, so the
+	// cleanup rides the same event path as group/org/role.
+	s.eventBus.Subscribe(event.UserDeleted, s.cleanupSubject(SubjectUser, "user_id"))
 }
 
 // cleanupSubject returns a handler that deletes every policy whose subject is

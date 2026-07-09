@@ -18,6 +18,11 @@ const RootOrgID int64 = 1
 // ErrRootOrgDelete is returned when a caller tries to delete the seeded root.
 var ErrRootOrgDelete = errors.New("root organization cannot be deleted")
 
+// ErrOrgHasChildren blocks deleting an org that still has sub-departments. The
+// parent_id self-reference has no ON DELETE rule, so a hard delete would strand
+// the whole subtree; the operator must delete or move the children first.
+var ErrOrgHasChildren = errors.New("organization has sub-organizations; delete or move them first")
+
 // ErrOrgNotFound is returned when an organization is absent — or, because the
 // org repo is tenant-scoped by the tenantscope plugin, when the requested org
 // belongs to another tenant (the plugin appends tenant_id=?, so a cross-tenant
@@ -182,10 +187,20 @@ func (s *Service) Update(ctx context.Context, id int64, req *UpdateOrgRequest) (
 	return org, nil
 }
 
-// Delete soft-deletes an organization. Refuses to remove the seeded root.
+// Delete HARD-deletes an organization (mxid_user_org assignments cascade away).
+// Refuses to remove the seeded root, and refuses to remove an org that still has
+// sub-departments — the parent_id self-ref has no ON DELETE, so that would
+// orphan the subtree.
 func (s *Service) Delete(ctx context.Context, id int64) error {
 	if id == RootOrgID {
 		return ErrRootOrgDelete
+	}
+	children, err := s.repo.GetChildren(ctx, id)
+	if err != nil {
+		return fmt.Errorf("check sub-organizations: %w", err)
+	}
+	if len(children) > 0 {
+		return ErrOrgHasChildren
 	}
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return fmt.Errorf("delete organization: %w", err)
