@@ -184,8 +184,8 @@ export default function LoginPage() {
     }
   }
 
-  const handleVerifyMfa = async (e: FormEvent) => {
-    e.preventDefault()
+  const handleVerifyMfa = async (e?: FormEvent) => {
+    e?.preventDefault()
     if (mfaCode.length !== 6) return
     setLoading(true)
     setError('')
@@ -212,6 +212,13 @@ export default function LoginPage() {
       setLoading(false)
     }
   }
+
+  // Auto-submit once 6 digits are entered — a TOTP code has no other length, so
+  // there's nothing to review; save the user the extra click.
+  useEffect(() => {
+    if (mfaChallenge && mfaCode.length === 6 && !loading) handleVerifyMfa()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mfaCode])
 
   const cancelMfa = () => {
     setMfaChallenge('')
