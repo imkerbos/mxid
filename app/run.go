@@ -343,6 +343,24 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 		_ = sessionMgr.DeleteAllByUser(ctx, session.NamespaceConsole, uid)
 	})
 
+	// A deleted user is soft-deleted, so a fresh login is blocked by GORM's
+	// soft-delete scope on GetByUsername — but any session they already hold
+	// keeps resolving roles/apps until it expires (the access-resolution queries
+	// do not re-check deleted_at). Revoke every session on delete so access is
+	// cut immediately, not at session TTL.
+	a.EventBus.Subscribe(event.UserDeleted, func(ctx context.Context, ev event.Event) {
+		p, ok := ev.Payload.(map[string]any)
+		if !ok {
+			return
+		}
+		uid, _ := p["user_id"].(int64)
+		if uid == 0 {
+			return
+		}
+		_ = sessionMgr.DeleteAllByUser(ctx, session.NamespacePortal, uid)
+		_ = sessionMgr.DeleteAllByUser(ctx, session.NamespaceConsole, uid)
+	})
+
 	// Brute-force limiter for the password login path (per-IP + per-user).
 	// Replaces the old permanent mxid_user.status auto-lock with an
 	// auto-expiring Redis lock; admin LockUser stays the only permanent lock.
