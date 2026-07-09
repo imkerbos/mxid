@@ -173,8 +173,13 @@ func (h *SMSOTPHandler) send(c *gin.Context) {
 		response.InternalError(c, "failed to persist code", err)
 		return
 	}
-	// Set cooldown after token persist.
-	_ = h.rdb.Set(c.Request.Context(), cooldownKey, "1", smsOTPCooldown*1e9).Err()
+	// Set cooldown after token persist. Fail CLOSED: if the cooldown can't be
+	// recorded we cannot throttle the next request, so refuse rather than let an
+	// SMS-spray / cost-amplification window open on a Redis blip.
+	if err := h.rdb.Set(c.Request.Context(), cooldownKey, "1", smsOTPCooldown*1e9).Err(); err != nil {
+		response.InternalError(c, "failed to set cooldown", err)
+		return
+	}
 
 	providerOK := false
 	if h.smsSvc != nil {

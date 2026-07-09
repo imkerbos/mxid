@@ -7,13 +7,28 @@ package app
 
 import (
 	"context"
+	"errors"
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/bootstrap"
 	appdomain "github.com/imkerbos/mxid/internal/domain/app"
 	"github.com/imkerbos/mxid/internal/domain/appaccess"
 	"github.com/imkerbos/mxid/internal/domain/approle"
+	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
+
+// logResolveErr surfaces a REAL query failure from a label/subject resolver. A
+// plain not-found is expected (the entity was deleted → renders as unknown) and
+// is ignored; any other error is how the "(未知)" bug hid — a swallowed DB error
+// silently returned an empty name. Log it so the next occurrence is diagnosable.
+func logResolveErr(app *bootstrap.App, table string, id int64, err error) {
+	if err == nil || errors.Is(err, gorm.ErrRecordNotFound) || app.Logger == nil {
+		return
+	}
+	app.Logger.Warn("subject resolve query failed; renders as unknown",
+		zap.String("table", table), zap.Int64("id", id), zap.Error(err))
+}
 
 // appProtocolResolver adapts the app domain service to access.ProtocolResolver:
 // given an app id, it returns the app's SSO protocol ("oidc"|"saml"|"cas") so
@@ -118,13 +133,13 @@ type userNameRow struct {
 
 func (r *appLabelResolver) App(_ *gin.Context, id int64) (string, string) {
 	var row nameCodeRow
-	_ = r.app.DB.Table("mxid_app").Where("id = ? AND deleted_at IS NULL", id).Take(&row).Error
+	logResolveErr(r.app, "mxid_app", id, r.app.DB.Table("mxid_app").Where("id = ? AND deleted_at IS NULL", id).Take(&row).Error)
 	return row.Name, row.Code
 }
 
 func (r *appLabelResolver) AppGroup(_ *gin.Context, id int64) (string, string) {
 	var row nameCodeRow
-	_ = r.app.DB.Table("mxid_app_group").Where("id = ? AND deleted_at IS NULL", id).Take(&row).Error
+	logResolveErr(r.app, "mxid_app_group", id, r.app.DB.Table("mxid_app_group").Where("id = ? AND deleted_at IS NULL", id).Take(&row).Error)
 	return row.Name, row.Code
 }
 
@@ -138,22 +153,22 @@ func (r *accessSubjectResolver) Resolve(_ *gin.Context, subjectType string, id i
 	switch subjectType {
 	case appaccess.SubjectUser:
 		var row userNameRow
-		_ = r.app.DB.Table("mxid_user").Select("username, COALESCE(display_name, '') as display_name").Where("id = ?", id).Take(&row).Error
+		logResolveErr(r.app, "mxid_user", id, r.app.DB.Table("mxid_user").Select("username, COALESCE(display_name, '') as display_name").Where("id = ?", id).Take(&row).Error)
 		if row.DisplayName != "" {
 			return row.DisplayName, row.Username
 		}
 		return row.Username, row.Username
 	case appaccess.SubjectGroup:
 		var row nameCodeRow
-		_ = r.app.DB.Table("mxid_user_group").Where("id = ? AND deleted_at IS NULL", id).Take(&row).Error
+		logResolveErr(r.app, "mxid_user_group", id, r.app.DB.Table("mxid_user_group").Where("id = ? AND deleted_at IS NULL", id).Take(&row).Error)
 		return row.Name, row.Code
 	case appaccess.SubjectOrg:
 		var row nameCodeRow
-		_ = r.app.DB.Table("mxid_organization").Where("id = ? AND deleted_at IS NULL", id).Take(&row).Error
+		logResolveErr(r.app, "mxid_organization", id, r.app.DB.Table("mxid_organization").Where("id = ? AND deleted_at IS NULL", id).Take(&row).Error)
 		return row.Name, row.Code
 	case appaccess.SubjectRole:
 		var row nameCodeRow
-		_ = r.app.DB.Table("mxid_role").Where("id = ? AND deleted_at IS NULL", id).Take(&row).Error
+		logResolveErr(r.app, "mxid_role", id, r.app.DB.Table("mxid_role").Where("id = ? AND deleted_at IS NULL", id).Take(&row).Error)
 		return row.Name, row.Code
 	}
 	return "", ""
