@@ -766,6 +766,13 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	// because retention is a global compliance knob.
 	go runAuditRetention(workerCtx, a, settingService, auditModule.Repo)
 
+	// Dynamic-group reconcile sweeper — a safety net for the event-driven
+	// membership sync. Rules normally recompute on org/user events, but a lost
+	// or crash-dropped event would otherwise leave a group stale indefinitely
+	// (there is no other reconciliation). A periodic full resync bounds that
+	// staleness; it also heals anything that drifted while the server was down.
+	go runDynamicGroupReconcile(workerCtx, groupModule.Service, a.Config.Tenant.DefaultID)
+
 	// Transactional outbox worker — durable at-least-once delivery for side
 	// effects that must survive a crash (offboarding webhooks, later L2 SCIM
 	// pushes). Producers enqueue onto outboxRepo; the worker dispatches by
@@ -1722,6 +1729,28 @@ func runAuditRetention(stopCtx context.Context, a *bootstrap.App, ss *setting.Se
 					zap.Int64("deleted", deleted))
 			}
 		}
+		select {
+		case <-stopCtx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+// runDynamicGroupReconcile periodically recomputes every dynamic group in the
+// tenant. Membership is normally kept fresh by org/user domain events, but this
+// is the ONLY reconciliation path: a dropped or lost event would otherwise leave
+// a rule-based group stale until an unrelated event fires or an admin re-syncs
+// by hand. The first pass runs immediately (heals drift accumulated while the
+// server was down); later passes ride the ticker. Runs under an explicit tenant
+// scope because ResyncTenantDynamicGroups touches tenant-scoped models.
+func runDynamicGroupReconcile(stopCtx context.Context, grp *group.Service, tenantID int64) {
+	const tickEvery = 30 * time.Minute
+	ticker := time.NewTicker(tickEvery)
+	defer ticker.Stop()
+	for {
+		ctx := tenantscope.WithTenant(context.Background(), tenantID)
+		grp.ResyncTenantDynamicGroups(ctx, tenantID)
 		select {
 		case <-stopCtx.Done():
 			return

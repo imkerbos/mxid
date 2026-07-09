@@ -118,6 +118,9 @@ func RateLimiter(rdb *redis.Client, rule RateLimitRule) gin.HandlerFunc {
 			return
 		}
 		if count == 1 {
+			// First hit in this time bucket sets the TTL. A failure only leaks a
+			// single bucketed key — the next window uses a new key, so there is
+			// no permanent lockout — hence best-effort.
 			_ = rdb.Expire(c.Request.Context(), redisKey, expiresIn).Err()
 		}
 		if int(count) > limit {
