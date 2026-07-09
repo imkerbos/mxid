@@ -359,6 +359,27 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 		}
 		_ = sessionMgr.DeleteAllByUser(ctx, session.NamespacePortal, uid)
 		_ = sessionMgr.DeleteAllByUser(ctx, session.NamespaceConsole, uid)
+
+		// Strip the deleted user's derived rows so they vanish from every
+		// group/org/role member listing and hold no residual access. These join
+		// tables carry ON DELETE CASCADE on user_id, but a soft delete never
+		// fires it — remove them explicitly. Raw Exec is garble-safe (no struct
+		// scan) and bypasses the tenantscope plugin (no fail-closed on a
+		// detached event context).
+		bg := context.Background()
+		for _, stmt := range []struct {
+			sql  string
+			what string
+		}{
+			{"DELETE FROM mxid_user_group_member WHERE user_id = ?", "group memberships"},
+			{"DELETE FROM mxid_user_org WHERE user_id = ?", "org memberships"},
+			{"DELETE FROM mxid_role_binding WHERE subject_type = 'user' AND subject_id = ?", "role bindings"},
+		} {
+			if err := a.DB.WithContext(bg).Exec(stmt.sql, uid).Error; err != nil && a.Logger != nil {
+				a.Logger.Warn("cleanup deleted user's derived rows failed",
+					zap.String("what", stmt.what), zap.Int64("user_id", uid), zap.Error(err))
+			}
+		}
 	})
 
 	// Brute-force limiter for the password login path (per-IP + per-user).

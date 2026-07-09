@@ -77,13 +77,16 @@ func (s *Service) Overview(ctx context.Context, tenantID int64, rangeDays int) (
 func (s *Service) fillCounts(ctx context.Context, tenantID int64, rangeStart time.Time, c *Counts) error {
 	db := s.db.WithContext(ctx)
 
-	if err := db.Table("mxid_user").Where("tenant_id = ?", tenantID).Count(&c.Users).Error; err != nil {
+	// mxid_user is queried via .Table() so GORM's soft-delete scope does not
+	// auto-apply — users stay soft-deleted (unlike the now hard-deleted config
+	// entities), so filter deleted_at explicitly or the counts include them.
+	if err := db.Table("mxid_user").Where("tenant_id = ? AND deleted_at IS NULL", tenantID).Count(&c.Users).Error; err != nil {
 		return err
 	}
-	if err := db.Table("mxid_user").Where("tenant_id = ? AND status = ?", tenantID, statusActive).Count(&c.UsersActive).Error; err != nil {
+	if err := db.Table("mxid_user").Where("tenant_id = ? AND status = ? AND deleted_at IS NULL", tenantID, statusActive).Count(&c.UsersActive).Error; err != nil {
 		return err
 	}
-	if err := db.Table("mxid_user").Where("tenant_id = ? AND created_at >= ?", tenantID, rangeStart).Count(&c.NewUsers).Error; err != nil {
+	if err := db.Table("mxid_user").Where("tenant_id = ? AND created_at >= ? AND deleted_at IS NULL", tenantID, rangeStart).Count(&c.NewUsers).Error; err != nil {
 		return err
 	}
 	// Apps: tenant-owned OR shared (tenant_id IS NULL is visible everywhere).
@@ -108,7 +111,7 @@ func (s *Service) fillCounts(ctx context.Context, tenantID int64, rangeStart tim
 	}
 	// MFA-enrolled = distinct users in this tenant with a verified factor.
 	if err := db.Table("mxid_user_mfa AS m").
-		Joins("JOIN mxid_user u ON u.id = m.user_id").
+		Joins("JOIN mxid_user u ON u.id = m.user_id AND u.deleted_at IS NULL").
 		Where("u.tenant_id = ? AND m.verified = true", tenantID).
 		Distinct("m.user_id").Count(&c.MFAEnrolled).Error; err != nil {
 		return err
