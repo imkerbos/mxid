@@ -119,6 +119,11 @@ const (
 	OrgUpdated     = "org.updated"
 	OrgDeleted     = "org.deleted"
 	OrgMemberMoved = "org.member_moved"
+	// OrgMoved fires when an org node is re-parented (its ltree path, and every
+	// descendant's, changes). A dynamic group whose rule keys on org subtree
+	// membership (org_id in_subtree) must recompute: users under the moved node
+	// may now be inside/outside a rule's root org. Carries {tenant_id, org_id}.
+	OrgMoved = "org.moved"
 	// OrgMemberAdded / OrgMemberRemoved fire when a user is planted into /
 	// removed from an org. They drive dynamic-group re-sync: a group whose rule
 	// keys on org membership (org_id eq/in/in_subtree) must recompute when the

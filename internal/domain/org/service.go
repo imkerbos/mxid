@@ -230,6 +230,16 @@ func (s *Service) Move(ctx context.Context, id int64, req *MoveOrgRequest) error
 		return fmt.Errorf("move organization: %w", err)
 	}
 
+	// The moved node and its whole subtree changed ltree path, so any dynamic
+	// group with an org-subtree rule may now include/exclude these users.
+	// Signal a re-sync (best-effort; a nil bus in unit embeddings is a no-op).
+	if s.eventBus != nil {
+		s.eventBus.Publish(ctx, event.Event{
+			Type:    event.OrgMoved,
+			Payload: map[string]any{"tenant_id": org.TenantID, "org_id": id},
+		})
+	}
+
 	return nil
 }
 
