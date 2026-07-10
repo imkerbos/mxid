@@ -186,11 +186,18 @@ func clientIDFromAssertion(assertion string) string {
 // checkRateLimit (identical key format, window, and fail-open behavior) so
 // the zitadel engine's token endpoint throttles the same way as the
 // hand-rolled one. Returns (allowed, retryAfterSeconds, error).
+// rateLimitClock is the time source for the fixed-window bucket. Defaults to
+// time.Now (zero runtime change); tests override it to freeze the window so two
+// rapid requests provably share a bucket instead of straddling a 60-second
+// boundary on a slow CI runner (which flaked the 429 assertions).
+var rateLimitClock = time.Now
+
 func checkTokenRateLimit(ctx context.Context, rdb *redis.Client, clientID string, limit int) (bool, int, error) {
 	if rdb == nil || clientID == "" || limit <= 0 {
 		return true, 0, nil
 	}
-	bucket := time.Now().Unix() / 60
+	now := rateLimitClock().Unix()
+	bucket := now / 60
 	key := fmt.Sprintf("mxid:oidc:ratelimit:%s:%d", clientID, bucket)
 
 	pipe := rdb.Pipeline()
@@ -204,7 +211,7 @@ func checkTokenRateLimit(ctx context.Context, rdb *redis.Client, clientID string
 	}
 	count := int(incr.Val())
 	if count > limit {
-		retryAfter := 60 - int(time.Now().Unix()%60)
+		retryAfter := 60 - int(now%60)
 		return false, retryAfter, nil
 	}
 	return true, 0, nil

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
@@ -36,6 +37,16 @@ func (m *mapAppResolver) GetAppByClientID(_ context.Context, clientID string) (*
 // composes it before Mount.
 func newRateLimitedProvider(t *testing.T, rdb *redis.Client, apps ...*resolver.AppConfig) *httptest.Server {
 	t.Helper()
+	// Freeze the fixed-window clock mid-bucket so a test's rapid requests always
+	// share one 60-second window. Without this, two calls that straddle a minute
+	// boundary land in different buckets and the 2nd escapes the limit — a rare
+	// flake on slow CI runners. Fixed instant with second==30 keeps us far from
+	// either edge. Tests are sequential (no t.Parallel), so the global override
+	// is safe; Cleanup restores the real clock.
+	frozen := time.Unix(1_700_000_030, 0) // arbitrary; unix%60 == 30
+	rateLimitClock = func() time.Time { return frozen }
+	t.Cleanup(func() { rateLimitClock = time.Now })
+
 	byClientID := make(map[string]*resolver.AppConfig, len(apps))
 	for _, a := range apps {
 		byClientID[a.ClientID] = a
