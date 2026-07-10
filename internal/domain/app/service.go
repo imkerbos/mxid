@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/imkerbos/mxid/internal/protocol/saml"
@@ -289,6 +290,7 @@ func (s *Service) Create(ctx context.Context, tenantID int64, req *CreateAppRequ
 		ClientType:      clientType,
 		Status:          StatusEnabled,
 		Icon:            req.Icon,
+		Env:             normalizeEnv(req.Env),
 		Description:     req.Description,
 		ClientID:        &clientID,
 		ClientSecret:    clientSecretHash,
@@ -530,6 +532,10 @@ func (s *Service) Update(ctx context.Context, id int64, req *UpdateAppRequest) (
 		application.RequireConsent = *req.RequireConsent
 		fields = append(fields, "require_consent")
 	}
+	if req.Env != nil {
+		application.Env = normalizeEnv(req.Env)
+		fields = append(fields, "env")
+	}
 
 	if req.RedirectURIs != nil {
 		uris, err := json.Marshal(req.RedirectURIs)
@@ -561,6 +567,20 @@ func (s *Service) Update(ctx context.Context, id int64, req *UpdateAppRequest) (
 	})
 
 	return application, nil
+}
+
+// normalizeEnv trims and lower-cases an environment label so grouping stays
+// stable regardless of how the admin typed it ("Prod" == "prod"). An empty or
+// whitespace-only value collapses to nil ("unlabelled").
+func normalizeEnv(env *string) *string {
+	if env == nil {
+		return nil
+	}
+	v := strings.ToLower(strings.TrimSpace(*env))
+	if v == "" {
+		return nil
+	}
+	return &v
 }
 
 // Delete soft-deletes an application.

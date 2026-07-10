@@ -23,6 +23,7 @@ type CreateAppRequest struct {
 	Scope           *int           `json:"scope" binding:"omitempty,oneof=1 2"`
 	SubjectStrategy *string        `json:"subject_strategy" binding:"omitempty,oneof=username username_suffixed email persistent_id pairwise"`
 	Icon            *string        `json:"icon" binding:"omitempty,max=512"`
+	Env             *string        `json:"env" binding:"omitempty,max=64"`
 	Description     *string        `json:"description"`
 	HomeURL         *string        `json:"home_url" binding:"omitempty,max=512"`
 	LoginURL        *string        `json:"login_url" binding:"omitempty,max=512"`
@@ -43,6 +44,7 @@ type UpdateAppRequest struct {
 	Name            *string        `json:"name" binding:"omitempty,max=128"`
 	SubjectStrategy *string        `json:"subject_strategy" binding:"omitempty,oneof=username username_suffixed email persistent_id pairwise"`
 	Icon            *string        `json:"icon" binding:"omitempty,max=512"`
+	Env             *string        `json:"env" binding:"omitempty,max=64"`
 	Description     *string        `json:"description"`
 	HomeURL         *string        `json:"home_url" binding:"omitempty,max=512"`
 	LoginURL        *string        `json:"login_url" binding:"omitempty,max=512"`
@@ -129,6 +131,7 @@ type AppResponse struct {
 	ClientType      string         `json:"client_type"`
 	Status          int            `json:"status"`
 	Icon           *string        `json:"icon"`
+	Env            *string        `json:"env"`
 	Description    *string        `json:"description"`
 	ClientID       *string        `json:"client_id"`
 	ClientSecret   string         `json:"client_secret,omitempty"` // populated only by create / rotate
@@ -197,6 +200,7 @@ func ToAppResponse(a *App) *AppResponse {
 		ClientType:     a.ClientType,
 		Status:         a.Status,
 		Icon:           a.Icon,
+		Env:            a.Env,
 		Description:    a.Description,
 		ClientID:       a.ClientID,
 		HomeURL:        a.HomeURL,

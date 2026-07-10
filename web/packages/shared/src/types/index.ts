@@ -273,6 +273,7 @@ export interface App {
   client_type: string
   status: number
   icon: string | null
+  env: string | null
   description: string | null
   client_id: string | null
   // client_secret plaintext is returned ONLY in the create / regenerate-secret
@@ -399,6 +400,7 @@ export interface PortalApp {
   client_type: string
   icon: string
   logo_url: string
+  env: string
   description: string
   home_url: string
   login_url: string
