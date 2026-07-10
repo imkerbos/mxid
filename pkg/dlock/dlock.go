@@ -7,8 +7,10 @@ package dlock
 import (
 	"context"
 	"database/sql"
+	"strconv"
 	"time"
 
+	"github.com/imkerbos/mxid/pkg/metrics"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -18,6 +20,12 @@ const (
 	KeyAuditAnchorer int64 = 0x4D5849440002
 	KeyOIDCRotation  int64 = 0x4D5849440003
 	KeyAccessSweeper int64 = 0x4D5849440004
+	// KeyAuditRetention and KeyDynamicGroupReconcile gate the two periodic
+	// sweepers to a single replica: retention runs a global cross-tenant purge
+	// and dynamic-group reconcile rewrites membership, so running them on every
+	// pod means redundant large DELETEs / cross-pod write races.
+	KeyAuditRetention        int64 = 0x4D5849440005
+	KeyDynamicGroupReconcile int64 = 0x4D5849440006
 )
 
 const retryInterval = 5 * time.Second
@@ -69,6 +77,9 @@ func leadOnce(ctx context.Context, sqlDB *sql.DB, key int64, logger *zap.Logger,
 		return nil
 	}
 	logger.Info("dlock: acquired leadership", zap.Int64("key", key))
+	keyLabel := strconv.FormatInt(key, 16)
+	metrics.DlockLeader(keyLabel, true)
+	defer metrics.DlockLeader(keyLabel, false)
 	defer func() {
 		_, _ = conn.ExecContext(context.Background(), "SELECT pg_advisory_unlock($1)", key)
 	}()

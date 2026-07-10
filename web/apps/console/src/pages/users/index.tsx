@@ -1,9 +1,9 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Plus, RotateCcw, Trash2, Loader2, Pencil, X, ShieldCheck, ShieldOff } from 'lucide-react'
+import { Plus, RotateCcw, Trash2, Loader2, Pencil, ShieldCheck, ShieldOff } from 'lucide-react'
 import { userApi, formatDate, statusLabel, statusColor, cn, useTranslation, UserStatus } from '@mxid/shared'
-import { pageMotion, Button, Card, DataTable, Pagination, SearchInput, Select, FilterBar, ConfirmDialog } from '@mxid/shared/ui'
+import { pageMotion, Button, Card, DataTable, Modal, Pagination, SearchInput, Select, FilterBar, ConfirmDialog } from '@mxid/shared/ui'
 import type { Column } from '@mxid/shared/ui'
 import type { User, PaginatedData, UpdateUserRequest } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
@@ -335,14 +335,7 @@ export default function UsersPage() {
       </div>
 
       {/* Create User Modal */}
-      {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-md rounded-xl bg-surface p-6 shadow-xl"
-          >
-            <h3 className="mb-4 text-lg font-semibold">{t('users.list.createModal.title')}</h3>
+      <Modal open={showCreate} title={t('users.list.createModal.title')} onClose={() => setShowCreate(false)}>
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
                 <label className="mb-1 block text-sm font-medium text-ink">{t('users.list.createModal.username')}</label>
@@ -397,21 +390,16 @@ export default function UsersPage() {
                 </Button>
               </div>
             </form>
-          </motion.div>
-        </div>
-      )}
+      </Modal>
 
       {/* Reset Password Modal */}
-      {resetTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-sm rounded-xl bg-surface p-6 shadow-xl"
-          >
-            <h3 className="mb-4 text-lg font-semibold">
-              {t('users.list.resetModal.title', { username: resetTarget.username })}
-            </h3>
+      <Modal
+        open={!!resetTarget}
+        title={resetTarget ? t('users.list.resetModal.title', { username: resetTarget.username }) : ''}
+        onClose={() => { setResetTarget(null); setNewPassword('') }}
+        size="sm"
+      >
+        {resetTarget && (
             <form onSubmit={handleResetPassword} className="space-y-4">
               <div>
                 <label className="mb-1 block text-sm font-medium text-ink">{t('users.list.resetModal.newPassword')}</label>
@@ -441,34 +429,16 @@ export default function UsersPage() {
                 </Button>
               </div>
             </form>
-          </motion.div>
-        </div>
-      )}
+        )}
+      </Modal>
 
       {/* Edit User Modal */}
-      {editTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setEditTarget(null)}>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-md rounded-xl bg-surface p-6 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-semibold">{t('users.list.editModal.title')}</h3>
-              <button
-                onClick={() => setEditTarget(null)}
-                className="rounded p-1 text-faint hover:bg-surface-muted hover:text-muted"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
+      <Modal open={!!editTarget} title={t('users.list.editModal.title')} onClose={() => setEditTarget(null)}>
             {editLoading ? (
               <div className="flex items-center justify-center py-10">
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
               </div>
-            ) : (
+            ) : editTarget ? (
               <form onSubmit={handleEdit} className="space-y-4">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-ink">{t('users.list.editModal.username')}</label>
@@ -538,10 +508,8 @@ export default function UsersPage() {
                   </Button>
                 </div>
               </form>
-            )}
-          </motion.div>
-        </div>
-      )}
+            ) : null}
+      </Modal>
 
       <ConfirmDialog
         open={!!delUser}

@@ -5,7 +5,8 @@ import { motion } from 'framer-motion'
 import { createPortal } from 'react-dom'
 import { Loader2, Moon, Sun, X } from 'lucide-react'
 import { cn, useTheme } from '@mxid/shared'
-import type { ReactNode, ButtonHTMLAttributes, InputHTMLAttributes, TextareaHTMLAttributes, SelectHTMLAttributes } from 'react'
+import { cloneElement, isValidElement, useEffect, useId, useRef } from 'react'
+import type { ReactNode, ReactElement, ButtonHTMLAttributes, InputHTMLAttributes, TextareaHTMLAttributes, SelectHTMLAttributes } from 'react'
 
 /* ──────────────── Motion presets ──────────────── */
 
@@ -48,21 +49,41 @@ export function Field({
   label,
   hint,
   required,
+  error,
   children,
 }: {
   label: string
   hint?: ReactNode
   required?: boolean
+  error?: string
   children: ReactNode
 }) {
+  // Associate the label with its control for screen readers + click-to-focus.
+  // Inject a generated id (+ aria-invalid/aria-describedby) onto a single child
+  // element unless it already carries an id; multi-child bodies fall through
+  // unchanged.
+  const id = useId()
+  const hintId = `${id}-hint`
+  const control =
+    isValidElement(children) && (children.props as { id?: string }).id === undefined
+      ? cloneElement(children as ReactElement<Record<string, unknown>>, {
+          id,
+          'aria-invalid': error ? true : undefined,
+          'aria-describedby': error || hint ? hintId : undefined,
+        })
+      : children
   return (
     <div>
-      <label className="mb-1 block text-sm font-medium text-ink">
+      <label htmlFor={id} className="mb-1 block text-sm font-medium text-ink">
         {label}
         {required && <span className="ml-0.5 text-danger">*</span>}
       </label>
-      {children}
-      {hint && <p className="mt-1 text-xs text-faint">{hint}</p>}
+      {control}
+      {error ? (
+        <p id={hintId} className="mt-1 text-xs text-danger">{error}</p>
+      ) : hint ? (
+        <p id={hintId} className="mt-1 text-xs text-faint">{hint}</p>
+      ) : null}
     </div>
   )
 }
@@ -141,6 +162,54 @@ export function Modal({
   // (e.g. a delete-confirm dialog) triggered the sensitive action.
   elevated?: boolean
 }) {
+  const titleId = useId()
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  // a11y: while open, trap focus inside the dialog, close on Escape, and restore
+  // focus to the trigger on close. Hooks run before the early return so their
+  // order is stable; the effect no-ops when closed.
+  useEffect(() => {
+    if (!open) return
+    const prevFocus = document.activeElement as HTMLElement | null
+    const panel = panelRef.current
+    const focusable = () =>
+      Array.from(
+        panel?.querySelectorAll<HTMLElement>(
+          'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      )
+    ;(focusable()[0] ?? panel)?.focus()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        onClose()
+        return
+      }
+      if (e.key === 'Tab' && panel) {
+        const els = focusable()
+        if (els.length === 0) {
+          e.preventDefault()
+          panel.focus()
+          return
+        }
+        const first = els[0]
+        const last = els[els.length - 1]
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault()
+          last.focus()
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault()
+          first.focus()
+        }
+      }
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => {
+      document.removeEventListener('keydown', onKey, true)
+      prevFocus?.focus?.()
+    }
+  }, [open, onClose])
+
   if (!open) return null
   const widths = {
     sm: 'max-w-sm',
@@ -162,18 +231,23 @@ export function Modal({
       onClick={onClose}
     >
       <motion.div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
         onClick={(e) => e.stopPropagation()}
         className={cn(
-          'w-full max-h-[90vh] overflow-y-auto rounded-card bg-surface p-6 shadow-float',
+          'w-full max-h-[90vh] overflow-y-auto rounded-card bg-surface p-6 shadow-float outline-none',
           widths[size],
         )}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-ink">{title}</h3>
-          <button onClick={onClose} className="rounded p-1 text-muted hover:bg-surface-muted">
+          <h3 id={titleId} className="text-lg font-semibold text-ink">{title}</h3>
+          <button type="button" aria-label="Close" onClick={onClose} className="rounded p-1 text-muted hover:bg-surface-muted">
             <X className="h-4 w-4" />
           </button>
         </div>

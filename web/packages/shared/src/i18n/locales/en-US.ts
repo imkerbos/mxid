@@ -92,6 +92,7 @@ export default {
     pageOf: 'Page {{page}} / {{pages}}',
     prevPage: 'Previous',
     nextPage: 'Next',
+    rowsPerPage: 'Rows per page',
     selectAll: 'Select all',
     selectRow: 'Select row',
     last7Days: 'Last 7 days',

@@ -9,6 +9,16 @@ import { toast, extractMessage } from '../../components/ui/toast'
 
 const STATUSES = ['pending', 'approved', 'rejected', 'cancelled', 'expired', 'revoked'] as const
 
+// humanizeDuration renders a grant length as e.g. "4h", "1h 30m" or "45m"
+// instead of a bare minute count ("240m"), which reads poorly for approvers.
+function humanizeDuration(seconds: number): string {
+  const mins = Math.round(seconds / 60)
+  if (mins < 60) return `${mins}m`
+  const h = Math.floor(mins / 60)
+  const rem = mins % 60
+  return rem ? `${h}h ${rem}m` : `${h}h`
+}
+
 export default function AccessApprovalsPage() {
   const { t } = useTranslation()
   const edition = useEdition()
@@ -110,11 +120,23 @@ export default function AccessApprovalsPage() {
       title: t('approvals.columns.target'),
       render: (r) => <span className="text-muted">{r.target_kind === AccessTargetKind.Console ? t('access.targetConsole') : t('access.targetApp')}</span>,
     },
-    { key: 'role_id', title: t('approvals.columns.role'), render: (r) => <span className="text-muted">{r.role_id}</span> },
+    {
+      key: 'role_id',
+      title: t('approvals.columns.role'),
+      // Prefer the resolved role name (target_name) the API sends on the list
+      // path; for app targets also surface the app name. Fall back to the raw id
+      // only when a lookup missed (e.g. the role/app was deleted).
+      render: (r) => (
+        <span className="text-muted">
+          {r.target_name || r.role_id}
+          {r.target_kind === AccessTargetKind.App && r.app_name ? <span className="text-faint"> · {r.app_name}</span> : null}
+        </span>
+      ),
+    },
     {
       key: 'duration',
       title: t('approvals.columns.duration'),
-      render: (r) => <span className="whitespace-nowrap text-muted">{Math.round(r.requested_seconds / 60)}m</span>,
+      render: (r) => <span className="whitespace-nowrap text-muted">{humanizeDuration(r.requested_seconds)}</span>,
     },
     {
       key: 'justification',

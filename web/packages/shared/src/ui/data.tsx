@@ -2,10 +2,10 @@
 // and rows; the table owns the header/hover/empty/loading chrome so every list
 // looks identical. All colors are semantic tokens → dark-mode native.
 import { useEffect } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ChevronsUpDown } from 'lucide-react'
 import { cn, useTranslation } from '@mxid/shared'
 import type { ReactNode } from 'react'
-import { EmptyState, LoadingState } from './index'
+import { EmptyState } from './index'
 
 export interface Column<T> {
   key: string
@@ -13,9 +13,17 @@ export interface Column<T> {
   align?: 'left' | 'right' | 'center'
   width?: string
   render?: (row: T, index: number) => ReactNode
+  // sortable marks the header clickable; the table is CONTROLLED — it calls
+  // onSort(key) and the parent decides how to reorder / refetch.
+  sortable?: boolean
 }
 
 const ALIGN = { left: 'text-left', right: 'text-right', center: 'text-center' } as const
+
+export interface SortState {
+  key: string
+  dir: 'asc' | 'desc'
+}
 
 interface DataTableProps<T> {
   columns: Column<T>[]
@@ -28,6 +36,12 @@ interface DataTableProps<T> {
   selectedKeys?: Set<string | number>
   onToggleRow?: (key: string | number, row: T) => void
   onToggleAll?: (checked: boolean) => void
+  // Controlled sort: pass the active sort + a handler to enable sortable headers.
+  sort?: SortState
+  onSort?: (key: string) => void
+  // Number of shimmer rows to show while loading (defaults to 5). Skeleton rows
+  // preserve the column layout instead of collapsing to a centred spinner.
+  skeletonRows?: number
 }
 
 export function DataTable<T>({
@@ -41,6 +55,9 @@ export function DataTable<T>({
   selectedKeys,
   onToggleRow,
   onToggleAll,
+  sort,
+  onSort,
+  skeletonRows = 5,
 }: DataTableProps<T>) {
   const { t } = useTranslation()
   const safeRows = Array.isArray(rows) ? rows : []
@@ -64,24 +81,56 @@ export function DataTable<T>({
                 />
               </th>
             )}
-            {columns.map((col) => (
-              <th
-                key={col.key}
-                style={col.width ? { width: col.width } : undefined}
-                className={cn('px-6 py-3', ALIGN[col.align ?? 'left'])}
-              >
-                {col.title}
-              </th>
-            ))}
+            {columns.map((col) => {
+              const sortable = col.sortable && onSort
+              const active = sort?.key === col.key
+              return (
+                <th
+                  key={col.key}
+                  style={col.width ? { width: col.width } : undefined}
+                  aria-sort={active ? (sort!.dir === 'asc' ? 'ascending' : 'descending') : undefined}
+                  className={cn('px-6 py-3', ALIGN[col.align ?? 'left'])}
+                >
+                  {sortable ? (
+                    <button
+                      type="button"
+                      onClick={() => onSort(col.key)}
+                      className={cn(
+                        'inline-flex items-center gap-1 font-medium uppercase tracking-wider hover:text-ink',
+                        active ? 'text-ink' : 'text-faint',
+                      )}
+                    >
+                      {col.title}
+                      {active ? (
+                        sort!.dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                      ) : (
+                        <ChevronsUpDown className="h-3 w-3 opacity-60" />
+                      )}
+                    </button>
+                  ) : (
+                    col.title
+                  )}
+                </th>
+              )
+            })}
           </tr>
         </thead>
         <tbody>
           {loading ? (
-            <tr>
-              <td colSpan={colCount}>
-                <LoadingState />
-              </td>
-            </tr>
+            Array.from({ length: skeletonRows }).map((_, i) => (
+              <tr key={`sk-${i}`} className="border-b border-border/60 last:border-0">
+                {selectable && (
+                  <td className="px-4 py-3">
+                    <div className="h-4 w-4 animate-pulse rounded bg-surface-muted" />
+                  </td>
+                )}
+                {columns.map((col) => (
+                  <td key={col.key} className={cn('px-6 py-3', ALIGN[col.align ?? 'left'])}>
+                    <div className="h-4 animate-pulse rounded bg-surface-muted" style={{ width: `${40 + ((i * 7 + col.key.length * 5) % 45)}%` }} />
+                  </td>
+                ))}
+              </tr>
+            ))
           ) : safeRows.length === 0 ? (
             <tr>
               <td colSpan={colCount}>
@@ -93,7 +142,7 @@ export function DataTable<T>({
               const key = rowKey(row)
               return (
                 <tr
-                  key={`${key}-${i}`}
+                  key={key}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                   className={cn(
                     'border-b border-border/60 transition-colors last:border-0 hover:bg-surface-muted',
@@ -134,11 +183,16 @@ export function Pagination({
   pageSize,
   total,
   onChange,
+  onPageSizeChange,
+  pageSizeOptions = [10, 20, 50, 100],
 }: {
   page: number
   pageSize: number
   total: number
   onChange: (page: number) => void
+  // Opt-in page-size selector; omit to keep the plain prev/next pager.
+  onPageSizeChange?: (size: number) => void
+  pageSizeOptions?: number[]
 }) {
   const { t } = useTranslation()
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
@@ -150,6 +204,20 @@ export function Pagination({
 
   return (
     <div className="flex items-center justify-end gap-3 px-6 py-3 text-sm">
+      {onPageSizeChange && (
+        <select
+          value={pageSize}
+          onChange={(e) => onPageSizeChange(Number(e.target.value))}
+          aria-label={t('common.rowsPerPage')}
+          className="rounded-control border border-border bg-surface px-2 py-1 text-muted outline-none focus:border-primary"
+        >
+          {pageSizeOptions.map((n) => (
+            <option key={n} value={n}>
+              {t('common.pageSize', { n })}
+            </option>
+          ))}
+        </select>
+      )}
       <span className="text-muted">{t('common.totalItems', { count: total })}</span>
       <button
         type="button"

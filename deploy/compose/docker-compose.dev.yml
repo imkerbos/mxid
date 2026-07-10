@@ -34,9 +34,9 @@ services:
     restart: unless-stopped
 
   mxid:
-    # Pin patch version to satisfy go.mod's `go 1.25.11` (floating 1.25-alpine
+    # Pin patch version to satisfy go.mod's `go 1.25.12` (floating 1.25-alpine
     # lagged at 1.25.10, which broke air's in-container build).
-    image: golang:1.25.11-alpine
+    image: golang:1.25.12-alpine
     container_name: mxid-dev
     working_dir: /app
     command: >
