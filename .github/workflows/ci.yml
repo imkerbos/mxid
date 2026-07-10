@@ -20,15 +20,35 @@ permissions:
 
 jobs:
   backend:
-    name: Go (build · vet · lint · gormtaglint · test)
+    name: Go (build · vet · lint · gormtaglint · test · vuln)
     runs-on: ubuntu-latest
+
+    # Postgres so the tests exercise the PG-specific machinery (tenant plugin,
+    # SKIP LOCKED, advisory locks, ltree <@, pg_trgm, FK cascades, audit
+    # hash-chain) that SQLite can't model. Redis-backed tests use miniredis
+    # in-process, so no Redis service is needed.
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mxid
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25.11' # keep in lockstep with go.mod + the CE Dockerfile
+          go-version: '1.25.12' # keep in lockstep with go.mod + the CE Dockerfile
           cache: true
 
       - name: Download modules
@@ -52,8 +72,21 @@ jobs:
           version: latest
           args: --timeout=5m
 
-      - name: test
-        run: go test ./... # unit suite runs on SQLite in-memory; no external services needed
+      - name: Apply migrations (seeds role 1 + admin so the e2e tests have FKs)
+        run: |
+          go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+          migrate -path migrations -database "postgres://postgres:postgres@localhost:5432/mxid?sslmode=disable" up
+
+      - name: test (race + Postgres e2e)
+        env:
+          # e2e tests read this (glebarez KV DSN form); when unset they skip.
+          MXID_E2E_DSN: "host=localhost port=5432 user=postgres password=postgres dbname=mxid sslmode=disable"
+        run: go test -race ./...
+
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
 
   frontend:
     name: Web (build · exports)

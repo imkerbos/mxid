@@ -1,6 +1,6 @@
-# Build stage — pin the patch version to satisfy go.mod's `go 1.25.11` directive
+# Build stage — pin the patch version to satisfy go.mod's `go 1.25.12` directive
 # (the floating 1.25-alpine tag can lag behind by a patch release).
-FROM golang:1.25.11-alpine AS builder
+FROM golang:1.25.12-alpine AS builder
 
 RUN apk add --no-cache git ca-certificates tzdata
 

@@ -48,6 +48,7 @@ import (
 	"github.com/imkerbos/mxid/pkg/dlock"
 	"github.com/imkerbos/mxid/pkg/ee/license"
 	"github.com/imkerbos/mxid/pkg/ee/registry"
+	"github.com/imkerbos/mxid/pkg/metrics"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/geoip"
 	"github.com/imkerbos/mxid/pkg/mailer"
@@ -764,14 +765,22 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	// every 6h. Hourly would be wasteful (no SLA on prompt deletion); daily
 	// risks losing the window during long maintenance. Default-tenant scope
 	// because retention is a global compliance knob.
-	go runAuditRetention(workerCtx, a, settingService, auditModule.Repo)
+	// Leader-elected: a global cross-tenant purge must run on ONE replica, not
+	// every pod (redundant large DELETEs + lock contention).
+	go dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyAuditRetention, a.Logger, func(ctx context.Context) {
+		runAuditRetention(ctx, a, settingService, auditModule.Repo)
+	})
 
 	// Dynamic-group reconcile sweeper — a safety net for the event-driven
 	// membership sync. Rules normally recompute on org/user events, but a lost
 	// or crash-dropped event would otherwise leave a group stale indefinitely
 	// (there is no other reconciliation). A periodic full resync bounds that
 	// staleness; it also heals anything that drifted while the server was down.
-	go runDynamicGroupReconcile(workerCtx, groupModule.Service, a.Config.Tenant.DefaultID)
+	// Leader-elected: the reconcile rewrites membership, so two pods racing the
+	// same recompute would fight over the rows.
+	go dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyDynamicGroupReconcile, a.Logger, func(ctx context.Context) {
+		runDynamicGroupReconcile(ctx, groupModule.Service, a.Config.Tenant.DefaultID)
+	})
 
 	// Transactional outbox worker — durable at-least-once delivery for side
 	// effects that must survive a crash (offboarding webhooks, later L2 SCIM
@@ -1725,11 +1734,16 @@ func runAuditRetention(stopCtx context.Context, a *bootstrap.App, ss *setting.Se
 		// (or, worse, scopes the purge to tenant 0). SystemContext is the
 		// sanctioned, auditable bypass for background jobs.
 		ctx := tenantscope.SystemContext()
+		metrics.WorkerRun("audit_retention")
+		passOK := true
 		pol, err := ss.AuditPolicy(ctx, a.Config.Tenant.DefaultID)
-		if err == nil && pol.RetentionDays > 0 {
+		if err != nil {
+			passOK = false
+		} else if pol.RetentionDays > 0 {
 			cutoff := time.Now().AddDate(0, 0, -pol.RetentionDays)
 			deleted, err := repo.PurgeOlderThan(ctx, cutoff)
 			if err != nil {
+				passOK = false
 				a.Logger.Warn("audit retention purge failed",
 					zap.Int("retention_days", pol.RetentionDays),
 					zap.Error(err))
@@ -1738,6 +1752,9 @@ func runAuditRetention(stopCtx context.Context, a *bootstrap.App, ss *setting.Se
 					zap.Int("retention_days", pol.RetentionDays),
 					zap.Int64("deleted", deleted))
 			}
+		}
+		if passOK {
+			metrics.WorkerSuccess("audit_retention")
 		}
 		select {
 		case <-stopCtx.Done():
@@ -1760,7 +1777,9 @@ func runDynamicGroupReconcile(stopCtx context.Context, grp *group.Service, tenan
 	defer ticker.Stop()
 	for {
 		ctx := tenantscope.WithTenant(context.Background(), tenantID)
+		metrics.WorkerRun("dynamic_group_reconcile")
 		grp.ResyncTenantDynamicGroups(ctx, tenantID)
+		metrics.WorkerSuccess("dynamic_group_reconcile")
 		select {
 		case <-stopCtx.Done():
 			return
@@ -1791,10 +1810,13 @@ func runCasbinReconcile(stopCtx context.Context, engine *authz.CasbinEngine, loa
 		}
 		// context.Background (not tenant-scoped): the loader reads the full
 		// role/permission catalog across the install, matching the boot-time Sync.
+		metrics.WorkerRun("casbin_reconcile")
 		if err := engine.Sync(context.Background(), loader); err != nil {
 			// Existing policy is retained on error; log so a persistent failure
 			// (vs a one-off blip) is visible.
 			logger.Warn("casbin periodic reconcile failed; keeping current policy", zap.Error(err))
+		} else {
+			metrics.WorkerSuccess("casbin_reconcile")
 		}
 	}
 }

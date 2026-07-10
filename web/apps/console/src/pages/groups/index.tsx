@@ -103,7 +103,7 @@ export default function GroupsPage() {
     e.preventDefault()
     if (!createForm.name || !createForm.code) return
     if (createType === GroupType.Dynamic && createRule.conditions.length === 0) {
-      alert(t("groups.needAtLeastOneRule"))
+      toast.error(t("groups.needAtLeastOneRule"))
       return
     }
     setCreating(true)
@@ -161,7 +161,7 @@ export default function GroupsPage() {
       // re-syncs membership automatically.
       if (editGroup.type === GroupType.Dynamic && editRule) {
         if (editRule.conditions.length === 0) {
-          alert(t("groups.needAtLeastOneRule"))
+          toast.error(t("groups.needAtLeastOneRule"))
           setEditing(false)
           return
         }
@@ -252,14 +252,14 @@ export default function GroupsPage() {
     setSyncing(true)
     try {
       const report = await groupApi.syncRule(memberGroup.id)
-      alert(t("groups.syncDone", { added: report.added, removed: report.removed }))
+      toast.success(t("groups.syncDone", { added: report.added, removed: report.removed }))
       await loadMembers(memberGroup.id, memberPage)
       const fresh = await groupApi.getRule(memberGroup.id)
       setGroupRule(fresh)
       loadData()
     } catch (err) {
       const msg = axios.isAxiosError(err) ? err.response?.data?.message || err.message : t("groups.syncFailed")
-      alert(t("groups.syncFailedDetail", { msg }))
+      toast.error(t("groups.syncFailedDetail", { msg }))
     } finally {
       setSyncing(false)
     }

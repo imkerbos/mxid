@@ -195,7 +195,7 @@ export default function PermissionsPage() {
     const subjectIdNum = Number(addMemberForm.subject_id)
     if (isNaN(subjectIdNum) || subjectIdNum <= 0) return
     if (addMemberForm.scope_type && !addMemberForm.scope_id) {
-      alert(t('permissions.scopeRequired'))
+      toast.error(t('permissions.scopeRequired'))
       return
     }
     setAddingMember(true)

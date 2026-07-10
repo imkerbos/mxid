@@ -95,6 +95,7 @@ export default {
     pageOf: '第 {{page}}/{{pages}} 页',
     prevPage: '上一页',
     nextPage: '下一页',
+    rowsPerPage: '每页行数',
     selectAll: '全选',
     selectRow: '选择本行',
     last7Days: '近 7 天',

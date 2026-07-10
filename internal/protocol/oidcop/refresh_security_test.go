@@ -171,9 +171,12 @@ func TestRefreshReuse_EmitsAuditEvent(t *testing.T) {
 	s.events = bus
 	ctx := context.Background()
 
-	var captured []event.Event
+	// event.Bus fans out to handlers in goroutines, so the handler and the test
+	// body run concurrently — deliver via a channel rather than a shared slice
+	// (the latter is a data race under -race).
+	captured := make(chan event.Event, 4)
 	bus.Subscribe(event.OIDCTokenReuse, func(_ context.Context, evt event.Event) {
-		captured = append(captured, evt)
+		captured <- evt
 	})
 
 	rt0 := seedRefreshChain(t, s, "rt-audit-0", "at-audit-0", "client1", "42")
@@ -191,18 +194,23 @@ func TestRefreshReuse_EmitsAuditEvent(t *testing.T) {
 		t.Fatal("expected an error presenting a spent refresh token")
 	}
 
-	// Publish is async (event.Bus fans out via goroutines) — poll briefly.
-	deadline := time.Now().Add(time.Second)
-	for len(captured) == 0 && time.Now().Before(deadline) {
-		time.Sleep(5 * time.Millisecond)
+	// Publish is async — wait for the single reuse event.
+	var evt event.Event
+	select {
+	case evt = <-captured:
+	case <-time.After(time.Second):
+		t.Fatal("expected exactly 1 OIDCTokenReuse event, got 0")
+	}
+	// No second event should follow (reuse fires once).
+	select {
+	case extra := <-captured:
+		t.Fatalf("expected exactly 1 OIDCTokenReuse event, got a second: %+v", extra)
+	case <-time.After(50 * time.Millisecond):
 	}
 
-	if len(captured) != 1 {
-		t.Fatalf("expected exactly 1 OIDCTokenReuse event, got %d", len(captured))
-	}
-	payload, ok := captured[0].Payload.(map[string]any)
+	payload, ok := evt.Payload.(map[string]any)
 	if !ok {
-		t.Fatalf("expected payload to be map[string]any, got %T", captured[0].Payload)
+		t.Fatalf("expected payload to be map[string]any, got %T", evt.Payload)
 	}
 	if payload["client_id"] != "client1" {
 		t.Fatalf("expected client_id=client1 in reuse audit payload, got %v", payload["client_id"])
