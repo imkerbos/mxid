@@ -121,6 +121,8 @@ func wireOIDCOP(
 		oidclogout.NewProviderKeysetSigner(keySvc),
 		opIssuer,
 		safehttp.New(safehttp.WithTimeout(5*time.Second)),
+		idResolver,
+		tenantResolver,
 	)
 
 	// SSO login-confirmation store (Google-style, product requirement). SAME

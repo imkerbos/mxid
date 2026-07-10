@@ -46,6 +46,7 @@ type Repository interface {
 	GetByPrefix(ctx context.Context, prefix string) ([]*Token, error)
 	Revoke(ctx context.Context, id int64, when time.Time) error
 	TouchLastUsed(ctx context.Context, id int64, when time.Time) error
+	PurgeExpired(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
 type repo struct{ db *gorm.DB }
@@ -91,6 +92,18 @@ func (r *repo) Revoke(ctx context.Context, id int64, when time.Time) error {
 		Model(&Token{}).
 		Where("id = ? AND revoked_at IS NULL", id).
 		Update("revoked_at", when).Error
+}
+
+// PurgeExpired hard-deletes tokens whose expiry OR revocation is older than
+// cutoff. Both classes are already rejected at authenticate time (ErrExpired /
+// ErrRevoked); this is pure housekeeping so mxid_api_token doesn't grow without
+// bound. Cross-tenant by design (background GC) — callers run it under a system
+// context. Returns the number of rows removed.
+func (r *repo) PurgeExpired(ctx context.Context, cutoff time.Time) (int64, error) {
+	res := r.db.WithContext(ctx).
+		Where("(expires_at IS NOT NULL AND expires_at < ?) OR (revoked_at IS NOT NULL AND revoked_at < ?)", cutoff, cutoff).
+		Delete(&Token{})
+	return res.RowsAffected, res.Error
 }
 
 func (r *repo) TouchLastUsed(ctx context.Context, id int64, when time.Time) error {
