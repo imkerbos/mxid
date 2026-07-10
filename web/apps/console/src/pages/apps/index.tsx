@@ -6,7 +6,7 @@ import type { App, PaginatedData, AppTemplate, AppTemplateListItem } from '@mxid
 import PageHeader from '../../components/layout/PageHeader'
 import AppGroupsTab from './AppGroupsTab'
 import { useTabParam } from '../../hooks/useTabParam'
-import { CodeField, pageMotion, Button, ConfirmDialog } from '../../components/ui'
+import { CodeField, pageMotion, Button, ConfirmDialog, Modal } from '../../components/ui'
 import { IconPicker } from '../../components/icon-picker/IconPicker'
 import { toast, extractMessage } from '../../components/ui/toast'
 import AccessPolicyTab from './AccessPolicyTab'
@@ -911,14 +911,12 @@ export default function AppsPage() {
       )}
 
       {/* Create Modal */}
-      {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-surface p-6 shadow-xl"
-          >
-            <h3 className="mb-4 text-lg font-semibold">{t('apps.createModal.title')}</h3>
+      <Modal
+        open={showCreate}
+        title={t('apps.createModal.title')}
+        onClose={() => { setShowCreate(false); setActiveTemplate(null); setTplFieldValues({}) }}
+        size="xl"
+      >
             <form onSubmit={handleCreate} className="space-y-4">
               {/* Template picker step */}
               {!activeTemplate ? (
@@ -1075,9 +1073,7 @@ export default function AppsPage() {
                 </Button>
               </div>
             </form>
-          </motion.div>
-        </div>
-      )}
+      </Modal>
 
       </>
       )}
