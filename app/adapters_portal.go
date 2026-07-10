@@ -319,6 +319,23 @@ func (a *portalAppQuerierAdapter) ListAuthorizedAppGroups(ctx context.Context, u
 			allowed[id] = struct{}{}
 		}
 	}
+	// Set of apps that actually surface in the card list: they exist AND are
+	// enabled. The count MUST be gated by this — otherwise a rel row pointing at
+	// a hard-deleted app (orphan rel whose FK cascade never fired) or a disabled
+	// app inflates the sidebar number past what the list renders. Mirrors the
+	// status filter in ListAuthorizedApps (status != StatusEnabled → skip).
+	liveEnabled := map[int64]struct{}{}
+	{
+		apps, _, err := a.appModule.Repo.List(ctx, tenantID, app.ListAppParams{Page: 1, PageSize: 500})
+		if err != nil {
+			return nil, fmt.Errorf("list apps for group count: %w", err)
+		}
+		for _, ap := range apps {
+			if ap.Status == app.StatusEnabled {
+				liveEnabled[ap.ID] = struct{}{}
+			}
+		}
+	}
 	// Pull group → app_ids in one shot.
 	type rel struct {
 		GroupID int64 `gorm:"column:group_id"`
@@ -340,6 +357,9 @@ func (a *portalAppQuerierAdapter) ListAuthorizedAppGroups(ctx context.Context, u
 	}
 	countByGroup := map[int64]int{}
 	for _, r := range rels {
+		if _, ok := liveEnabled[r.AppID]; !ok {
+			continue // deleted (orphan rel) or disabled app — not shown, not counted
+		}
 		if a.accessSvc != nil {
 			if _, ok := allowed[r.AppID]; !ok {
 				continue
