@@ -4,6 +4,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"net/url"
 
@@ -77,16 +78,36 @@ func (p staticSPProvider) GetServiceProvider(_ *http.Request, _ string) (*crewja
 // buildIdentityProvider constructs a crewjam IdP for one app/request. urls carry
 // the per-request-host issuer + SSO/SLO locations; key/cert are the app's active
 // signing material.
+// requireAbsoluteURL parses raw and rejects anything that is not an absolute
+// http(s) URL (empty, relative, or scheme-less). Returns a clear error naming
+// the field so a misconfigured external URL fails loud at IdP construction
+// instead of silently emitting a broken relative endpoint.
+func requireAbsoluteURL(field, raw string) (*url.URL, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return nil, fmt.Errorf("%s: parse %q: %w", field, raw, err)
+	}
+	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return nil, fmt.Errorf("%s: must be an absolute http(s) URL, got %q (external URL likely unconfigured)", field, raw)
+	}
+	return u, nil
+}
+
 func buildIdentityProvider(cfg *SAMLConfig, key *rsa.PrivateKey, cert *x509.Certificate, issuer, ssoURL, sloURL string) (*crewjam.IdentityProvider, error) {
 	sp, err := spEntityDescriptor(cfg)
 	if err != nil {
 		return nil, err
 	}
-	metaURL, err := url.Parse(issuer)
+	// Fail loud on a non-absolute issuer/SSO URL. url.Parse accepts "" and
+	// "/relative" without error, so a missing issuer (unconfigured external URL
+	// in dev, or a runtime resolver returning empty) would otherwise be baked
+	// SILENTLY into IdP metadata + SSO responses as a broken relative URL that
+	// no SP can consume. An absolute http(s) URL is a hard precondition here.
+	metaURL, err := requireAbsoluteURL("saml issuer/entityID", issuer)
 	if err != nil {
 		return nil, err
 	}
-	ssoU, err := url.Parse(ssoURL)
+	ssoU, err := requireAbsoluteURL("saml SSO URL", ssoURL)
 	if err != nil {
 		return nil, err
 	}

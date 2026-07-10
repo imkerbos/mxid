@@ -48,10 +48,10 @@ import (
 	"github.com/imkerbos/mxid/pkg/dlock"
 	"github.com/imkerbos/mxid/pkg/ee/license"
 	"github.com/imkerbos/mxid/pkg/ee/registry"
-	"github.com/imkerbos/mxid/pkg/metrics"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/geoip"
 	"github.com/imkerbos/mxid/pkg/mailer"
+	"github.com/imkerbos/mxid/pkg/metrics"
 	"github.com/imkerbos/mxid/pkg/ratelimit"
 	"github.com/imkerbos/mxid/pkg/session"
 	"github.com/imkerbos/mxid/pkg/sms"
@@ -780,6 +780,14 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	// same recompute would fight over the rows.
 	go dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyDynamicGroupReconcile, a.Logger, func(ctx context.Context) {
 		runDynamicGroupReconcile(ctx, groupModule.Service, a.Config.Tenant.DefaultID)
+	})
+
+	// API-token purge sweeper — hard-deletes long-expired/revoked API tokens so
+	// mxid_api_token doesn't grow without bound (expired/revoked tokens are
+	// already rejected at auth time, so this is housekeeping, not a security
+	// window). Leader-elected: a global cross-tenant DELETE belongs on one pod.
+	go dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyAPITokenPurge, a.Logger, func(ctx context.Context) {
+		runAPITokenPurge(ctx, a, apitoken.NewRepository(a.DB))
 	})
 
 	// Transactional outbox worker — durable at-least-once delivery for side
@@ -1755,6 +1763,40 @@ func runAuditRetention(stopCtx context.Context, a *bootstrap.App, ss *setting.Se
 		}
 		if passOK {
 			metrics.WorkerSuccess("audit_retention")
+		}
+		select {
+		case <-stopCtx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+// runAPITokenPurge periodically hard-deletes API tokens whose expiry or
+// revocation is older than a fixed grace window, so mxid_api_token doesn't grow
+// without bound. Expired/revoked tokens are already rejected at authenticate
+// time (ErrExpired / ErrRevoked), so this is pure housekeeping — the grace keeps
+// recently-dead rows around briefly for support/debugging. A global
+// cross-tenant DELETE → explicit system context (the tenant plugin fails closed
+// otherwise). First pass runs immediately; later passes ride the daily ticker.
+func runAPITokenPurge(stopCtx context.Context, a *bootstrap.App, repo apitoken.Repository) {
+	const (
+		tickEvery = 24 * time.Hour
+		grace     = 30 * 24 * time.Hour // keep dead tokens 30d before purging
+	)
+	ticker := time.NewTicker(tickEvery)
+	defer ticker.Stop()
+	for {
+		ctx := tenantscope.SystemContext()
+		metrics.WorkerRun("api_token_purge")
+		deleted, err := repo.PurgeExpired(ctx, time.Now().Add(-grace))
+		if err != nil {
+			a.Logger.Warn("api token purge failed", zap.Error(err))
+		} else {
+			if deleted > 0 {
+				a.Logger.Info("api token purge", zap.Int64("deleted", deleted))
+			}
+			metrics.WorkerSuccess("api_token_purge")
 		}
 		select {
 		case <-stopCtx.Done():
