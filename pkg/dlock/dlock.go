@@ -26,6 +26,10 @@ const (
 	// pod means redundant large DELETEs / cross-pod write races.
 	KeyAuditRetention        int64 = 0x4D5849440005
 	KeyDynamicGroupReconcile int64 = 0x4D5849440006
+	// KeyAPITokenPurge gates the periodic hard-delete of long-expired/revoked
+	// API tokens to a single replica — same reasoning as audit retention (a
+	// global cross-tenant DELETE shouldn't run on every pod).
+	KeyAPITokenPurge int64 = 0x4D5849440007
 )
 
 const retryInterval = 5 * time.Second

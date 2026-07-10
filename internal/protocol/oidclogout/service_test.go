@@ -131,6 +131,9 @@ func setupServiceHarness(t *testing.T) (svc *Service, sm *session.Manager, idx *
 		// Loopback httptest servers: the production safehttp client blocks
 		// them (SSRF guard), so tests inject a plain http.Client instead.
 		&http.Client{Timeout: 5 * time.Second},
+		// nil resolvers → `sub` falls back to the raw user id, matching the
+		// pre-subject-strategy behaviour these fan-out tests assert on.
+		nil, nil,
 	)
 
 	return svc, sm, idx, rpA, rpB, appA, appB
@@ -310,5 +313,55 @@ func TestLogoutUser_FansOutToAllTrackedApps(t *testing.T) {
 	}
 	if n := rpB.hits.Load(); n != 1 {
 		t.Errorf("appB RP: want 1 hit, got %d", n)
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Subject resolution — the logout_token `sub` must equal the id_token `sub`
+// (resolved via the app's subject_strategy), not the raw internal user id.
+// ----------------------------------------------------------------------------
+
+type fakeIdentity struct {
+	u *resolver.IdentityInfo
+}
+
+func (f *fakeIdentity) ResolveUser(context.Context, int64) (*resolver.IdentityInfo, error) {
+	return f.u, nil
+}
+func (f *fakeIdentity) ResolveClaims(context.Context, int64, []string) (map[string]any, error) {
+	return nil, nil
+}
+
+type fakeTenants struct{ code string }
+
+func (f *fakeTenants) GetTenantCode(context.Context, int64) (string, error) { return f.code, nil }
+
+func TestResolveSubject_UsesStrategyNotRawID(t *testing.T) {
+	s := &Service{
+		identity: &fakeIdentity{u: &resolver.IdentityInfo{ID: 42, Username: "alice", Email: "alice@x.com", TenantID: 7}},
+		tenants:  &fakeTenants{code: "acme"},
+	}
+	cases := []struct {
+		strategy string
+		want     string
+	}{
+		{resolver.StrategyUsername, "alice"},
+		{resolver.StrategyUsernameSuffixed, "alice@acme"},
+		{resolver.StrategyEmail, "alice@x.com"},
+		{resolver.StrategyPersistentID, "42"}, // == raw id by design (why the bug hid here)
+	}
+	for _, c := range cases {
+		app := &resolver.AppConfig{ID: 1, ClientID: "client-a", SubjectStrategy: c.strategy}
+		if got := s.resolveSubject(context.Background(), app, 42); got != c.want {
+			t.Errorf("strategy %q: want sub=%q, got %q", c.strategy, c.want, got)
+		}
+	}
+}
+
+func TestResolveSubject_FallsBackToRawIDWhenUnwired(t *testing.T) {
+	s := &Service{} // nil identity resolver
+	app := &resolver.AppConfig{SubjectStrategy: resolver.StrategyUsername}
+	if got := s.resolveSubject(context.Background(), app, 99); got != "99" {
+		t.Fatalf("nil identity: want raw id 99, got %q", got)
 	}
 }

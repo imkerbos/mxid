@@ -53,12 +53,20 @@ type Service struct {
 	signer   Signer
 	issuer   string // full issuer incl. /protocol/oidc, used as logout_token `iss`
 	http     Doer
+	// identity + tenants resolve the logout_token `sub` through the app's
+	// subject_strategy, so it matches the `sub` the RP received in the id_token.
+	// Both optional (nil-safe): a nil identity resolver falls back to the raw
+	// user id, preserving the previous behaviour for callers that don't wire them.
+	identity resolver.IdentityResolver
+	tenants  resolver.TenantResolver
 }
 
 // NewService wires a Service. issuer must be the same value emitted as the
 // id_token `iss` (i.e. the zitadel engine's opIssuer, host + /protocol/oidc)
-// so RPs validating the logout_token see a consistent issuer.
-func NewService(sessions *session.Manager, index *Index, apps resolver.AppResolver, signer Signer, issuer string, httpClient Doer) *Service {
+// so RPs validating the logout_token see a consistent issuer. identity +
+// tenants are used to resolve `sub` via the app's subject_strategy; pass nil to
+// fall back to the raw user id.
+func NewService(sessions *session.Manager, index *Index, apps resolver.AppResolver, signer Signer, issuer string, httpClient Doer, identity resolver.IdentityResolver, tenants resolver.TenantResolver) *Service {
 	return &Service{
 		sessions: sessions,
 		index:    index,
@@ -66,6 +74,8 @@ func NewService(sessions *session.Manager, index *Index, apps resolver.AppResolv
 		signer:   signer,
 		issuer:   issuer,
 		http:     httpClient,
+		identity: identity,
+		tenants:  tenants,
 	}
 }
 
@@ -156,6 +166,38 @@ func (s *Service) LogoutUserApp(ctx context.Context, userID, appID int64) {
 	}()
 }
 
+// resolveSubject computes the logout_token `sub` for this app + user via the
+// app's subject_strategy, so it equals the `sub` the RP received in the
+// id_token (oidcop/claims.go resolveSubject). Falls back to the raw snowflake
+// id when the resolvers are unwired or the lookup fails — back-channel logout
+// is best-effort and must never be dropped purely on a subject-strategy miss.
+func (s *Service) resolveSubject(ctx context.Context, app *resolver.AppConfig, userID int64) string {
+	fallback := strconv.FormatInt(userID, 10)
+	if s.identity == nil {
+		return fallback
+	}
+	idn, err := s.identity.ResolveUser(ctx, userID)
+	if err != nil || idn == nil {
+		return fallback
+	}
+	tenantCode := ""
+	if s.tenants != nil && idn.TenantID > 0 {
+		tenantCode, _ = s.tenants.GetTenantCode(ctx, idn.TenantID)
+	}
+	out, err := resolver.ResolveSubject(ctx, app.SubjectStrategy, resolver.SubjectInput{
+		UserID:     idn.ID,
+		Username:   idn.Username,
+		Email:      idn.Email,
+		TenantID:   idn.TenantID,
+		TenantCode: tenantCode,
+		ClientID:   app.ClientID,
+	})
+	if err != nil || out == nil || out.Subject == "" {
+		return fallback
+	}
+	return out.Subject
+}
+
 // sendLogout signs and POSTs a logout_token to a single RP. Silent no-op on
 // any resolution/signing/delivery failure — this is a best-effort
 // notification; the RP falls back to failing closed on its next token
@@ -177,7 +219,7 @@ func (s *Service) sendLogout(ctx context.Context, appID, userID int64, sid strin
 	claims := LogoutTokenClaims{
 		Issuer:   s.issuer,
 		Audience: app.ClientID,
-		Subject:  strconv.FormatInt(userID, 10),
+		Subject:  s.resolveSubject(ctx, app, userID),
 	}
 	if cfg.BackchannelLogoutSessionRequired && sid != "" {
 		claims.SID = sid
