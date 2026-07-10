@@ -14,8 +14,10 @@ import (
 	"github.com/imkerbos/mxid/internal/middleware"
 	"github.com/imkerbos/mxid/pkg/crypto"
 	"github.com/imkerbos/mxid/pkg/event"
+	"github.com/imkerbos/mxid/pkg/metrics"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/snowflake"
+	"github.com/imkerbos/mxid/pkg/version"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -125,6 +127,12 @@ func NewApp(configPath string) (*App, error) {
 	// middleware below) so it escapes rate-limit / CSRF, same as /health.
 	RegisterReadyz(router, db, rdb)
 
+	// Prometheus scrape endpoint. Registered before the heavy middleware so it
+	// is never rate-limited / CSRF-checked and does not count itself. The
+	// deployment (nginx) MUST keep /metrics internal-only.
+	metrics.SetBuildInfo(version.Version)
+	router.GET("/metrics", metrics.Handler())
+
 	// Resolve trusted-origins list. Single source of truth for both CORS
 	// and CSRF so the two cannot drift apart.
 	origins := cfg.Server.AllowedOrigins
@@ -158,6 +166,7 @@ func NewApp(configPath string) (*App, error) {
 	// bearer-auth APIs, health probes) are opted out.
 	router.Use(
 		middleware.RequestID(),
+		metrics.Middleware(),
 		middleware.Logger(logger),
 		middleware.SecurityHeaders(cfg.Server.Mode == "release"),
 		middleware.CORS(middleware.CORSConfig{AllowOrigins: origins}),
@@ -205,11 +214,18 @@ func NewApp(configPath string) (*App, error) {
 // Run starts the HTTP server with graceful shutdown.
 func (a *App) Run() error {
 	srv := &http.Server{
-		Addr:         fmt.Sprintf(":%d", a.Config.Server.Port),
-		Handler:      a.Router,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:        fmt.Sprintf(":%d", a.Config.Server.Port),
+		Handler:     a.Router,
+		ReadTimeout: 15 * time.Second,
+		// WriteTimeout MUST stay 0: a non-zero value arms a write deadline at
+		// header-read time that is never reset, so it force-closes long-lived SSE
+		// responses (/portal/events, /console/events) mid-stream — before the 25s
+		// heartbeat can fire — causing EventSource reconnect storms. Slowloris on
+		// the request header is still bounded by ReadHeaderTimeout; request bodies
+		// by ReadTimeout.
+		WriteTimeout:      0,
+		ReadHeaderTimeout: 15 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	// Start server in goroutine

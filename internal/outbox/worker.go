@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/imkerbos/mxid/pkg/metrics"
 	"go.uber.org/zap"
 )
 
@@ -87,11 +88,19 @@ func (w *Worker) dispatch(ctx context.Context, m *Message) {
 		return
 	}
 	if err := h(ctx, m); err != nil {
+		// Mirror repo.Fail's exhaustion rule so the metric distinguishes a
+		// transient retry from a terminal dead-letter (an alertable signal).
+		if m.Attempts >= m.MaxAttempts {
+			metrics.OutboxDispatch("deadletter")
+		} else {
+			metrics.OutboxDispatch("retry")
+		}
 		if ferr := w.repo.Fail(ctx, m, err.Error(), w.backoff(m.Attempts)); ferr != nil {
 			w.logger.Warn("outbox: mark-fail failed", zap.Int64("id", m.ID), zap.Error(ferr))
 		}
 		return
 	}
+	metrics.OutboxDispatch("success")
 	if derr := w.repo.MarkDone(ctx, m.ID); derr != nil {
 		w.logger.Warn("outbox: mark-done failed", zap.Int64("id", m.ID), zap.Error(derr))
 	}

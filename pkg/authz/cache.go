@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/imkerbos/mxid/pkg/metrics"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -90,15 +91,18 @@ func (c *CachedBindingProvider) EffectiveBindingsForUser(ctx context.Context, te
 	key := cacheKey(tenantID, userID)
 
 	if v, ok := c.l1Get(key); ok {
+		metrics.AuthzCache("l1")
 		return v, nil
 	}
 
 	if c.rdb != nil {
 		if v, ok := c.l2Get(ctx, key); ok {
+			metrics.AuthzCache("l2")
 			c.l1Set(key, v)
 			return v, nil
 		}
 	}
+	metrics.AuthzCache("miss")
 
 	v, err := c.inner.EffectiveBindingsForUser(ctx, tenantID, userID)
 	if err != nil {
