@@ -1,0 +1,1 @@
+ALTER TABLE mxid_app DROP COLUMN IF EXISTS env;

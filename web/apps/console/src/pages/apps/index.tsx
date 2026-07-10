@@ -322,6 +322,10 @@ const DETAIL_TAB_KEYS: DetailTab[] = ['basic', 'protocol', 'credentials', 'acces
 const inputCls =
   'w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
 
+// Environment presets offered in the app-detail select; admins may still type a
+// custom value via the "custom" option. Keep in sync with the portal's ENV_ORDER.
+const ENV_PRESETS = ['prod', 'uat', 'qa', 'staging', 'dev']
+
 // ---------------------------------------------------------------------------
 // Main page component
 // ---------------------------------------------------------------------------
@@ -372,11 +376,15 @@ export default function AppsPage() {
     name: '',
     description: '',
     icon: '',
+    env: '',
     home_url: '',
     login_url: '',
     logout_url: '',
     redirect_uris: '',
   })
+  // env is a preset select (prod/uat/qa/staging/dev) with a "custom" escape
+  // hatch that reveals a free-text input — envCustom tracks which mode is shown.
+  const [envCustom, setEnvCustom] = useState(false)
   const [saving, setSaving] = useState(false)
 
   // Protocol config state
@@ -424,11 +432,13 @@ export default function AppsPage() {
       name: app.name || '',
       description: app.description || '',
       icon: app.icon || '',
+      env: app.env || '',
       home_url: app.home_url || '',
       login_url: app.login_url || '',
       logout_url: app.logout_url || '',
       redirect_uris: (app.redirect_uris || []).join('\n'),
     })
+    setEnvCustom(!!app.env && !ENV_PRESETS.includes(app.env))
 
     try {
       const full = await appApi.getById(app.id)
@@ -437,11 +447,13 @@ export default function AppsPage() {
         name: full.name || '',
         description: full.description || '',
         icon: full.icon || '',
+        env: full.env || '',
         home_url: full.home_url || '',
         login_url: full.login_url || '',
         logout_url: full.logout_url || '',
         redirect_uris: (full.redirect_uris || []).join('\n'),
       })
+      setEnvCustom(!!full.env && !ENV_PRESETS.includes(full.env))
     } catch {
       // keep the card-level data we already have
     } finally {
@@ -511,6 +523,9 @@ export default function AppsPage() {
         name: editForm.name,
         description: editForm.description || null,
         icon: editForm.icon || null,
+        // send the string (empty clears): backend treats null as "unchanged",
+        // "" as "clear the label", so never coalesce to null here.
+        env: editForm.env.trim(),
         home_url: editForm.home_url || null,
         login_url: editForm.login_url || null,
         logout_url: editForm.logout_url || null,
@@ -854,6 +869,11 @@ export default function AppsPage() {
                 >
                   {statusLabel(app.status)}
                 </span>
+                {app.env && (
+                  <span className="inline-flex rounded-full bg-surface-muted px-2.5 py-0.5 text-xs font-medium uppercase text-muted">
+                    {app.env}
+                  </span>
+                )}
               </div>
 
               {/* Actions */}
@@ -1203,6 +1223,47 @@ export default function AppsPage() {
                             value={editForm.icon}
                             onChange={(v) => setEditForm((f) => ({ ...f, icon: v }))}
                           />
+                        </div>
+
+                        <div>
+                          <label className="mb-1 block text-sm font-medium text-ink">
+                            {t('apps.detail.basic.envLabel')}
+                          </label>
+                          <select
+                            value={envCustom ? '__custom' : editForm.env}
+                            onChange={(e) => {
+                              const v = e.target.value
+                              if (v === '__custom') {
+                                setEnvCustom(true)
+                              } else {
+                                setEnvCustom(false)
+                                setEditForm((f) => ({ ...f, env: v }))
+                              }
+                            }}
+                            className={inputCls}
+                          >
+                            <option value="">{t('apps.detail.basic.envNone')}</option>
+                            {ENV_PRESETS.map((e) => (
+                              <option key={e} value={e}>
+                                {e}
+                              </option>
+                            ))}
+                            <option value="__custom">{t('apps.detail.basic.envCustom')}</option>
+                          </select>
+                          {envCustom && (
+                            <input
+                              type="text"
+                              value={editForm.env}
+                              onChange={(e) =>
+                                setEditForm((f) => ({ ...f, env: e.target.value }))
+                              }
+                              className={`${inputCls} mt-2`}
+                              placeholder="canary / dr ..."
+                            />
+                          )}
+                          <p className="mt-1 text-xs text-muted">
+                            {t('apps.detail.basic.envHint')}
+                          </p>
                         </div>
 
                         <div>

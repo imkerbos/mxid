@@ -45,6 +45,7 @@ type AppInfo struct {
 	ClientType  string   `json:"client_type"`
 	Icon        string   `json:"icon"`
 	LogoURL     string   `json:"logo_url"`
+	Env         string   `json:"env"`
 	Description string   `json:"description"`
 	HomeURL     string   `json:"home_url"`
 	LoginURL    string   `json:"login_url"`

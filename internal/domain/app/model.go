@@ -88,6 +88,7 @@ type App struct {
 	Protocol       string          `gorm:"column:protocol;not null;size:16" json:"protocol"`
 	Status         int             `gorm:"column:status;not null;default:1" json:"status"`
 	Icon           *string         `gorm:"column:icon;size:512" json:"icon"`
+	Env            *string         `gorm:"column:env;size:64" json:"env"` // environment label: qa/uat/prod/... or custom; NULL = unlabelled
 	Description    *string         `gorm:"column:description;type:text" json:"description"`
 	ClientID       *string         `gorm:"column:client_id;size:128" json:"client_id"`
 	ClientSecret   *string         `gorm:"column:client_secret;size:255" json:"-"`
