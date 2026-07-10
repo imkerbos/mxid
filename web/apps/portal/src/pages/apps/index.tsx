@@ -26,6 +26,10 @@ interface SectionView {
   apps: PortalApp[]
 }
 
+// Canonical environment ordering for portal sub-grouping. Values are compared
+// lower-cased; anything not listed is a custom env sorted after these.
+const ENV_ORDER = ['prod', 'uat', 'qa', 'staging', 'dev']
+
 export default function AppsPage() {
   const { t } = useTranslation()
   const UNGROUPED_LABEL = t('portal.ungrouped')
@@ -273,6 +277,50 @@ export default function AppsPage() {
 
   const appIconValue = (app: PortalApp) => app.logo_url || app.icon || ''
 
+  // Within a project (app group) the portal sub-groups apps by environment.
+  // Canonical order keeps prod first; unknown custom envs sort after the known
+  // ones (alphabetically), and unlabelled apps go last.
+  const bucketAppsByEnv = (list: PortalApp[]): { env: string; apps: PortalApp[] }[] => {
+    const buckets = new Map<string, PortalApp[]>()
+    for (const a of list) {
+      const key = (a.env || '').toLowerCase()
+      const arr = buckets.get(key)
+      if (arr) arr.push(a)
+      else buckets.set(key, [a])
+    }
+    const rank = (env: string) => {
+      const i = ENV_ORDER.indexOf(env)
+      if (i !== -1) return i
+      return env ? ENV_ORDER.length : ENV_ORDER.length + 1 // custom before unlabelled
+    }
+    return [...buckets.entries()]
+      .map(([env, apps]) => ({ env, apps }))
+      .sort((a, b) => rank(a.env) - rank(b.env) || a.env.localeCompare(b.env))
+  }
+
+  const renderCards = (list: PortalApp[], draggable: boolean) => (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {list.map((app, i) => (
+        <AppCard
+          key={app.id}
+          app={app}
+          delay={i * 0.04}
+          launching={launching === app.id}
+          isFavorite={favoriteSet.has(app.id)}
+          protocolBadgeClass={protocolBadge(app.protocol)}
+          iconValue={appIconValue(app)}
+          draggable={draggable}
+          dragging={dragId === app.id}
+          onLaunch={() => handleLaunch(app)}
+          onToggleFavorite={e => toggleFavorite(app, e)}
+          onDragStart={() => handleDragStart(app.id)}
+          onDragEnter={() => handleDragEnter(app.id)}
+          onDragEnd={handleDragEnd}
+        />
+      ))}
+    </div>
+  )
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-32">
@@ -395,28 +443,29 @@ export default function AppsPage() {
                   <div className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-xs text-faint">
                     {t('portal.appsEmpty')}
                   </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {section.apps.map((app, i) => (
-                      <AppCard
-                        key={app.id}
-                        app={app}
-                        delay={i * 0.04}
-                        launching={launching === app.id}
-                        isFavorite={favoriteSet.has(app.id)}
-                        protocolBadgeClass={protocolBadge(app.protocol)}
-                        iconValue={appIconValue(app)}
-                        draggable={section.id === 'favorites'}
-                        dragging={dragId === app.id}
-                        onLaunch={() => handleLaunch(app)}
-                        onToggleFavorite={e => toggleFavorite(app, e)}
-                        onDragStart={() => handleDragStart(app.id)}
-                        onDragEnter={() => handleDragEnter(app.id)}
-                        onDragEnd={handleDragEnd}
-                      />
-                    ))}
-                  </div>
-                )}
+                ) : (() => {
+                  // favorites/recent keep their own ordering (drag / recency);
+                  // only project (group) sections sub-group by environment, and
+                  // only when the section actually spans more than one env.
+                  const canSubGroup = section.id !== 'favorites' && section.id !== 'recent'
+                  const buckets = canSubGroup ? bucketAppsByEnv(section.apps) : []
+                  if (!canSubGroup || buckets.length <= 1) {
+                    return renderCards(section.apps, section.id === 'favorites')
+                  }
+                  return (
+                    <div className="space-y-4">
+                      {buckets.map(bucket => (
+                        <div key={bucket.env || '_unlabelled'}>
+                          <h3 className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-faint">
+                            {bucket.env || t('portal.envUnlabelled')}
+                            <span className="font-normal normal-case">{bucket.apps.length}</span>
+                          </h3>
+                          {renderCards(bucket.apps, false)}
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })()}
               </section>
             ))
           )}

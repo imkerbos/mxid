@@ -286,6 +286,9 @@ func (a *portalAppQuerierAdapter) ListAuthorizedApps(ctx context.Context, userID
 			info.Icon = *ap.Icon
 			info.LogoURL = *ap.Icon
 		}
+		if ap.Env != nil {
+			info.Env = *ap.Env
+		}
 		if ap.Description != nil {
 			info.Description = *ap.Description
 		}
