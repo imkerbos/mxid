@@ -797,6 +797,10 @@ const (
 	CtxTenantID         = "tenant_id"
 	CtxSessionID        = "session_id"
 	CtxMFAEnrollPending = "mfa_enroll_pending"
+	// CtxNamespace is the session namespace (console/portal) the request
+	// authenticated in — step-up freshness must be looked up in the SAME
+	// namespace, not a hardcoded one.
+	CtxNamespace = "session_namespace"
 )
 
 // GetUserID extracts the authenticated user ID from the gin context.
