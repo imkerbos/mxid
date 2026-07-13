@@ -1343,6 +1343,16 @@ export default {
       unknown: 'unknown',
       loadError: 'Failed to load sessions',
     },
+    extensions: {
+      title: 'Connected extensions',
+      hint: 'Browser extensions authorized to auto-fill logins. Revoking one makes that browser reconnect (and verify identity) before it can fill again.',
+      empty: 'No connected extensions',
+      revoke: 'Revoke',
+      revoked: 'Revoked',
+      revokeFailed: 'Revoke failed',
+      lastUsedLabel: 'Last used',
+      unknownDevice: 'Unknown device',
+    },
     history: {
       time: 'Time',
       event: 'Event',

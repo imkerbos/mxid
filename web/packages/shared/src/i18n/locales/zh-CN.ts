@@ -1346,6 +1346,16 @@ export default {
       unknown: '未知',
       loadError: '加载会话失败',
     },
+    extensions: {
+      title: '已连接扩展',
+      hint: '授权自动填表的浏览器扩展。撤销后该浏览器需重新连接（并验证身份）。',
+      empty: '暂无已连接扩展',
+      revoke: '撤销',
+      revoked: '已撤销',
+      revokeFailed: '撤销失败',
+      lastUsedLabel: '最近使用',
+      unknownDevice: '未知设备',
+    },
     history: {
       time: '时间',
       event: '事件',

@@ -7,6 +7,7 @@ import type {
   MFAInfo,
   IdentityInfo,
   UserDetail,
+  FormFillExtToken,
 } from '../types'
 
 interface PortalUserInfo {
@@ -41,6 +42,12 @@ export const portalApi = {
     portalClient.put<ApiResponse<null>>(`/apps/${id}/credential`, body).then(r => r.data),
   deleteAppCredential: (id: string) =>
     portalClient.delete<ApiResponse<null>>(`/apps/${id}/credential`).then(r => r.data),
+  // Form-fill browser extensions the user has paired (binding tokens). Revoke is
+  // step-up gated server-side.
+  listExtTokens: () =>
+    portalClient.get<ApiResponse<FormFillExtToken[]>>('/formfill/tokens').then(r => r.data.data),
+  revokeExtToken: (id: string) =>
+    portalClient.delete<ApiResponse<null>>(`/formfill/tokens/${id}`).then(r => r.data),
   listAppGroups: () =>
     portalClient.get<ApiResponse<PortalAppGroup[]>>('/app-groups').then(r => r.data.data),
   listFavorites: () =>
