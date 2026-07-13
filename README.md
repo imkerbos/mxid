@@ -25,13 +25,13 @@ One login portal, one admin console, one protocol gateway — speak **OIDC**,
 
 ---
 
-MXID is a self-hosted IAM platform built for commercial-grade deployments —
-multi-tenant, multi-language, and benchmarked against Keycloak / Auth0 / Okta /
+MXID is a self-hosted, single-tenant IAM platform built for commercial-grade
+deployments — multi-language and benchmarked against Keycloak / Auth0 / Okta /
 TopIAM. It ships as **open core**: a fully usable Community Edition under AGPL,
-plus an Enterprise Edition that unlocks multi-tenancy, external IdP login,
-white-label branding and more via a signed license.
+plus an Enterprise Edition that unlocks external IdP login, white-label branding
+and more via a signed license.
 
-> **v1.0.0** — first stable release. :tada:
+> **v1.4.1** — latest stable release. See the [releases](https://github.com/imkerbos/mxid/releases) for the changelog. :tada:
 
 <div align="center">
 
@@ -49,7 +49,7 @@ white-label branding and more via a signed license.
 - **Operations** — audit log with retention + alert webhook, API tokens (OpenAPI), i18n (Chinese + English).
 - **Production-ready delivery** — single-binary backend + containerized edge; tag-driven multi-arch images; Ed25519-signed offline licensing.
 - **Stateless backend / Kubernetes-ready** — icons and brand logos are stored as `bytea` in PostgreSQL (≤ 2 MB, strong ETag cache); no local disk state, no PVC required. Every replica serves the same assets immediately after startup.
-- **Honest capability advertisement** — `/system/info` reports only the features present in the running binary: runtime-gated features (`multi_tenant`, `branding`, `conditional_access` — code ships in CE, unlocked by license) are distinguished from code-separated EE-only features (`external_idp`, etc., absent from the CE binary).
+- **Honest capability advertisement** — `/system/info` reports only the features present in the running binary: runtime-gated features (`branding`, `conditional_access` — code ships in CE, unlocked by license) are distinguished from code-separated EE-only features (`external_idp`, etc., absent from the CE binary).
 
 ## Architecture
 
@@ -76,7 +76,7 @@ white-label branding and more via a signed license.
         │          │ user/group/org   │  │ per-app policy   │        │
         │          └────────┬─────────┘  └────────┬─────────┘        │
         │     ┌─────────────▼─────────────────────▼────────────┐     │
-        │     │  Console SPA (admin) — /tenants /users /apps    │     │
+        │     │  Console SPA (admin) — /users /apps /orgs       │     │
         │     └─────────────────────────────────────────────────┘    │
         └──────────────────────────────┬─────────────────────────────┘
                   ┌────────────────────┼────────────────────┐
@@ -161,8 +161,6 @@ activation and limits: **[docs/EDITIONS.md](docs/EDITIONS.md)**.
 | Per-app roles → claims | ✅ | ✅ |
 | API tokens (OpenAPI) | ✅ | ✅ |
 | Form-fill SSO (SWA) — browser-extension auto-login for password-only web apps | ❌ | ✅ |
-| **Multi-tenancy** | | |
-| Tenants | ✅ single | ✅ unlimited |
 | **Operations** | | |
 | Audit log + retention + alert webhook | ✅ | ✅ |
 | SMTP email + templates | ✅ | ✅ |

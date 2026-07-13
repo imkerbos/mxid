@@ -25,11 +25,11 @@
 
 ---
 
-MXID 是自托管的企业级 IAM 平台,面向商业级部署设计 —— 多租户、多语言,对标
+MXID 是自托管、单租户的企业级 IAM 平台,面向商业级部署设计 —— 支持多语言,对标
 Keycloak / Auth0 / Okta / TopIAM。采用**开源核心(open core)**:社区版完整可用、
-AGPL 授权;企业版通过签名 license 解锁多租户、外部 IdP 登录、品牌定制等。
+AGPL 授权;企业版通过签名 license 解锁外部 IdP 登录、品牌定制等。
 
-> **v1.0.0** —— 首个正式发布版本。:tada:
+> **v1.4.1** —— 最新稳定版。更新日志见 [releases](https://github.com/imkerbos/mxid/releases)。:tada:
 
 <div align="center">
 
@@ -47,7 +47,7 @@ AGPL 授权;企业版通过签名 license 解锁多租户、外部 IdP 登录、
 - **运维** —— 审计日志 + 留存 + 告警 webhook、API Token(OpenAPI)、中英双语。
 - **生产级交付** —— 单二进制后端 + 容器化边缘;tag 驱动多架构镜像;Ed25519 签名离线授权。
 - **无状态后端 / Kubernetes 友好** —— 图标与品牌 logo 以 `bytea` 存入 PostgreSQL(≤ 2 MB,强缓存 ETag),后端无任何本地磁盘状态,无需 PVC,容器重启不丢失,多副本即开即一致。
-- **如实公布能力** —— `/system/info` 只上报当前二进制实际具备的功能:runtime 门控功能(`multi_tenant`、`branding`、`conditional_access`,代码在 CE 内,license 放行即生效)与代码分离的 EE-only 功能(`external_idp` 等,仅 EE 二进制含其码)明确区分,客户端不会收到虚假的能力声明。
+- **如实公布能力** —— `/system/info` 只上报当前二进制实际具备的功能:runtime 门控功能(`branding`、`conditional_access`,代码在 CE 内,license 放行即生效)与代码分离的 EE-only 功能(`external_idp` 等,仅 EE 二进制含其码)明确区分,客户端不会收到虚假的能力声明。
 
 ## 架构
 
@@ -74,7 +74,7 @@ AGPL 授权;企业版通过签名 license 解锁多租户、外部 IdP 登录、
         │          │ user/group/org   │  │ 按应用策略       │        │
         │          └────────┬─────────┘  └────────┬─────────┘        │
         │     ┌─────────────▼─────────────────────▼────────────┐     │
-        │     │  控制台 SPA(管理)— /tenants /users /apps     │     │
+        │     │  控制台 SPA(管理)— /users /apps /orgs        │     │
         │     └─────────────────────────────────────────────────┘    │
         └──────────────────────────────┬─────────────────────────────┘
                   ┌────────────────────┼────────────────────┐
@@ -156,8 +156,6 @@ MXID 采用**开源核心**。社区版免费、完整可用;企业版通过 Ed2
 | 按应用角色 → claim | ✅ | ✅ |
 | API Token(OpenAPI) | ✅ | ✅ |
 | 表单填充 SSO(SWA)—— 浏览器扩展为纯账密 Web 系统自动登录 | ❌ | ✅ |
-| **多租户** | | |
-| 租户 | ✅ 单租户 | ✅ 不限 |
 | **运维** | | |
 | 审计日志 + 留存 + 告警 webhook | ✅ | ✅ |
 | SMTP 邮件 + 模板 | ✅ | ✅ |
