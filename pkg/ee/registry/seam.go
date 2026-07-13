@@ -3,6 +3,7 @@ package registry
 import (
 	"context"
 
+	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/bootstrap"
 	"github.com/imkerbos/mxid/pkg/session"
 )
@@ -79,6 +80,12 @@ type OutboxHandler func(ctx context.Context, payload []byte) error
 // enqueues an EE-only kind, so the kind simply has no consumer there.
 type OutboxRegisterFunc func(kind string, h OutboxHandler)
 
+// StepUpFreshFunc reports whether the caller's session has a fresh step-up (sudo)
+// authentication within the configured window. EE credential-reveal gates on it —
+// a honeypot vault must never hand out plaintext without a recent MFA. Implemented
+// in CE over authn.StepUpChecker.Fresh.
+type StepUpFreshFunc func(c *gin.Context, tenantID int64) bool
+
 // ProvisioningConfigFunc returns an app's live, decrypted outbound-provisioning
 // config. enabled=false means no downstream deprovision should run. Implemented
 // in CE over the provisioning domain so the EE SCIM connector never touches the
@@ -103,6 +110,8 @@ type InitContext struct {
 	// ProvisioningConfig reads an app's outbound-provisioning credentials at
 	// delivery time (the EE SCIM connector uses it).
 	ProvisioningConfig ProvisioningConfigFunc
+	// StepUpFresh gates EE credential reveal on a fresh step-up (sudo) window.
+	StepUpFresh StepUpFreshFunc
 }
 
 // Initializer wires one EE feature. Returning an error aborts startup.

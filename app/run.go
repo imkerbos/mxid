@@ -983,6 +983,10 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 		},
 		// Decrypted per-app provisioning config read, for the EE SCIM connector.
 		ProvisioningConfig: provisioningModule.Service.Resolved,
+		// Step-up (sudo) freshness check for the EE form-fill credential reveal.
+		// stepUpDeps is built above (reused by the JIT StepUpChecker); the checker
+		// is stateless so a dedicated instance here is fine.
+		StepUpFresh: authn.NewStepUpChecker(stepUpDeps).Fresh,
 	}); err != nil {
 		a.Logger.Fatal("init EE features", zap.Error(err))
 	}
