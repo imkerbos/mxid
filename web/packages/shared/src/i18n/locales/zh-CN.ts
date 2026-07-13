@@ -1400,6 +1400,18 @@ export default {
     favoriteFailed: '收藏操作失败',
     favoriteSaveFailed: '收藏排序失败',
     favoriteSaveOrderFailed: '保存排序失败',
+    extBanner: {
+      text: '安装 MXID Login 浏览器扩展,即可自动登录这些系统。',
+      action: '安装指引',
+    },
+    extSetup: {
+      title: '安装 MXID Login 扩展',
+      intro: '该扩展在你打开内部系统登录页时自动填入你在 MXID 保存的账密。浏览器不允许网页直接安装扩展,请按下列方式安装:',
+      step1: '托管设备(公司电脑):由 IT 通过策略自动安装,通常无需手动操作。',
+      step2: '手动安装:向管理员获取 mxid-login.crx,打开 chrome://extensions,开启右上角"开发者模式"。',
+      step3: '将 .crx 拖入该页面(或"加载已解压"选扩展文件夹)完成安装,然后回到门户刷新。',
+      note: '纯内网环境无需访问 Chrome 商店;扩展与更新均由公司内网提供。装好后本页横幅会消失。',
+    },
     formCred: {
       manage: '管理登录凭证',
       title: '“{{name}}” 的登录凭证',

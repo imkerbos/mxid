@@ -1397,6 +1397,18 @@ export default {
     favoriteFailed: 'Favorite action failed',
     favoriteSaveFailed: 'Failed to save favorite order',
     favoriteSaveOrderFailed: 'Failed to save order',
+    extBanner: {
+      text: 'Install the MXID Login browser extension to sign in to these apps automatically.',
+      action: 'How to install',
+    },
+    extSetup: {
+      title: 'Install the MXID Login extension',
+      intro: 'The extension auto-fills your MXID-vaulted credentials on internal app login pages. Browsers block web pages from installing extensions, so install it one of these ways:',
+      step1: 'Managed device (company computer): IT auto-installs it via policy — usually nothing to do.',
+      step2: 'Manual: get mxid-login.crx from your admin, open chrome://extensions, and enable "Developer mode" (top-right).',
+      step3: 'Drag the .crx onto that page (or "Load unpacked" and pick the extension folder), then return to the portal and refresh.',
+      note: 'No Chrome Web Store access needed on a pure intranet — the extension and its updates are served internally. This banner disappears once installed.',
+    },
     formCred: {
       manage: 'Manage login credential',
       title: 'Login credential for “{{name}}”',

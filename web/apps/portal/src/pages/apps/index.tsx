@@ -32,6 +32,28 @@ interface SectionView {
 // lower-cased; anything not listed is a custom env sorted after these.
 const ENV_ORDER = ['prod', 'uat', 'qa', 'staging', 'dev']
 
+// useExtInstalled detects the MXID Login extension. The extension's content
+// script tags <html data-mxid-login-ext> (+ fires a 'mxid-login-ext' event) on
+// the portal origin. Returns null while checking, then true/false.
+function useExtInstalled(): boolean | null {
+  const [installed, setInstalled] = useState<boolean | null>(null)
+  useEffect(() => {
+    const present = () => document.documentElement.hasAttribute('data-mxid-login-ext')
+    if (present()) { setInstalled(true); return }
+    const onEvt = () => setInstalled(true)
+    window.addEventListener('mxid-login-ext', onEvt)
+    // The content script sets the marker at document_idle — poll ~3s before
+    // concluding it's absent.
+    let n = 0
+    const iv = setInterval(() => {
+      if (present()) { setInstalled(true); clearInterval(iv) }
+      else if (++n > 15) { setInstalled(false); clearInterval(iv) }
+    }, 200)
+    return () => { window.removeEventListener('mxid-login-ext', onEvt); clearInterval(iv) }
+  }, [])
+  return installed
+}
+
 export default function AppsPage() {
   const { t } = useTranslation()
   const UNGROUPED_LABEL = t('portal.ungrouped')
@@ -51,6 +73,10 @@ export default function AppsPage() {
   const [dragId, setDragId] = useState<string | null>(null)
   // Form-fill (SWA): the app whose per-user credential the user is editing.
   const [credApp, setCredApp] = useState<PortalApp | null>(null)
+  // MXID Login extension detection + setup guide.
+  const extInstalled = useExtInstalled()
+  const [showSetup, setShowSetup] = useState(false)
+  const hasFormApp = useMemo(() => apps.some((a) => a.protocol === 'form'), [apps])
 
   const fetchAll = useCallback(async () => {
     try {
@@ -371,6 +397,21 @@ export default function AppsPage() {
         </div>
       </div>
 
+      {hasFormApp && extInstalled === false && (
+        <div className="mb-5 flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2 text-sm text-amber-800">
+            <KeyRound className="h-4 w-4 shrink-0" />
+            <span>{t('portal.extBanner.text')}</span>
+          </div>
+          <button
+            onClick={() => setShowSetup(true)}
+            className="shrink-0 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-amber-700"
+          >
+            {t('portal.extBanner.action')}
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[200px_1fr]">
         {/* Sidebar */}
         <aside className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
@@ -483,7 +524,35 @@ export default function AppsPage() {
           onClose={() => setCredApp(null)}
         />
       )}
+
+      {showSetup && <ExtSetupModal onClose={() => setShowSetup(false)} />}
     </motion.div>
+  )
+}
+
+// ExtSetupModal — the in-app install tutorial for the MXID Login extension. The
+// portal cannot install it (browsers block web-page installs); this guides the
+// user. The CRX itself is served/pushed by the deployment (managed policy or a
+// download link the admin provides).
+function ExtSetupModal({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <Modal open title={t('portal.extSetup.title')} onClose={onClose}>
+      <div className="space-y-4 text-sm text-ink">
+        <p className="text-muted">{t('portal.extSetup.intro')}</p>
+        <ol className="list-decimal space-y-2 pl-5">
+          <li>{t('portal.extSetup.step1')}</li>
+          <li>{t('portal.extSetup.step2')}</li>
+          <li>{t('portal.extSetup.step3')}</li>
+        </ol>
+        <p className="rounded-lg bg-surface-muted px-3 py-2 text-xs text-muted">
+          {t('portal.extSetup.note')}
+        </p>
+        <div className="flex justify-end">
+          <Button type="button" onClick={onClose}>{t('common.close')}</Button>
+        </div>
+      </div>
+    </Modal>
   )
 }
 
