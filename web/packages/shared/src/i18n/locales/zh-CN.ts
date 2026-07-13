@@ -1390,6 +1390,18 @@ export default {
     favoriteFailed: '收藏操作失败',
     favoriteSaveFailed: '收藏排序失败',
     favoriteSaveOrderFailed: '保存排序失败',
+    formCred: {
+      manage: '管理登录凭证',
+      title: '“{{name}}” 的登录凭证',
+      hint: '保存你在该系统的账号密码；浏览器扩展会在打开时自动填表登录。密码加密保存，不会回显。',
+      account: '账号',
+      password: '密码',
+      clear: '清除',
+      saved: '凭证已保存',
+      saveFailed: '保存凭证失败',
+      cleared: '凭证已清除',
+      clearFailed: '清除凭证失败',
+    },
     noDesc: '暂无描述',
     appsEmpty: '暂无应用',
     profile: {

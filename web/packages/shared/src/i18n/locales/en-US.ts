@@ -1387,6 +1387,18 @@ export default {
     favoriteFailed: 'Favorite action failed',
     favoriteSaveFailed: 'Failed to save favorite order',
     favoriteSaveOrderFailed: 'Failed to save order',
+    formCred: {
+      manage: 'Manage login credential',
+      title: 'Login credential for “{{name}}”',
+      hint: 'Store your username and password for this system; the browser extension auto-submits the login form on launch. The password is encrypted and never shown back.',
+      account: 'Username',
+      password: 'Password',
+      clear: 'Clear',
+      saved: 'Credential saved',
+      saveFailed: 'Failed to save credential',
+      cleared: 'Credential cleared',
+      clearFailed: 'Failed to clear credential',
+    },
     noDesc: 'No description',
     appsEmpty: 'No apps',
     profile: {

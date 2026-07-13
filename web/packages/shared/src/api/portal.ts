@@ -34,6 +34,13 @@ export const portalApi = {
       .then(r => r.data.data),
   launchApp: (id: string) =>
     portalClient.get<ApiResponse<{ launch_url: string }>>(`/apps/${id}/launch`).then(r => r.data.data),
+  // Form-fill (SWA) per-user credential. The user stores their own downstream
+  // login here; the browser extension reveals + auto-submits it (reveal is
+  // extension-only and never exposed to the portal UI).
+  setAppCredential: (id: string, body: { account: string; credential: string }) =>
+    portalClient.put<ApiResponse<null>>(`/apps/${id}/credential`, body).then(r => r.data),
+  deleteAppCredential: (id: string) =>
+    portalClient.delete<ApiResponse<null>>(`/apps/${id}/credential`).then(r => r.data),
   listAppGroups: () =>
     portalClient.get<ApiResponse<PortalAppGroup[]>>('/app-groups').then(r => r.data.data),
   listFavorites: () =>
