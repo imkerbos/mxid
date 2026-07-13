@@ -27,11 +27,15 @@ honeypots leak.
 (see design §7.1 — per-app derivation would bypass `crypto.Secret` and lose
 transparent masking, a bad trade for a <10-app fleet).
 
-- Table: extend existing `mxid_app_account` (already `credential crypto.Secret`,
+- **per_user**: existing `mxid_app_account` (already `credential crypto.Secret`,
   AES-256-GCM at rest via `pkg/crypto/secret.go:108` Valuer / `:125` Scanner,
-  masked `"********"` in JSON).
-- Add: `UNIQUE(app_id, user_id)` (one credential per user per app),
-  `last_used_at TIMESTAMPTZ NULL`.
+  masked `"********"` in JSON). `UNIQUE(app_id, user_id)` + FK already exist
+  (000004 / 000058); migration only adds `last_used_at TIMESTAMPTZ NULL`.
+- **shared**: new `mxid_app_shared_credential` table (design §2.1) — app-level,
+  one row per app, `credential crypto.Secret`. Sentinel `user_id=0` in
+  `mxid_app_account` was rejected (NOT-NULL FK to `mxid_user`).
+- Verified: `mxid_app_account` currently holds **0 rows**, so the migration is
+  non-breaking.
 - KEK: `MXID_CRYPTO_KEY_ENCRYPTION_KEY`, wired at boot via
   `crypto.SetSecretMasterKey` (`internal/bootstrap/app.go`). `validateSecrets`
   release gate + `leakedDevKEKs` blacklist already enforce KEK hygiene — no new
@@ -57,11 +61,18 @@ Mandatory controls (ALL required, enforced server-side):
    base seam `internal/domain/authn/stepup.go`. Not fresh → 401/challenge, never
    the credential. Window default 1800s (`internal/domain/setting/service.go:360`).
    **NOT** the unimplemented `advanced_stepup` EE feature.
-3. **User-scoped, always** — `user_id` comes from the session, *never* from the
-   request. There is **no** admin/API path that returns another user's plaintext.
-   Query is `WHERE app_id = ? AND user_id = <session.UserID>`.
+3. **Scope resolved by `credential_mode`, never by request-supplied id** (see
+   design §2.1):
+   - `per_user` → `WHERE app_id=? AND user_id=<session.UserID>`. There is **no**
+     admin/API path that returns another user's per_user plaintext.
+   - `shared` → `mxid_app_shared_credential WHERE app_id=?`, but only after the
+     caller passes the app's **access policy** (they must be authorized to launch
+     the app). The shared secret is deliberately visible to all authorized users —
+     that is the mode's definition — but still sudo-gated + audited per reveal.
+   The mode is read from the app's `protocol_config`, server-side. The client
+   never chooses the mode or the target user_id.
 4. **One app at a time** — no bulk/list endpoint that returns plaintext. Reveal is
-   single-app, single-user, per call.
+   single-app per call.
 5. **Rate-limited** — reuse the existing per-user limiter pattern; a tight cap
    (e.g. N reveals/min) — bulk reveal is an exfil signal.
 6. **Audited** — every reveal emits a domain event via `event.Bus.Publish`
@@ -78,17 +89,27 @@ endpoint exposes it.
 
 ## 4. Write paths (store / update / delete)
 
+**`per_user` mode — end user writes their own (portal, EE route):**
 ```
-PUT    /portal/apps/{id}/credential    { account, credential }   (user-scoped)
-DELETE /portal/apps/{id}/credential                              (user-scoped)
+PUT    /portal/apps/{id}/credential    { account, credential }
+DELETE /portal/apps/{id}/credential
 ```
+- Scoped to session `user_id`, never request. Writes/removes that user's own row.
+- No step-up to *store* (you're giving your own password); step-up is for *reveal*.
 
-- User-scoped identically (session `user_id`, never request).
-- `credential` bound as a masked field; encrypted at rest by `crypto.Secret`.
-- Audited (store/update/delete events). No step-up required to *store* (you're
-  giving your own password); step-up is for *reveal*.
-- Reuse the existing `AppAccountRequest` DTO shape (already in CE, `dto.go:113`)
-  where it fits, but the handler is EE-only.
+**`shared` mode — admin writes the one shared row (console, EE route):**
+```
+PUT    /console/apps/{id}/shared-credential   { account, credential }
+DELETE /console/apps/{id}/shared-credential
+```
+- Admin-only (console EE route, `authz.Require` + `RequireFeature`). Writes the
+  `user_id=0` sentinel row. End users have **no** write path in shared mode.
+- Setting a shared credential is itself a **high-risk write → step-up gated** and
+  audited (an admin planting a service-account password).
+
+Common to both: `credential` bound as a masked field, encrypted at rest by
+`crypto.Secret`; every store/update/delete audited. Reuse the existing
+`AppAccountRequest` DTO shape (CE, `dto.go:113`) where it fits; handlers are EE-only.
 
 ---
 
@@ -100,16 +121,19 @@ Per root `CLAUDE.md`: high-value features are code-separated into the private
 **Stays in CE (foundational schema/enum — grandfathered, like branding schema):**
 - `app.ProtocolLink` already shipped; add `app.ProtocolForm = "form"` enum +
   dto `oneof` + `validProtocol` + launch-signal shape + protocol badge.
-- `mxid_app_account` schema + the `UNIQUE`/`last_used_at` migration.
+- `mxid_app_account` `last_used_at` column + the new `mxid_app_shared_credential`
+  table (both plain schema, foundational).
 - `license.FeatureFormFill` **key** in `pkg/ee/license/features.go` (that file is
   compiled into CE for license verification; the key is CE, the logic is EE).
 
 **EE-only (`mxid-ee` module, `form_fill` feature):**
-- Vault service: store/update/delete/reveal, all user-scoped + audited.
+- Vault service: store/update/delete/reveal, mode-aware (per_user vs shared, §3/§4),
+  all audited.
 - Sudo-gated reveal handler (§3).
 - Admin form-descriptor config API (authoring-method-agnostic — accepts a
-  descriptor whether hand-written or capture-generated).
-- Portal "my credentials" + "record login" routes.
+  descriptor whether hand-written or capture-generated) + `credential_mode` select.
+- Admin shared-credential write route (console, step-up gated, §4).
+- Portal "my credentials" + "record login" routes (per_user mode).
 
 **Registration** (both verified in `pkg/ee/registry`):
 - `RegisterInit(Initializer)` — `Initializer = func(*InitContext) error`
@@ -146,12 +170,15 @@ Controls:
 
 | Event | When | Severity |
 |---|---|---|
-| `app.credential.stored` | user saves/updates their credential | info |
-| `app.credential.deleted` | user removes their credential | info |
-| `app.credential.revealed` | reveal endpoint returns plaintext to extension | **high** |
-| `app.credential.reveal_denied` | reveal blocked (no step-up / not owner / rate-limited) | **high** |
+| `app.credential.stored` | user saves/updates their per_user credential | info |
+| `app.credential.deleted` | user removes their per_user credential | info |
+| `app.credential.shared_set` | admin sets/updates the shared credential | **high** |
+| `app.credential.revealed` | reveal returns plaintext to extension (mode + target in payload) | **high** |
+| `app.credential.reveal_denied` | reveal blocked (no step-up / not authorized / rate-limited) | **high** |
 
-All stamped with `auditctx` actor (who/ip/session). Reveal events are the
+All stamped with `auditctx` actor (who/ip/session). For **shared** reveals the
+actor is the real user who launched — so a shared service account still has
+per-use accountability (who used it, when). Reveal events are the
 security-monitoring anchor.
 
 ---
@@ -161,7 +188,9 @@ security-monitoring anchor.
 B1 may start only when all are ✔:
 
 - [ ] Threat model (design §3 + this doc) reviewed and accepted.
-- [ ] Reveal API contract (§3) approved — sudo gate, user-scoping, no-bulk,
+- [ ] **Credential modes** (§2.1, per_user + shared coexisting) accepted; sentinel
+      `user_id=0` for the shared row confirmed.
+- [ ] Reveal API contract (§3) approved — mode-based scoping, sudo gate, no-bulk,
       rate-limit, CORS-lock, audit all confirmed as hard requirements.
 - [ ] CE/EE split (§5) confirmed: `ProtocolForm` + schema + feature key in CE;
       all credential logic in `mxid-ee`.

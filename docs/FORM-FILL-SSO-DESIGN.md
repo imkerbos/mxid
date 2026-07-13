@@ -34,15 +34,23 @@ Benchmarks: Okta SWA, OneLogin Form-Based Apps, LastPass/1Password SSO apps.
 ## 1. Scope & non-goals
 
 In scope:
-- Per-user, per-app credential vault (username + password, encrypted at rest).
-- Admin app config: mark an app `protocol = form`, describe its login form.
-- End-user portal screen to store/update/delete their own credentials.
+- Per-app credential vault (username + password, encrypted at rest) in **two
+  coexisting modes** — set per app via `credential_mode` (see §2.1):
+  - **`per_user`** (default) — each user stores their own downstream credential.
+  - **`shared`** — an admin stores one credential that all authorized users launch
+    with (a shared/service account). Mirrors Okta SWA's "administrator sets
+    username and password" scheme.
+- Admin app config: mark an app `protocol = form`, pick the credential mode,
+  describe its login form.
+- End-user portal screen to store/update/delete their own credentials (per_user
+  mode); read-only for shared mode.
 - Browser extension that fills + submits the login form on launch.
-- Step-up MFA + full audit on every credential reveal.
+- Step-up MFA + full audit on every credential reveal (both modes).
 
 Non-goals (v1):
 - Password *rotation* into downstream systems (that's provisioning/SCIM, separate).
-- Shared/team credentials (v1 is strictly per-user).
+- Per-group credential targeting (shared is app-wide in v1, gated by the app's
+  access policy — not a distinct credential per group).
 - Mobile app auto-fill (extension is desktop browser only).
 - Headless/proxy injection (rejected — see §4, option B).
 
@@ -55,21 +63,55 @@ Reuse the existing `mxid_app_account` table (already AES-256-GCM encrypted via
 It is the natural vault row. Extend, don't invent:
 
 ```
-mxid_app_account (existing)
+mxid_app_account (existing — per_user rows)
   id, app_id, user_id, tenant_id
   account     VARCHAR(256)   -- downstream username (plaintext; not a secret)
   credential  crypto.Secret  -- downstream password, AES-256-GCM at rest, masked in JSON
   created_at, updated_at
-  + UNIQUE(app_id, user_id)          -- NEW: one credential per user per app
-  + last_used_at TIMESTAMPTZ NULL    -- NEW: for audit / stale detection
+  UNIQUE(app_id, user_id)            -- ALREADY EXISTS (000004)
+  FK user_id -> mxid_user(id)        -- ALREADY EXISTS (000058), NOT NULL, ON DELETE CASCADE
+  + last_used_at TIMESTAMPTZ NULL    -- NEW (migration): stale detection
 ```
 
-App-level form descriptor lives in `mxid_app.protocol_config` (JSONB, already
-present), no new column:
+### 2.1 Credential modes — two tables, not a sentinel
+
+The `credential_mode` on the app selects where the credential lives. **A sentinel
+`user_id=0` in `mxid_app_account` was rejected**: that column carries a NOT-NULL
+FK to `mxid_user(id)` (000058), so a fake user_id would violate the FK. Instead:
+
+- **`per_user`** — rows in existing `mxid_app_account`, one per real user
+  `(app_id, user_id)`. User owns and writes. FK + UNIQUE already there.
+- **`shared`** — a **new app-level table** `mxid_app_shared_credential`, one row
+  per app, owned/written by an admin, revealed to every authorized user:
+
+```
+mxid_app_shared_credential (NEW)
+  app_id      BIGINT PRIMARY KEY REFERENCES mxid_app(id) ON DELETE CASCADE
+  account     VARCHAR(256)  NOT NULL     -- shared/service-account username
+  credential  crypto.Secret (VARCHAR 512) -- shared password, AES-256-GCM at rest
+  last_used_at TIMESTAMPTZ NULL
+  created_at, updated_at
+  created_by  BIGINT NULL                -- admin who set it (audit)
+```
+
+Reveal resolution:
+```
+mode == per_user  -> mxid_app_account         WHERE app_id=? AND user_id=<session user>
+mode == shared    -> mxid_app_shared_credential WHERE app_id=?   (any authorized user)
+```
+
+App-level table is also conceptually cleaner: a shared credential is a property of
+the app, not of a user. **Password never goes in `protocol_config`** (that JSONB is
+plaintext at rest) — both tables use `crypto.Secret`.
+
+### 2.2 App-level form descriptor
+
+Lives in `mxid_app.protocol_config` (JSONB, already present), no new column:
 
 ```jsonc
 // protocol_config for a `form` app
 {
+  "credential_mode":  "per_user",                      // "per_user" | "shared"
   "login_url":        "https://wiki.internal/login",   // where the form lives
   "username_selector": "#username",                    // CSS selector
   "password_selector": "#password",
