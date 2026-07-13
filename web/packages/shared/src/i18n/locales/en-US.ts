@@ -774,6 +774,9 @@ export default {
       codeLabel: 'App code *',
       codeHint: 'SAML / CAS URLs embed this code (e.g. {{example}}); pick something readable. OIDC uses it internally only — random is fine.',
       protocolLabel: 'Protocol',
+      protocols: {
+        form: 'Form-fill (SWA, vaulted credentials auto-login)',
+      },
       clientTypeLabel: 'Client type *',
       clientTypes: {
         webApp: 'Web app (confidential client, has secret)',

@@ -777,6 +777,9 @@ export default {
       codeLabel: '应用编码 *',
       codeHint: 'SAML / CAS 协议 URL 包含此编码（如 {{example}}），建议可读；OIDC 仅内部使用，可随机',
       protocolLabel: '协议',
+      protocols: {
+        form: '表单填充 (SWA, 托管账密自动登录)',
+      },
       clientTypeLabel: '客户端类型 *',
       clientTypes: {
         webApp: 'Web 应用 (机密客户端, 有 secret)',
