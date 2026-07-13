@@ -86,6 +86,13 @@ type OutboxRegisterFunc func(kind string, h OutboxHandler)
 // in CE over authn.StepUpChecker.Fresh.
 type StepUpFreshFunc func(c *gin.Context, tenantID int64) bool
 
+// AppAccessFunc reports whether a user is authorized to launch an app (passes the
+// app's access policy). EE form-fill gates credential access on it so a user can
+// only reach a credential for an app they may actually use — and, for shared
+// credentials, so only authorized users see the shared secret. Implemented in CE
+// over appaccess.Service.CanAccess.
+type AppAccessFunc func(ctx context.Context, userID, appID int64) (bool, error)
+
 // ProvisioningConfigFunc returns an app's live, decrypted outbound-provisioning
 // config. enabled=false means no downstream deprovision should run. Implemented
 // in CE over the provisioning domain so the EE SCIM connector never touches the
@@ -112,6 +119,9 @@ type InitContext struct {
 	ProvisioningConfig ProvisioningConfigFunc
 	// StepUpFresh gates EE credential reveal on a fresh step-up (sudo) window.
 	StepUpFresh StepUpFreshFunc
+	// CanLaunchApp reports whether a user passes an app's access policy — EE
+	// form-fill only reveals a credential for an app the user may launch.
+	CanLaunchApp AppAccessFunc
 }
 
 // Initializer wires one EE feature. Returning an error aborts startup.
