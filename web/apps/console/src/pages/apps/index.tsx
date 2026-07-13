@@ -225,6 +225,8 @@ const protocolConfigFields: Record<string, ConfigField[]> = {
     { key: 'username_selector', label: 'Username Field Selector', type: 'text', placeholder: '#username' },
     { key: 'password_selector', label: 'Password Field Selector', type: 'text', placeholder: '#password' },
     { key: 'submit_selector', label: 'Submit Button Selector', type: 'text', placeholder: 'button[type=submit]' },
+    { key: 'next_selector', label: 'Next Button Selector (two-step login, optional)', type: 'text', placeholder: 'button.next', hint: 'For sites that ask username first, then password on a second view — the button that reveals the password step.' },
+    { key: 'extra_fields', label: 'Extra Static Fields (JSON, optional)', type: 'textarea', coerce: 'json', placeholder: '[{"selector":"#tenant","value":"acme"}]', hint: 'Static values to fill (tenant code, domain). Array of {selector, value}.' },
     { key: 'success_url_glob', label: 'Success URL (glob, optional)', type: 'text', placeholder: 'https://wiki.internal/dashboard*' },
   ],
 }
