@@ -95,10 +95,25 @@ with `Bearer`.
 
 - [x] Descriptor-sync endpoint `GET /formfill/apps` (done).
 - [x] reveal / store / delete credential endpoints (done, cookie-authed).
-- [ ] CORS allow-list for `chrome-extension://<id>` on `/formfill/*` (+ credentials).
-- [ ] Portal session cookie `SameSite=None; Secure` (or a `/formfill`-scoped cookie).
-- [ ] Verify `StepUpChecker.Fresh` resolves the portal session on a cross-site
-      extension fetch (the one runtime unknown — test before building the extension).
+- [x] **CORS** — no code needed: the extension origin goes in the existing
+      `MXID_SERVER_ALLOWED_ORIGINS` allow-list (comma-separated), e.g.
+      `MXID_SERVER_ALLOWED_ORIGINS="https://portal.example.com,chrome-extension://<id>"`.
+      `internal/middleware/cors.go` already reflects only allow-listed origins and
+      sends `Access-Control-Allow-Credentials: true` + allows `Authorization`.
+      (This list also drives CSRF, so the extension's PUT/DELETE pass the Origin check.)
+- [x] **Portal cookie `SameSite=None`** — opt-in config `session.cross_site_cookies`
+      (env `MXID_SESSION_CROSS_SITE_COOKIES=true`), default **off** (Lax). When on,
+      ONLY the portal cookie (`mxid_portal_sid`) flips to `SameSite=None` and is
+      forced `Secure`; the console cookie stays Lax. Set + clear paths both honor it
+      (`handler.go` setSessionCookieWithRemember / clearSessionCookie).
+      **Requires HTTPS** (SameSite=None mandates Secure) — so it cannot be exercised
+      on the plain-http dev stack; test on an HTTPS deployment.
+- [ ] **Runtime verify** `StepUpChecker.Fresh` resolves the portal session on a
+      cross-site extension fetch — the one remaining unknown. Needs HTTPS + a real
+      cross-site request; verify when the extension skeleton exists.
+
+**Net:** the backend for Option A is complete and merged behind an opt-in flag.
+Enabling the extension in a deployment = set the two env vars above (HTTPS).
 
 Bearer auth, OIDC-client registration, and the suot model are **deferred** — only
 needed if we later choose Option B.
