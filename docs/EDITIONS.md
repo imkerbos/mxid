@@ -17,9 +17,11 @@ with a signed license.
 | **External IdP login** (social / enterprise SSO) | ❌ | ✅ |
 | **Branding / white-label** (logo, colors, login page) | ❌ | ✅ |
 | Conditional access, WebAuthn/passkeys, SCIM, SMS, advanced step-up | ❌ | ✅ |
+| **Form-fill SSO (SWA)** — browser-extension auto-login for password-only web apps | ❌ | ✅ |
 
 Feature keys (in the license payload): `multi_tenant`, `external_idp`,
-`branding`, `conditional_access`, `webauthn`, `scim`, `advanced_stepup`, `sms`.
+`branding`, `conditional_access`, `webauthn`, `scim`, `advanced_stepup`, `sms`,
+`form_fill`.
 
 ### CE capabilities
 
@@ -47,7 +49,7 @@ Two layers of EE gating:
    the feature. Expiry reverts to CE limits; existing data is grandfathered (see
    §Expiry below).
 2. **Code-separated** (`external_idp`, `webauthn`, `scim`, `advanced_stepup`,
-   `sms`, and other high-value features): the implementation lives ONLY in the
+   `sms`, `form_fill`, and other high-value features): the implementation lives ONLY in the
    private `mxid-ee` repo. EE feature packages register into `pkg/ee/registry`
    from their `init()`; the CE binary imports none, so the code is *physically
    absent* from it — there is nothing to patch out. Verified: the CE binary
