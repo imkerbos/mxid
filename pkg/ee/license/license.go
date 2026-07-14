@@ -17,6 +17,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 )
@@ -182,22 +183,26 @@ func (m *Manager) State() string {
 }
 
 // Has reports whether the given EE feature is unlocked. CE → always false.
+//
+// Model: a valid EE license grants EVERY implemented feature — the product is
+// "EE = all". The signed features[] list is kept on the payload for the record
+// but no longer gates, so a newly shipped feature lights up on a binary upgrade
+// with no re-issued license. Expiry flips m.valid off → CE → all false.
 func (m *Manager) Has(f Feature) bool {
 	if m == nil || !m.valid {
 		return false
 	}
-	return m.features[f]
+	return IsImplemented(f)
 }
 
 // EnabledFeatures returns the unlocked feature keys (nil for CE). Used by the
-// bootstrap endpoint so the frontend can gate EE UI.
+// bootstrap endpoint so the frontend can gate EE UI. Mirrors Has(): a valid EE
+// license enables all implemented features, not just the signed subset.
 func (m *Manager) EnabledFeatures() []Feature {
 	if m == nil || !m.valid {
 		return nil
 	}
-	out := make([]Feature, 0, len(m.payload.Features))
-	out = append(out, m.payload.Features...)
-	return out
+	return slices.Clone(ImplementedFeatures)
 }
 
 // Customer returns the licensed customer name (empty for CE).
