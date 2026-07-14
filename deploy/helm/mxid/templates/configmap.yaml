@@ -10,11 +10,23 @@ data:
   MXID_CONFIG_ENV: "prod"
   MXID_SERVER_PORT: "8080"
   MXID_SERVER_MODE: {{ .Values.config.serverMode | quote }}
-  MXID_SERVER_ALLOWED_ORIGINS: {{ .Values.config.allowedOrigins | default (printf "https://%s" .Values.host) | quote }}
+  {{- $origins := .Values.config.allowedOrigins | default (printf "https://%s" .Values.host) }}
+  {{- if .Values.config.formFillExtension }}
+  {{- $origins = printf "%s,chrome-extension://bfdbncnhgjdbaeipacekokclgbkhlpic" $origins }}
+  {{- end }}
+  MXID_SERVER_ALLOWED_ORIGINS: {{ $origins | quote }}
   {{- with .Values.config.trustedProxies }}
   # Reverse-proxy / internal-LB CIDRs whose X-Forwarded-For is trusted, so the
   # real client IP is resolved instead of the LB IP. Narrow to the edge only.
   MXID_SERVER_TRUSTED_PROXIES: {{ join "," . | quote }}
+  {{- end }}
+  {{- if .Values.config.formFillExtension }}
+  # Form-fill SSO browser extension (MXID Login): its cross-site fetch to the
+  # credential-reveal endpoint needs the portal session cookie as SameSite=None
+  # (requires HTTPS + session.cookieSecure), and its chrome-extension:// origin
+  # allow-listed (appended to ALLOWED_ORIGINS above). Enable ONLY when running
+  # the extension — it slightly widens CSRF surface.
+  MXID_SESSION_CROSS_SITE_COOKIES: "true"
   {{- end }}
 
   # Canonical external URLs — blank values derive from .Values.host. These drive

@@ -50,17 +50,23 @@ var AllFeatures = []Feature{
 	FeatureFormFill,
 }
 
-// ImplementedFeatures lists the EE features that actually have shipping code in
-// this product today. The remaining AllFeatures entries are reserved catalog
-// keys (defined for the signing tool + forward-compat) but NOT yet built — so
-// public system metadata must not advertise them as available. Move a key here
-// the moment its feature ships.
+// ImplementedFeatures lists the EE features that actually ship in this product
+// today. This list is the source of truth for what a valid EE license grants:
+// Has() returns true for every key here (see license.Manager.Has) — a licensed
+// EE instance gets all of them, and a newly shipped feature lights up on binary
+// upgrade with NO re-issued license. So a feature appears here the moment its
+// code ships, and ONLY when the product actually sells it.
+//
+// The remaining AllFeatures entries are reserved catalog keys (defined for the
+// signing tool + forward-compat) but NOT sold/built, so they never grant. Note
+// FeatureMultiTenant is intentionally absent: the product is single-tenant, so
+// even though tenant code exists it is not an offered capability.
 var ImplementedFeatures = []Feature{
-	FeatureMultiTenant,      // runtime-gated, CE schema
-	FeatureBranding,         // runtime-gated, CE schema
+	FeatureBranding,          // runtime-gated, CE schema
 	FeatureConditionalAccess, // runtime-gated, CE schema
-	FeatureExternalIDP,      // code-separated, mxid-ee
-	FeatureSCIM,             // code-separated, mxid-ee (L2 offboarding deprovision)
+	FeatureExternalIDP,       // code-separated, mxid-ee
+	FeatureSCIM,              // code-separated, mxid-ee (L2 offboarding deprovision)
+	FeatureFormFill,          // code-separated, mxid-ee (form-fill / SWA credential vault)
 }
 
 // IsImplemented reports whether f has shipping code (vs a reserved catalog key

@@ -167,6 +167,13 @@ config:
   # Blank → derived as "https://<host>". Override for split-domain / extra origins.
   allowedOrigins: ""
 
+  # Form-fill SSO — the MXID Login browser extension (EE feature form_fill).
+  # true → allow-list the extension's chrome-extension:// origin AND set the
+  # portal session cookie to SameSite=None so the extension's cross-site fetch
+  # to the credential-reveal endpoint carries it. Requires HTTPS + cookieSecure.
+  # Enable ONLY when rolling out the extension — it slightly widens CSRF surface.
+  formFillExtension: false
+
   # Trusted reverse-proxy / load-balancer CIDRs (list). Behind an internal LB or
   # ingress, set this to the edge proxy CIDR(s) so the app resolves the REAL
   # client IP from X-Forwarded-For instead of collapsing every intranet client
