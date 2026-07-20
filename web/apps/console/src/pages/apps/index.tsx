@@ -12,6 +12,7 @@ import { toast, extractMessage } from '../../components/ui/toast'
 import AccessPolicyTab from './AccessPolicyTab'
 import AppRolesTab from './AppRolesTab'
 import ProvisioningTab from './ProvisioningTab'
+import SharedCredentialPanel from './SharedCredentialPanel'
 
 const APPS_VIEW_VALUES = ['apps', 'groups'] as const
 const DETAIL_TAB_VALUES = ['basic', 'protocol', 'credentials', 'access', 'roles', 'provisioning'] as const
@@ -1483,6 +1484,16 @@ export default function AppsPage() {
                               </div>
                             )}
                           </form>
+                        )}
+
+                        {/* Form-fill shared service account (credential_mode=shared).
+                            Lives outside protocol_config (step-up-gated secret), so
+                            it's its own panel below the descriptor form. */}
+                        {detailApp.protocol === 'form' && (
+                          <SharedCredentialPanel
+                            appId={String(detailApp.id)}
+                            mode={(protocolConfig['credential_mode'] as string) || 'per_user'}
+                          />
                         )}
                       </>
                     )}

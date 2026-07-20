@@ -29,6 +29,7 @@ var highRiskWriteSuffixes = []string{
 	"/rotate-signing-key",          // invalidate an app's SSO signing material
 	"/regenerate-secret",           // reset an app's client secret
 	"/mfa/lockout/clear",           // clear an MFA brute-force lockout
+	"/shared-credential",           // set a form app's shared service-account password
 	"/access-requests/:id/approve", // JIT: approve a temporary privilege elevation
 	"/access-requests/:id/revoke",  // JIT: revoke an active temporary grant
 }
