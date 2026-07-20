@@ -35,6 +35,17 @@ export const appApi = {
     client.put<ApiResponse<null>>(`/apps/${id}/config`, { protocol_config: config }).then(r => r.data),
   getProtocolConfig: (id: string) =>
     client.get<ApiResponse<Record<string, unknown>>>(`/apps/${id}/config`).then(r => r.data.data),
+
+  // Form-fill shared credential (credential_mode=shared): one service account all
+  // authorized users fill with. EE-gated. The password is never returned
+  // (has_credential flags presence, account is the non-secret username); setting
+  // it is step-up gated.
+  getSharedCredential: (id: string) =>
+    client.get<ApiResponse<{ has_credential: boolean; account: string }>>(`/apps/${id}/shared-credential`).then(r => r.data.data),
+  setSharedCredential: (id: string, account: string, credential: string) =>
+    client.put<ApiResponse<{ ok: boolean }>>(`/apps/${id}/shared-credential`, { account, credential }).then(r => r.data),
+  deleteSharedCredential: (id: string) =>
+    client.delete<ApiResponse<{ ok: boolean }>>(`/apps/${id}/shared-credential`).then(r => r.data),
   // Distinct custom env labels already in use — merged with the static presets
   // in the app-form dropdown so a previously-typed env reappears.
   listEnvOptions: () =>
