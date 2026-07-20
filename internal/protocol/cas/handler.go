@@ -141,15 +141,23 @@ func (h *Handler) login(c *gin.Context) {
 		return
 	}
 
-	// Check for protocol session
-	sessionCookie, err := c.Cookie("mxid_proto_sid")
-	if err != nil || sessionCookie == "" {
-		h.redirectToLogin(c, appCode, service)
-		return
+	// Resolve the SSO session. The protocol cookie is authoritative; fall back
+	// to the portal cookie so IdP-initiated launches and users already signed
+	// into the portal (including passwordless flows that create only a portal
+	// session) aren't bounced through /login a second time — the same bridge
+	// OIDC and SAML already use. Without the portal fallback a CAS single-logout,
+	// which clears only mxid_proto_sid, leaves the portal session alive and the
+	// SPA auto-resumes into an infinite /login ↔ /protocol/cas/.../login loop.
+	var ssoSess *resolver.SSOSession
+	if sc, cerr := c.Cookie("mxid_proto_sid"); cerr == nil && sc != "" {
+		ssoSess, _ = h.sessRes.GetSSOSession(c.Request.Context(), sc)
 	}
-
-	ssoSess, err := h.sessRes.GetSSOSession(c.Request.Context(), sessionCookie)
-	if err != nil || ssoSess == nil {
+	if ssoSess == nil {
+		if pc, cerr := c.Cookie("mxid_portal_sid"); cerr == nil && pc != "" {
+			ssoSess, _ = h.sessRes.GetSSOSession(c.Request.Context(), pc)
+		}
+	}
+	if ssoSess == nil {
 		h.redirectToLogin(c, appCode, service)
 		return
 	}

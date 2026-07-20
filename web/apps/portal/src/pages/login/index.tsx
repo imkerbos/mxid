@@ -4,60 +4,8 @@ import { motion } from 'framer-motion'
 import { authApi, externalIdpApi, ExternalIdpButtons, useAuthStore, useBootstrap, useTranslation } from '@mxid/shared'
 import type { PublicIDP } from '@mxid/shared'
 import { Eye, EyeOff, Loader2, RefreshCw } from 'lucide-react'
+import { resumeSSOIfAny } from '../../lib/sso'
 import logo from '../../assets/logo.png'
-
-// resumeSSOIfAny inspects the URL for an in-flight protocol handshake
-// (?protocol=cas|oidc|saml plus app_code + service) and, when present,
-// fires a hard navigation back to the backend protocol endpoint so the
-// ticket / code can be issued. Returns true when it took over the redirect.
-function resumeSSOIfAny(sp: URLSearchParams): boolean {
-  const protocol = sp.get('protocol')
-  const appCode = sp.get('app_code')
-  const service = sp.get('service')
-  if (protocol === 'cas' && appCode && service) {
-    window.location.replace(`/protocol/cas/${appCode}/login?service=${encodeURIComponent(service)}`)
-    return true
-  }
-  if (protocol === 'saml' && appCode) {
-    const rid = sp.get('request_id') ?? ''
-    const rs = sp.get('relay_state') ?? ''
-    window.location.replace(
-      `/protocol/saml/${appCode}/resume?request_id=${encodeURIComponent(rid)}&relay_state=${encodeURIComponent(rs)}`,
-    )
-    return true
-  }
-  // OIDC (and any generic flow) hands back the full backend URL to resume in
-  // return_to (e.g. /protocol/oidc/authorize?...). Redirect there after login so
-  // the SP flow continues instead of dumping the user on /apps.
-  const rt = safeSameOriginURL(sp.get('return_to'))
-  if (rt) {
-    window.location.replace(rt)
-    return true
-  }
-  return false
-}
-
-// safeSameOriginURL returns raw only if it is a same-origin http(s) URL (or a
-// single-slash-rooted relative path); anything else (cross-origin, javascript:,
-// //evil, userinfo) yields '' so a tampered return_to can't open-redirect.
-function safeSameOriginURL(raw: string | null): string {
-  if (!raw) return ''
-  for (let i = 0; i < raw.length; i++) {
-    const c = raw.charCodeAt(i)
-    if (c < 0x20 || c === 0x7f) return ''
-  }
-  if (raw.startsWith('//') || raw.startsWith('/\\') || raw.startsWith('\\')) return ''
-  if (raw.startsWith('/')) return raw.includes('\\') ? '' : raw
-  try {
-    const u = new URL(raw, window.location.origin)
-    if (u.protocol !== 'http:' && u.protocol !== 'https:') return ''
-    if (u.username || u.password) return ''
-    if (u.origin !== window.location.origin) return ''
-    return u.href
-  } catch {
-    return ''
-  }
-}
 
 // loginErrorMessage maps the backend error code to a specific, localized
 // message so the user sees whether the captcha or the credentials were wrong,
