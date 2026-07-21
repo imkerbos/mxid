@@ -152,6 +152,11 @@ export default function UserDetailPage() {
                     {t('users.detail.mustResetPassword')}
                   </span>
                 )}
+                {user.has_password === false && (
+                  <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700">
+                    {t('users.detail.noLocalPassword')}
+                  </span>
+                )}
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-4 text-sm text-muted">
                 <span className="inline-flex items-center gap-1">
@@ -178,7 +183,7 @@ export default function UserDetailPage() {
               </p>
             </div>
             <div className="flex flex-col items-end gap-2">
-              <ResetPasswordButton userID={userID} onDone={loadUser} />
+              <ResetPasswordButton userID={userID} hasPassword={user.has_password} onDone={loadUser} />
               {user.status === UserStatus.Locked ? (
                 <UnlockButton userID={userID} onDone={loadUser} />
               ) : (
@@ -229,8 +234,20 @@ export default function UserDetailPage() {
 
 /* ─────────────────────────── Reset password ─────────────────────────── */
 
-function ResetPasswordButton({ userID, onDone }: { userID: string; onDone: () => void }) {
+function ResetPasswordButton({
+  userID,
+  hasPassword,
+  onDone,
+}: {
+  userID: string
+  hasPassword?: boolean
+  onDone: () => void
+}) {
   const { t } = useTranslation()
+  // For external-IdP accounts with no local password, this dialog sets the
+  // first one (enabling username+password login alongside the IdP) rather than
+  // resetting an existing credential — relabel accordingly.
+  const isSet = hasPassword === false
   const [open, setOpen] = useState(false)
   const [pwd, setPwd] = useState('')
   const [mustChange, setMustChange] = useState(true)
@@ -259,12 +276,14 @@ function ResetPasswordButton({ userID, onDone }: { userID: string; onDone: () =>
         className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700 hover:bg-amber-100"
       >
         <KeyRound className="h-4 w-4" />
-        {t('users.detail.resetPwd.button')}
+        {isSet ? t('users.detail.resetPwd.setButton') : t('users.detail.resetPwd.button')}
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="w-full max-w-md rounded-xl bg-surface p-6 shadow-xl">
-            <h3 className="mb-4 text-lg font-semibold">{t('users.detail.resetPwd.title')}</h3>
+            <h3 className="mb-4 text-lg font-semibold">
+              {isSet ? t('users.detail.resetPwd.setTitle') : t('users.detail.resetPwd.title')}
+            </h3>
             <div className="space-y-3">
               <div>
                 <label className="mb-1 block text-sm font-medium text-ink">{t('users.detail.resetPwd.newPassword')}</label>

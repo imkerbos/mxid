@@ -22,6 +22,14 @@ type ChangePasswordRequest struct {
 	TOTPCode    string `json:"totp_code"`
 }
 
+// SetPasswordRequest is the request body for setting a first-time password on
+// an account that has none (external-IdP / Lark users). No old password is
+// required — there is none — but the service rejects the call if the account
+// already has a usable password.
+type SetPasswordRequest struct {
+	NewPassword string `json:"new_password" binding:"required"`
+}
+
 // VerifyTOTPRequest is the request body for TOTP verification.
 type VerifyTOTPRequest struct {
 	Code string `json:"code" binding:"required"`
@@ -84,6 +92,7 @@ func RegisterSecurityRoutes(rg *gin.RouterGroup, h *SecurityHandler) {
 	sec := rg.Group("/security")
 	{
 		sec.PUT("/password", h.changePassword)
+		sec.POST("/password/set", h.setInitialPassword)
 
 		sec.GET("/mfa", h.listMFA)
 		sec.POST("/mfa/totp/setup", h.setupTOTP)
@@ -375,6 +384,36 @@ func (h *SecurityHandler) changePassword(c *gin.Context) {
 		_ = h.sessionQuerier.DeleteAllByUserExcept(c.Request.Context(), ns, userID, currentSID)
 	}
 
+	response.OK(c, nil)
+}
+
+// setInitialPassword sets a first-time password for the authenticated user
+// when their account has none (provisioned via an external IdP such as Lark).
+// It needs no old password and no TOTP step-up: the account currently has no
+// local credential to protect, and the caller already proved identity via the
+// session established through the external IdP. The domain service refuses if a
+// usable password already exists, forcing normal accounts through the
+// old-password-verifying changePassword path instead.
+func (h *SecurityHandler) setInitialPassword(c *gin.Context) {
+	userID, ok := authn.GetUserID(c)
+	if !ok {
+		response.Unauthorized(c, 40101, "not authenticated")
+		return
+	}
+
+	var req SetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, 40001, "invalid request body")
+		return
+	}
+
+	if err := h.userQuerier.SetInitialPassword(c.Request.Context(), userID, req.NewPassword); err != nil {
+		response.MapError(c, err)
+		return
+	}
+
+	// No session purge: unlike a password rotation, no existing credential is
+	// being invalidated, so the user's other external-IdP sessions stay valid.
 	response.OK(c, nil)
 }
 

@@ -20,6 +20,9 @@ interface PortalUserInfo {
   avatar: string
   status: number
   last_login_at: string | null
+  // false for external-IdP (e.g. Lark) accounts that never set a local
+  // password — the security page offers "set password" instead of "change".
+  has_password: boolean
 }
 
 interface ProfileResponse {
@@ -83,6 +86,12 @@ export const portalApi = {
   changePassword: (old_password: string, new_password: string, totp_code?: string) =>
     portalClient
       .put<ApiResponse<null>>('/security/password', { old_password, new_password, totp_code })
+      .then(r => r.data),
+  // Set a first-time password for an external-IdP account that has none.
+  // Rejected by the backend if the account already has a usable password.
+  setPassword: (new_password: string) =>
+    portalClient
+      .post<ApiResponse<null>>('/security/password/set', { new_password })
       .then(r => r.data),
   listMFA: () =>
     portalClient.get<ApiResponse<MFAInfo[]>>('/security/mfa').then(r => r.data.data),

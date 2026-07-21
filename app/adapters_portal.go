@@ -19,6 +19,7 @@ import (
 	"github.com/imkerbos/mxid/internal/domain/audit"
 	"github.com/imkerbos/mxid/internal/domain/user"
 	"github.com/imkerbos/mxid/internal/gateway/portal"
+	"github.com/imkerbos/mxid/pkg/crypto"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/session"
 	"github.com/imkerbos/mxid/pkg/snowflake"
@@ -56,6 +57,7 @@ func (a *portalUserQuerierAdapter) GetByID(ctx context.Context, userID int64) (*
 	if u.Avatar != nil {
 		info.Avatar = *u.Avatar
 	}
+	info.HasPassword = crypto.HasUsablePassword(u.PasswordHash)
 	return info, nil
 }
 
@@ -168,6 +170,13 @@ func (a *portalUserQuerierAdapter) ChangePassword(ctx context.Context, userID in
 	return a.userModule.Service.ChangePassword(ctx, userID, &user.ChangePasswordRequest{
 		OldPassword: oldPassword, NewPassword: newPassword,
 	})
+}
+
+// SetInitialPassword sets a first-time password for an external-IdP account
+// with no local password. The domain service refuses if a usable password
+// already exists, so this can't bypass the old-password check.
+func (a *portalUserQuerierAdapter) SetInitialPassword(ctx context.Context, userID int64, newPassword string) error {
+	return a.userModule.Service.SetInitialPassword(ctx, userID, newPassword)
 }
 
 // LookupByEmail returns the matching user_id or 0 if no row exists. Errors

@@ -3,6 +3,7 @@ package user
 import (
 	"time"
 
+	"github.com/imkerbos/mxid/pkg/crypto"
 	"github.com/imkerbos/mxid/pkg/mask"
 )
 
@@ -24,8 +25,8 @@ type UpdateUserRequest struct {
 	// Avatar holds either a URL or an inline base64 data URL. Cap ~5 MB of chars:
 	// the client crops to a small square PNG (well under this), and even a raw
 	// 3 MB image → ~4 M base64 chars fits — bounded to reject abusive payloads.
-	Avatar      *string `json:"avatar" binding:"omitempty,max=5242880"`
-	Status      *int    `json:"status" binding:"omitempty,oneof=1 2 3 4"`
+	Avatar *string `json:"avatar" binding:"omitempty,max=5242880"`
+	Status *int    `json:"status" binding:"omitempty,oneof=1 2 3 4"`
 }
 
 // UpdateStatusRequest is the request body for updating user status.
@@ -140,26 +141,30 @@ type ListUsersRequest struct {
 // safe integer range; returning them as numbers makes the frontend round
 // the trailing digits and every detail-page lookup 404s.
 type UserResponse struct {
-	ID                int64              `json:"id,string"`
-	TenantID          int64              `json:"tenant_id,string"`
-	Username          string             `json:"username"`
-	Email             *string            `json:"email"`
-	Phone             *string            `json:"phone"`
-	DisplayName       *string            `json:"display_name"`
-	Avatar            *string            `json:"avatar"`
-	Status            int                `json:"status"`
+	ID          int64   `json:"id,string"`
+	TenantID    int64   `json:"tenant_id,string"`
+	Username    string  `json:"username"`
+	Email       *string `json:"email"`
+	Phone       *string `json:"phone"`
+	DisplayName *string `json:"display_name"`
+	Avatar      *string `json:"avatar"`
+	Status      int     `json:"status"`
 	// MFAEnabled is true when the user has ≥1 verified MFA method. Populated only
 	// on the list view (batched); zero-valued on single-user responses.
-	MFAEnabled        bool               `json:"mfa_enabled"`
-	LastLoginAt       *time.Time         `json:"last_login_at"`
-	LastLoginIP       *string            `json:"last_login_ip"`
-	PasswordChangedAt *time.Time         `json:"password_changed_at"`
-	MustChangePwd     bool               `json:"must_change_pwd"`
-	CreatedAt         time.Time          `json:"created_at"`
-	UpdatedAt         time.Time          `json:"updated_at"`
-	CreatedBy         *int64             `json:"created_by,string,omitempty"`
-	UpdatedBy         *int64             `json:"updated_by,string,omitempty"`
-	Detail            *UserDetailResponse `json:"detail,omitempty"`
+	MFAEnabled        bool       `json:"mfa_enabled"`
+	LastLoginAt       *time.Time `json:"last_login_at"`
+	LastLoginIP       *string    `json:"last_login_ip"`
+	PasswordChangedAt *time.Time `json:"password_changed_at"`
+	MustChangePwd     bool       `json:"must_change_pwd"`
+	// HasPassword is false for accounts provisioned via an external IdP that
+	// have never set a local password (Lark-only users). The console surfaces
+	// it so an admin knows password login is unavailable until one is set.
+	HasPassword bool                `json:"has_password"`
+	CreatedAt   time.Time           `json:"created_at"`
+	UpdatedAt   time.Time           `json:"updated_at"`
+	CreatedBy   *int64              `json:"created_by,string,omitempty"`
+	UpdatedBy   *int64              `json:"updated_by,string,omitempty"`
+	Detail      *UserDetailResponse `json:"detail,omitempty"`
 }
 
 // UserDetailResponse is the API response for user detail.
@@ -239,6 +244,7 @@ func ToResponse(u *User, detail *UserDetail) *UserResponse {
 		LastLoginIP:       u.LastLoginIP,
 		PasswordChangedAt: u.PasswordChangedAt,
 		MustChangePwd:     u.MustChangePwd,
+		HasPassword:       crypto.HasUsablePassword(u.PasswordHash),
 		CreatedAt:         u.CreatedAt,
 		UpdatedAt:         u.UpdatedAt,
 		CreatedBy:         u.CreatedBy,

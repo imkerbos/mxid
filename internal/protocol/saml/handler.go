@@ -391,14 +391,57 @@ func (h *Handler) processSSO(c *gin.Context, appCode, requestID, relayState stri
 		roleCodes, _ = h.appRoles.ResolveAppRoles(c.Request.Context(), ssoSess.UserID, app.ID, ssoSess.TenantID)
 	}
 
-	h.emitCrewjamResponse(c, appCode, app.ID, ssoSess.UserID, samlCfg, requestID, relayState, nameIDValue, attrs, roleCodes)
+	// User group codes → emitted as a multi-value attribute, but ONLY when the
+	// app opted in by naming a GroupAttribute (empty = groups not sent). Group
+	// membership is already resolved on the IdentityInfo — no extra query.
+	var groupCodes []string
+	if samlCfg.GroupAttribute != "" {
+		groupCodes = user.Groups
+	}
+
+	h.emitCrewjamResponse(c, appCode, app.ID, ssoSess.UserID, samlCfg, requestID, relayState, nameIDValue, attrs, roleCodes, groupCodes)
+}
+
+// multiValueAttr builds one SAML multi-value Attribute from a set of string
+// values under the given name. Returns the zero Attribute when values is empty
+// so callers can skip appending it.
+func multiValueAttr(name string, values []string) crewjam.Attribute {
+	vals := make([]crewjam.AttributeValue, len(values))
+	for i, v := range values {
+		vals[i] = crewjam.AttributeValue{Type: "xs:string", Value: v}
+	}
+	return crewjam.Attribute{
+		Name:       name,
+		NameFormat: "urn:oasis:names:tc:SAML:2.0:attrname-format:basic",
+		Values:     vals,
+	}
+}
+
+// buildResponseAttributes assembles the SAML AttributeStatement contents: the
+// mapped user attributes, plus the app-role attribute (always, default name
+// "roles") and — only when the app opted in by naming a GroupAttribute — the
+// user-group attribute. Roles and groups are independent multi-value
+// attributes, so an SP receives both when groups are enabled.
+func buildResponseAttributes(samlCfg *SAMLConfig, attrs map[string]string, roleCodes, groupCodes []string) []crewjam.Attribute {
+	out := attrsToCrewjam(attrs)
+	if len(roleCodes) > 0 {
+		roleAttr := samlCfg.RoleAttribute
+		if roleAttr == "" {
+			roleAttr = "roles"
+		}
+		out = append(out, multiValueAttr(roleAttr, roleCodes))
+	}
+	if len(groupCodes) > 0 && samlCfg.GroupAttribute != "" {
+		out = append(out, multiValueAttr(samlCfg.GroupAttribute, groupCodes))
+	}
+	return out
 }
 
 // emitCrewjamResponse builds and writes the SAML Response via crewjam/saml,
 // which signs the assertion (and response), handles NameID / Conditions /
 // element ordering / canonicalisation, and renders the auto-submit POST form.
 // Handles both SP-initiated (requestID set) and IdP-initiated (empty) flows.
-func (h *Handler) emitCrewjamResponse(c *gin.Context, appCode string, appID, userID int64, samlCfg *SAMLConfig, requestID, relayState, nameIDValue string, attrs map[string]string, roleCodes []string) {
+func (h *Handler) emitCrewjamResponse(c *gin.Context, appCode string, appID, userID int64, samlCfg *SAMLConfig, requestID, relayState, nameIDValue string, attrs map[string]string, roleCodes, groupCodes []string) {
 	key, cert, err := h.loadKeyAndCert(c.Request.Context(), appID)
 	if err != nil {
 		h.logger.Error("saml sso: load signing key failed", zap.Int64("app_id", appID), zap.Error(err))
@@ -413,22 +456,7 @@ func (h *Handler) emitCrewjamResponse(c *gin.Context, appCode string, appID, use
 	}
 
 	now := time.Now()
-	customAttrs := attrsToCrewjam(attrs)
-	if len(roleCodes) > 0 {
-		roleAttr := samlCfg.RoleAttribute
-		if roleAttr == "" {
-			roleAttr = "roles"
-		}
-		vals := make([]crewjam.AttributeValue, len(roleCodes))
-		for i, rc := range roleCodes {
-			vals[i] = crewjam.AttributeValue{Type: "xs:string", Value: rc}
-		}
-		customAttrs = append(customAttrs, crewjam.Attribute{
-			Name:       roleAttr,
-			NameFormat: "urn:oasis:names:tc:SAML:2.0:attrname-format:basic",
-			Values:     vals,
-		})
-	}
+	customAttrs := buildResponseAttributes(samlCfg, attrs, roleCodes, groupCodes)
 	session := &crewjam.Session{
 		ID:               uuid.NewString(),
 		CreateTime:       now,

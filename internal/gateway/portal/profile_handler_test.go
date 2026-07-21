@@ -32,6 +32,7 @@ func (s updateProfileStub) UpdateProfile(context.Context, int64, string, string,
 }
 func (s updateProfileStub) UpdateAvatar(context.Context, int64, string) error           { return nil }
 func (s updateProfileStub) ChangePassword(context.Context, int64, string, string) error { return nil }
+func (s updateProfileStub) SetInitialPassword(context.Context, int64, string) error     { return nil }
 func (s updateProfileStub) MarkEmailVerified(context.Context, int64) error              { return nil }
 func (s updateProfileStub) GetEmail(context.Context, int64) (string, error)             { return "", nil }
 func (s updateProfileStub) LookupByEmail(context.Context, int64, string) (int64, error) {

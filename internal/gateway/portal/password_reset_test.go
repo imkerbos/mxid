@@ -46,6 +46,7 @@ func (s resetPasswordStub) UpdateProfile(context.Context, int64, string, string,
 }
 func (s resetPasswordStub) UpdateAvatar(context.Context, int64, string) error           { return nil }
 func (s resetPasswordStub) ChangePassword(context.Context, int64, string, string) error { return nil }
+func (s resetPasswordStub) SetInitialPassword(context.Context, int64, string) error     { return nil }
 func (s resetPasswordStub) MarkEmailVerified(context.Context, int64) error              { return nil }
 func (s resetPasswordStub) GetEmail(context.Context, int64) (string, error)             { return "", nil }
 func (s resetPasswordStub) LookupByEmail(context.Context, int64, string) (int64, error) {
