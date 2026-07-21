@@ -5,6 +5,7 @@ type CASConfig struct {
 	ServiceURLs      []string          `json:"service_urls"`      // allowed service URLs
 	AttributeMapping map[string]string `json:"attribute_mapping"` // user attr -> CAS attribute name
 	RoleAttribute    string            `json:"role_attribute"`    // multi-value attribute name carrying the user's app roles (JIT-first). Default "roles"; set "memberOf"/"groups" to match the SP.
+	GroupAttribute   string            `json:"group_attribute"`   // multi-value attribute name carrying the user's group codes. Empty (default) = groups NOT emitted (opt-in per app); set e.g. "groups"/"memberOf" to send them.
 	TicketTTL        int               `json:"ticket_ttl"`        // seconds, default 30
 	RenewEnabled     bool              `json:"renew_enabled"`     // force re-authentication
 	LogoutURL        string            `json:"logout_url"`        // SP's CAS Single Logout endpoint; falls back to the service URL if empty

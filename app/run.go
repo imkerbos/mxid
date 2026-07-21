@@ -271,11 +271,9 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	userModule := user.Register(a)
 
 	// 3. Authentication module — bridge user repo via adapters
-	authQuerier := authn.BuildAuthQuerier(func(ctx context.Context, tenantID int64, username string) (*authn.UserAuth, error) {
-		u, err := userModule.Repo.GetByUsername(ctx, tenantID, username)
-		if err != nil {
-			return nil, err
-		}
+	// toUserAuth maps a user row to the auth-provider view. Shared by the
+	// username and email lookups so password login accepts either identifier.
+	toUserAuth := func(u *user.User) *authn.UserAuth {
 		displayName := ""
 		if u.DisplayName != nil {
 			displayName = *u.DisplayName
@@ -287,8 +285,24 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 			PasswordHash:      u.PasswordHash,
 			Status:            int(u.Status),
 			PasswordChangedAt: u.PasswordChangedAt,
-		}, nil
-	})
+		}
+	}
+	authQuerier := authn.BuildAuthQuerierWithEmail(
+		func(ctx context.Context, tenantID int64, username string) (*authn.UserAuth, error) {
+			u, err := userModule.Repo.GetByUsername(ctx, tenantID, username)
+			if err != nil {
+				return nil, err
+			}
+			return toUserAuth(u), nil
+		},
+		func(ctx context.Context, tenantID int64, email string) (*authn.UserAuth, error) {
+			u, err := userModule.Repo.GetByEmail(ctx, tenantID, email)
+			if err != nil {
+				return nil, err
+			}
+			return toUserAuth(u), nil
+		},
+	)
 
 	userQuerier := authn.BuildUserQuerier(
 		func(ctx context.Context, id int64) (*authn.UserInfo, error) {

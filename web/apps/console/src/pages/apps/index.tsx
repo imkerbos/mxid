@@ -169,12 +169,16 @@ function buildProtocolConfigFields(t: (k: string) => string): Record<string, Con
         hint: p('saml', 'encrypt_assertion', 'hint'),
       },
       { key: 'attribute_mapping', label: p('saml', 'attribute_mapping', 'label'), type: 'textarea', coerce: 'json', placeholder: '{"username":"uid","email":"mail","display_name":"displayName","phone":"telephoneNumber"}', hint: p('saml', 'attribute_mapping', 'hint') },
+      { key: 'role_attribute', label: p('saml', 'role_attribute', 'label'), type: 'text', placeholder: 'roles', hint: p('saml', 'role_attribute', 'hint') },
+      { key: 'group_attribute', label: p('saml', 'group_attribute', 'label'), type: 'text', placeholder: 'groups', hint: p('saml', 'group_attribute', 'hint') },
       { key: 'session_ttl', label: p('saml', 'session_ttl', 'label'), type: 'text', coerce: 'int', placeholder: '28800', hint: p('saml', 'session_ttl', 'hint') },
     ],
     cas: [
       { key: 'service_urls', label: p('cas', 'service_urls', 'label'), type: 'text', placeholder: 'http://app.example.com/cas/callback,https://other.example.com/', coerce: 'string_array_csv' },
       { key: 'ticket_ttl', label: p('cas', 'ticket_ttl', 'label'), type: 'text', placeholder: '30', coerce: 'int' },
       { key: 'attribute_mapping', label: p('cas', 'attribute_mapping', 'label'), type: 'textarea', placeholder: '{"username":"uid","email":"mail","display_name":"displayName","phone":"telephoneNumber"}', coerce: 'json' },
+      { key: 'role_attribute', label: p('cas', 'role_attribute', 'label'), type: 'text', placeholder: 'roles', hint: p('cas', 'role_attribute', 'hint') },
+      { key: 'group_attribute', label: p('cas', 'group_attribute', 'label'), type: 'text', placeholder: 'groups', hint: p('cas', 'group_attribute', 'hint') },
       { key: 'renew_enabled', label: p('cas', 'renew_enabled', 'label'), type: 'text', placeholder: 'false', coerce: 'bool' },
     ],
     // Form-fill (SWA) descriptor. credential_mode picks per-user vs shared vault;

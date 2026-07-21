@@ -76,6 +76,8 @@ export interface User {
   last_login_ip: string | null
   password_changed_at: string | null
   must_change_pwd: boolean
+  /** false for external-IdP (e.g. Lark) accounts that never set a local password. */
+  has_password?: boolean
   created_at: string
   updated_at: string
   created_by: string | null

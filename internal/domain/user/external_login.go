@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/imkerbos/mxid/pkg/crypto"
 	"github.com/imkerbos/mxid/pkg/dberr"
 )
 
@@ -240,5 +241,5 @@ func randomDummyHash() (string, error) {
 	if _, err := randReadDummy(b); err != nil {
 		return "", err
 	}
-	return "$2a$10$NO_LOCAL_PASSWORD_" + fmt.Sprintf("%x", b), nil
+	return crypto.NoLocalPasswordPrefix + fmt.Sprintf("%x", b), nil
 }

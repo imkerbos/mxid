@@ -256,8 +256,8 @@ func (h *Handler) validate(c *gin.Context) {
 
 // ServiceResponse wraps CAS 2.0/3.0 XML responses.
 type ServiceResponse struct {
-	XMLName xml.Name `xml:"cas:serviceResponse"`
-	Xmlns   string   `xml:"xmlns:cas,attr"`
+	XMLName xml.Name               `xml:"cas:serviceResponse"`
+	Xmlns   string                 `xml:"xmlns:cas,attr"`
 	Success *AuthenticationSuccess `xml:"cas:authenticationSuccess,omitempty"`
 	Failure *AuthenticationFailure `xml:"cas:authenticationFailure,omitempty"`
 }
@@ -265,10 +265,10 @@ type ServiceResponse struct {
 // AuthenticationSuccess represents a successful validation. Field order mirrors
 // the CAS XML schema: user, attributes (p3), proxyGrantingTicket, proxies.
 type AuthenticationSuccess struct {
-	User                 string      `xml:"cas:user"`
-	Attributes           *Attributes `xml:"cas:attributes,omitempty"`
-	ProxyGrantingTicket  string      `xml:"cas:proxyGrantingTicket,omitempty"`
-	Proxies              *ProxyList  `xml:"cas:proxies,omitempty"`
+	User                string      `xml:"cas:user"`
+	Attributes          *Attributes `xml:"cas:attributes,omitempty"`
+	ProxyGrantingTicket string      `xml:"cas:proxyGrantingTicket,omitempty"`
+	Proxies             *ProxyList  `xml:"cas:proxies,omitempty"`
 }
 
 // ProxyList is the ordered <cas:proxies> chain in a proxyValidate response —
@@ -433,6 +433,14 @@ func (h *Handler) doValidate(c *gin.Context, includeAttributes, allowProxy bool)
 					for _, rc := range roles {
 						attrs.Items = append(attrs.Items, AttributeItem{Name: roleAttr, Value: rc})
 					}
+				}
+			}
+			// User group codes as a multi-value attribute — one element per
+			// group. Opt-in: only when the app named a GroupAttribute (empty =
+			// groups not sent). Membership is already on the IdentityInfo.
+			if casCfg.GroupAttribute != "" {
+				for _, gc := range user.Groups {
+					attrs.Items = append(attrs.Items, AttributeItem{Name: casCfg.GroupAttribute, Value: gc})
 				}
 			}
 			if len(attrs.Items) > 0 {

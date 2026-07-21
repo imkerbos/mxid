@@ -41,7 +41,7 @@ export default function UsersPage() {
     setLoading(true)
     try {
       const params: Record<string, unknown> = { page, page_size: 20 }
-      if (search) params.keyword = search
+      if (search) params.search = search
       if (statusFilter !== '') params.status = statusFilter
       const result = await userApi.list(params)
       setData(result)

@@ -9,10 +9,24 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"strings"
 
 	"golang.org/x/crypto/argon2"
 	"golang.org/x/crypto/bcrypt"
 )
+
+// NoLocalPasswordPrefix marks a placeholder password hash minted for accounts
+// provisioned via an external IdP (e.g. Lark) that never set a local password.
+// It is a deliberately-invalid bcrypt string, so CheckPassword can never match
+// it. Self-service flows use HasUsablePassword to offer "set initial password"
+// instead of "change password" for such accounts.
+const NoLocalPasswordPrefix = "$2a$10$NO_LOCAL_PASSWORD_"
+
+// HasUsablePassword reports whether hash is a real, matchable password hash —
+// i.e. non-empty and not the external-IdP placeholder.
+func HasUsablePassword(hash string) bool {
+	return hash != "" && !strings.HasPrefix(hash, NoLocalPasswordPrefix)
+}
 
 // passwordBcryptCost is above bcrypt.DefaultCost (10) to raise the work factor
 // for user passwords toward commercial-IAM norms. CompareHashAndPassword reads
