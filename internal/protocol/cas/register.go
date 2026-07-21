@@ -10,8 +10,9 @@ import (
 
 // Module holds the wired CAS components.
 type Module struct {
-	Handler *Handler
-	Store   *TicketStore
+	Handler         *Handler
+	Store           *TicketStore
+	ServiceRegistry *ServiceRegistry
 }
 
 // Register wires up the CAS protocol module and registers routes.
@@ -34,7 +35,8 @@ func Register(
 	handler.appRoles = appRoles
 	handler.RegisterRoutes(rg)
 	return &Module{
-		Handler: handler,
-		Store:   store,
+		Handler:         handler,
+		Store:           store,
+		ServiceRegistry: serviceRegistry,
 	}
 }
