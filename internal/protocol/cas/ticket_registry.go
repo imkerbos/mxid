@@ -43,6 +43,13 @@ func casServiceKey(userID, appID int64) string {
 	return fmt.Sprintf("mxid:cas:svc:%d:%d", userID, appID)
 }
 
+// casUserKey indexes the set of app IDs a user has authenticated to via CAS,
+// so a global (portal/console) logout can enumerate every service to fan SLO
+// out to — the per-(user,app) casServiceKey can't be reverse-scanned by user.
+func casUserKey(userID int64) string {
+	return fmt.Sprintf("mxid:cas:svc:user:%d", userID)
+}
+
 // RecordService notes that userID authenticated to serviceURL under ticket for
 // the given app. The Redis SET TTL is reset to ttl so the entry ages out
 // roughly when the underlying session would have expired.
@@ -52,11 +59,35 @@ func (r *ServiceRegistry) RecordService(ctx context.Context, userID, appID int64
 		return err
 	}
 	key := casServiceKey(userID, appID)
+	userKey := casUserKey(userID)
 	pipe := r.rdb.TxPipeline()
 	pipe.SAdd(ctx, key, ref)
 	pipe.Expire(ctx, key, ttl)
+	// Mirror the app into the per-user index so global logout can find it.
+	pipe.SAdd(ctx, userKey, appID)
+	pipe.Expire(ctx, userKey, ttl)
 	_, err = pipe.Exec(ctx)
 	return err
+}
+
+// AppsForUser returns every app ID the user has an active CAS service session
+// to. Used by global logout to fan SLO out across all CAS services.
+func (r *ServiceRegistry) AppsForUser(ctx context.Context, userID int64) ([]int64, error) {
+	members, err := r.rdb.SMembers(ctx, casUserKey(userID)).Result()
+	if err != nil {
+		if err == redis.Nil {
+			return nil, nil
+		}
+		return nil, err
+	}
+	out := make([]int64, 0, len(members))
+	for _, m := range members {
+		var id int64
+		if _, e := fmt.Sscanf(m, "%d", &id); e == nil && id != 0 {
+			out = append(out, id)
+		}
+	}
+	return out, nil
 }
 
 // ListServices returns all recorded service refs for userID+appID.
@@ -76,7 +107,13 @@ func (r *ServiceRegistry) ListServices(ctx context.Context, userID, appID int64)
 	return out, nil
 }
 
-// Clear removes all service refs for userID+appID. Called on logout (L5).
+// Clear removes all service refs for userID+appID. Called on logout (L5). Also
+// drops the app from the per-user index so a later global logout doesn't try
+// to fan out to a service whose session is already gone.
 func (r *ServiceRegistry) Clear(ctx context.Context, userID, appID int64) error {
-	return r.rdb.Del(ctx, casServiceKey(userID, appID)).Err()
+	pipe := r.rdb.TxPipeline()
+	pipe.Del(ctx, casServiceKey(userID, appID))
+	pipe.SRem(ctx, casUserKey(userID), appID)
+	_, err := pipe.Exec(ctx)
+	return err
 }

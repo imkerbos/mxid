@@ -130,6 +130,13 @@ type Handler struct {
 	// on every attempt — the stricter default. Wired by main.go from the
 	// security policy.
 	captchaThreshold func(ctx context.Context, tenantID int64) int
+	// globalLogout fans Single-Logout out to every downstream SP the user has
+	// an active SSO session to (OIDC back-channel, SAML IdP-initiated, CAS SLO)
+	// when they log out of the portal/console. nil = no SP fan-out (the local
+	// MXID sessions are still torn down). Best-effort + non-blocking: each
+	// protocol reads its participation index synchronously and POSTs to SPs on
+	// detached goroutines, so a slow SP never delays the logout response.
+	globalLogout func(ctx context.Context, tenantID, userID int64)
 }
 
 // SetCaptchaThresholdProvider wires the CaptchaAfterFailures lookup. nil keeps
@@ -152,6 +159,13 @@ func (h *Handler) SetMFAEnrollGate(f func(ctx context.Context, tenantID, userID 
 // SetAdminChecker wires the runtime "is this user a console-eligible
 // admin?" lookup used by /auth/me to flag the switch-to-console button.
 func (h *Handler) SetAdminChecker(c AdminChecker) { h.adminCheck = c }
+
+// SetGlobalLogout wires the downstream SP Single-Logout fan-out invoked when a
+// user logs out of the portal/console. nil leaves logout tearing down only the
+// local MXID sessions (no SP notification).
+func (h *Handler) SetGlobalLogout(f func(ctx context.Context, tenantID, userID int64)) {
+	h.globalLogout = f
+}
 
 // SetLoginMethodGate wires the runtime "is this method enabled?" check
 // that loginHandler runs before consuming password / captcha state.
@@ -462,6 +476,14 @@ func (h *Handler) logoutHandler(namespace, cookieName string) gin.HandlerFunc {
 			userID = sess.UserID
 			tenantID = sess.TenantID
 			pinSessionTenant(c, tenantID)
+		}
+
+		// Fan Single-Logout out to every downstream SP the user is signed into,
+		// BEFORE tearing down the local sessions — the OIDC fan-out reads the
+		// protocol SSO session (deleted in the loop below) to find participating
+		// RPs. Best-effort + non-blocking (each protocol POSTs on goroutines).
+		if h.globalLogout != nil && userID != 0 {
+			h.globalLogout(c.Request.Context(), tenantID, userID)
 		}
 
 		meta := LogoutMeta{TenantID: tenantID, IP: c.ClientIP(), UserAgent: c.Request.UserAgent()}

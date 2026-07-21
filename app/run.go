@@ -1228,8 +1228,34 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	if err != nil {
 		a.Logger.Fatal("wire zitadel OIDC engine: " + err.Error())
 	}
-	samlModule := saml.Register(a.ProtocolGroup, issuer, a.Config.Server.PortalURL, appResolver, idResolver, sessResolver, tenantResolver, saml.NewSessionIndexStore(a.Redis), appRolesAdapter, accessAdapter, a.Redis, a.Logger)
+	samlSessionIdx := saml.NewSessionIndexStore(a.Redis)
+	samlModule := saml.Register(a.ProtocolGroup, issuer, a.Config.Server.PortalURL, appResolver, idResolver, sessResolver, tenantResolver, samlSessionIdx, appRolesAdapter, accessAdapter, a.Redis, a.Logger)
 	casModule := cas.Register(a.ProtocolGroup, issuer, a.Config.Server.PortalURL, a.Redis, appResolver, idResolver, sessResolver, tenantResolver, appRolesAdapter, a.Logger)
+
+	// Global Single-Logout: when a user logs out of the portal/console, fan SLO
+	// out to every downstream SP they're signed into so no SP session survives
+	// the IdP logout. OIDC self-enumerates participating RPs from its per-session
+	// index; SAML/CAS are per-app, so enumerate the user's apps from each
+	// protocol's participation index and drive its IdP-initiated logout. All
+	// three read synchronously and POST to SPs on detached goroutines, so a slow
+	// SP never blocks the logout response.
+	authnModule.Handler.SetGlobalLogout(func(ctx context.Context, tenantID, userID int64) {
+		if oidcLogoutSvc != nil {
+			oidcLogoutSvc.LogoutUser(ctx, userID)
+		}
+		if apps, err := samlSessionIdx.AppsForUser(ctx, userID); err == nil {
+			for _, appID := range apps {
+				samlModule.Handler.IdPInitiatedLogout(ctx, userID, appID)
+			}
+		}
+		if casModule.ServiceRegistry != nil {
+			if apps, err := casModule.ServiceRegistry.AppsForUser(ctx, userID); err == nil {
+				for _, appID := range apps {
+					casModule.Handler.SingleLogout(ctx, userID, appID)
+				}
+			}
+		}
+	})
 
 	// One-click offboarding (L1 access cutoff): disable account + back-channel
 	// logout the user's apps + kill all sessions. Wired here (after oidc) so it

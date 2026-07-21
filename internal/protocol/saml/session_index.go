@@ -47,6 +47,13 @@ func sloKey(userID, appID int64) string {
 	return fmt.Sprintf("mxid:saml:slo:%d:%d", userID, appID)
 }
 
+// sloUserKey indexes the set of app IDs a user holds active SAML sessions to,
+// so a global (portal/console) logout can enumerate every SP to fan SLO out
+// to — the per-(user,app) sloKey alone can't be reverse-scanned by user.
+func sloUserKey(userID int64) string {
+	return fmt.Sprintf("mxid:saml:slo:user:%d", userID)
+}
+
 // Record adds a SAML session ref to the set for userID+appID (does not
 // overwrite any previous entry) and (re)sets the set's TTL. ttl should match
 // the SAML assertion/session lifetime. If the same ref is recorded twice, the
@@ -57,11 +64,35 @@ func (s *SessionIndexStore) Record(ctx context.Context, userID, appID int64, ref
 		return err
 	}
 	key := sloKey(userID, appID)
+	userKey := sloUserKey(userID)
 	pipe := s.rdb.TxPipeline()
 	pipe.SAdd(ctx, key, b)
 	pipe.Expire(ctx, key, ttl)
+	// Mirror the app into the per-user index so global logout can find it.
+	pipe.SAdd(ctx, userKey, appID)
+	pipe.Expire(ctx, userKey, ttl)
 	_, err = pipe.Exec(ctx)
 	return err
+}
+
+// AppsForUser returns every app ID the user currently holds an active SAML
+// session to. Used by global logout to fan SLO out across all SAML SPs.
+func (s *SessionIndexStore) AppsForUser(ctx context.Context, userID int64) ([]int64, error) {
+	members, err := s.rdb.SMembers(ctx, sloUserKey(userID)).Result()
+	if err != nil {
+		if err == redis.Nil {
+			return nil, nil
+		}
+		return nil, err
+	}
+	out := make([]int64, 0, len(members))
+	for _, m := range members {
+		var id int64
+		if _, e := fmt.Sscanf(m, "%d", &id); e == nil && id != 0 {
+			out = append(out, id)
+		}
+	}
+	return out, nil
 }
 
 // Get returns all stored session refs for userID+appID. Returns nil, nil
@@ -81,7 +112,13 @@ func (s *SessionIndexStore) Get(ctx context.Context, userID, appID int64) ([]SAM
 	return out, nil
 }
 
-// Delete removes all session refs for userID+appID. Called on logout.
+// Delete removes all session refs for userID+appID. Called on logout. Also
+// drops the app from the per-user index so a later global logout doesn't try
+// to fan out to an SP whose session is already gone.
 func (s *SessionIndexStore) Delete(ctx context.Context, userID, appID int64) error {
-	return s.rdb.Del(ctx, sloKey(userID, appID)).Err()
+	pipe := s.rdb.TxPipeline()
+	pipe.Del(ctx, sloKey(userID, appID))
+	pipe.SRem(ctx, sloUserKey(userID), appID)
+	_, err := pipe.Exec(ctx)
+	return err
 }
