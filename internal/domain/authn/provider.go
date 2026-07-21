@@ -68,6 +68,11 @@ type UserInfo struct {
 // UserAuthQuerier is the interface the local provider needs for credential verification.
 type UserAuthQuerier interface {
 	GetByUsername(ctx context.Context, tenantID int64, username string) (*UserAuth, error)
+	// GetByEmail resolves a user by email so password login can accept an email
+	// address as the identifier (Okta/Auth0-style). Implementations that don't
+	// support email login may return an error — the provider then falls back to
+	// a uniform auth failure.
+	GetByEmail(ctx context.Context, tenantID int64, email string) (*UserAuth, error)
 }
 
 // UserAuth carries the fields needed for local password authentication.

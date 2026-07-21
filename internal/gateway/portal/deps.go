@@ -19,6 +19,10 @@ type UserInfo struct {
 	Avatar        string     `json:"avatar"`
 	Status        int        `json:"status"`
 	LastLoginAt   *time.Time `json:"last_login_at"`
+	// HasPassword is false for external-IdP (e.g. Lark) accounts that never set
+	// a local password. The portal shows "set password" instead of "change
+	// password" when this is false.
+	HasPassword bool `json:"has_password"`
 }
 
 // UserDetail holds extended user details.
@@ -95,6 +99,10 @@ type UserQuerier interface {
 	UpdateProfile(ctx context.Context, userID int64, displayName, phone, email string) error
 	UpdateAvatar(ctx context.Context, userID int64, avatar string) error
 	ChangePassword(ctx context.Context, userID int64, oldPassword, newPassword string) error
+	// SetInitialPassword sets a first-time password for an account that has none
+	// (external-IdP provisioned). Implementations MUST reject when the account
+	// already has a usable password so this can't bypass the old-password check.
+	SetInitialPassword(ctx context.Context, userID int64, newPassword string) error
 	// MarkEmailVerified flips the email_verified flag once the user has
 	// clicked the verification link. Idempotent.
 	MarkEmailVerified(ctx context.Context, userID int64) error

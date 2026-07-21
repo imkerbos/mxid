@@ -2,12 +2,19 @@ package authn
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"time"
 
 	"github.com/imkerbos/mxid/pkg/crypto"
 )
 
 const LocalProviderType = "local"
+
+// ErrEmailLoginUnsupported is returned by a UserAuthQuerier that was built
+// without an email-lookup function. resolveUser treats it like any other
+// lookup miss (uniform auth failure), so email login simply stays off.
+var ErrEmailLoginUnsupported = errors.New("email login not supported by this querier")
 
 // dummyPasswordHash is a real bcrypt hash burned on every credential-rejecting
 // branch that doesn't otherwise run bcrypt — unknown username, disabled/locked/
@@ -64,13 +71,13 @@ func (p *LocalProvider) Type() string {
 
 // Authenticate verifies a username/password credential pair.
 func (p *LocalProvider) Authenticate(ctx context.Context, req *AuthRequest) (*AuthResult, error) {
-	username := req.Credentials["username"]
+	identifier := req.Credentials["username"]
 	password := req.Credentials["password"]
-	if username == "" || password == "" {
+	if identifier == "" || password == "" {
 		return &AuthResult{Status: AuthFailed}, nil
 	}
 
-	u, err := p.userRepo.GetByUsername(ctx, req.TenantID, username)
+	u, err := p.resolveUser(ctx, req.TenantID, identifier)
 	if err != nil {
 		// Unknown user: burn an equivalent bcrypt compare so this path takes
 		// the same time as a real one (anti-enumeration). Uniform AuthFailed.
@@ -149,16 +156,44 @@ func (p *LocalProvider) Authenticate(ctx context.Context, req *AuthRequest) (*Au
 	}, nil
 }
 
+// resolveUser looks the account up by the supplied login identifier. It tries
+// the username first; on a miss, if the identifier looks like an email address
+// (contains "@"), it falls back to an email lookup so users can sign in with
+// either their username or their email (Okta/Auth0-style). Username takes
+// precedence so an account whose username happens to equal another account's
+// email is never shadowed. Phone identifiers are out of scope — those log in
+// via SMS OTP.
+func (p *LocalProvider) resolveUser(ctx context.Context, tenantID int64, identifier string) (*UserAuth, error) {
+	u, err := p.userRepo.GetByUsername(ctx, tenantID, identifier)
+	if err == nil {
+		return u, nil
+	}
+	if strings.Contains(identifier, "@") {
+		if byEmail, emailErr := p.userRepo.GetByEmail(ctx, tenantID, identifier); emailErr == nil {
+			return byEmail, nil
+		}
+	}
+	return nil, err
+}
+
 // Ensure LocalProvider implements Provider at compile time.
 var _ Provider = (*LocalProvider)(nil)
 
-// authQuerierAdapter adapts a function into a UserAuthQuerier.
+// authQuerierAdapter adapts functions into a UserAuthQuerier.
 type authQuerierAdapter struct {
-	fn func(ctx context.Context, tenantID int64, username string) (*UserAuth, error)
+	fn      func(ctx context.Context, tenantID int64, username string) (*UserAuth, error)
+	emailFn func(ctx context.Context, tenantID int64, email string) (*UserAuth, error)
 }
 
 func (a *authQuerierAdapter) GetByUsername(ctx context.Context, tenantID int64, username string) (*UserAuth, error) {
 	return a.fn(ctx, tenantID, username)
+}
+
+func (a *authQuerierAdapter) GetByEmail(ctx context.Context, tenantID int64, email string) (*UserAuth, error) {
+	if a.emailFn == nil {
+		return nil, ErrEmailLoginUnsupported
+	}
+	return a.emailFn(ctx, tenantID, email)
 }
 
 var _ UserAuthQuerier = (*authQuerierAdapter)(nil)
@@ -184,9 +219,19 @@ func (a *userQuerierAdapter) UpdateStatus(ctx context.Context, id int64, status 
 
 var _ UserQuerier = (*userQuerierAdapter)(nil)
 
-// BuildAuthQuerier creates a UserAuthQuerier from a function.
+// BuildAuthQuerier creates a UserAuthQuerier from a username-lookup function.
+// Email login stays disabled (GetByEmail returns ErrEmailLoginUnsupported).
 func BuildAuthQuerier(fn func(ctx context.Context, tenantID int64, username string) (*UserAuth, error)) UserAuthQuerier {
 	return &authQuerierAdapter{fn: fn}
+}
+
+// BuildAuthQuerierWithEmail creates a UserAuthQuerier that supports both
+// username and email identifiers on the password login path.
+func BuildAuthQuerierWithEmail(
+	byUsername func(ctx context.Context, tenantID int64, username string) (*UserAuth, error),
+	byEmail func(ctx context.Context, tenantID int64, email string) (*UserAuth, error),
+) UserAuthQuerier {
+	return &authQuerierAdapter{fn: byUsername, emailFn: byEmail}
 }
 
 // BuildUserQuerier creates a UserQuerier from functions.

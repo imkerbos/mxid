@@ -62,6 +62,11 @@ function ChangePasswordSection() {
   // change the credential). Detect it so we can collect the code up front instead
   // of failing the submit with an opaque 400.
   const [totpActive, setTotpActive] = useState(false)
+  // false for external-IdP (Lark) accounts that never set a local password. In
+  // that mode we drop the old-password field and switch to the "set password"
+  // endpoint so the user can gain username+password login alongside Lark.
+  // Default true so an existing-password user never briefly sees the set form.
+  const [hasPassword, setHasPassword] = useState(true)
 
   useEffect(() => {
     let alive = true
@@ -72,6 +77,14 @@ function ChangePasswordSection() {
       })
       .catch(() => {
         /* non-fatal: fall back to no-TOTP form; backend still enforces */
+      })
+    portalApi
+      .getProfile()
+      .then((p) => {
+        if (alive) setHasPassword(p.user.has_password)
+      })
+      .catch(() => {
+        /* non-fatal: keep the change-password form; backend still enforces */
       })
     return () => {
       alive = false
@@ -89,14 +102,21 @@ function ChangePasswordSection() {
       setMsg({ type: 'err', text: t('account.pwd.tooShort') })
       return
     }
-    if (totpActive && !totpCode) {
+    // TOTP step-up only applies when rotating an existing password.
+    if (hasPassword && totpActive && !totpCode) {
       setMsg({ type: 'err', text: t('account.pwd.needMfa') })
       return
     }
     setSaving(true)
     setMsg(null)
     try {
-      await portalApi.changePassword(oldPwd, newPwd, totpActive ? totpCode : undefined)
+      if (hasPassword) {
+        await portalApi.changePassword(oldPwd, newPwd, totpActive ? totpCode : undefined)
+      } else {
+        await portalApi.setPassword(newPwd)
+        // Now that a local password exists, switch the form to change-mode.
+        setHasPassword(true)
+      }
       setMsg({ type: 'ok', text: t('common.success') })
       setOldPwd('')
       setNewPwd('')
@@ -112,29 +132,38 @@ function ChangePasswordSection() {
   return (
     <SectionCard icon={KeyRound} title={t('account.passwordSection')}>
       <form onSubmit={handleSubmit} className="max-w-md space-y-4">
-        {/* Old password */}
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-ink">
-            {t('account.pwd.old')}
-          </label>
-          <div className="relative">
-            <input
-              type={showOld ? 'text' : 'password'}
-              value={oldPwd}
-              onChange={(e) => setOldPwd(e.target.value)}
-              placeholder={t('account.pwd.old')}
-              autoComplete="current-password"
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 pr-10 text-sm text-ink outline-none transition-colors placeholder:text-faint focus:border-primary focus:ring-2 focus:ring-primary/20"
-            />
-            <button
-              type="button"
-              onClick={() => setShowOld(!showOld)}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-faint hover:text-muted"
-            >
-              {showOld ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
+        {/* Set-password hint for external-IdP accounts with no local password. */}
+        {!hasPassword && (
+          <p className="rounded-lg bg-primary/5 px-3 py-2 text-xs text-muted">
+            {t('account.pwd.setHint')}
+          </p>
+        )}
+
+        {/* Old password — only when a local password already exists. */}
+        {hasPassword && (
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-ink">
+              {t('account.pwd.old')}
+            </label>
+            <div className="relative">
+              <input
+                type={showOld ? 'text' : 'password'}
+                value={oldPwd}
+                onChange={(e) => setOldPwd(e.target.value)}
+                placeholder={t('account.pwd.old')}
+                autoComplete="current-password"
+                className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 pr-10 text-sm text-ink outline-none transition-colors placeholder:text-faint focus:border-primary focus:ring-2 focus:ring-primary/20"
+              />
+              <button
+                type="button"
+                onClick={() => setShowOld(!showOld)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-faint hover:text-muted"
+              >
+                {showOld ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* New password */}
         <div>
@@ -175,8 +204,8 @@ function ChangePasswordSection() {
           />
         </div>
 
-        {/* TOTP step-up: only when the user has a verified authenticator. */}
-        {totpActive && (
+        {/* TOTP step-up: only when rotating an existing password. */}
+        {hasPassword && totpActive && (
           <div>
             <label className="mb-1.5 block text-sm font-medium text-ink">
               {t('account.pwd.mfaCode')}
@@ -210,9 +239,19 @@ function ChangePasswordSection() {
         <Button
           type="submit"
           loading={saving}
-          disabled={saving || !oldPwd || !newPwd || !confirmPwd || (totpActive && totpCode.length < 6)}
+          disabled={
+            saving ||
+            (hasPassword && !oldPwd) ||
+            !newPwd ||
+            !confirmPwd ||
+            (hasPassword && totpActive && totpCode.length < 6)
+          }
         >
-          {saving ? t('account.pwd.submitting') : t('account.pwd.submit')}
+          {saving
+            ? t('account.pwd.submitting')
+            : hasPassword
+              ? t('account.pwd.submit')
+              : t('account.pwd.setSubmit')}
         </Button>
       </form>
     </SectionCard>

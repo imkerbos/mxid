@@ -16,6 +16,7 @@ type SAMLConfig struct {
 	EncryptAssertion   bool              `json:"encrypt_assertion"`   // encrypt assertion with SP cert (default false)
 	AttributeMapping   map[string]string `json:"attribute_mapping"`   // user attr -> SAML attribute name
 	RoleAttribute      string            `json:"role_attribute"`      // multi-value attribute name carrying the user's app roles (JIT-first). Default "roles"; set "groups"/"memberOf"/"Role" to match the SP.
+	GroupAttribute     string            `json:"group_attribute"`     // multi-value attribute name carrying the user's group codes. Empty (default) = groups NOT emitted (opt-in per app); set e.g. "groups"/"memberOf" to send them.
 	SessionTTL         int               `json:"session_ttl"`         // seconds, default 28800 (8h)
 	DigestAlgorithm    string            `json:"digest_algorithm"`    // sha256
 	SignatureAlgorithm string            `json:"signature_algorithm"` // RSA-SHA256
@@ -24,12 +25,12 @@ type SAMLConfig struct {
 // Defaults returns a SAMLConfig with sane defaults.
 func Defaults() *SAMLConfig {
 	return &SAMLConfig{
-		NameIDFormat:     "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
-		SignAssertions:   true,
-		SignResponse:     true,
-		RoleAttribute:    "roles",
-		SessionTTL:       28800,
-		DigestAlgorithm:  "sha256",
+		NameIDFormat:       "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
+		SignAssertions:     true,
+		SignResponse:       true,
+		RoleAttribute:      "roles",
+		SessionTTL:         28800,
+		DigestAlgorithm:    "sha256",
 		SignatureAlgorithm: "RSA-SHA256",
 		AttributeMapping: map[string]string{
 			"username":     "uid",
@@ -42,8 +43,8 @@ func Defaults() *SAMLConfig {
 
 // NameID format constants.
 const (
-	NameIDEmail        = "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
-	NameIDUnspecified  = "urn:oasis:names:tc:SAML:2.0:nameid-format:unspecified"
-	NameIDPersistent   = "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"
-	NameIDTransient    = "urn:oasis:names:tc:SAML:2.0:nameid-format:transient"
+	NameIDEmail       = "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
+	NameIDUnspecified = "urn:oasis:names:tc:SAML:2.0:nameid-format:unspecified"
+	NameIDPersistent  = "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"
+	NameIDTransient   = "urn:oasis:names:tc:SAML:2.0:nameid-format:transient"
 )

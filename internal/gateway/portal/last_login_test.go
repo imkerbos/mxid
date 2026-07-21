@@ -33,6 +33,7 @@ func (s *lastLoginSpy) GetDetail(context.Context, int64) (*UserDetail, error) {
 func (s *lastLoginSpy) UpdateProfile(context.Context, int64, string, string, string) error { return nil }
 func (s *lastLoginSpy) UpdateAvatar(context.Context, int64, string) error                  { return nil }
 func (s *lastLoginSpy) ChangePassword(context.Context, int64, string, string) error        { return nil }
+func (s *lastLoginSpy) SetInitialPassword(context.Context, int64, string) error            { return nil }
 func (s *lastLoginSpy) MarkEmailVerified(context.Context, int64) error                     { return nil }
 func (s *lastLoginSpy) GetEmail(context.Context, int64) (string, error)                    { return "", nil }
 func (s *lastLoginSpy) LookupByEmail(context.Context, int64, string) (int64, error)        { return 0, nil }

@@ -22,6 +22,11 @@ var (
 	ErrPhoneExists     = errors.New("phone already exists")
 	ErrInvalidPassword = errors.New("invalid password")
 	ErrPasswordReused  = errors.New("password has been used recently")
+	// ErrPasswordAlreadySet blocks the "set initial password" self-service path
+	// on an account that already carries a usable password — such users must go
+	// through ChangePassword (which verifies the old password) so the no-old-
+	// password shortcut can never bypass credential checks on a normal account.
+	ErrPasswordAlreadySet = errors.New("password already set")
 	// ErrLicenseQuotaExceeded — admin tried to create a user beyond the
 	// license MaxUsers limit. Maps to HTTP 402 / 403 at the handler.
 	ErrLicenseQuotaExceeded = errors.New("license user quota exceeded")
@@ -531,6 +536,60 @@ func (s *Service) ChangePassword(ctx context.Context, id int64, req *ChangePassw
 	}
 
 	// Save to history
+	pwdHistory := &UserPasswordHistory{
+		ID:           s.idGen.Generate(),
+		UserID:       id,
+		PasswordHash: hash,
+		CreatedAt:    time.Now(),
+	}
+	if err := s.repo.CreatePasswordHistory(ctx, pwdHistory); err != nil {
+		return fmt.Errorf("create password history: %w", err)
+	}
+
+	s.eventBus.Publish(ctx, event.Event{
+		Type:    event.UserPasswordChanged,
+		Payload: map[string]any{"user_id": id},
+	})
+
+	return nil
+}
+
+// SetInitialPassword sets a first-time password for an account that has none —
+// typically one provisioned via an external IdP (e.g. Lark). Unlike
+// ChangePassword it needs no old password (there is none to verify), but it
+// REFUSES when the account already carries a usable password, so the no-old-
+// password shortcut can never be used to hijack a normal account's credential.
+// After this the user has genuine dual login: external IdP OR username+password.
+func (s *Service) SetInitialPassword(ctx context.Context, id int64, newPassword string) error {
+	u, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		if dberr.IsNotFound(err) {
+			return ErrUserNotFound
+		}
+		return fmt.Errorf("get user: %w", err)
+	}
+
+	// Guard: only accounts with no local password may take this path.
+	if crypto.HasUsablePassword(u.PasswordHash) {
+		return ErrPasswordAlreadySet
+	}
+
+	// Same complexity + history policies as any other password write.
+	if err := s.validatePassword(ctx, u.TenantID, newPassword); err != nil {
+		return err
+	}
+	if err := s.checkPasswordHistory(ctx, id, newPassword); err != nil {
+		return err
+	}
+
+	hash, err := crypto.HashPassword(newPassword)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+	if err := s.repo.UpdatePassword(ctx, id, hash); err != nil {
+		return fmt.Errorf("update password: %w", err)
+	}
+
 	pwdHistory := &UserPasswordHistory{
 		ID:           s.idGen.Generate(),
 		UserID:       id,

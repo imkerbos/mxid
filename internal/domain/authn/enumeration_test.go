@@ -24,6 +24,10 @@ func (q *enumStubQuerier) GetByUsername(_ context.Context, _ int64, username str
 	return nil, errors.New("not found")
 }
 
+func (q *enumStubQuerier) GetByEmail(_ context.Context, _ int64, _ string) (*UserAuth, error) {
+	return nil, errors.New("not found")
+}
+
 // Both an unknown username and a known username with a wrong password must
 // spend time in bcrypt — otherwise the unknown path returns in microseconds
 // and leaks valid usernames via a timing oracle (OWASP A07). We assert the

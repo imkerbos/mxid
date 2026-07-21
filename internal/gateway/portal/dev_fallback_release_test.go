@@ -43,6 +43,7 @@ func (s phoneUserStub) GetDetail(context.Context, int64) (*UserDetail, error) {
 func (s phoneUserStub) UpdateProfile(context.Context, int64, string, string, string) error { return nil }
 func (s phoneUserStub) UpdateAvatar(context.Context, int64, string) error                  { return nil }
 func (s phoneUserStub) ChangePassword(context.Context, int64, string, string) error        { return nil }
+func (s phoneUserStub) SetInitialPassword(context.Context, int64, string) error            { return nil }
 func (s phoneUserStub) MarkEmailVerified(context.Context, int64) error                     { return nil }
 func (s phoneUserStub) GetEmail(context.Context, int64) (string, error)                    { return "", nil }
 func (s phoneUserStub) LookupByEmail(context.Context, int64, string) (int64, error)        { return 0, nil }
