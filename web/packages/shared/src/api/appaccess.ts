@@ -35,6 +35,16 @@ export const appAccessApi = {
     body: { subject_type: AccessSubjectType; subject_id?: string; effect?: AccessEffect },
   ) =>
     client.post<ApiResponse<AccessPolicy>>(path(owner, ownerId), body).then(r => r.data.data),
+  // createBatch adds the same subject_type + effect for many subjects at once.
+  // Returns how many rows were created vs skipped (already present).
+  createBatch: (
+    owner: AccessOwner,
+    ownerId: string | number,
+    body: { subject_type: AccessSubjectType; subject_ids: string[]; effect?: AccessEffect },
+  ) =>
+    client
+      .post<ApiResponse<{ created: number; skipped: number }>>(path(owner, ownerId, '/batch'), body)
+      .then(r => r.data.data),
   remove: (owner: AccessOwner, ownerId: string | number, policyId: string) =>
     client.delete<ApiResponse<{ deleted: boolean }>>(path(owner, ownerId, `/${policyId}`)).then(r => r.data),
 }

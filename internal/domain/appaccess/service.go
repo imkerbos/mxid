@@ -206,6 +206,120 @@ func (s *Service) AddPolicy(ctx context.Context, req AddPolicyRequest) (*Policy,
 	return p, nil
 }
 
+// BatchAddRequest adds the same subject_type + effect for many subject ids at
+// once (e.g. an admin multi-selecting users in the console). Exactly one of
+// AppID / AppGroupID must be set.
+type BatchAddRequest struct {
+	AppID       *int64
+	AppGroupID  *int64
+	TenantID    int64
+	SubjectType string
+	SubjectIDs  []int64
+	Effect      string
+	CreatedBy   *int64
+}
+
+// BatchAddResult reports the outcome: the rows actually created plus how many
+// requested subjects were skipped because a matching policy already existed.
+type BatchAddResult struct {
+	Created []*Policy `json:"created"`
+	Skipped int       `json:"skipped"`
+}
+
+// AddPoliciesBatch creates one policy per subject id, skipping subjects that
+// already have a rule of the same type on this target (idempotent multi-add).
+// Validation (parent-in-tenant, subject_type, effect, each subject-in-tenant)
+// matches AddPolicy; a bad subject_type / effect fails the whole batch, but an
+// individual subject that fails its tenant check aborts too (partial writes
+// would already be committed, so we validate every subject up front is not
+// worth the extra round-trips — instead we fail fast and let the caller retry).
+// Publishes the SSE change event once after all writes.
+func (s *Service) AddPoliciesBatch(ctx context.Context, req BatchAddRequest) (*BatchAddResult, error) {
+	if (req.AppID == nil) == (req.AppGroupID == nil) {
+		return nil, fmt.Errorf("%w: exactly one of app_id / app_group_id must be set", ErrInvalidPolicy)
+	}
+	if !validSubjectType(req.SubjectType) || req.SubjectType == SubjectPublic {
+		// Public is a single global rule — not a batch concept.
+		return nil, fmt.Errorf("%w: invalid subject_type for batch: %s", ErrInvalidPolicy, req.SubjectType)
+	}
+	if req.Effect == "" {
+		req.Effect = EffectAllow
+	}
+	if !validEffect(req.Effect) {
+		return nil, fmt.Errorf("%w: invalid effect: %s", ErrInvalidPolicy, req.Effect)
+	}
+	if len(req.SubjectIDs) == 0 {
+		return nil, fmt.Errorf("%w: no subjects provided", ErrInvalidPolicy)
+	}
+	if err := s.validateParent(ctx, req.AppID, req.AppGroupID); err != nil {
+		return nil, err
+	}
+
+	// Build the set of subjects that already have a rule of this type, so a
+	// re-add is a silent skip instead of a UNIQUE-index error. Belt-and-braces
+	// with the console's client-side dedup.
+	existing, err := s.listOwnFor(ctx, req.AppID, req.AppGroupID, req.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	have := make(map[int64]struct{}, len(existing))
+	for _, p := range existing {
+		if p.SubjectType == req.SubjectType {
+			have[p.SubjectID] = struct{}{}
+		}
+	}
+
+	result := &BatchAddResult{Created: make([]*Policy, 0, len(req.SubjectIDs))}
+	seen := make(map[int64]struct{}, len(req.SubjectIDs)) // dedup within the request too
+	for _, sid := range req.SubjectIDs {
+		if sid == 0 {
+			return nil, fmt.Errorf("%w: subject_id required", ErrInvalidPolicy)
+		}
+		if _, dup := seen[sid]; dup {
+			continue
+		}
+		seen[sid] = struct{}{}
+		if _, ok := have[sid]; ok {
+			result.Skipped++
+			continue
+		}
+		if err := s.validateSubject(ctx, req.SubjectType, sid); err != nil {
+			return nil, err
+		}
+		p := &Policy{
+			ID:          s.idGen.Generate(),
+			AppID:       req.AppID,
+			AppGroupID:  req.AppGroupID,
+			TenantID:    req.TenantID,
+			SubjectType: req.SubjectType,
+			SubjectID:   sid,
+			Effect:      req.Effect,
+			CreatedBy:   req.CreatedBy,
+		}
+		if err := s.repo.Create(ctx, p); err != nil {
+			return nil, err
+		}
+		s.auditPublish(ctx, event.AppAccessPolicyCreated, p.TenantID, p.AppID, p.AppGroupID, map[string]any{
+			"policy_id": p.ID, "subject_type": p.SubjectType, "subject_id": p.SubjectID, "effect": p.Effect,
+		})
+		result.Created = append(result.Created, p)
+	}
+
+	if len(result.Created) > 0 {
+		s.publishGroupOrApp(req.AppID, req.AppGroupID, req.TenantID)
+	}
+	return result, nil
+}
+
+// listOwnFor returns the target's own policies (app or app-group scoped),
+// used by AddPoliciesBatch to skip already-present subjects.
+func (s *Service) listOwnFor(ctx context.Context, appID, groupID *int64, tenantID int64) ([]*Policy, error) {
+	if appID != nil {
+		return s.repo.ListOwnByApp(ctx, *appID, tenantID)
+	}
+	return s.repo.ListByAppGroup(ctx, *groupID, tenantID)
+}
+
 func (s *Service) DeletePolicy(ctx context.Context, id, tenantID int64) error {
 	// Load the policy before deleting so the audit row names which app/group
 	// and which subject lost the rule — Delete's args carry no context.

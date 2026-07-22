@@ -1,6 +1,8 @@
 package appaccess
 
 import (
+	"strconv"
+
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/pkg/authz"
 	"github.com/imkerbos/mxid/pkg/ginutil"
@@ -30,12 +32,14 @@ func (h *Handler) Register(rg *gin.RouterGroup) {
 	{
 		app.GET("", authz.Require("app.read", nil), h.listForApp)
 		app.POST("", authz.Require("app.access.manage", nil), h.createForApp)
+		app.POST("/batch", authz.Require("app.access.manage", nil), h.batchForApp)
 		app.DELETE("/:policy_id", authz.Require("app.access.manage", nil), h.remove)
 	}
 	grp := rg.Group("/app-groups/:id/access-policies")
 	{
 		grp.GET("", authz.Require("app.read", nil), h.listForAppGroup)
 		grp.POST("", authz.Require("app.access.manage", nil), h.createForAppGroup)
+		grp.POST("/batch", authz.Require("app.access.manage", nil), h.batchForAppGroup)
 		grp.DELETE("/:policy_id", authz.Require("app.access.manage", nil), h.remove)
 	}
 }
@@ -131,6 +135,63 @@ func (h *Handler) createForAppGroup(c *gin.Context) {
 		return
 	}
 	response.OK(c, p)
+}
+
+/* ──────────────── Batch endpoints ──────────────── */
+
+// batchBody adds one subject_type + effect for many subjects at once. Ids are
+// JSON strings (snowflake ids exceed JS's safe-integer range) and parsed here.
+type batchBody struct {
+	SubjectType string   `json:"subject_type" binding:"required"`
+	SubjectIDs  []string `json:"subject_ids" binding:"required"`
+	Effect      string   `json:"effect"`
+}
+
+func (h *Handler) batchForApp(c *gin.Context) {
+	appID, ok := ginutil.ParseInt64Param(c, "id")
+	if !ok {
+		return
+	}
+	h.batch(c, &appID, nil)
+}
+
+func (h *Handler) batchForAppGroup(c *gin.Context) {
+	groupID, ok := ginutil.ParseInt64Param(c, "id")
+	if !ok {
+		return
+	}
+	h.batch(c, nil, &groupID)
+}
+
+func (h *Handler) batch(c *gin.Context, appID, groupID *int64) {
+	var body batchBody
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.BadRequest(c, 40002, "invalid request body")
+		return
+	}
+	ids := make([]int64, 0, len(body.SubjectIDs))
+	for _, s := range body.SubjectIDs {
+		id, err := strconv.ParseInt(s, 10, 64)
+		if err != nil || id == 0 {
+			response.BadRequest(c, 40002, "invalid subject_id")
+			return
+		}
+		ids = append(ids, id)
+	}
+	res, err := h.service.AddPoliciesBatch(c.Request.Context(), BatchAddRequest{
+		AppID:       appID,
+		AppGroupID:  groupID,
+		TenantID:    h.tenantID(c),
+		SubjectType: body.SubjectType,
+		SubjectIDs:  ids,
+		Effect:      body.Effect,
+		CreatedBy:   h.userID(c),
+	})
+	if err != nil {
+		response.MapError(c, err)
+		return
+	}
+	response.OK(c, gin.H{"created": len(res.Created), "skipped": res.Skipped})
 }
 
 /* ──────────────── Common ──────────────── */

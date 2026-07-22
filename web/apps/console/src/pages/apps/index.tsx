@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, AppWindow, Loader2, Copy, X, Settings, Eye, EyeOff, LayoutGrid, Search } from 'lucide-react'
-import { appApi, protocolLabel, statusLabel, statusColor, cn, AppIcon, useTranslation, AppStatus } from '@mxid/shared'
-import type { App, PaginatedData, AppTemplate, AppTemplateListItem } from '@mxid/shared'
+import { appApi, appGroupApi, protocolLabel, statusLabel, statusColor, cn, AppIcon, useTranslation, AppStatus } from '@mxid/shared'
+import type { App, AppGroup, PaginatedData, AppTemplate, AppTemplateListItem } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
 import AppGroupsTab from './AppGroupsTab'
 import { useTabParam } from '../../hooks/useTabParam'
@@ -348,14 +348,24 @@ export default function AppsPage() {
   const [search, setSearch] = useState('')
   const [protocol, setProtocol] = useState('')
   const [status, setStatus] = useState('')
+  const [env, setEnv] = useState('')
+  const [accessPolicy, setAccessPolicy] = useState('')
+  const [groupId, setGroupId] = useState('')
+  const [pageSize, setPageSize] = useState(20)
+  // App groups drive the "belongs to group" filter dropdown.
+  const [groupOptions, setGroupOptions] = useState<AppGroup[]>([])
   useEffect(() => {
     const id = setTimeout(() => setSearch(searchInput.trim()), 300)
     return () => clearTimeout(id)
   }, [searchInput])
-  // Any filter change resets to page 1 so results aren't hidden past the end.
+  // Any filter or page-size change resets to page 1 so results aren't hidden
+  // past the end.
   useEffect(() => {
     setPage(1)
-  }, [search, protocol, status])
+  }, [search, protocol, status, env, accessPolicy, groupId, pageSize])
+  useEffect(() => {
+    appGroupApi.list().then(setGroupOptions).catch(() => setGroupOptions([]))
+  }, [])
 
   // Create modal state
   const [showCreate, setShowCreate] = useState(false)
@@ -419,10 +429,13 @@ export default function AppsPage() {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const params: Record<string, unknown> = { page, page_size: 50 }
+      const params: Record<string, unknown> = { page, page_size: pageSize }
       if (search) params.search = search
       if (protocol) params.protocol = protocol
       if (status) params.status = Number(status)
+      if (env) params.env = env
+      if (accessPolicy) params.access_policy = Number(accessPolicy)
+      if (groupId) params.group_id = groupId
       const result = await appApi.list(params)
       setData(result)
     } catch {
@@ -430,7 +443,7 @@ export default function AppsPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, search, protocol, status])
+  }, [page, pageSize, search, protocol, status, env, accessPolicy, groupId])
 
   useEffect(() => {
     loadData()
@@ -886,6 +899,35 @@ export default function AppsPage() {
           <option value={String(AppStatus.Enabled)}>{statusLabel(AppStatus.Enabled)}</option>
           <option value={String(AppStatus.Disabled)}>{statusLabel(AppStatus.Disabled)}</option>
         </select>
+        <select
+          value={groupId}
+          onChange={(e) => setGroupId(e.target.value)}
+          className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+        >
+          <option value="">{t('apps.filter.allGroups')}</option>
+          {groupOptions.map((g) => (
+            <option key={String(g.id)} value={String(g.id)}>{g.name}</option>
+          ))}
+        </select>
+        <select
+          value={env}
+          onChange={(e) => setEnv(e.target.value)}
+          className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+        >
+          <option value="">{t('apps.filter.allEnvs')}</option>
+          {envChoices.map((e) => (
+            <option key={e} value={e}>{e}</option>
+          ))}
+        </select>
+        <select
+          value={accessPolicy}
+          onChange={(e) => setAccessPolicy(e.target.value)}
+          className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+        >
+          <option value="">{t('apps.filter.allAccessPolicy')}</option>
+          <option value="1">{t('apps.filter.accessPolicyAll')}</option>
+          <option value="2">{t('apps.filter.accessPolicyAuthorized')}</option>
+        </select>
       </div>
 
       {/* Card grid */}
@@ -997,6 +1039,16 @@ export default function AppsPage() {
         <div className="mt-6 flex items-center justify-between">
           <p className="text-sm text-muted">{t('apps.list.total', { total: data.total })}</p>
           <div className="flex items-center gap-2">
+            <select
+              value={String(pageSize)}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+              className="rounded-lg border border-border bg-surface px-2 py-1.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+              aria-label={t('apps.list.pageSize')}
+            >
+              {[10, 20, 50, 100].map((n) => (
+                <option key={n} value={String(n)}>{t('apps.list.perPage', { n })}</option>
+              ))}
+            </select>
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
@@ -1004,6 +1056,7 @@ export default function AppsPage() {
             >
               {t('apps.list.prevPage')}
             </button>
+            <span className="text-sm text-muted">{t('apps.list.pageOf', { page, total: totalPages })}</span>
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}

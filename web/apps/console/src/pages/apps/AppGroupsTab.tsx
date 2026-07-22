@@ -5,7 +5,7 @@
 // drag-free list of member apps (add/remove via the drawer on the right).
 import { useCallback, useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Pencil, Trash2, Loader2, X, LayoutGrid } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, X, LayoutGrid, Search } from 'lucide-react'
 import { appApi, appGroupApi, cn, useTranslation } from '@mxid/shared'
 import type { App, AppGroup } from '@mxid/shared'
 import { Field, CodeField, Button, ConfirmDialog } from '../../components/ui'
@@ -248,27 +248,24 @@ function GroupDetail({
 }) {
   const { t } = useTranslation()
   const [tab, setTab] = useState<'members' | 'access' | 'roles'>('members')
-  // Local copy of all apps to drive both the member list AND the
-  // "available to add" picker. The relation table doesn't return the full
-  // app rows, so we fetch /apps once and filter in-memory — fine for
-  // the typical tenant scale (dozens, not thousands).
-  const [allApps, setAllApps] = useState<App[]>([])
+  // Member apps come straight from the relation endpoint (the authoritative
+  // membership, never truncated). The "available to add" picker searches the
+  // catalog server-side so groups on tenants with >100 apps aren't clipped.
+  const [members, setMembers] = useState<App[]>([])
   const [memberIDs, setMemberIDs] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [picking, setPicking] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
+  // Picker search state.
+  const [search, setSearch] = useState('')
+  const [candidates, setCandidates] = useState<App[]>([])
+  const [candLoading, setCandLoading] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      // Two fetches in parallel:
-      //   - /apps         → full catalog (drives "available to add" picker)
-      //   - /app-groups/:id/apps → current membership (persists across reloads)
-      const [apps, joined] = await Promise.all([
-        appApi.list({ page: 1, page_size: 200 }),
-        appGroupApi.listApps(group.id),
-      ])
-      setAllApps(apps.items ?? [])
+      const joined = await appGroupApi.listApps(group.id)
+      setMembers(joined ?? [])
       setMemberIDs(new Set((joined ?? []).map((a) => a.id)))
     } finally {
       setLoading(false)
@@ -279,16 +276,42 @@ function GroupDetail({
     load()
   }, [load])
 
-  const members = allApps.filter((a) => memberIDs.has(a.id))
-  const candidates = allApps.filter((a) => !memberIDs.has(a.id))
+  // Debounced server-side candidate search — only while the picker is open.
+  // Excludes current members client-side (the list API has no "not-in-group"
+  // filter, and members are few enough to filter here).
+  useEffect(() => {
+    if (!picking) return
+    let cancelled = false
+    const handle = setTimeout(async () => {
+      setCandLoading(true)
+      try {
+        const r = await appApi.list({ search, page: 1, page_size: 50 })
+        if (!cancelled) setCandidates((r.items ?? []).filter((a) => !memberIDs.has(a.id)))
+      } catch {
+        if (!cancelled) setCandidates([])
+      } finally {
+        if (!cancelled) setCandLoading(false)
+      }
+    }, 250)
+    return () => {
+      cancelled = true
+      clearTimeout(handle)
+    }
+  }, [picking, search, memberIDs])
+
+  const openPicker = () => {
+    setSearch('')
+    setCandidates([])
+    setPicking(true)
+  }
 
   const addApp = async (app: App) => {
     setBusy(app.id)
     try {
       await appGroupApi.addApp(group.id, app.id)
-      const next = new Set(memberIDs)
-      next.add(app.id)
-      setMemberIDs(next)
+      setMembers((prev) => (prev.some((m) => m.id === app.id) ? prev : [app, ...prev]))
+      setMemberIDs((prev) => new Set(prev).add(app.id))
+      setCandidates((prev) => prev.filter((c) => c.id !== app.id))
       await onMutated?.()
       toast.success(t('apps.appGroupDetail.added', { name: app.name }))
     } catch (e) {
@@ -301,9 +324,12 @@ function GroupDetail({
     setBusy(app.id)
     try {
       await appGroupApi.removeApp(group.id, app.id)
-      const next = new Set(memberIDs)
-      next.delete(app.id)
-      setMemberIDs(next)
+      setMembers((prev) => prev.filter((m) => m.id !== app.id))
+      setMemberIDs((prev) => {
+        const next = new Set(prev)
+        next.delete(app.id)
+        return next
+      })
       await onMutated?.()
       toast.success(t('apps.appGroupDetail.removed', { name: app.name }))
     } catch (e) {
@@ -380,7 +406,7 @@ function GroupDetail({
       <div className="px-6 py-4">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-ink">{t('apps.appGroupDetail.joinedApps')}</h3>
-          <button onClick={() => setPicking(true)} className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-white hover:bg-primary-hover">
+          <button onClick={openPicker} className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-white hover:bg-primary-hover">
             <Plus className="h-3.5 w-3.5" /> {t('apps.appGroupDetail.addApp')}
           </button>
         </div>
@@ -424,7 +450,21 @@ function GroupDetail({
                   <X className="h-4 w-4" />
                 </button>
               </div>
-              {candidates.length === 0 ? (
+              <div className="mb-3 flex items-center rounded-lg border border-border px-3 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
+                <Search className="h-4 w-4 shrink-0 text-faint" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={t('apps.appGroupDetail.searchAppsPlaceholder')}
+                  className="w-full bg-transparent px-2 py-2 text-sm outline-none"
+                  autoFocus
+                />
+                {candLoading && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-faint" />}
+              </div>
+              {candLoading && candidates.length === 0 ? (
+                <p className="py-8 text-center text-sm text-faint"><Loader2 className="mx-auto h-4 w-4 animate-spin" /></p>
+              ) : candidates.length === 0 ? (
                 <p className="py-8 text-center text-sm text-faint">{t('apps.appGroupDetail.noCandidates')}</p>
               ) : (
                 <div className="space-y-2">
