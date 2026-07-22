@@ -6,12 +6,13 @@
 // Rules are the same on both sides; backend dispatches by the resource URL.
 // On save the backend publishes app_access.changed → all connected portal
 // SSE clients refetch /apps so users see new permissions without reload.
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus, Trash2, Loader2, ShieldCheck, ShieldOff, Globe2, UsersRound, User, Building2, Crown } from 'lucide-react'
-import { appAccessApi, groupApi, userApi, orgApi, permissionApi, cn, useTranslation, AccessPolicySubjectType } from '@mxid/shared'
-import type { AccessPolicy, AccessSubjectType, AccessEffect, AccessOwner, Group, User as UserT, OrgNode, Role } from '@mxid/shared'
+import { appAccessApi, cn, useTranslation, AccessPolicySubjectType } from '@mxid/shared'
+import type { AccessPolicy, AccessSubjectType, AccessEffect, AccessOwner } from '@mxid/shared'
 import { Field, Select, Button, Tag, ConfirmDialog } from '../../components/ui'
 import { toast } from '../../components/ui/toast'
+import MultiSubjectPicker, { type MultiSubjectType, type SubjectOption } from '../../components/MultiSubjectPicker'
 
 export default function AccessPolicyTab({
   owner = 'app',
@@ -101,6 +102,7 @@ export default function AccessPolicyTab({
         <AddPolicyModal
           owner={owner}
           ownerId={ownerId}
+          existing={list}
           onClose={() => setShowAdd(false)}
           onSaved={() => {
             setShowAdd(false)
@@ -174,69 +176,64 @@ const SUBJECT_ICON: Record<AccessSubjectType, typeof Globe2> = {
 function AddPolicyModal({
   owner,
   ownerId,
+  existing,
   onClose,
   onSaved,
 }: {
   owner: AccessOwner
   ownerId: string
+  existing: AccessPolicy[]
   onClose: () => void
   onSaved: () => void
 }) {
   const { t } = useTranslation()
   const [subjectType, setSubjectType] = useState<AccessSubjectType>(AccessPolicySubjectType.Group)
-  const [subjectId, setSubjectId] = useState<string>('')
+  const [selected, setSelected] = useState<SubjectOption[]>([])
   const [effect, setEffect] = useState<AccessEffect>('allow')
-
-  const [groups, setGroups] = useState<Group[]>([])
-  const [users, setUsers] = useState<UserT[]>([])
-  const [orgs, setOrgs] = useState<OrgNode[]>([])
-  const [roles, setRoles] = useState<Role[]>([])
-  const [optsLoading, setOptsLoading] = useState(false)
   const [saving, setSaving] = useState(false)
 
+  // Subjects of the current type already on this policy — passed to the picker
+  // so they render disabled ("already added") instead of creating duplicates.
+  const excludeIds = useMemo(
+    () => new Set(existing.filter((p) => p.subject_type === subjectType).map((p) => String(p.subject_id))),
+    [existing, subjectType],
+  )
+
+  // A public rule already exists → block re-adding it (it's a single global rule).
+  const publicExists = useMemo(
+    () => existing.some((p) => p.subject_type === AccessPolicySubjectType.Public),
+    [existing],
+  )
+
   useEffect(() => {
-    setSubjectId('')
-    if (subjectType === AccessPolicySubjectType.Public) return
-    setOptsLoading(true)
-    const load = async () => {
-      try {
-        if (subjectType === AccessPolicySubjectType.Group) {
-          const r = await groupApi.list({ page: 1, page_size: 200 })
-          setGroups(r.items)
-        } else if (subjectType === AccessPolicySubjectType.User) {
-          const r = await userApi.list({ page: 1, page_size: 200 })
-          setUsers(r.items)
-        } else if (subjectType === AccessPolicySubjectType.Org) {
-          const r = await orgApi.tree()
-          const flat: OrgNode[] = []
-          const walk = (nodes: OrgNode[]) => {
-            for (const n of nodes) {
-              flat.push(n)
-              if (n.children) walk(n.children)
-            }
-          }
-          walk(r)
-          setOrgs(flat)
-        } else if (subjectType === AccessPolicySubjectType.Role) {
-          const r = await permissionApi.listRoles({ page: 1, page_size: 200 })
-          setRoles(r.items)
-        }
-      } finally {
-        setOptsLoading(false)
-      }
-    }
-    load()
+    setSelected([])
   }, [subjectType])
 
+  const isPublic = subjectType === AccessPolicySubjectType.Public
+
   const handleSave = async () => {
-    if (subjectType !== AccessPolicySubjectType.Public && !subjectId) {
-      toast.warning(t('apps.access.pleaseChooseSubject'))
-      return
-    }
     setSaving(true)
     try {
-      await appAccessApi.create(owner, ownerId, { subject_type: subjectType, subject_id: subjectId || undefined, effect })
-      toast.success(t('apps.access.added'))
+      if (isPublic) {
+        if (publicExists) {
+          toast.warning(t('apps.access.alreadyAdded'))
+          return
+        }
+        await appAccessApi.create(owner, ownerId, { subject_type: 'public', effect })
+        toast.success(t('apps.access.added'))
+        onSaved()
+        return
+      }
+      if (selected.length === 0) {
+        toast.warning(t('apps.access.pleaseChooseSubject'))
+        return
+      }
+      const res = await appAccessApi.createBatch(owner, ownerId, {
+        subject_type: subjectType,
+        subject_ids: selected.map((s) => s.id),
+        effect,
+      })
+      toast.success(t('apps.access.batchAdded', { created: res.created, skipped: res.skipped }))
       onSaved()
     } catch (e) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
@@ -268,19 +265,14 @@ function AddPolicyModal({
             </Select>
           </Field>
 
-          {subjectType !== AccessPolicySubjectType.Public && (
+          {!isPublic && (
             <Field label={t('apps.access.selectSubject')}>
-              {optsLoading ? (
-                <div className="flex h-10 items-center justify-center"><Loader2 className="h-4 w-4 animate-spin text-faint" /></div>
-              ) : (
-                <Select value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
-                  <option value="">{t('apps.access.pleaseSelect')}</option>
-                  {subjectType === AccessPolicySubjectType.Group && groups.map((g) => <option key={String(g.id)} value={String(g.id)}>{g.name} ({g.code})</option>)}
-                  {subjectType === AccessPolicySubjectType.User && users.map((u) => <option key={String(u.id)} value={String(u.id)}>{u.display_name || u.username} ({u.username})</option>)}
-                  {subjectType === AccessPolicySubjectType.Org && orgs.map((o) => <option key={String(o.id)} value={String(o.id)}>{o.name} ({o.code})</option>)}
-                  {subjectType === AccessPolicySubjectType.Role && roles.map((r) => <option key={String(r.id)} value={String(r.id)}>{r.name} ({r.code})</option>)}
-                </Select>
-              )}
+              <MultiSubjectPicker
+                subjectType={subjectType as MultiSubjectType}
+                excludeIds={excludeIds}
+                selected={selected}
+                onChange={setSelected}
+              />
             </Field>
           )}
         </div>

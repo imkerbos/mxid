@@ -117,6 +117,9 @@ func (r *gormRepository) List(ctx context.Context, tenantID int64, params ListAp
 		appSearchScope(params.Search),
 		appProtocolScope(params.Protocol),
 		appStatusScope(params.Status),
+		appEnvScope(params.Env),
+		appAccessPolicyScope(params.AccessPolicy),
+		appGroupScope(params.GroupID),
 	)
 
 	if err := query.Count(&total).Error; err != nil {
@@ -207,6 +210,46 @@ func appStatusScope(status *int) func(db *gorm.DB) *gorm.DB {
 		}
 		return db.Where("status = ?", *status)
 	}
+}
+
+func appEnvScope(env *string) func(db *gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		if env == nil {
+			return db
+		}
+		return db.Where("env = ?", *env)
+	}
+}
+
+func appAccessPolicyScope(policy *int) func(db *gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		if policy == nil {
+			return db
+		}
+		return db.Where("access_policy = ?", *policy)
+	}
+}
+
+// appGroupScope restricts the result to apps that belong to a given app group
+// via the mxid_app_group_rel join table. Uses a subquery so no columns
+// collide with the main SELECT and pagination/count stay correct.
+func appGroupScope(groupID *int64) func(db *gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		if groupID == nil {
+			return db
+		}
+		return db.Where("id IN (?)", r_appIDsInGroup(db, *groupID))
+	}
+}
+
+// r_appIDsInGroup builds the subquery selecting app ids in a group. Kept as a
+// helper so appGroupScope reads clearly; the *gorm.DB is only used for its
+// session/dialector, not the outer query state.
+func r_appIDsInGroup(db *gorm.DB, groupID int64) *gorm.DB {
+	return db.Session(&gorm.Session{NewDB: true}).
+		Table("mxid_app_group_rel").
+		Select("app_id").
+		Where("group_id = ?", groupID)
 }
 
 // --- AppGroup CRUD ---

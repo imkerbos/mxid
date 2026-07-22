@@ -103,9 +103,12 @@ func (h *Handler) ListAppsInGroup(c *gin.Context) {
 
 // ListAppsRequest holds query parameters for listing apps.
 type ListAppsRequest struct {
-	Search   string  `form:"search"`
-	Protocol *string `form:"protocol"`
-	Status   *int    `form:"status"`
+	Search       string  `form:"search"`
+	Protocol     *string `form:"protocol"`
+	Status       *int    `form:"status"`
+	Env          *string `form:"env"`
+	AccessPolicy *int    `form:"access_policy"`
+	GroupID      *int64  `form:"group_id"`
 }
 
 // --- App Handlers ---
@@ -121,11 +124,14 @@ func (h *Handler) List(c *gin.Context) {
 	}
 
 	params := ListAppParams{
-		Page:     p.Page,
-		PageSize: p.PageSize,
-		Search:   req.Search,
-		Protocol: req.Protocol,
-		Status:   req.Status,
+		Page:         p.Page,
+		PageSize:     p.PageSize,
+		Search:       req.Search,
+		Protocol:     req.Protocol,
+		Status:       req.Status,
+		Env:          req.Env,
+		AccessPolicy: req.AccessPolicy,
+		GroupID:      req.GroupID,
 	}
 
 	apps, total, err := h.svc.List(c.Request.Context(), tenantctx.FromContext(c, h.tenantID), params)

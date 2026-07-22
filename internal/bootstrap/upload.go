@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -39,15 +40,20 @@ const (
 	iconPrefix = "/static/app-icons/"
 )
 
-// allowedIconMime caps the accepted formats. Raster only — SVG is deliberately
-// excluded: it can embed <script>, and icons are served same-origin and
-// unauthenticated, so a scripted SVG would be stored XSS. Rejecting unknown
-// types also keeps users from uploading PDFs or HEIC that don't render.
+// allowedIconMime caps the accepted formats. SVG is accepted but treated as
+// hostile input: it can embed <script>, and icons are served same-origin and
+// unauthenticated. The serve path neutralises this with X-Content-Type-Options:
+// nosniff + a CSP sandbox (no allow-scripts), so a scripted SVG can neither run
+// on direct navigation nor be re-sniffed as HTML; saveIcon additionally sniffs
+// the bytes (see looksLikeSVG) so the svg+xml Content-Type can't smuggle an HTML
+// document. Rejecting unknown types also keeps users from uploading PDFs or
+// HEIC that don't render.
 var allowedIconMime = map[string]string{
-	"image/png":  ".png",
-	"image/jpeg": ".jpg",
-	"image/webp": ".webp",
-	"image/gif":  ".gif",
+	"image/png":     ".png",
+	"image/jpeg":    ".jpg",
+	"image/webp":    ".webp",
+	"image/gif":     ".gif",
+	"image/svg+xml": ".svg",
 }
 
 // RegisterUpload wires the icon upload endpoint and the DB-backed static serve.
@@ -113,6 +119,27 @@ func RegisterUpload(r *gin.Engine, consoleGroup *gin.RouterGroup, idGen *snowfla
 	return nil
 }
 
+// looksLikeSVG reports whether data is plausibly an SVG document rather than
+// arbitrary markup wearing an image/svg+xml Content-Type. It skips a leading
+// UTF-8 BOM and whitespace, requires the content to open as XML/markup, and
+// requires an "<svg" root element to appear early — enough to reject an HTML
+// page or junk while staying lenient about an <?xml declaration, a DOCTYPE, or
+// comments preceding the root.
+func looksLikeSVG(data []byte) bool {
+	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF}) // UTF-8 BOM
+	data = bytes.TrimLeft(data, " \t\r\n")
+	if len(data) == 0 || data[0] != '<' {
+		return false
+	}
+	// Only look near the top; the root element comes right after any xml decl /
+	// doctype / comment, well within the first kilobyte.
+	head := data
+	if len(head) > 1024 {
+		head = head[:1024]
+	}
+	return bytes.Contains(bytes.ToLower(head), []byte("<svg"))
+}
+
 // parseIconID extracts the Snowflake id from "<id>.<ext>" (or a bare "<id>").
 // Returns 0 on anything unparseable.
 func parseIconID(name string) int64 {
@@ -153,6 +180,13 @@ func saveIcon(ctx context.Context, src multipart.File, header *multipart.FileHea
 	}
 	if len(data) > maxIconBytes {
 		return "", fmt.Errorf("%w: file too large (max %d bytes)", errIconRejected, maxIconBytes)
+	}
+
+	// The svg+xml Content-Type is trivially forgeable, and unlike raster formats
+	// SVG is text that could just as well be an HTML document. Sniff the actual
+	// bytes so an svg+xml upload really is an SVG root, not smuggled markup.
+	if mime == "image/svg+xml" && !looksLikeSVG(data) {
+		return "", fmt.Errorf("%w: file is not a valid SVG document", errIconRejected)
 	}
 
 	id := idGen.Generate()

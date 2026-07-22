@@ -9,6 +9,10 @@ type ListAppParams struct {
 	Search   string
 	Protocol *string
 	Status   *int
+	// Extended filters (console list view).
+	Env          *string // environment label (qa/uat/prod/custom); "" not allowed, use nil to skip
+	AccessPolicy *int     // 1=all / 2=authorized-only
+	GroupID      *int64   // membership: only apps belonging to this app group
 }
 
 // Repository defines the data access interface for the application domain.
