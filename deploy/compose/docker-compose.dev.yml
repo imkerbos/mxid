@@ -18,7 +18,7 @@ name: mxid-dev
 
 services:
   nginx:
-    image: nginx:1.27-alpine
+    image: nginx:1.29-alpine
     # Suffixed -dev: container_name is daemon-global, and the prod stack's nginx
     # also uses `mxid-nginx`. Without the suffix, running dev + prod on one host
     # collides (and every other dev container already carries a -dev/-vite tag).

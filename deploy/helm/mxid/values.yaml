@@ -147,7 +147,7 @@ web:
 
   podAnnotations: {}
   podLabels: {}
-  # Left empty on purpose: the web image is stock nginx:1.27-alpine binding :80,
+  # Left empty on purpose: the web image is stock nginx:1.29-alpine binding :80,
   # which needs root (or the nginx-unprivileged image + a high port). Don't set
   # runAsNonRoot here unless you switch to an unprivileged nginx image.
   podSecurityContext: {}
