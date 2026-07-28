@@ -7,6 +7,7 @@ const DEFAULT: Bootstrap = {
   branding: {
     product_name: 'MXID',
     logo_url: '',
+    favicon_url: '',
     primary_color: '#2563eb',
     login_page_title: '',
     login_footer_html: '',
@@ -65,16 +66,17 @@ export function applyBranding(b: Bootstrap['branding']) {
     }
     style.textContent = b.custom_css
   }
-  // Favicon → configured logo. Previously the comment claimed this happened but
-  // the code never did it.
-  if (b.logo_url) {
+  // Favicon → the dedicated favicon if the admin set one, else fall back to the
+  // logo (what the shell did before favicon_url existed).
+  const favicon = b.favicon_url || b.logo_url
+  if (favicon) {
     let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
     if (!link) {
       link = document.createElement('link')
       link.rel = 'icon'
       document.head.appendChild(link)
     }
-    link.href = b.logo_url
+    link.href = favicon
   }
 }
 

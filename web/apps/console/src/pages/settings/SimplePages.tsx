@@ -28,6 +28,7 @@ import {
 } from '@mxid/shared'
 import { Field, Input, Select, Textarea, Button } from '../../components/ui'
 import { toast } from '../../components/ui/toast'
+import { ImageUpload } from '../../components/ImageUpload'
 
 type Row =
   | { kind: 'text';   key: string; label: string; hint?: string; placeholder?: string }
@@ -36,6 +37,9 @@ type Row =
   | { kind: 'select'; key: string; label: string; options: Array<{ value: string; label: string }> }
   | { kind: 'multiline'; key: string; label: string; hint?: string; rows?: number }
   | { kind: 'list'; key: string; label: string; hint?: string }
+  // 'image' stores a URL string like 'text' does, but offers a file upload
+  // (bytes → mxid_upload table) alongside typing an external URL.
+  | { kind: 'image'; key: string; label: string; hint?: string }
 
 // Generic nested-object accessors. Values are unknown at the call site
 // (table-driven form schema), so unknown + casts at the leaves are the
@@ -190,6 +194,13 @@ function GenericForm<T>({
                   placeholder={t('settings.listPlaceholder')}
                 />
               )}
+              {r.kind === 'image' && (
+                <ImageUpload
+                  value={(get(v, r.key) as string | undefined) ?? ''}
+                  onChange={(next) => setV(set(v, r.key, next))}
+                  disabled={locked}
+                />
+              )}
             </Field>
             )
           })}
@@ -230,7 +241,8 @@ export function BrandingPage() {
       rows={[
         { kind: 'text', key: 'product_name', label: t('settings.branding.productName'), placeholder: 'MXID' },
         { kind: 'text', key: 'primary_color', label: t('settings.branding.primaryColor'), placeholder: '#2563eb' },
-        { kind: 'text', key: 'logo_url', label: t('settings.branding.logoUrl'), placeholder: t('settings.branding.logoUrlPlaceholder') },
+        { kind: 'image', key: 'logo_url', label: t('settings.branding.logoUrl'), hint: t('settings.branding.logoUrlHint') },
+        { kind: 'image', key: 'favicon_url', label: t('settings.branding.faviconUrl'), hint: t('settings.branding.faviconUrlHint') },
         { kind: 'text', key: 'login_page_title', label: t('settings.branding.loginPageTitle') },
         { kind: 'multiline', key: 'login_footer_html', label: t('settings.branding.loginFooterHtml'), hint: t('settings.branding.loginFooterHtmlHint') },
         { kind: 'multiline', key: 'custom_css', label: t('settings.branding.customCss'), hint: t('settings.branding.customCssHint'), rows: 6 },

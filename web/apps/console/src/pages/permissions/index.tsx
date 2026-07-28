@@ -1,12 +1,11 @@
 import { useEffect, useState, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { Plus, Shield, Check, Loader2, Trash2, Users, UserPlus } from 'lucide-react'
-import { permissionApi, formatDate, cn, useTranslation } from '@mxid/shared'
+import { permissionApi, formatDate, cn, useTranslation, useTabParam } from '@mxid/shared'
 import { pageMotion, Button, Modal, ConfirmDialog } from '@mxid/shared/ui'
 import type { Role, Permission, PaginatedData, RoleBinding } from '@mxid/shared'
 import { RoleType, BindingSubjectType, BindingScopeType } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
-import { useTabParam } from '../../hooks/useTabParam'
 import { toast, extractMessage } from '../../components/ui/toast'
 import SubjectPicker from '../../components/SubjectPicker'
 

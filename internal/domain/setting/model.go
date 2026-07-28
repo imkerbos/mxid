@@ -151,7 +151,11 @@ type RateLimitPolicy struct {
 
 // Branding — UI customization shown on portal login page.
 type Branding struct {
-	LogoURL         string `json:"logo_url"`
+	LogoURL string `json:"logo_url"`
+	// FaviconURL overrides the browser tab icon. Empty means "reuse LogoURL",
+	// which is what the shell did before this field existed — so rows saved
+	// without it keep their current behaviour.
+	FaviconURL      string `json:"favicon_url"`
 	PrimaryColor    string `json:"primary_color"` // hex
 	ProductName     string `json:"product_name"`
 	LoginPageTitle  string `json:"login_page_title"`

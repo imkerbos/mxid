@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
-import { authApi, useAuthStore, useBootstrap, useTheme } from '@mxid/shared'
+import { authApi, useAuthStore, useBootstrap, useTheme, currentReturnPath, safeReturnPath } from '@mxid/shared'
 import { resumeSSOIfAny } from './lib/sso'
 import MainLayout from './components/layout/MainLayout'
 import LoginPage from './pages/login'
@@ -33,7 +33,9 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
           .then(setUser)
           .catch(() => {
             clear()
-            navigate('/login', { replace: true })
+            // Stash where they were so login can bounce them back (see
+            // RedirectIfAuth / the login page's post-auth navigate).
+            navigate('/login', { replace: true, state: { from: currentReturnPath() } })
           }),
       )
   }, [setUser, clear, navigate])
@@ -41,7 +43,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const handler = () => {
       clear()
-      navigate('/login', { replace: true })
+      navigate('/login', { replace: true, state: { from: currentReturnPath() } })
     }
     window.addEventListener('mxid:unauthorized', handler)
     return () => window.removeEventListener('mxid:unauthorized', handler)
@@ -99,7 +101,7 @@ function RedirectIfAuth({ children }: { children: React.ReactNode }) {
     // we fall through to /apps rather than hang.
     const sp = new URLSearchParams(location.search)
     if (resumeSSOIfAny(sp)) return null
-    const from = (location.state as { from?: string })?.from || '/apps'
+    const from = safeReturnPath((location.state as { from?: string })?.from, '/apps')
     return <Navigate to={from} replace />
   }
 

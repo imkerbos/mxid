@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, type FormEvent } from 'react'
 import { useNavigate, useLocation, useSearchParams, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { authApi, externalIdpApi, ExternalIdpButtons, useAuthStore, useBootstrap, useTranslation } from '@mxid/shared'
+import { authApi, externalIdpApi, ExternalIdpButtons, useAuthStore, useBootstrap, useTranslation, safeReturnPath } from '@mxid/shared'
 import type { PublicIDP } from '@mxid/shared'
 import { Eye, EyeOff, Loader2, RefreshCw } from 'lucide-react'
 import { resumeSSOIfAny } from '../../lib/sso'
@@ -125,7 +125,7 @@ export default function LoginPage() {
       const user = await authApi.portalMe()
       setUser(user)
       if (resumeSSOIfAny(searchParams)) return
-      const from = (location.state as { from?: string })?.from || '/apps'
+      const from = safeReturnPath((location.state as { from?: string })?.from, '/apps')
       navigate(from, { replace: true })
     } catch (err: unknown) {
       setError(loginErrorMessage(err, t))
@@ -160,7 +160,7 @@ export default function LoginPage() {
       const user = await authApi.portalMe()
       setUser(user)
       if (resumeSSOIfAny(searchParams)) return
-      const from = (location.state as { from?: string })?.from || '/apps'
+      const from = safeReturnPath((location.state as { from?: string })?.from, '/apps')
       navigate(from, { replace: true })
     } catch (err: unknown) {
       setError(loginErrorMessage(err, t))

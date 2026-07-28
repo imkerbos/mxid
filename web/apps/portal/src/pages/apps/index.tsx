@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { portalApi, protocolLabel, AppIcon, useSSE, useTranslation } from '@mxid/shared'
+import { portalApi, protocolLabel, AppIcon, useSSE, useTranslation, useUrlState } from '@mxid/shared'
 import { Modal, Button, Field, Input } from '@mxid/shared/ui'
 import { toast, extractMessage } from '@mxid/shared/ui/toast'
 import type { PortalApp, PortalAppGroup } from '@mxid/shared'
@@ -68,8 +68,21 @@ export default function AppsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [launching, setLaunching] = useState<string | null>(null)
-  const [selected, setSelected] = useState<SidebarKey>('all')
-  const [query, setQuery] = useState('')
+  // Sidebar selection + search live in the URL so a filtered view is
+  // shareable and survives reload / back-forward (and the post-login bounce
+  // back here). `view` holds a reserved key or a group ID.
+  const [urlState, setUrlState] = useUrlState({ view: 'all', search: '' })
+  const selected = urlState.view as SidebarKey
+  const setSelected = useCallback((v: SidebarKey) => setUrlState({ view: v }), [setUrlState])
+  // Local echo drives the (client-side, instant) filter; the URL is written
+  // debounced so typing doesn't churn history state on every keystroke.
+  const [query, setQuery] = useState(urlState.search)
+  const queryTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const onQueryChange = useCallback((val: string) => {
+    setQuery(val)
+    if (queryTimer.current) clearTimeout(queryTimer.current)
+    queryTimer.current = setTimeout(() => setUrlState({ search: val }), 400)
+  }, [setUrlState])
   const [dragId, setDragId] = useState<string | null>(null)
   // Form-fill (SWA): the app whose per-user credential the user is editing.
   const [credApp, setCredApp] = useState<PortalApp | null>(null)
@@ -392,7 +405,7 @@ export default function AppsPage() {
           <input
             type="text"
             value={query}
-            onChange={e => setQuery(e.target.value)}
+            onChange={e => onQueryChange(e.target.value)}
             placeholder={t('portal.searchPlaceholder')}
             className="w-full rounded-lg border border-border bg-surface py-2 pl-9 pr-3 text-sm text-ink outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/15"
           />
