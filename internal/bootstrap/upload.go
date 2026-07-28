@@ -13,7 +13,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/upload"
+	"github.com/imkerbos/mxid/internal/middleware"
 	"github.com/imkerbos/mxid/pkg/authz"
+	"github.com/imkerbos/mxid/pkg/ee/license"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/snowflake"
 )
@@ -35,6 +37,10 @@ const (
 	maxIconBytes = 2 * 1024 * 1024
 
 	iconCategory = "app-icon"
+	// brandCategory tags brand assets (logo / favicon) so quota and cleanup
+	// passes can tell them apart from per-app icons. They share the serve path
+	// and URL prefix — ids are globally unique Snowflakes, so one route suffices.
+	brandCategory = "brand-logo"
 	// iconPrefix is the public URL prefix. Kept identical to the legacy on-disk
 	// layout so existing app.icon / branding.logo_url values keep their shape.
 	iconPrefix = "/static/app-icons/"
@@ -96,7 +102,28 @@ func RegisterUpload(r *gin.Engine, consoleGroup *gin.RouterGroup, idGen *snowfla
 	// forms (no app id exists yet at create time), so allow either app.create
 	// or app.update. RequireAny does the RBAC check; the matching entry in
 	// consoleProtectedRoutes registers it with the deny-by-default gateway.
-	consoleGroup.POST("/upload/app-icon", authz.RequireAny([]string{"app.create", "app.update"}, nil), func(c *gin.Context) {
+	consoleGroup.POST("/upload/app-icon",
+		authz.RequireAny([]string{"app.create", "app.update"}, nil),
+		uploadHandler(iconCategory, repo, idGen))
+
+	// Brand assets (logo / favicon) are edited from Settings → Branding, whose
+	// admins hold settings.manage rather than the app.* perms above — hence a
+	// separate route instead of widening the app-icon one. Gated on the same EE
+	// feature as PUT /settings/branding so CE can't upload bytes it could never
+	// save into the branding row.
+	consoleGroup.POST("/upload/brand-logo",
+		middleware.RequireFeature(license.FeatureBranding),
+		authz.Require("settings.manage", nil),
+		uploadHandler(brandCategory, repo, idGen))
+
+	return nil
+}
+
+// uploadHandler builds the multipart→DB upload endpoint for one asset category.
+// Validation, size cap and the returned public URL are identical across
+// categories; only the category tag stored on the row differs.
+func uploadHandler(category string, repo upload.Repository, idGen *snowflake.Generator) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		f, header, err := c.Request.FormFile("file")
 		if err != nil {
 			response.BadRequest(c, 40001, "file field required")
@@ -104,7 +131,7 @@ func RegisterUpload(r *gin.Engine, consoleGroup *gin.RouterGroup, idGen *snowfla
 		}
 		defer f.Close()
 
-		url, err := saveIcon(c.Request.Context(), f, header, repo, idGen)
+		url, err := saveIcon(c.Request.Context(), f, header, category, repo, idGen)
 		if err != nil {
 			if errors.Is(err, errIconRejected) {
 				response.BadRequest(c, 40002, err.Error())
@@ -114,9 +141,7 @@ func RegisterUpload(r *gin.Engine, consoleGroup *gin.RouterGroup, idGen *snowfla
 			return
 		}
 		response.OK(c, gin.H{"url": url})
-	})
-
-	return nil
+	}
 }
 
 // looksLikeSVG reports whether data is plausibly an SVG document rather than
@@ -157,7 +182,7 @@ func parseIconID(name string) int64 {
 // public URL the caller stores in app.icon. Content-type is taken from the
 // multipart header (caller-supplied — fine here since the endpoint is the
 // trusted admin console, not anonymous).
-func saveIcon(ctx context.Context, src multipart.File, header *multipart.FileHeader, repo upload.Repository, idGen *snowflake.Generator) (string, error) {
+func saveIcon(ctx context.Context, src multipart.File, header *multipart.FileHeader, category string, repo upload.Repository, idGen *snowflake.Generator) (string, error) {
 	if header.Size > maxIconBytes {
 		return "", fmt.Errorf("%w: file too large: %d bytes (max %d)", errIconRejected, header.Size, maxIconBytes)
 	}
@@ -192,7 +217,7 @@ func saveIcon(ctx context.Context, src multipart.File, header *multipart.FileHea
 	id := idGen.Generate()
 	if err := repo.Save(ctx, &upload.Upload{
 		ID:       id,
-		Category: iconCategory,
+		Category: category,
 		Mime:     mime,
 		Ext:      ext,
 		Size:     len(data),

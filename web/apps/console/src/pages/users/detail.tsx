@@ -25,6 +25,7 @@ import {
   statusLabel,
   cn,
   useTranslation,
+  useTabParam,
   UserStatus,
 } from '@mxid/shared'
 import type {
@@ -40,7 +41,6 @@ import type {
   PaginatedData,
 } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
-import { useTabParam } from '../../hooks/useTabParam'
 import { Field, pageMotion, Button, ConfirmDialog, AvatarUpload, avatarTexts } from '../../components/ui'
 import { toast, extractMessage } from '../../components/ui/toast'
 

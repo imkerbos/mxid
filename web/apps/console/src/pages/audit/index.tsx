@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { Eye } from 'lucide-react'
-import { auditApi, formatDate, useTranslation } from '@mxid/shared'
+import { auditApi, formatDate, useTranslation, useUrlState } from '@mxid/shared'
 import {
   pageMotion,
   Modal,
@@ -17,7 +17,6 @@ import {
 import type { Column, DateRange } from '@mxid/shared/ui'
 import type { AuditLog, PaginatedData } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
-import { useUrlState } from '../../hooks/useUrlState'
 
 // Event-type → tint class. Token-based so it reads correctly in light and dark
 // without leaning on the compat shim. Categories exceed the 6 semantic tones,

@@ -6,6 +6,7 @@ export * from './app-icon'
 export * from './app-icon-library'
 export { AppIcon } from './AppIcon'
 export * from './user-agent'
+export * from './return-path'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))

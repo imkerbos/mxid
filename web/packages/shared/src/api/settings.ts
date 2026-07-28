@@ -56,6 +56,9 @@ export interface SecurityPolicy {
 // ─── Branding ───
 export interface Branding {
   logo_url: string
+  // Empty means "reuse logo_url" — the shell's behaviour before this field
+  // existed, so branding rows saved without it are unchanged.
+  favicon_url: string
   primary_color: string
   product_name: string
   login_page_title: string

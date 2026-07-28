@@ -8,6 +8,7 @@ export interface Bootstrap {
   branding: {
     product_name: string
     logo_url: string
+    favicon_url: string
     primary_color: string
     login_page_title: string
     login_footer_html: string

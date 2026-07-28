@@ -1,11 +1,10 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, AppWindow, Loader2, Copy, X, Settings, Eye, EyeOff, LayoutGrid, Search } from 'lucide-react'
-import { appApi, appGroupApi, protocolLabel, statusLabel, statusColor, cn, AppIcon, useTranslation, AppStatus } from '@mxid/shared'
+import { appApi, appGroupApi, protocolLabel, statusLabel, statusColor, cn, AppIcon, useTranslation, useTabParam, AppStatus } from '@mxid/shared'
 import type { App, AppGroup, PaginatedData, AppTemplate, AppTemplateListItem } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
 import AppGroupsTab from './AppGroupsTab'
-import { useTabParam } from '../../hooks/useTabParam'
 import { CodeField, pageMotion, Button, ConfirmDialog, Modal } from '../../components/ui'
 import { IconPicker } from '../../components/icon-picker/IconPicker'
 import { toast, extractMessage } from '../../components/ui/toast'
@@ -947,12 +946,14 @@ export default function AppsPage() {
               onClick={() => openDetail(app)}
             >
               {/* App icon + name */}
-              <div className="mb-4 flex items-start justify-between">
-                <div className="flex items-center gap-3">
+              <div className="mb-4 flex items-start justify-between gap-2">
+                <div className="flex min-w-0 flex-1 items-center gap-3">
                   {app.icon ? (
-                    <AppIcon value={app.icon} size={40} />
+                    <div className="shrink-0">
+                      <AppIcon value={app.icon} size={40} />
+                    </div>
                   ) : (
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                       <AppWindow className="h-5 w-5" />
                     </div>
                   )}
@@ -966,7 +967,7 @@ export default function AppsPage() {
                     e.stopPropagation()
                     openDetail(app)
                   }}
-                  className="rounded-lg p-1.5 text-faint opacity-0 transition-all group-hover:opacity-100 hover:bg-surface-muted hover:text-muted"
+                  className="shrink-0 rounded-lg p-1.5 text-faint opacity-0 transition-all group-hover:opacity-100 hover:bg-surface-muted hover:text-muted"
                   title={t('apps.list.detail')}
                 >
                   <Settings className="h-4 w-4" />
@@ -1086,12 +1087,14 @@ export default function AppsPage() {
                         key={tpl.key}
                         type="button"
                         onClick={() => handlePickTemplate(tpl.key)}
-                        className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5 text-left hover:border-blue-400 hover:bg-blue-50/30"
+                        className="flex min-w-0 items-center gap-3 rounded-lg border border-border px-3 py-2.5 text-left hover:border-blue-400 hover:bg-blue-50/30"
                       >
-                        <AppIcon value={tpl.icon} fallbackName={tpl.name} size={32} />
+                        <div className="shrink-0">
+                          <AppIcon value={tpl.icon} fallbackName={tpl.name} size={32} />
+                        </div>
                         <div className="min-w-0">
                           <div className="truncate text-sm font-medium">{tpl.name}</div>
-                          <div className="text-xs text-faint">{protocolLabel(tpl.protocol)}</div>
+                          <div className="truncate text-xs text-faint">{protocolLabel(tpl.protocol)}</div>
                         </div>
                       </button>
                     ))}
