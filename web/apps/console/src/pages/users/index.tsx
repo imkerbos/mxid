@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Plus, RotateCcw, Trash2, Loader2, Pencil, ShieldCheck, ShieldOff } from 'lucide-react'
-import { userApi, formatDate, statusLabel, statusColor, cn, useTranslation, UserStatus } from '@mxid/shared'
+import { userApi, formatDate, statusLabel, statusColor, cn, useTranslation, useUrlState, UserStatus } from '@mxid/shared'
 import { pageMotion, Button, Card, DataTable, Modal, Pagination, SearchInput, Select, FilterBar, ConfirmDialog } from '@mxid/shared/ui'
 import type { Column } from '@mxid/shared/ui'
 import type { User, PaginatedData, UpdateUserRequest } from '@mxid/shared'
@@ -14,9 +14,11 @@ export default function UsersPage() {
   const navigate = useNavigate()
   const [data, setData] = useState<PaginatedData<User>>({ items: [], total: 0, page: 1, page_size: 20 })
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<number | ''>('')
-  const [page, setPage] = useState(1)
+  // Filters live in the URL so the view is shareable and survives reload /
+  // back-forward (and the post-login bounce back here).
+  const [q, setQ] = useUrlState({ page: 1, search: '', status: '' })
+  // Local echo for the debounced search box.
+  const [search, setSearch] = useState(q.search)
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   // Create modal states
@@ -40,9 +42,9 @@ export default function UsersPage() {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const params: Record<string, unknown> = { page, page_size: 20 }
-      if (search) params.search = search
-      if (statusFilter !== '') params.status = statusFilter
+      const params: Record<string, unknown> = { page: q.page, page_size: 20 }
+      if (q.search) params.search = q.search
+      if (q.status !== '') params.status = Number(q.status)
       const result = await userApi.list(params)
       setData(result)
     } catch {
@@ -50,7 +52,7 @@ export default function UsersPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, search, statusFilter])
+  }, [q.page, q.search, q.status])
 
   useEffect(() => {
     void loadData()
@@ -60,7 +62,7 @@ export default function UsersPage() {
     setSearch(val)
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(() => {
-      setPage(1)
+      setQ({ search: val, page: 1 })
     }, 400)
   }
 
@@ -102,7 +104,7 @@ export default function UsersPage() {
       })
       setShowCreate(false)
       setCreateForm({ username: '', password: '', display_name: '', email: '' })
-      setPage(1)
+      setQ({ page: 1 })
       loadData()
       toast.success(t('common.success'))
     } catch (e) {
@@ -303,11 +305,8 @@ export default function UsersPage() {
             className="max-w-xs flex-1"
           />
           <Select
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value === '' ? '' : Number(e.target.value))
-              setPage(1)
-            }}
+            value={q.status}
+            onChange={(e) => setQ({ status: e.target.value, page: 1 })}
             className="w-auto"
           >
             <option value="">{t('common.all')}</option>
@@ -328,7 +327,7 @@ export default function UsersPage() {
           />
           {data.total > 0 && (
             <div className="border-t border-border">
-              <Pagination page={page} pageSize={data.page_size} total={data.total} onChange={setPage} />
+              <Pagination page={q.page} pageSize={data.page_size} total={data.total} onChange={(p) => setQ({ page: p })} />
             </div>
           )}
         </Card>

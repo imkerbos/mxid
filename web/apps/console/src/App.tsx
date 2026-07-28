@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
-import { useAuthStore, authApi, useBootstrap, useTheme } from '@mxid/shared'
+import { useAuthStore, authApi, useBootstrap, useTheme, currentReturnPath } from '@mxid/shared'
 import MainLayout from './components/layout/MainLayout'
 import StepUpModal from './components/StepUpModal'
 import LoginPage from './pages/login'
@@ -57,7 +57,8 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
           .then(setUser)
           .catch(() => {
             clear()
-            navigate('/login', { replace: true })
+            // Stash where they were so the login page can bounce them back.
+            navigate('/login', { replace: true, state: { from: currentReturnPath() } })
           }),
       )
   }, [])
@@ -65,7 +66,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const handler = () => {
       clear()
-      navigate('/login', { replace: true })
+      navigate('/login', { replace: true, state: { from: currentReturnPath() } })
     }
     window.addEventListener('mxid:unauthorized', handler)
     return () => window.removeEventListener('mxid:unauthorized', handler)

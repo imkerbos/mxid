@@ -13,7 +13,7 @@ import {
   Zap,
   RefreshCw,
 } from 'lucide-react'
-import { groupApi, userApi, formatDate, cn, useTranslation, GroupType } from '@mxid/shared'
+import { groupApi, userApi, formatDate, cn, useTranslation, useUrlState, GroupType } from '@mxid/shared'
 import type { Group, User, PaginatedData, GroupMember, RuleExpr, GroupRule } from '@mxid/shared'
 import axios from 'axios'
 import PageHeader from '../../components/layout/PageHeader'
@@ -28,8 +28,11 @@ export default function GroupsPage() {
   const { t } = useTranslation()
   const [data, setData] = useState<PaginatedData<Group>>({ items: [], total: 0, page: 1, page_size: 20 })
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [page, setPage] = useState(1)
+  // Filters live in the URL so the view is shareable and survives reload /
+  // back-forward (and the post-login bounce back here).
+  const [q, setQ] = useUrlState({ page: 1, keyword: '' })
+  // Local echo for the debounced search box.
+  const [search, setSearch] = useState(q.keyword)
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   // Create modal
@@ -74,8 +77,8 @@ export default function GroupsPage() {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const params: Record<string, unknown> = { page, page_size: 20 }
-      if (search) params.keyword = search
+      const params: Record<string, unknown> = { page: q.page, page_size: 20 }
+      if (q.keyword) params.keyword = q.keyword
       const result = await groupApi.list(params)
       setData(result)
     } catch {
@@ -83,7 +86,7 @@ export default function GroupsPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, search])
+  }, [q.page, q.keyword])
 
   useEffect(() => {
     loadData()
@@ -93,7 +96,7 @@ export default function GroupsPage() {
     setSearch(val)
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(() => {
-      setPage(1)
+      setQ({ keyword: val, page: 1 })
     }, 400)
   }
 
@@ -122,7 +125,7 @@ export default function GroupsPage() {
       setCreateForm({ name: '', code: '', description: '' })
       setCreateType(GroupType.Static)
       setCreateRule(EMPTY_RULE)
-      setPage(1)
+      setQ({ page: 1 })
       loadData()
       toast.success(t("common.success"))
     } catch (e) {
@@ -482,19 +485,19 @@ export default function GroupsPage() {
         {data.total > 0 && (
           <div className="flex items-center justify-between border-t border-border px-6 py-3">
             <p className="text-sm text-muted">
-              {t('groups.pagingSummary', { total: data.total, page, pages: totalPages })}
+              {t('groups.pagingSummary', { total: data.total, page: q.page, pages: totalPages })}
             </p>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
+                onClick={() => setQ({ page: Math.max(1, q.page - 1) })}
+                disabled={q.page <= 1}
                 className="rounded-lg border border-border px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-surface-muted"
               >
                 {t('groups.prevPage')}
               </button>
               <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
+                onClick={() => setQ({ page: Math.min(totalPages, q.page + 1) })}
+                disabled={q.page >= totalPages}
                 className="rounded-lg border border-border px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-surface-muted"
               >
                 {t('groups.nextPage')}

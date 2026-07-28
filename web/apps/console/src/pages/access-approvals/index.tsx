@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { accessApprovalApi, formatDate, useTranslation, useEdition, useAuthStore, AccessRequestStatus, AccessTargetKind } from '@mxid/shared'
+import { accessApprovalApi, formatDate, useTranslation, useEdition, useAuthStore, useTabParam, AccessRequestStatus, AccessTargetKind } from '@mxid/shared'
 import type { AccessRequest } from '@mxid/shared'
 import { pageMotion, Button, Modal, Field, Textarea, Card, DataTable, FilterBar, Select, ConfirmDialog } from '@mxid/shared/ui'
 import type { Column } from '@mxid/shared/ui'
@@ -26,7 +26,9 @@ export default function AccessApprovalsPage() {
   // approver never clicks Approve on their own request and hits the backend's
   // separation-of-duties 403 (which would read as a system error).
   const myUserId = useAuthStore((s) => s.user?.user_id)
-  const [status, setStatus] = useState<string>('pending')
+  // Status filter lives in the URL so the view is shareable and survives
+  // reload / back-forward (and the post-login bounce back here).
+  const [status, setStatus] = useTabParam('status', 'pending', STATUSES)
   const [rows, setRows] = useState<AccessRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [rejectTargetId, setRejectTargetId] = useState<string | null>(null)
@@ -188,7 +190,7 @@ export default function AccessApprovalsPage() {
 
       <div className="space-y-4">
         <FilterBar>
-          <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-auto">
+          <Select value={status} onChange={(e) => setStatus(e.target.value as (typeof STATUSES)[number])} className="w-auto">
             {STATUSES.map((s) => (
               <option key={s} value={s}>{t(`access.status.${s}`, { defaultValue: s })}</option>
             ))}

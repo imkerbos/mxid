@@ -14,11 +14,10 @@ import {
   UserPlus,
   UserMinus,
 } from 'lucide-react'
-import { orgApi, userApi, cn, statusLabel, statusColor, useTranslation } from '@mxid/shared'
+import { orgApi, userApi, cn, statusLabel, statusColor, useTranslation, useTabParam } from '@mxid/shared'
 import { pageMotion, Button, ConfirmDialog, Modal } from '@mxid/shared/ui'
 import type { OrgNode, User, PaginatedData } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
-import { useTabParam } from '../../hooks/useTabParam'
 import { toast, extractMessage } from '../../components/ui/toast'
 
 const ORG_TAB_VALUES = ['info', 'members'] as const

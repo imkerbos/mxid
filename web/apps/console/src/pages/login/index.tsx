@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { authApi, externalIdpApi, ExternalIdpButtons, useAuthStore, useBootstrap, useTranslation } from '@mxid/shared'
+import { authApi, externalIdpApi, ExternalIdpButtons, useAuthStore, useBootstrap, useTranslation, safeReturnPath } from '@mxid/shared'
 import type { PublicIDP } from '@mxid/shared'
 import { Eye, EyeOff, Loader2, RefreshCw } from 'lucide-react'
 import logo from '../../assets/logo.png'
@@ -27,6 +27,7 @@ function loginErrorMessage(err: unknown, t: (k: string) => string): string {
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { setUser } = useAuthStore()
   const bootstrap = useBootstrap()
   const passwordEnabled = bootstrap.login_methods.password
@@ -110,7 +111,7 @@ export default function LoginPage() {
       }
       const user = await authApi.me()
       setUser(user)
-      navigate('/dashboard', { replace: true })
+      navigate(safeReturnPath((location.state as { from?: string })?.from, '/dashboard'), { replace: true })
     } catch (err: unknown) {
       setError(loginErrorMessage(err, t))
       // Backend demands captcha (40003) or rejected it (40004) → reveal + load.
@@ -131,7 +132,7 @@ export default function LoginPage() {
       await authApi.consoleVerifyMFA({ challenge: mfaChallenge, code: mfaCode, remember })
       const user = await authApi.me()
       setUser(user)
-      navigate('/dashboard', { replace: true })
+      navigate(safeReturnPath((location.state as { from?: string })?.from, '/dashboard'), { replace: true })
     } catch (err: unknown) {
       // Challenge is single-use; on failure, restart from password.
       setError(loginErrorMessage(err, t))
