@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useAuthStore, authApi, useBootstrap, useTheme, currentReturnPath } from '@mxid/shared'
 import MainLayout from './components/layout/MainLayout'
 import StepUpModal from './components/StepUpModal'
@@ -86,7 +86,6 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  const location = useLocation()
   // Apply branding (title, primary color, custom CSS) before anything paints.
   useBootstrap()
   // Sync the theme store to the class the FOUC script already applied.
@@ -95,8 +94,13 @@ export default function App() {
     initTheme()
   }, [initTheme])
 
+  // <Routes> deliberately carries no key. Keying it by pathname is the
+  // framer-motion page-transition recipe, but that recipe needs an
+  // <AnimatePresence> to mean anything and there is none here — so the key
+  // bought no animation and instead unmounted AuthGuard, MainLayout and the
+  // page on every navigation, refetching the entire shell each time.
   return (
-    <Routes location={location} key={location.pathname}>
+    <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route
         path="/*"

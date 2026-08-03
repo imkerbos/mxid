@@ -320,7 +320,12 @@ function GroupDetail({
       setBusy(null)
     }
   }
+  // Removing an app from a group drops the access policies and roles attached
+  // at group level, so it revokes access rather than merely re-filing the app.
+  const [confirmRemoveApp, setConfirmRemoveApp] = useState<App | null>(null)
+
   const removeApp = async (app: App) => {
+    setConfirmRemoveApp(null)
     setBusy(app.id)
     try {
       await appGroupApi.removeApp(group.id, app.id)
@@ -421,7 +426,7 @@ function GroupDetail({
             {members.map((a) => (
               <AppCard key={a.id} app={a} action={
                 <button
-                  onClick={() => removeApp(a)}
+                  onClick={() => setConfirmRemoveApp(a)}
                   disabled={busy === a.id}
                   className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-faint hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
                 >
@@ -493,6 +498,13 @@ function GroupDetail({
           </div>
         )}
       </AnimatePresence>
+      <ConfirmDialog
+        open={confirmRemoveApp !== null}
+        title={t('apps.appGroupDetail.confirmRemoveApp', { name: confirmRemoveApp?.name ?? '' })}
+        loading={busy !== null}
+        onConfirm={() => confirmRemoveApp && removeApp(confirmRemoveApp)}
+        onCancel={() => setConfirmRemoveApp(null)}
+      />
     </div>
   )
 }

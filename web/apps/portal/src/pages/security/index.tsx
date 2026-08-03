@@ -586,8 +586,13 @@ function SessionsSection() {
     fetchSessions()
   }, [])
 
+  // Killing a live session is destructive and was one click away. The console
+  // already gates the same operation; this brings the portal in line.
+  const [confirmKick, setConfirmKick] = useState<string | null>(null)
+
   const handleRevoke = async (sid: string) => {
     if (revoking) return
+    setConfirmKick(null)
     setRevoking(sid)
     try {
       await portalApi.deleteSession(sid)
@@ -634,7 +639,7 @@ function SessionsSection() {
                 </div>
               </div>
               <button
-                onClick={() => handleRevoke(session.id)}
+                onClick={() => setConfirmKick(session.id)}
                 disabled={revoking === session.id}
                 className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
               >
@@ -649,6 +654,13 @@ function SessionsSection() {
           ))}
         </div>
       )}
+      <ConfirmDialog
+        open={confirmKick !== null}
+        title={t('account.sessions.kickConfirm')}
+        loading={revoking !== null}
+        onConfirm={() => confirmKick && handleRevoke(confirmKick)}
+        onCancel={() => setConfirmKick(null)}
+      />
     </SectionCard>
   )
 }
@@ -672,8 +684,12 @@ function ConnectedExtensionsSection() {
     fetchTokens()
   }, [])
 
+  // Revoking an extension token immediately breaks that browser's autofill.
+  const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null)
+
   const handleRevoke = async (id: string) => {
     if (revoking) return
+    setConfirmRevoke(null)
     setRevoking(id)
     try {
       await portalApi.revokeExtToken(id)
@@ -715,7 +731,7 @@ function ConnectedExtensionsSection() {
                 </div>
               </div>
               <button
-                onClick={() => handleRevoke(tk.id)}
+                onClick={() => setConfirmRevoke(tk.id)}
                 disabled={revoking === tk.id}
                 className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
               >
@@ -730,6 +746,13 @@ function ConnectedExtensionsSection() {
           ))}
         </div>
       )}
+      <ConfirmDialog
+        open={confirmRevoke !== null}
+        title={t('account.extensions.revokeConfirm')}
+        loading={revoking !== null}
+        onConfirm={() => confirmRevoke && handleRevoke(confirmRevoke)}
+        onCancel={() => setConfirmRevoke(null)}
+      />
     </SectionCard>
   )
 }
