@@ -834,11 +834,47 @@ DB schema is **forward-only in production**. The down migrations exist for local
   the public ingress/nginx; scrape it from inside the network/cluster only.
 - Audit log is the primary security-relevant signal — query the `mxid_audit_log` table or wire up the alert webhook.
 
-## Air-gapped install / upgrade
+## Private registry (the usual case)
 
-For sites with no internet — and for the Enterprise image, which lives in a
-private GHCR package your cluster cannot reach — ship one tarball instead of
-pulling anything.
+The cluster can't pull from `ghcr.io` — either there's no route, or the
+Enterprise image is a private package. But if **one machine** can reach both
+`ghcr.io` and your registry (your laptop, a jump box, a CI runner), that's all
+you need. Mirror the images once per release, then upgrade with Helm normally.
+
+```bash
+docker login ghcr.io                     # once — the EE image is private
+docker login harbor.internal             # once
+
+make sync-images TAG=v1.8.0 REGISTRY=harbor.internal/mxid    # add EDITION=ce for CE
+```
+
+That pulls the backend, the web image and `busybox` (the chart's `waitForDeps`
+init container — miss it and every pod sits in `Init:ImagePullBackOff`), retags
+them under your prefix and pushes. Repo names must stay `mxid` / `mxid-ee` /
+`mxid-web` / `busybox`, since the chart appends exactly those to
+`image.registry`.
+
+Then upgrade — the script prints this command with your values filled in:
+
+```bash
+helm upgrade --install mxid deploy/helm/mxid -n mxid -f values.yaml \
+  --set image.registry=harbor.internal/mxid \
+  --set image.tag=v1.8.0 \
+  --set edition=ee \
+  --set backend.waitForDeps.image=harbor.internal/mxid/busybox:1.37
+```
+
+Keep `values.yaml` in your own config repo and edit it once; upgrades only
+change `image.tag`. Harbor note: create the project first — Harbor does not
+auto-create one on push, and the error is unhelpful.
+
+Any OCI registry works (Harbor, Nexus, ECR, a plain `registry:2`).
+
+## Fully air-gapped install / upgrade
+
+Only when **no** machine can reach both `ghcr.io` and your registry. Otherwise
+use `sync-images` above — it is one command instead of bundle / carry / unpack /
+install. This path ships one tarball you carry in by hand.
 
 **On a machine that can reach ghcr.io** (`docker login ghcr.io` first for EE):
 
