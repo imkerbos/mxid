@@ -1,15 +1,15 @@
 // Magic-link login: passwordless sign-in via a one-shot URL emailed to
 // the user. Two endpoints, both public (pre-auth):
 //
-//   POST /api/v1/portal-public/auth/magic-link/send  {email, tenant?}
-//        → if the email maps to a real user AND magic-link is enabled in
-//          settings, issue a one-shot token (5 min) in Redis and email
-//          the callback URL. Response shape is identical regardless of
-//          whether the email exists (no enumeration).
+//	POST /api/v1/portal-public/auth/magic-link/send  {email, tenant?}
+//	     → if the email maps to a real user AND magic-link is enabled in
+//	       settings, issue a one-shot token (5 min) in Redis and email
+//	       the callback URL. Response shape is identical regardless of
+//	       whether the email exists (no enumeration).
 //
-//   GET  /api/v1/portal-public/auth/magic-link/callback?token=...&tenant=...
-//        → consume the token, create a portal session, set the session
-//          cookie, redirect to the portal home.
+//	GET  /api/v1/portal-public/auth/magic-link/callback?token=...&tenant=...
+//	     → consume the token, create a portal session, set the session
+//	       cookie, redirect to the portal home.
 //
 // Gated by LoginMethods.EmailMagicLink: when admin disables magic-link
 // the /send endpoint returns 403; /callback still works for tokens issued
@@ -25,6 +25,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/authn"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/mailer"
 	"github.com/imkerbos/mxid/pkg/ratelimit"
 	"github.com/imkerbos/mxid/pkg/response"
@@ -89,15 +90,15 @@ type MagicLinkHandlerOpts struct {
 
 func NewMagicLinkHandler(o MagicLinkHandlerOpts) *MagicLinkHandler {
 	return &MagicLinkHandler{
-		rdb:        o.Redis,
-		users:      o.Users,
-		logger:     o.Logger,
-		publicURL:  o.PortalURL,
-		mailer:     o.Mailer,
-		sessionMgr: o.SessionMgr,
-		enabled:    o.Enabled,
-		defaultTID: o.DefaultTID,
-		tenantByCd: o.TenantByCode,
+		rdb:         o.Redis,
+		users:       o.Users,
+		logger:      o.Logger,
+		publicURL:   o.PortalURL,
+		mailer:      o.Mailer,
+		sessionMgr:  o.SessionMgr,
+		enabled:     o.Enabled,
+		defaultTID:  o.DefaultTID,
+		tenantByCd:  o.TenantByCode,
 		cookieDom:   o.CookieDomain,
 		cookieSec:   o.CookieSecure,
 		devFallback: o.DevFallback,
@@ -124,13 +125,13 @@ type magicSendResponse struct {
 
 func (h *MagicLinkHandler) send(c *gin.Context) {
 	if h.enabled != nil && !h.enabled(c.Request.Context()) {
-		response.Error(c, http.StatusForbidden, 40301, "magic link login disabled", "")
+		response.Error(c, http.StatusForbidden, errcode.NumForbiddenScope, "magic link login disabled", "")
 		return
 	}
 
 	var req magicSendRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 	email := strings.TrimSpace(strings.ToLower(req.Email))
@@ -220,7 +221,7 @@ func (h *MagicLinkHandler) send(c *gin.Context) {
 func (h *MagicLinkHandler) callback(c *gin.Context) {
 	token := c.Query("token")
 	if token == "" {
-		response.BadRequest(c, 40001, "token required")
+		response.BadRequest(c, errcode.NumBadRequest, "token required")
 		return
 	}
 	userID, tenantID, err := h.consumeToken(c.Request.Context(), token)

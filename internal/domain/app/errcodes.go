@@ -15,7 +15,8 @@ var (
 	codeTemplateNotFound   = errcode.Code{HTTP: 404, Num: 40407}
 	codeAppCodeExists      = errcode.Code{HTTP: 409, Num: 40901}
 	codeGroupCodeExists    = errcode.Code{HTTP: 409, Num: 40902}
-	codeInvalidClientType  = errcode.Code{HTTP: 400, Num: 40010}
+	// Was 40010, which the SPA renders as appNoLoginURL.
+	codeInvalidClientType   = errcode.Code{HTTP: 400, Num: errcode.NumInvalidClientType}
 	codeFormFillNotLicensed = errcode.Code{HTTP: 403, Num: 40301}
 )
 

@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/imkerbos/mxid/pkg/ee/license"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/response"
 )
 
@@ -24,7 +25,7 @@ func RequireFeature(f license.Feature) gin.HandlerFunc {
 		if !license.Current().Has(f) {
 			// Dedicated code (not the generic 40301) so the frontend can localize
 			// this specific case. The English text is only a fallback.
-			response.Forbidden(c, 40332, "this feature requires an Enterprise Edition license")
+			response.Forbidden(c, errcode.NumEEFeatureRequired, "this feature requires an Enterprise Edition license")
 			c.Abort()
 			return
 		}

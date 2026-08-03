@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/authn"
 	"github.com/imkerbos/mxid/pkg/authz"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/ginutil"
 	"github.com/imkerbos/mxid/pkg/idstr"
 	"github.com/imkerbos/mxid/pkg/pagination"
@@ -97,7 +98,7 @@ func getTenantID(c *gin.Context) int64 {
 func (h *Handler) Create(c *gin.Context) {
 	var req CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
@@ -156,7 +157,7 @@ func (h *Handler) Update(c *gin.Context) {
 
 	var req UpdateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
@@ -193,7 +194,7 @@ func (h *Handler) List(c *gin.Context) {
 
 	var req ListUsersRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
@@ -241,7 +242,7 @@ func (h *Handler) UpdateStatus(c *gin.Context) {
 
 	var req UpdateStatusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
@@ -262,7 +263,7 @@ func (h *Handler) ResetPassword(c *gin.Context) {
 
 	var req ResetPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
@@ -280,7 +281,7 @@ func (h *Handler) ResetPassword(c *gin.Context) {
 func (h *Handler) BatchAction(c *gin.Context) {
 	var req BatchUsersRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 	ids, err := idstr.ParseList(req.IDs)
@@ -288,12 +289,12 @@ func (h *Handler) BatchAction(c *gin.Context) {
 		// Malformed id list is a bad request body, not a service error. 40001
 		// (not 40003) — 40003 collides with the frontend's global
 		// totpCodeReused localization and would misrender the message.
-		response.BadRequest(c, 40001, "invalid user id list")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid user id list")
 		return
 	}
 	res, err := h.svc.BatchAction(c.Request.Context(), ids, req.Action, actorIDFromCtx(c))
 	if err != nil {
-		response.BadRequest(c, 40002, err.Error())
+		response.BadRequest(c, errcode.NumInvalidInput, err.Error())
 		return
 	}
 	response.OK(c, res)
@@ -308,7 +309,7 @@ func (h *Handler) LockUser(c *gin.Context) {
 	}
 	var req LockUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 	actorID := actorIDFromCtx(c)
@@ -386,7 +387,7 @@ func (h *Handler) UnbindIdentity(c *gin.Context) {
 	iidStr := c.Param("iid")
 	iid, err := strconv.ParseInt(iidStr, 10, 64)
 	if err != nil {
-		response.BadRequest(c, 40002, "invalid identity id")
+		response.BadRequest(c, errcode.NumInvalidInput, "invalid identity id")
 		return
 	}
 
@@ -434,7 +435,7 @@ func (h *Handler) UpdateDetail(c *gin.Context) {
 	}
 	var req UpdateDetailRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 	detail, err := h.svc.UpsertDetail(c.Request.Context(), id, &req)
@@ -488,7 +489,7 @@ func (h *Handler) DeleteMFA(c *gin.Context) {
 	}
 	mfaType := c.Param("type")
 	if mfaType == "" {
-		response.BadRequest(c, 40002, "missing mfa type")
+		response.BadRequest(c, errcode.NumInvalidInput, "missing mfa type")
 		return
 	}
 	if err := h.svc.DeleteMFA(c.Request.Context(), id, mfaType); err != nil {

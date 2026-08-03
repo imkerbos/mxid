@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/authn"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/redis/go-redis/v9"
@@ -27,9 +28,10 @@ const portalEventsChannel = "portal:events"
 // EventSource on the browser auto-reconnects on disconnect.
 //
 // Event types emitted by this endpoint (client switches on SSE `event:`):
-//   apps_updated     — re-fetch /apps list
-//   tenants_updated  — re-fetch /tenants list
-//   ping             — heartbeat every 25s to keep proxies open
+//
+//	apps_updated     — re-fetch /apps list
+//	tenants_updated  — re-fetch /tenants list
+//	ping             — heartbeat every 25s to keep proxies open
 type eventsHandler struct {
 	bus *event.Bus
 }
@@ -184,7 +186,7 @@ func registerEventsRoutes(rg *gin.RouterGroup, h *eventsHandler) {
 func (h *eventsHandler) stream(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 

@@ -2,11 +2,13 @@ package portal
 
 import (
 	"errors"
+	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/authn"
 	"github.com/imkerbos/mxid/internal/domain/user"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/ginutil"
 	"github.com/imkerbos/mxid/pkg/response"
@@ -129,7 +131,7 @@ type CreateAPITokenRequest struct {
 func (h *SecurityHandler) listAPITokens(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 	if h.apiTokenQuerier == nil {
@@ -147,7 +149,7 @@ func (h *SecurityHandler) listAPITokens(c *gin.Context) {
 func (h *SecurityHandler) createAPIToken(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 	if h.apiTokenQuerier == nil {
@@ -156,7 +158,7 @@ func (h *SecurityHandler) createAPIToken(c *gin.Context) {
 	}
 	var req CreateAPITokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 	tid, _ := authn.GetTenantID(c)
@@ -177,7 +179,7 @@ func (h *SecurityHandler) createAPIToken(c *gin.Context) {
 func (h *SecurityHandler) revokeAPIToken(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 	if h.apiTokenQuerier == nil {
@@ -204,7 +206,7 @@ func (h *SecurityHandler) revokeAPIToken(c *gin.Context) {
 func (h *SecurityHandler) countBackupCodes(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 	n, err := h.mfaQuerier.CountBackupCodes(c.Request.Context(), userID)
@@ -243,7 +245,7 @@ type RegenerateBackupCodesRequest struct {
 func (h *SecurityHandler) regenerateBackupCodes(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 	// Read step-up code; binding optional so unenrolled paths still 200
@@ -260,16 +262,18 @@ func (h *SecurityHandler) regenerateBackupCodes(c *gin.Context) {
 			if errors.As(err, &rle) {
 				c.Header("Retry-After", strconv.Itoa(int(rle.RetryAfter.Seconds())))
 			}
-			response.Error(c, 429, 42901, "mfa rate limited", err.Error())
+			response.Error(c, http.StatusTooManyRequests, errcode.NumTooManyAttempts, "mfa rate limited", err.Error())
 			return
 		}
 		if req.TOTPCode == "" {
-			response.BadRequest(c, 40005, "totp code required")
+			// Was 40005 (password-reused). Same refusal as the change-password
+			// path below, so it carries the same code.
+			response.BadRequest(c, errcode.NumTOTPRequired, "totp code required")
 			return
 		}
 		if err := h.mfaQuerier.VerifyTOTP(c.Request.Context(), userID, req.TOTPCode); err != nil {
 			h.mfaRateLimiter.RecordFailure(c.Request.Context(), userID, ip)
-			response.BadRequest(c, 40006, "invalid totp code")
+			response.BadRequest(c, errcode.NumInvalidCode, "invalid totp code")
 			return
 		}
 		h.mfaRateLimiter.Reset(c.Request.Context(), userID, ip)
@@ -288,7 +292,7 @@ func (h *SecurityHandler) regenerateBackupCodes(c *gin.Context) {
 func (h *SecurityHandler) listLoginHistory(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 	if h.historyQuerier == nil {
@@ -323,13 +327,13 @@ func (h *SecurityHandler) listLoginHistory(c *gin.Context) {
 func (h *SecurityHandler) changePassword(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 
 	var req ChangePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
@@ -346,19 +350,19 @@ func (h *SecurityHandler) changePassword(c *gin.Context) {
 				if errors.As(err, &rle) {
 					c.Header("Retry-After", strconv.Itoa(int(rle.RetryAfter.Seconds())))
 				}
-				response.Error(c, 429, 42901, "mfa rate limited", err.Error())
+				response.Error(c, http.StatusTooManyRequests, errcode.NumTooManyAttempts, "mfa rate limited", err.Error())
 				return
 			}
 			if req.TOTPCode == "" {
 				// 40007 (NOT 40005): 40005 is the user domain's password-reused
 				// code, which the frontend localizes as such — reusing it here
 				// made a missing-TOTP error render "password already used".
-				response.BadRequest(c, 40007, "totp code required")
+				response.BadRequest(c, errcode.NumTOTPRequired, "totp code required")
 				return
 			}
 			if err := h.mfaQuerier.VerifyTOTP(c.Request.Context(), userID, req.TOTPCode); err != nil {
 				h.mfaRateLimiter.RecordFailure(c.Request.Context(), userID, ip)
-				response.BadRequest(c, 40006, "invalid totp code")
+				response.BadRequest(c, errcode.NumInvalidCode, "invalid totp code")
 				return
 			}
 			h.mfaRateLimiter.Reset(c.Request.Context(), userID, ip)
@@ -397,13 +401,13 @@ func (h *SecurityHandler) changePassword(c *gin.Context) {
 func (h *SecurityHandler) setInitialPassword(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 
 	var req SetPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
@@ -421,7 +425,7 @@ func (h *SecurityHandler) setInitialPassword(c *gin.Context) {
 func (h *SecurityHandler) listMFA(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 
@@ -438,7 +442,7 @@ func (h *SecurityHandler) listMFA(c *gin.Context) {
 func (h *SecurityHandler) setupTOTP(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 
@@ -460,13 +464,13 @@ func (h *SecurityHandler) setupTOTP(c *gin.Context) {
 func (h *SecurityHandler) verifyTOTP(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 
 	var req VerifyTOTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
@@ -476,7 +480,7 @@ func (h *SecurityHandler) verifyTOTP(c *gin.Context) {
 		if errors.As(err, &rle) {
 			c.Header("Retry-After", strconv.Itoa(int(rle.RetryAfter.Seconds())))
 		}
-		response.Error(c, 429, 42901, "mfa rate limited", err.Error())
+		response.Error(c, http.StatusTooManyRequests, errcode.NumTooManyAttempts, "mfa rate limited", err.Error())
 		return
 	}
 
@@ -486,10 +490,10 @@ func (h *SecurityHandler) verifyTOTP(c *gin.Context) {
 			// Common right after scanning: the same code was just used to finish a
 			// previous step. Tell the user to wait for the next one instead of the
 			// misleading "invalid code".
-			response.BadRequest(c, 40003, "totp code already used, wait for the next one")
+			response.BadRequest(c, errcode.NumTOTPCodeReused, "totp code already used, wait for the next one")
 			return
 		}
-		response.BadRequest(c, 40002, "invalid totp code")
+		response.BadRequest(c, errcode.NumInvalidInput, "invalid totp code")
 		return
 	}
 	h.mfaRateLimiter.Reset(c.Request.Context(), userID, ip)
@@ -512,7 +516,7 @@ func (h *SecurityHandler) verifyTOTP(c *gin.Context) {
 func (h *SecurityHandler) deleteTOTP(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 
@@ -532,7 +536,7 @@ func (h *SecurityHandler) deleteTOTP(c *gin.Context) {
 func (h *SecurityHandler) listIdentities(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 
@@ -549,7 +553,7 @@ func (h *SecurityHandler) listIdentities(c *gin.Context) {
 func (h *SecurityHandler) listSessions(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 
@@ -566,13 +570,13 @@ func (h *SecurityHandler) listSessions(c *gin.Context) {
 func (h *SecurityHandler) deleteSession(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 
 	sid := c.Param("sid")
 	if sid == "" {
-		response.BadRequest(c, 40001, "missing session id")
+		response.BadRequest(c, errcode.NumBadRequest, "missing session id")
 		return
 	}
 

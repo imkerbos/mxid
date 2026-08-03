@@ -16,6 +16,7 @@ import (
 	"github.com/imkerbos/mxid/internal/middleware"
 	"github.com/imkerbos/mxid/pkg/authz"
 	"github.com/imkerbos/mxid/pkg/ee/license"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/snowflake"
 )
@@ -126,7 +127,7 @@ func uploadHandler(category string, repo upload.Repository, idGen *snowflake.Gen
 	return func(c *gin.Context) {
 		f, header, err := c.Request.FormFile("file")
 		if err != nil {
-			response.BadRequest(c, 40001, "file field required")
+			response.BadRequest(c, errcode.NumBadRequest, "file field required")
 			return
 		}
 		defer f.Close()
@@ -134,7 +135,7 @@ func uploadHandler(category string, repo upload.Repository, idGen *snowflake.Gen
 		url, err := saveIcon(c.Request.Context(), f, header, category, repo, idGen)
 		if err != nil {
 			if errors.Is(err, errIconRejected) {
-				response.BadRequest(c, 40002, err.Error())
+				response.BadRequest(c, errcode.NumInvalidInput, err.Error())
 				return
 			}
 			response.InternalError(c, "failed to save icon", err)

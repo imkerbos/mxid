@@ -30,8 +30,8 @@ const (
 //
 // Kind decides which scope dimension the check folds in:
 //   - ScopeOrg:   covered by any binding whose scope is global, or whose
-//                 scope_type=org and ID is an ancestor of (or equal to) the
-//                 target in the ltree.
+//     scope_type=org and ID is an ancestor of (or equal to) the
+//     target in the ltree.
 //   - ScopeGroup: covered by global or scope_type=group with equal ID.
 type ScopeTarget struct {
 	Kind ScopeKind

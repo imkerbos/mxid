@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/conditionalaccess"
 	"github.com/imkerbos/mxid/pkg/crypto"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/ratelimit"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/session"
@@ -250,7 +251,7 @@ func (h *Handler) loginHandler(namespace, cookieName string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req LoginRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			response.BadRequest(c, 40001, "invalid request body")
+			response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 			return
 		}
 
@@ -269,18 +270,19 @@ func (h *Handler) loginHandler(namespace, cookieName string) gin.HandlerFunc {
 		}
 		if requireCaptcha {
 			if req.CaptchaID == "" || req.CaptchaCode == "" {
-				response.BadRequest(c, 40003, "captcha is required")
+				// Was 40003, which the SPA renders as "that code was just used".
+				response.BadRequest(c, errcode.NumCaptchaRequired, "captcha is required")
 				return
 			}
 			if !h.captchaSvc.Verify(req.CaptchaID, req.CaptchaCode) {
-				response.BadRequest(c, 40004, "invalid captcha")
+				response.BadRequest(c, errcode.NumInputRejected, "invalid captcha")
 				return
 			}
 		} else if req.CaptchaID != "" && req.CaptchaCode != "" {
 			// Below threshold but the client still supplied a captcha — honor
 			// it so a wrong one is still rejected (don't silently ignore).
 			if !h.captchaSvc.Verify(req.CaptchaID, req.CaptchaCode) {
-				response.BadRequest(c, 40004, "invalid captcha")
+				response.BadRequest(c, errcode.NumInputRejected, "invalid captcha")
 				return
 			}
 		}
@@ -297,7 +299,9 @@ func (h *Handler) loginHandler(namespace, cookieName string) gin.HandlerFunc {
 		// or tests.
 		if h.methodGate != nil {
 			if err := h.methodGate(c.Request.Context(), authType); err != nil {
-				response.BadRequest(c, 40005, err.Error())
+				// Was 40005, which the SPA renders as "that password matches a
+				// recent one" — for a disabled login method.
+				response.BadRequest(c, errcode.NumInvalidInput, err.Error())
 				return
 			}
 		}
@@ -395,7 +399,7 @@ func (h *Handler) verifyMFAHandler(namespace, cookieName string) gin.HandlerFunc
 	return func(c *gin.Context) {
 		var req VerifyMFARequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			response.BadRequest(c, 40001, "invalid request body")
+			response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 			return
 		}
 
@@ -465,7 +469,7 @@ func (h *Handler) logoutHandler(namespace, cookieName string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sessionID, err := c.Cookie(cookieName)
 		if err != nil || sessionID == "" {
-			response.Unauthorized(c, 40101, "not authenticated")
+			response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 			return
 		}
 
@@ -524,13 +528,13 @@ func (h *Handler) meHandler(namespace, cookieName string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sessionID, err := c.Cookie(cookieName)
 		if err != nil || sessionID == "" {
-			response.Unauthorized(c, 40101, "not authenticated")
+			response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 			return
 		}
 
 		sess, err := h.engine.GetSession(c.Request.Context(), namespace, sessionID)
 		if err != nil {
-			response.Unauthorized(c, 40101, "invalid session")
+			response.Unauthorized(c, errcode.NumUnauthenticated, "invalid session")
 			return
 		}
 		pinSessionTenant(c, sess.TenantID)
@@ -596,14 +600,14 @@ func (h *Handler) ssoHandler(targetNS, targetCookie string, requireAdmin bool, s
 			}
 		}
 		if src == nil {
-			response.Unauthorized(c, 40101, "no valid session to bridge")
+			response.Unauthorized(c, errcode.NumUnauthenticated, "no valid session to bridge")
 			return
 		}
 		pinSessionTenant(c, src.TenantID)
 
 		if requireAdmin {
 			if h.adminCheck == nil || !h.adminCheck(c.Request.Context(), src.TenantID, src.UserID) {
-				response.Forbidden(c, 40301, "not authorized for console")
+				response.Forbidden(c, errcode.NumForbiddenScope, "not authorized for console")
 				return
 			}
 		}
@@ -649,19 +653,19 @@ func (h *Handler) stepUpHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sid, err := c.Cookie(CookieConsole)
 		if err != nil || sid == "" {
-			response.Unauthorized(c, 40101, "authentication required")
+			response.Unauthorized(c, errcode.NumUnauthenticated, "authentication required")
 			return
 		}
 		sess, err := h.engine.GetSession(c.Request.Context(), session.NamespaceConsole, sid)
 		if err != nil {
-			response.Unauthorized(c, 40101, "invalid or expired session")
+			response.Unauthorized(c, errcode.NumUnauthenticated, "invalid or expired session")
 			return
 		}
 		pinSessionTenant(c, sess.TenantID)
 
 		var req StepUpRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			response.BadRequest(c, 40001, "invalid request body")
+			response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 			return
 		}
 
@@ -780,7 +784,7 @@ func (h *Handler) rememberDevice(c *gin.Context, tenantID, userID int64, deviceI
 func (h *Handler) handleAuthError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, ErrAuthFailed):
-		response.Unauthorized(c, 40101, "invalid credentials")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "invalid credentials")
 	case errors.Is(err, ErrAccountLocked):
 		// Brute-force auto-lock carries a *ratelimit.RateLimitError cause with
 		// the remaining TTL — surface it as a 429 + Retry-After so SPAs can
@@ -789,33 +793,33 @@ func (h *Handler) handleAuthError(c *gin.Context, err error) {
 		var rle *ratelimit.RateLimitError
 		if errors.As(err, &rle) {
 			c.Header("Retry-After", strconv.Itoa(int(rle.RetryAfter.Seconds())))
-			response.Error(c, http.StatusTooManyRequests, 42901, "too many failed attempts, temporarily locked", "")
+			response.Error(c, http.StatusTooManyRequests, errcode.NumTooManyAttempts, "too many failed attempts, temporarily locked", "")
 			return
 		}
-		response.Error(c, http.StatusForbidden, 40301, "account is locked", "")
+		response.Error(c, http.StatusForbidden, errcode.NumForbiddenScope, "account is locked", "")
 	case errors.Is(err, ErrAccountDisabled):
-		response.Error(c, http.StatusForbidden, 40303, "account is disabled", "")
+		response.Error(c, http.StatusForbidden, errcode.NumAccountDisabled, "account is disabled", "")
 	case errors.Is(err, ErrPasswordExpired):
-		response.Error(c, http.StatusForbidden, 40302, "password has expired", "")
+		response.Error(c, http.StatusForbidden, errcode.NumAccessDenied, "password has expired", "")
 	case errors.Is(err, ErrMFARequired):
 		response.OK(c, map[string]any{
 			"mfa_required": true,
 		})
 	case errors.Is(err, ErrMFAChallengeNotFound):
-		response.BadRequest(c, 40004, "mfa challenge expired, please log in again")
+		response.BadRequest(c, errcode.NumInputRejected, "mfa challenge expired, please log in again")
 	case errors.Is(err, ErrMFAVerifyFailed):
-		response.Unauthorized(c, 40102, "invalid mfa code")
+		response.Unauthorized(c, errcode.NumInvalidMFACode, "invalid mfa code")
 	case errors.Is(err, ErrMFARateLimited):
 		// Surface Retry-After so SPAs can show a countdown.
 		var rle *MFARateLimitError
 		if errors.As(err, &rle) {
 			c.Header("Retry-After", strconv.Itoa(int(rle.RetryAfter.Seconds())))
 		}
-		response.Error(c, http.StatusTooManyRequests, 42901, "mfa rate limited", err.Error())
+		response.Error(c, http.StatusTooManyRequests, errcode.NumTooManyAttempts, "mfa rate limited", err.Error())
 	case errors.Is(err, ErrMFANotConfigured):
 		response.InternalError(c, "mfa not configured", err)
 	case errors.Is(err, ErrUnknownProvider):
-		response.BadRequest(c, 40002, "unsupported auth type")
+		response.BadRequest(c, errcode.NumInvalidInput, "unsupported auth type")
 	default:
 		response.InternalError(c, "authentication error", err)
 	}
@@ -862,4 +866,3 @@ func GetSessionID(c *gin.Context) (string, bool) {
 	id, ok := v.(string)
 	return id, ok
 }
-

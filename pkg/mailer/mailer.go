@@ -5,8 +5,8 @@
 //
 // Caller pattern:
 //
-//   m := mailer.New(settingService)
-//   if err := m.SendVerifyEmail(ctx, to, name, link); err != nil { ... }
+//	m := mailer.New(settingService)
+//	if err := m.SendVerifyEmail(ctx, to, name, link); err != nil { ... }
 //
 // SMTP config is reloaded per-send (with 60s cache via setting service)
 // so admins can change SMTP config without restarting the backend.

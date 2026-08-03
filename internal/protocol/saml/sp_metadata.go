@@ -41,16 +41,16 @@ type SPMetadata struct {
 // XML schema mappings — only the elements we actually consume. Anything else
 // is silently ignored so future SAML profile extensions don't break parsing.
 type spXMLEntityDescriptor struct {
-	XMLName  xml.Name             `xml:"urn:oasis:names:tc:SAML:2.0:metadata EntityDescriptor"`
-	EntityID string               `xml:"entityID,attr"`
+	XMLName  xml.Name              `xml:"urn:oasis:names:tc:SAML:2.0:metadata EntityDescriptor"`
+	EntityID string                `xml:"entityID,attr"`
 	SPSSO    *spXMLSPSSODescriptor `xml:"urn:oasis:names:tc:SAML:2.0:metadata SPSSODescriptor"`
 }
 
 type spXMLSPSSODescriptor struct {
-	KeyDescriptors []spXMLKeyDescriptor              `xml:"urn:oasis:names:tc:SAML:2.0:metadata KeyDescriptor"`
-	NameIDFormats  []string                          `xml:"urn:oasis:names:tc:SAML:2.0:metadata NameIDFormat"`
-	ACS            []spXMLIndexedEndpoint            `xml:"urn:oasis:names:tc:SAML:2.0:metadata AssertionConsumerService"`
-	SLO            []spXMLEndpoint                   `xml:"urn:oasis:names:tc:SAML:2.0:metadata SingleLogoutService"`
+	KeyDescriptors []spXMLKeyDescriptor   `xml:"urn:oasis:names:tc:SAML:2.0:metadata KeyDescriptor"`
+	NameIDFormats  []string               `xml:"urn:oasis:names:tc:SAML:2.0:metadata NameIDFormat"`
+	ACS            []spXMLIndexedEndpoint `xml:"urn:oasis:names:tc:SAML:2.0:metadata AssertionConsumerService"`
+	SLO            []spXMLEndpoint        `xml:"urn:oasis:names:tc:SAML:2.0:metadata SingleLogoutService"`
 }
 
 type spXMLEndpoint struct {
@@ -65,8 +65,8 @@ type spXMLIndexedEndpoint struct {
 }
 
 type spXMLKeyDescriptor struct {
-	Use     string         `xml:"use,attr"`
-	KeyInfo spXMLKeyInfo   `xml:"http://www.w3.org/2000/09/xmldsig# KeyInfo"`
+	Use     string       `xml:"use,attr"`
+	KeyInfo spXMLKeyInfo `xml:"http://www.w3.org/2000/09/xmldsig# KeyInfo"`
 }
 
 type spXMLKeyInfo struct {

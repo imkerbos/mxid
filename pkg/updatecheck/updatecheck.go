@@ -41,7 +41,7 @@ const (
 
 // Release is the subset of a GitHub release we surface to the console.
 type Release struct {
-	Version     string `json:"version"`      // tag_name, e.g. v0.2.0
+	Version     string `json:"version"` // tag_name, e.g. v0.2.0
 	Name        string `json:"name,omitempty"`
 	URL         string `json:"url,omitempty"` // html_url — changelog / download page
 	PublishedAt string `json:"published_at,omitempty"`

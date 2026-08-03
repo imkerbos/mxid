@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/version"
 	"github.com/redis/go-redis/v9"
@@ -76,7 +77,7 @@ func InitRouter(cfg *ServerConfig, logger *zap.Logger) *gin.Engine {
 
 	// NoRoute handler
 	r.NoRoute(func(c *gin.Context) {
-		response.Error(c, http.StatusNotFound, 40400, "route not found", "")
+		response.Error(c, http.StatusNotFound, errcode.NumRouteNotFound, "route not found", "")
 	})
 
 	return r

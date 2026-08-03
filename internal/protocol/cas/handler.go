@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/protocol/resolver"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/ssoflow"
 	"github.com/imkerbos/mxid/pkg/tenantscope"
@@ -118,18 +119,18 @@ func (h *Handler) login(c *gin.Context) {
 	service := c.Query("service")
 
 	if service == "" {
-		response.BadRequest(c, 40001, "missing service parameter")
+		response.BadRequest(c, errcode.NumBadRequest, "missing service parameter")
 		return
 	}
 
 	app, err := h.appRes.GetApp(c.Request.Context(), appCode)
 	if err != nil || app == nil {
-		response.NotFound(c, 40401, "application not found")
+		response.NotFound(c, errcode.NumNotFound, "application not found")
 		return
 	}
 
 	if app.Status != 1 {
-		response.Error(c, http.StatusForbidden, 40301, "application is disabled", "")
+		response.Error(c, http.StatusForbidden, errcode.NumForbiddenScope, "application is disabled", "")
 		return
 	}
 
@@ -137,7 +138,7 @@ func (h *Handler) login(c *gin.Context) {
 
 	// Validate service URL
 	if !h.isValidService(casCfg, service) {
-		response.BadRequest(c, 40002, "invalid service URL")
+		response.BadRequest(c, errcode.NumInvalidInput, "invalid service URL")
 		return
 	}
 

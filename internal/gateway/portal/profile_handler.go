@@ -3,6 +3,7 @@ package portal
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/authn"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/response"
 )
@@ -74,7 +75,7 @@ func registerProfileRoutes(rg *gin.RouterGroup, h *ProfileHandler) {
 func (h *ProfileHandler) getProfile(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 
@@ -100,13 +101,13 @@ func (h *ProfileHandler) getProfile(c *gin.Context) {
 func (h *ProfileHandler) updateProfile(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 
 	var req UpdateProfileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
@@ -123,13 +124,13 @@ func (h *ProfileHandler) updateProfile(c *gin.Context) {
 func (h *ProfileHandler) updateAvatar(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 
 	var req UpdateAvatarRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 

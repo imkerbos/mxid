@@ -54,4 +54,3 @@ func DefaultCORSConfig() CORSConfig {
 		},
 	}
 }
-

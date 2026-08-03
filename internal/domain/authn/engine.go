@@ -613,13 +613,13 @@ func (e *Engine) publishLoginEvent(ctx context.Context, result *AuthResult, req 
 	}
 
 	payload := map[string]any{
-		"user_id":   result.UserID,
-		"username":  result.Username,
-		"auth_type": req.AuthType,
-		"ip":        req.ClientIP,
+		"user_id":    result.UserID,
+		"username":   result.Username,
+		"auth_type":  req.AuthType,
+		"ip":         req.ClientIP,
 		"user_agent": req.UserAgent,
-		"tenant_id": req.TenantID,
-		"success":   success,
+		"tenant_id":  req.TenantID,
+		"success":    success,
 	}
 
 	reason := ""
@@ -667,4 +667,3 @@ func (e *Engine) publishLoginEvent(ctx context.Context, result *AuthResult, req 
 func (e *Engine) SessionManager() *session.Manager {
 	return e.sessionMgr
 }
-

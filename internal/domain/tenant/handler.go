@@ -3,6 +3,7 @@ package tenant
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/pkg/authz"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/ginutil"
 	"github.com/imkerbos/mxid/pkg/response"
 )
@@ -65,7 +66,7 @@ func (h *Handler) Update(c *gin.Context) {
 	}
 	var req UpdateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 	t, err := h.svc.Update(c.Request.Context(), id, &req)

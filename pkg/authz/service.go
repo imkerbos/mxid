@@ -43,8 +43,8 @@ func (s *Service) WithCasbin(e *CasbinEngine) *Service {
 //     to allow without scope checks. This mirrors AWS's "iam:*" and Okta's
 //     super admin behaviour.
 //   - Any other binding must satisfy BOTH:
-//       1. its permission set contains `perm`
-//       2. its scope covers `target` (see scopeCovers)
+//     1. its permission set contains `perm`
+//     2. its scope covers `target` (see scopeCovers)
 //   - target == nil treats the call as scope-agnostic: any matching binding
 //     allows. Use for queries that internally filter by scope themselves.
 //

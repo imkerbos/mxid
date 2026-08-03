@@ -25,6 +25,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/user"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/mailer"
 	"github.com/imkerbos/mxid/pkg/ratelimit"
 	"github.com/imkerbos/mxid/pkg/response"
@@ -126,7 +127,7 @@ type forgotResponse struct {
 func (h *PasswordResetHandler) forgot(c *gin.Context) {
 	var req forgotRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 	email := strings.TrimSpace(strings.ToLower(req.Email))
@@ -230,14 +231,14 @@ type resetRequest struct {
 func (h *PasswordResetHandler) reset(c *gin.Context) {
 	var req resetRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
 	tenantID, userID, err := h.consumeToken(c.Request.Context(), req.Token)
 	if err != nil {
 		if errors.Is(err, errResetTokenInvalid) {
-			response.BadRequest(c, 40002, "token invalid or expired")
+			response.BadRequest(c, errcode.NumInvalidInput, "token invalid or expired")
 			return
 		}
 		response.InternalError(c, "failed to reset password", err)
@@ -259,13 +260,13 @@ func (h *PasswordResetHandler) reset(c *gin.Context) {
 		// carries no more information than that already.
 		switch {
 		case errors.Is(err, user.ErrUserNotFound):
-			response.BadRequest(c, 40002, "token invalid or expired")
+			response.BadRequest(c, errcode.NumInvalidInput, "token invalid or expired")
 		case errors.Is(err, user.ErrWeakPassword):
-			response.BadRequest(c, 40004, err.Error())
+			response.BadRequest(c, errcode.NumInputRejected, err.Error())
 		case errors.Is(err, user.ErrPasswordReused):
 			// 40005 (matches user.codePasswordReused), NOT 40003 — 40003
 			// collides with the frontend's global totpCodeReused localization.
-			response.BadRequest(c, 40005, err.Error())
+			response.BadRequest(c, errcode.NumPasswordReused, err.Error())
 		default:
 			response.InternalError(c, "failed to reset password", err)
 		}

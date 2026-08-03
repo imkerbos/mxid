@@ -2,6 +2,7 @@ package org
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/ginutil"
 	"github.com/imkerbos/mxid/pkg/pagination"
 	"github.com/imkerbos/mxid/pkg/response"
@@ -36,7 +37,7 @@ func (h *Handler) GetTree(c *gin.Context) {
 func (h *Handler) Create(c *gin.Context) {
 	var req CreateOrgRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
@@ -74,7 +75,7 @@ func (h *Handler) Update(c *gin.Context) {
 
 	var req UpdateOrgRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
@@ -111,7 +112,7 @@ func (h *Handler) Move(c *gin.Context) {
 
 	var req MoveOrgRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
@@ -149,7 +150,7 @@ func (h *Handler) AddMember(c *gin.Context) {
 
 	var req AddMemberRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 

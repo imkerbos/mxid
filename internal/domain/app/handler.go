@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/protocol/saml"
 	"github.com/imkerbos/mxid/pkg/authz"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/ginutil"
 	"github.com/imkerbos/mxid/pkg/pagination"
 	"github.com/imkerbos/mxid/pkg/response"
@@ -119,7 +120,7 @@ func (h *Handler) List(c *gin.Context) {
 
 	var req ListAppsRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
@@ -168,7 +169,7 @@ func (h *Handler) ListEnvOptions(c *gin.Context) {
 func (h *Handler) Create(c *gin.Context) {
 	var req CreateAppRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
@@ -208,7 +209,7 @@ func (h *Handler) Update(c *gin.Context) {
 
 	var req UpdateAppRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
@@ -245,7 +246,7 @@ func (h *Handler) UpdateStatus(c *gin.Context) {
 
 	var req UpdateStatusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
@@ -282,7 +283,7 @@ func (h *Handler) UpdateProtocolConfig(c *gin.Context) {
 
 	var req UpdateProtocolConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
@@ -326,7 +327,7 @@ func (h *Handler) AddAccess(c *gin.Context) {
 
 	var req AddAccessRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
@@ -430,7 +431,7 @@ func (h *Handler) ListGroups(c *gin.Context) {
 func (h *Handler) CreateGroup(c *gin.Context) {
 	var req AppGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
@@ -452,7 +453,7 @@ func (h *Handler) UpdateGroup(c *gin.Context) {
 
 	var req UpdateAppGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
@@ -489,7 +490,7 @@ func (h *Handler) AddAppToGroup(c *gin.Context) {
 
 	var req AddAppToGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
@@ -531,7 +532,7 @@ func (h *Handler) GetTemplate(c *gin.Context) {
 	tpl, err := GetTemplate(c.Param("key"))
 	if err != nil {
 		if errors.Is(err, ErrTemplateNotFound) {
-			response.NotFound(c, 40407, "template not found")
+			response.NotFound(c, errcode.NumTemplateNotFound, "template not found")
 			return
 		}
 		response.InternalError(c, "get template failed", err)
@@ -582,11 +583,11 @@ func (h *Handler) ImportSAMLMetadata(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxMetadataBytes)
 	raw, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		response.BadRequest(c, 40001, "read body: "+err.Error())
+		response.BadRequest(c, errcode.NumBadRequest, "read body: "+err.Error())
 		return
 	}
 	if len(raw) == 0 {
-		response.BadRequest(c, 40002, "empty metadata document")
+		response.BadRequest(c, errcode.NumInvalidInput, "empty metadata document")
 		return
 	}
 	cfg, err := h.svc.ImportSAMLSPMetadata(c.Request.Context(), id, raw)
@@ -596,7 +597,7 @@ func (h *Handler) ImportSAMLMetadata(c *gin.Context) {
 		// totpCodeReused localization; the SAML schema message is safe to show.
 		var schemaErr saml.ErrInvalidSPMetadata
 		if errors.As(err, &schemaErr) {
-			response.BadRequest(c, 40011, err.Error())
+			response.BadRequest(c, errcode.NumAppValidation, err.Error())
 			return
 		}
 		h.handleServiceError(c, err)
@@ -640,13 +641,13 @@ func (h *Handler) Quickstart(c *gin.Context) {
 		return
 	}
 	if application.Protocol != ProtocolOIDC {
-		response.BadRequest(c, 40011, "quickstart available for OIDC apps only")
+		response.BadRequest(c, errcode.NumAppValidation, "quickstart available for OIDC apps only")
 		return
 	}
 
 	sample, err := renderQuickstart(lang, application, c.Request.Host, isHTTPS(c.Request.URL.Scheme))
 	if err != nil {
-		response.BadRequest(c, 40012, err.Error())
+		response.BadRequest(c, errcode.NumSelfApproval, err.Error())
 		return
 	}
 	response.OK(c, map[string]string{
