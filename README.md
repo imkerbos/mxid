@@ -5,7 +5,7 @@
 **Open-source, multi-protocol Identity & Access Management (IAM / SSO) platform**
 
 One login portal, one admin console, one protocol gateway — speak **OIDC**,
-**SAML 2.0**, **CAS 3.0** and **JWT** so every app plugs into a single identity layer.
+**SAML 2.0** and **CAS 3.0** so every app plugs into a single identity layer.
 
 [![License](https://img.shields.io/badge/Core-AGPL_v3.0-blue.svg)](LICENSE)
 [![Enterprise](https://img.shields.io/badge/Enterprise-Commercial-8A2BE2.svg)](docs/EDITIONS.md)
@@ -31,7 +31,7 @@ TopIAM. It ships as **open core**: a fully usable Community Edition under AGPL,
 plus an Enterprise Edition that unlocks external IdP login, white-label branding
 and more via a signed license.
 
-> **v1.4.1** — latest stable release. See the [releases](https://github.com/imkerbos/mxid/releases) for the changelog. :tada:
+> **v1.8.0** — latest stable release. See the [releases](https://github.com/imkerbos/mxid/releases) for the changelog. :tada:
 
 <div align="center">
 
@@ -41,14 +41,18 @@ and more via a signed license.
 
 ## Highlights
 
-- **Protocols out of the box** — OpenID Connect 1.0 (on OAuth 2.0; PKCE, Refresh, RP-Initiated Logout), SAML 2.0 (IdP/SP-initiated, SLO), CAS 3.0, JWT. Per-app claim/attribute mappers.
-- **Authentication** — password policy (strength, history, lockout, captcha), TOTP MFA + recovery codes, magic-link, external IdP login (Enterprise).
-- **Identity & access** — users, organizations, groups, RBAC; per-app access policies and per-app roles propagated as claims.
+- **Protocols out of the box** — OpenID Connect 1.0 (on OAuth 2.0; PKCE, Refresh, RP-Initiated Logout), SAML 2.0 (IdP/SP-initiated, SLO), CAS 3.0. Per-app claim/attribute mappers, SAML/CAS group attribute dispatch.
+- **Authentication** — password policy (strength, history, lockout, captcha), TOTP MFA + recovery codes, magic-link, SMS OTP, step-up MFA (sudo mode) for high-risk actions, email as a login identifier, external IdP login (Enterprise) with dual login (IdP or local password).
+- **Identity & access** — users, organizations, groups, RBAC; per-app access policies (batch-assignable) and per-app roles propagated as claims; app template marketplace.
+- **Global Single-Logout** — logging out of the portal or console fans out to every downstream SP.
+- **JIT privileged access (Enterprise)** — time-bound role/app grants: request → approval (SoD + step-up) → auto-expiry, with downstream session termination across OIDC / SAML / CAS.
+- **Offboarding** — one-click access cutoff (disable + kill sessions + back-channel logout), an app-footprint review checklist, and a signed HMAC webhook.
 - **Form-fill SSO (SWA)** — onboard legacy web apps that only have a username/password form. MXID vaults the downstream credential and a hardened MV3 browser extension auto-fills + submits the app's own login. Per-user or shared credentials, capture-to-configure, step-up-gated + token-bound reveal (Enterprise).
 - **Runtime, not rebuild** — SMTP, security policy, branding, login methods, protocol defaults and URLs are all admin-editable at runtime through the console.
-- **Operations** — audit log with retention + alert webhook, API tokens (OpenAPI), i18n (Chinese + English).
+- **Tamper-proof audit** — HMAC hash-chain + Merkle roots + Ed25519 anchors; offline third-party verification via the `verify-audit` / `audit-export` / `verify-export` CLI.
+- **Operations** — audit log with retention + alert webhook, API tokens (OpenAPI), Prometheus `/metrics`, admin-configurable per-user rate limits, GeoIP, transactional outbox for durable webhook/provisioning delivery, i18n (Chinese + English), dark mode, brand asset upload (Enterprise branding).
 - **Production-ready delivery** — single-binary backend + containerized edge; tag-driven multi-arch images; Ed25519-signed offline licensing.
-- **Stateless backend / Kubernetes-ready** — icons and brand logos are stored as `bytea` in PostgreSQL (≤ 2 MB, strong ETag cache); no local disk state, no PVC required. Every replica serves the same assets immediately after startup.
+- **Stateless backend / Kubernetes-ready** — icons and brand logos are stored as `bytea` in PostgreSQL (≤ 2 MB, strong ETag cache); no local disk state, no PVC required. Every replica serves the same assets immediately after startup. HA multi-replica: leader election, cross-pod cache sync, `/readyz`, graceful shutdown.
 - **Honest capability advertisement** — `/system/info` reports only the features present in the running binary: runtime-gated features (`branding`, `conditional_access` — code ships in CE, unlocked by license) are distinguished from code-separated EE-only features (`external_idp`, etc., absent from the CE binary).
 
 ## Architecture
@@ -68,7 +72,7 @@ and more via a signed license.
         │  ┌────────────────┐ ┌───────────────┐ ┌──────────────────┐ │
         │  │ Protocol GW    │ │ AuthN Engine  │ │ Settings Domain  │ │
         │  │ OIDC/SAML/CAS  │ │ password+TOTP │ │ hot-reload (SMTP │ │
-        │  │ JWT            │ │ +external IdP │ │ branding/policy) │ │
+        │  │                │ │ +external IdP │ │ branding/policy) │ │
         │  └───────┬────────┘ └───────┬───────┘ └──────────────────┘ │
         │          └────────┬─────────┘                              │
         │          ┌────────▼─────────┐  ┌──────────────────┐        │
@@ -140,23 +144,23 @@ activation and limits: **[docs/EDITIONS.md](docs/EDITIONS.md)**.
 | OpenID Connect 1.0 / OAuth 2.0 (PKCE / Refresh / RP-Initiated Logout) | ✅ | ✅ |
 | SAML 2.0 (IdP/SP-initiated, SLO) | ✅ | ✅ |
 | CAS 3.0 | ✅ | ✅ |
-| JWT (HS256 / RS256) | ✅ | ✅ |
+| JWT app token signing (HS256 / RS256) | ✅ | ✅ |
 | **Authentication** | | |
 | Password login + policy (strength / history / lockout / captcha) | ✅ | ✅ |
 | TOTP MFA + recovery codes | ✅ | ✅ |
 | Magic-link (passwordless) | ✅ | ✅ |
 | External IdP login (Lark / Feishu / Teams) | ❌ | ✅ |
-| SMS OTP login | ❌ | ✅ |
-| Conditional / risk-based access | ❌ | ✅ |
-| Advanced step-up (sudo mode) | ❌ | ✅ |
+| SMS OTP login | ✅ | ✅ |
+| Step-up MFA (sudo mode) | ✅ | ✅ |
+| Conditional / risk-based access — currently gates JIT privileged access (self-service time-bound elevation with approvals) | ❌ | ✅ |
 | WebAuthn / Passkeys | ❌ | ✅ ¹ |
 | **Identity & Access** | | |
 | Users | ✅ up to 100 | ✅ unlimited |
 | Organizations / Groups | ✅ | ✅ |
 | RBAC (roles + permissions) | ✅ | ✅ |
-| SCIM 2.0 provisioning | ❌ | ✅ ¹ |
+| SCIM 2.0 outbound deprovision (offboarding) | ❌ | ✅ |
 | **Applications & SSO** | | |
-| App registration (OIDC / SAML / CAS / JWT) | ✅ unlimited | ✅ unlimited |
+| App registration (OIDC / SAML / CAS) | ✅ unlimited | ✅ unlimited |
 | Per-app access policy (user / group / org / role) | ✅ | ✅ |
 | Per-app roles → claims | ✅ | ✅ |
 | API tokens (OpenAPI) | ✅ | ✅ |
@@ -227,9 +231,10 @@ mxid/
 ├── internal/
 │   ├── bootstrap/     # config, router, app shell
 │   ├── domain/        # user / app / tenant / org / group / permission / authn / audit / setting / ...
-│   ├── protocol/      # OIDC / SAML / CAS handlers
+│   ├── protocol/      # oidcop / oidclogout / saml / cas / resolver
 │   ├── gateway/       # console (admin REST) + portal (end-user REST)
-│   └── middleware/    # cors, logger, request-id, feature gate
+│   ├── middleware/    # cors, logger, request-id, feature gate
+│   └── outbox/        # transactional outbox (durable webhook / provisioning delivery)
 ├── pkg/
 │   └── ee/            # license (Ed25519 verify) + registry (EE extension seam)
 ├── migrations/        # SQL

@@ -5,7 +5,7 @@
 **开源 · 多协议 · 企业级身份与访问管理(IAM / SSO)平台**
 
 一个登录门户、一个管理控制台、一套协议网关 —— 覆盖 **OIDC**、**SAML 2.0**、
-**CAS 3.0**、**JWT**,让企业内所有应用接入同一身份层。
+**CAS 3.0**,让企业内所有应用接入同一身份层。
 
 [![License](https://img.shields.io/badge/Core-AGPL_v3.0-blue.svg)](LICENSE)
 [![Enterprise](https://img.shields.io/badge/Enterprise-Commercial-8A2BE2.svg)](docs/EDITIONS.md)
@@ -29,7 +29,7 @@ MXID 是自托管、单租户的企业级 IAM 平台,面向商业级部署设计
 Keycloak / Auth0 / Okta / TopIAM。采用**开源核心(open core)**:社区版完整可用、
 AGPL 授权;企业版通过签名 license 解锁外部 IdP 登录、品牌定制等。
 
-> **v1.4.1** —— 最新稳定版。更新日志见 [releases](https://github.com/imkerbos/mxid/releases)。:tada:
+> **v1.8.0** —— 最新稳定版。更新日志见 [releases](https://github.com/imkerbos/mxid/releases)。:tada:
 
 <div align="center">
 
@@ -39,14 +39,18 @@ AGPL 授权;企业版通过签名 license 解锁外部 IdP 登录、品牌定制
 
 ## 功能亮点
 
-- **协议开箱即用** —— OpenID Connect 1.0(基于 OAuth 2.0;PKCE / Refresh / RP-Initiated Logout)、SAML 2.0(IdP/SP 发起、SLO)、CAS 3.0、JWT。支持按应用配置 claim / attribute 映射。
-- **认证** —— 密码策略(强度 / 历史 / 锁定 / 验证码)、TOTP MFA + 恢复码、邮件魔法链接、外部 IdP 登录(企业版)。
-- **身份与访问** —— 用户、组织、组、RBAC;按应用的访问策略与角色,角色作为 claim 下发。
+- **协议开箱即用** —— OpenID Connect 1.0(基于 OAuth 2.0;PKCE / Refresh / RP-Initiated Logout)、SAML 2.0(IdP/SP 发起、SLO)、CAS 3.0。支持按应用配置 claim / attribute 映射,SAML/CAS 组属性下发。
+- **认证** —— 密码策略(强度 / 历史 / 锁定 / 验证码)、TOTP MFA + 恢复码、邮件魔法链接、短信 OTP、高危操作 step-up MFA(sudo 模式)、邮箱可作登录标识、外部 IdP 登录(企业版,支持 IdP / 本地密码双登录)。
+- **身份与访问** —— 用户、组织、组、RBAC;按应用的访问策略(支持批量授权)与角色,角色作为 claim 下发;应用模板市场。
+- **全局单点登出** —— 门户 / 控制台登出联动注销所有下游 SP。
+- **JIT 临时提权(企业版)** —— 限时角色 / 应用授权:申请 → 审批(SoD + step-up)→ 到期自动回收,并跨 OIDC / SAML / CAS 强制注销下游会话。
+- **离职断权** —— 一键切断访问(禁用 + 杀会话 + 后台注销)、应用足迹核对清单、HMAC 签名 webhook。
 - **表单填充 SSO(SWA)** —— 接入只有账号密码表单、不支持标准协议的老旧 Web 系统。MXID 托管下游凭证,加固的 MV3 浏览器扩展自动填充并提交应用自己的登录表单。支持按用户 / 共享凭证、录制即配置、reveal 受 step-up + 令牌绑定保护(企业版)。
 - **改配置不重启** —— SMTP、安全策略、品牌、登录方式、协议默认值、对外 URL 全部在控制台运行时可改。
-- **运维** —— 审计日志 + 留存 + 告警 webhook、API Token(OpenAPI)、中英双语。
+- **防篡改审计** —— HMAC 哈希链 + Merkle 根 + Ed25519 锚点;支持离线第三方校验(`verify-audit` / `audit-export` / `verify-export` CLI)。
+- **运维** —— 审计日志 + 留存 + 告警 webhook、API Token(OpenAPI)、Prometheus `/metrics`、按用户限流(后台可配)、GeoIP、事务性 outbox 保障 webhook / 同步投递、中英双语、暗色模式、品牌资源上传(企业版品牌定制)。
 - **生产级交付** —— 单二进制后端 + 容器化边缘;tag 驱动多架构镜像;Ed25519 签名离线授权。
-- **无状态后端 / Kubernetes 友好** —— 图标与品牌 logo 以 `bytea` 存入 PostgreSQL(≤ 2 MB,强缓存 ETag),后端无任何本地磁盘状态,无需 PVC,容器重启不丢失,多副本即开即一致。
+- **无状态后端 / Kubernetes 友好** —— 图标与品牌 logo 以 `bytea` 存入 PostgreSQL(≤ 2 MB,强缓存 ETag),后端无任何本地磁盘状态,无需 PVC,容器重启不丢失,多副本即开即一致。多副本高可用:leader 选举、跨 Pod 缓存同步、`/readyz`、优雅停机。
 - **如实公布能力** —— `/system/info` 只上报当前二进制实际具备的功能:runtime 门控功能(`branding`、`conditional_access`,代码在 CE 内,license 放行即生效)与代码分离的 EE-only 功能(`external_idp` 等,仅 EE 二进制含其码)明确区分,客户端不会收到虚假的能力声明。
 
 ## 架构
@@ -66,7 +70,7 @@ AGPL 授权;企业版通过签名 license 解锁外部 IdP 登录、品牌定制
         │  ┌────────────────┐ ┌───────────────┐ ┌──────────────────┐ │
         │  │ 协议网关       │ │ 认证引擎      │ │ 设置域           │ │
         │  │ OIDC/SAML/CAS  │ │ 密码+TOTP     │ │ 热加载(SMTP/    │ │
-        │  │ JWT            │ │ +外部 IdP     │ │ 品牌/策略)       │ │
+        │  │                │ │ +外部 IdP     │ │ 品牌/策略)       │ │
         │  └───────┬────────┘ └───────┬───────┘ └──────────────────┘ │
         │          └────────┬─────────┘                              │
         │          ┌────────▼─────────┐  ┌──────────────────┐        │
@@ -135,23 +139,23 @@ MXID 采用**开源核心**。社区版免费、完整可用;企业版通过 Ed2
 | OpenID Connect 1.0 / OAuth 2.0(PKCE / Refresh / RP-Initiated Logout) | ✅ | ✅ |
 | SAML 2.0(IdP/SP 发起、SLO) | ✅ | ✅ |
 | CAS 3.0 | ✅ | ✅ |
-| JWT(HS256 / RS256) | ✅ | ✅ |
+| JWT 应用令牌签名(HS256 / RS256) | ✅ | ✅ |
 | **认证** | | |
 | 密码登录 + 策略(强度 / 历史 / 锁定 / 验证码) | ✅ | ✅ |
 | TOTP MFA + 恢复码 | ✅ | ✅ |
 | 邮件魔法链接(免密) | ✅ | ✅ |
 | 外部 IdP 登录(Lark / 飞书 / Teams) | ❌ | ✅ |
-| 短信 OTP 登录 | ❌ | ✅ |
-| 条件访问 / 风险登录 | ❌ | ✅ |
-| 高级 step-up(sudo 模式) | ❌ | ✅ |
+| 短信 OTP 登录 | ✅ | ✅ |
+| Step-up MFA(sudo 模式) | ✅ | ✅ |
+| 条件访问 / 风险准入 —— 当前门控 JIT 临时提权(自助申请、限时提权 + 审批) | ❌ | ✅ |
 | WebAuthn / Passkey | ❌ | ✅ ¹ |
 | **身份与访问** | | |
 | 用户 | ✅ 上限 100 | ✅ 不限 |
 | 组织 / 组 | ✅ | ✅ |
 | RBAC(角色 + 权限) | ✅ | ✅ |
-| SCIM 2.0 自动同步 | ❌ | ✅ ¹ |
+| SCIM 2.0 出站 deprovision(离职停用下游账号) | ❌ | ✅ |
 | **应用与 SSO** | | |
-| 应用注册(OIDC / SAML / CAS / JWT) | ✅ 不限 | ✅ 不限 |
+| 应用注册(OIDC / SAML / CAS) | ✅ 不限 | ✅ 不限 |
 | 按应用访问策略(用户 / 组 / 组织 / 角色) | ✅ | ✅ |
 | 按应用角色 → claim | ✅ | ✅ |
 | API Token(OpenAPI) | ✅ | ✅ |
@@ -217,9 +221,10 @@ mxid/
 ├── internal/
 │   ├── bootstrap/     # 配置、路由、app 壳
 │   ├── domain/        # user / app / tenant / org / group / permission / authn / audit / setting / ...
-│   ├── protocol/      # OIDC / SAML / CAS 处理器
+│   ├── protocol/      # oidcop / oidclogout / saml / cas / resolver
 │   ├── gateway/       # console(管理 REST)+ portal(终端 REST)
-│   └── middleware/    # cors、logger、request-id、feature gate
+│   ├── middleware/    # cors、logger、request-id、feature gate
+│   └── outbox/        # 事务性 outbox(webhook / 同步投递可靠送达)
 ├── pkg/
 │   └── ee/            # license(Ed25519 验签)+ registry(EE 扩展点)
 ├── migrations/        # SQL

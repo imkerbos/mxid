@@ -3,4 +3,4 @@ name: mxid
 description: MXID — open-core IAM/SSO platform (OIDC / SAML / CAS / JWT)
 type: application
 version: 1.3.4
-appVersion: "v1.7.2"
+appVersion: "v1.8.0"
