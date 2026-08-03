@@ -477,7 +477,6 @@ func (h *Handler) putLicense(c *gin.Context) {
 		Key:          key,
 		RegisteredTo: mgr.Customer(),
 		MaxUsers:     mgr.MaxUsers(),
-		MaxTenants:   mgr.MaxTenants(),
 	}
 	if exp := mgr.ExpiresAt(); !exp.IsZero() {
 		derived.ExpiresAt = exp.Format("2006-01-02")

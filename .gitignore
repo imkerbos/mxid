@@ -56,9 +56,6 @@ web/packages/*/dist/
 .pnpm-store/
 **/.pnpm-store/
 
-# Reference upstream (benchmark only, not project source)
-topiam/
-
 # Claude Code local
 .claude/
 

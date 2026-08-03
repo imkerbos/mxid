@@ -265,7 +265,6 @@ type License struct {
 	IssuedAt         string `json:"issued_at"`
 	ExpiresAt        string `json:"expires_at"`
 	MaxUsers         int    `json:"max_users"`
-	MaxTenants       int    `json:"max_tenants"`
 	EnableEnterprise bool   `json:"enable_enterprise"`
 	// KeySet is a transient, read-only flag: whether a token is stored. Set by
 	// the GET handler (which blanks Key); never trusted on write.
