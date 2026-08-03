@@ -149,7 +149,6 @@ export interface License {
   issued_at: string
   expires_at: string
   max_users: number
-  max_tenants: number
   enable_enterprise: boolean
   // Read-only: whether a token is stored (the API never returns the token itself).
   key_set?: boolean

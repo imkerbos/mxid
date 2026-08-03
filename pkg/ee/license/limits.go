@@ -3,7 +3,7 @@ package license
 // CE edition limits. Apply when no valid EE license is active — that includes
 // an EXPIRED license: on expiry the instance reverts to CE limits, but existing
 // data is grandfathered (gates block only NEW creation beyond the cap, never
-// delete). EE has no built-in cap (a license may still set MaxUsers/MaxTenants).
+// delete). EE has no built-in cap (a license may still set MaxUsers).
 const (
 	// CEMaxUsers caps the total user count in CE. 0 would mean unlimited.
 	CEMaxUsers = 100
