@@ -17,8 +17,8 @@ type scopedModel struct {
 	Name     string
 }
 
-func (scopedModel) TableName() string  { return "scoped_model" }
-func (scopedModel) TenantScoped()       {}
+func (scopedModel) TableName() string { return "scoped_model" }
+func (scopedModel) TenantScoped()     {}
 
 // globalModel is NOT tenant-scoped (no marker) — must never be filtered.
 type globalModel struct {

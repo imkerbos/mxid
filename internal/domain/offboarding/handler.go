@@ -7,6 +7,7 @@ import (
 
 	"github.com/imkerbos/mxid/internal/domain/user"
 	"github.com/imkerbos/mxid/pkg/authz"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/ginutil"
 	"github.com/imkerbos/mxid/pkg/pagination"
 	"github.com/imkerbos/mxid/pkg/response"
@@ -50,7 +51,7 @@ func (h *Handler) Offboard(c *gin.Context) {
 	}
 	if err := h.svc.Offboard(c.Request.Context(), id, actorID(c)); err != nil {
 		if errors.Is(err, user.ErrUserNotFound) {
-			response.NotFound(c, 40401, err.Error())
+			response.NotFound(c, errcode.NumNotFound, err.Error())
 			return
 		}
 		response.InternalError(c, "offboard failed", err)

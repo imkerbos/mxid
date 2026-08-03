@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/authn"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/mailer"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/tenantctx"
@@ -91,7 +92,7 @@ func registerEmailVerifyRoutes(rg *gin.RouterGroup, h *EmailVerifyHandler) {
 func (h *EmailVerifyHandler) sendVerification(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 	email, err := h.users.GetEmail(c.Request.Context(), userID)
@@ -100,7 +101,7 @@ func (h *EmailVerifyHandler) sendVerification(c *gin.Context) {
 		return
 	}
 	if email == "" {
-		response.BadRequest(c, 40001, "email not set — set an email before requesting verification")
+		response.BadRequest(c, errcode.NumBadRequest, "email not set — set an email before requesting verification")
 		return
 	}
 
@@ -176,14 +177,14 @@ func (h *EmailVerifyHandler) sendVerification(c *gin.Context) {
 func (h *EmailVerifyHandler) verify(c *gin.Context) {
 	token := c.Query("token")
 	if token == "" {
-		response.BadRequest(c, 40001, "token required")
+		response.BadRequest(c, errcode.NumBadRequest, "token required")
 		return
 	}
 
 	userID, tokenEmail, err := h.consumeToken(c.Request.Context(), token)
 	if err != nil {
 		if errors.Is(err, errVerifyTokenInvalid) {
-			response.BadRequest(c, 40002, "token invalid or expired")
+			response.BadRequest(c, errcode.NumInvalidInput, "token invalid or expired")
 			return
 		}
 		response.InternalError(c, "failed to verify email", err)
@@ -199,7 +200,7 @@ func (h *EmailVerifyHandler) verify(c *gin.Context) {
 		return
 	}
 	if curEmail == "" || !strings.EqualFold(curEmail, tokenEmail) {
-		response.BadRequest(c, 40002, "verification link no longer matches your email")
+		response.BadRequest(c, errcode.NumInvalidInput, "verification link no longer matches your email")
 		return
 	}
 

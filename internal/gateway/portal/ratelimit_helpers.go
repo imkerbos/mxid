@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/ratelimit"
 	"github.com/imkerbos/mxid/pkg/response"
 )
@@ -38,6 +39,6 @@ func respondRateLimited(c *gin.Context, rle *ratelimit.RateLimitError) {
 	if rle.RetryAfter > 0 {
 		c.Header("Retry-After", strconv.Itoa(int(rle.RetryAfter.Seconds())))
 	}
-	response.Error(c, http.StatusTooManyRequests, 42901,
+	response.Error(c, http.StatusTooManyRequests, errcode.NumTooManyAttempts,
 		"too many attempts, please try again later", "")
 }

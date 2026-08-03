@@ -19,17 +19,17 @@ import (
 
 // Token is the storage row.
 type Token struct {
-	ID          int64          `gorm:"column:id;primaryKey" json:"id"`
-	TenantID    int64          `gorm:"column:tenant_id;not null" json:"tenant_id"`
-	UserID      int64          `gorm:"column:user_id;not null" json:"user_id"`
-	Name        string         `gorm:"column:name;not null;size:128" json:"name"`
-	Prefix      string         `gorm:"column:prefix;not null;size:16" json:"prefix"`
-	TokenHash   string         `gorm:"column:token_hash;not null;size:120" json:"-"`
-	Scopes      datatypes.JSON `gorm:"column:scopes;type:jsonb;default:'[]'" json:"scopes"`
-	ExpiresAt   *time.Time     `gorm:"column:expires_at" json:"expires_at"`
-	LastUsedAt  *time.Time     `gorm:"column:last_used_at" json:"last_used_at"`
-	RevokedAt   *time.Time     `gorm:"column:revoked_at" json:"revoked_at"`
-	CreatedAt   time.Time      `gorm:"column:created_at;not null" json:"created_at"`
+	ID         int64          `gorm:"column:id;primaryKey" json:"id"`
+	TenantID   int64          `gorm:"column:tenant_id;not null" json:"tenant_id"`
+	UserID     int64          `gorm:"column:user_id;not null" json:"user_id"`
+	Name       string         `gorm:"column:name;not null;size:128" json:"name"`
+	Prefix     string         `gorm:"column:prefix;not null;size:16" json:"prefix"`
+	TokenHash  string         `gorm:"column:token_hash;not null;size:120" json:"-"`
+	Scopes     datatypes.JSON `gorm:"column:scopes;type:jsonb;default:'[]'" json:"scopes"`
+	ExpiresAt  *time.Time     `gorm:"column:expires_at" json:"expires_at"`
+	LastUsedAt *time.Time     `gorm:"column:last_used_at" json:"last_used_at"`
+	RevokedAt  *time.Time     `gorm:"column:revoked_at" json:"revoked_at"`
+	CreatedAt  time.Time      `gorm:"column:created_at;not null" json:"created_at"`
 }
 
 // TableName binds to the migration's table name.

@@ -101,8 +101,8 @@ func TestCompute_ExcludesCurrentLoginFromHistory(t *testing.T) {
 	geo := fakeGeo{"1.1.1.1": "US", "2.2.2.2": "CN"}
 	now := time.Unix(100000, 0)
 	hist := fakeHistory{
-		{IP: "2.2.2.2", At: now},                         // the just-written CURRENT login (CN)
-		{IP: "1.1.1.1", At: now.Add(-30 * time.Minute)},  // the real prior login (US)
+		{IP: "2.2.2.2", At: now},                        // the just-written CURRENT login (CN)
+		{IP: "1.1.1.1", At: now.Add(-30 * time.Minute)}, // the real prior login (US)
 	}
 	c := newComputer(geo, hist, true, now)
 	s, _ := c.Compute(context.Background(), ComputeInput{

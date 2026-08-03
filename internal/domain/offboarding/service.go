@@ -98,12 +98,12 @@ type AppFootprint interface {
 
 // Service performs the one-click offboard.
 type Service struct {
-	disabler  UserDisabler
-	sessions  SessionKiller
-	lookup    UserLookup
-	logout    LogoutNotifier
-	footprint AppFootprint
-	repo      Repository
+	disabler    UserDisabler
+	sessions    SessionKiller
+	lookup      UserLookup
+	logout      LogoutNotifier
+	footprint   AppFootprint
+	repo        Repository
 	idGen       *snowflake.Generator
 	webhook     WebhookDispatcher
 	deprovision DeprovisionEnqueuer

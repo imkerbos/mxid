@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/tenantscope"
 )
@@ -21,9 +22,9 @@ const (
 )
 
 // AuthMiddleware returns a gin middleware that:
-//   1. Requires Authorization: Bearer mxidpat_...
-//   2. Looks up + validates the token via the apitoken service
-//   3. Stamps user_id/tenant_id/scopes into the gin context
+//  1. Requires Authorization: Bearer mxidpat_...
+//  2. Looks up + validates the token via the apitoken service
+//  3. Stamps user_id/tenant_id/scopes into the gin context
 //
 // Failures emit a JSON 401 — never silently fall through, because
 // /openapi/v1 has no session-cookie fallback (callers are scripts).
@@ -31,19 +32,19 @@ func AuthMiddleware(svc *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		header := c.GetHeader("Authorization")
 		if header == "" {
-			response.Unauthorized(c, 40101, "authorization header required")
+			response.Unauthorized(c, errcode.NumUnauthenticated, "authorization header required")
 			c.Abort()
 			return
 		}
 		if !strings.HasPrefix(strings.ToLower(header), "bearer ") {
-			response.Unauthorized(c, 40101, "bearer token required")
+			response.Unauthorized(c, errcode.NumUnauthenticated, "bearer token required")
 			c.Abort()
 			return
 		}
 		token, err := svc.Authenticate(c.Request.Context(), header)
 		if err != nil {
 			c.Header("WWW-Authenticate", "Bearer")
-			response.Error(c, http.StatusUnauthorized, 40101, "invalid api token", err.Error())
+			response.Error(c, http.StatusUnauthorized, errcode.NumUnauthenticated, "invalid api token", err.Error())
 			c.Abort()
 			return
 		}
@@ -66,7 +67,7 @@ func RequireScope(scope string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		raw, exists := c.Get(CtxScopes)
 		if !exists {
-			response.Forbidden(c, 40301, "no scopes on token")
+			response.Forbidden(c, errcode.NumForbiddenScope, "no scopes on token")
 			c.Abort()
 			return
 		}
@@ -77,7 +78,7 @@ func RequireScope(scope string) gin.HandlerFunc {
 				return
 			}
 		}
-		response.Forbidden(c, 40301, "token missing required scope: "+scope)
+		response.Forbidden(c, errcode.NumForbiddenScope, "token missing required scope: "+scope)
 		c.Abort()
 	}
 }

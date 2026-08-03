@@ -21,7 +21,10 @@ type verifyStubUsers struct {
 }
 
 func (s *verifyStubUsers) GetEmail(context.Context, int64) (string, error) { return s.curEmail, nil }
-func (s *verifyStubUsers) MarkEmailVerified(context.Context, int64) error  { s.marked = true; return nil }
+func (s *verifyStubUsers) MarkEmailVerified(context.Context, int64) error {
+	s.marked = true
+	return nil
+}
 
 func newVerifyHandler(t *testing.T, users UserQuerier) (*EmailVerifyHandler, *miniredis.Miniredis) {
 	t.Helper()

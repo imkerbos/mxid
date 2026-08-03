@@ -9,7 +9,7 @@ import (
 type AuthStatus int
 
 const (
-	AuthSuccess         AuthStatus = iota
+	AuthSuccess AuthStatus = iota
 	AuthMFARequired
 	AuthLocked
 	AuthPasswordExpired

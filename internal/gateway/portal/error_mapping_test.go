@@ -64,7 +64,7 @@ func (f fakeMFAQuerier) SetupTOTP(context.Context, int64) (string, string, error
 	return "", "", f.setupErr
 }
 func (f fakeMFAQuerier) VerifyTOTP(context.Context, int64, string) error { return nil }
-func (f fakeMFAQuerier) DeleteTOTP(context.Context, int64) error        { return nil }
+func (f fakeMFAQuerier) DeleteTOTP(context.Context, int64) error         { return nil }
 func (f fakeMFAQuerier) GenerateBackupCodes(context.Context, int64) ([]string, error) {
 	return nil, nil
 }

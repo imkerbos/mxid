@@ -58,9 +58,9 @@ type UpdateAppRequest struct {
 
 // CreateAppResult carries the freshly created app plus the one-time client_secret plaintext.
 type CreateAppResult struct {
-	App                *App
-	ClientSecretPlain  string // empty for spa / native
-	SigningKID         string // kid of the generated signing key (OIDC only)
+	App               *App
+	ClientSecretPlain string // empty for spa / native
+	SigningKID        string // kid of the generated signing key (OIDC only)
 }
 
 // RotateSecretResult carries the new client_secret plaintext (one-time exposure).
@@ -96,7 +96,7 @@ type AppGroupRequest struct {
 // ParentID accepts:
 //   - omit / null       → leave parent unchanged
 //   - explicit 0        → move to root (use 0 instead of null so the JSON
-//                          tri-state stays simple; service translates 0→nil)
+//     tri-state stays simple; service translates 0→nil)
 //   - any other int64   → reparent under that group
 type UpdateAppGroupRequest struct {
 	Name      *string `json:"name" binding:"omitempty,max=128"`
@@ -116,30 +116,30 @@ type AddAppToGroupRequest struct {
 type AppResponse struct {
 	ID              int64          `json:"id,string"`
 	TenantID        *int64         `json:"tenant_id,string,omitempty"` // null = shared app
-	Scope           int            `json:"scope"`                       // 1=tenant 2=shared
+	Scope           int            `json:"scope"`                      // 1=tenant 2=shared
 	SubjectStrategy string         `json:"subject_strategy"`
 	Name            string         `json:"name"`
 	Code            string         `json:"code"`
 	Protocol        string         `json:"protocol"`
 	ClientType      string         `json:"client_type"`
 	Status          int            `json:"status"`
-	Icon           *string        `json:"icon"`
-	Env            *string        `json:"env"`
-	Description    *string        `json:"description"`
-	ClientID       *string        `json:"client_id"`
-	ClientSecret   string         `json:"client_secret,omitempty"` // populated only by create / rotate
-	HomeURL        *string        `json:"home_url"`
-	IsFirstParty   bool           `json:"is_first_party"`
-	RequireConsent bool           `json:"require_consent"`
-	ProtocolConfig map[string]any `json:"protocol_config"`
-	LoginURL       *string        `json:"login_url"`
-	RedirectURIs   []string       `json:"redirect_uris"`
-	LogoutURL      *string        `json:"logout_url"`
-	AccessPolicy   int            `json:"access_policy"`
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"updated_at"`
-	CreatedBy      *int64         `json:"created_by,string,omitempty"`
-	UpdatedBy      *int64         `json:"updated_by,string,omitempty"`
+	Icon            *string        `json:"icon"`
+	Env             *string        `json:"env"`
+	Description     *string        `json:"description"`
+	ClientID        *string        `json:"client_id"`
+	ClientSecret    string         `json:"client_secret,omitempty"` // populated only by create / rotate
+	HomeURL         *string        `json:"home_url"`
+	IsFirstParty    bool           `json:"is_first_party"`
+	RequireConsent  bool           `json:"require_consent"`
+	ProtocolConfig  map[string]any `json:"protocol_config"`
+	LoginURL        *string        `json:"login_url"`
+	RedirectURIs    []string       `json:"redirect_uris"`
+	LogoutURL       *string        `json:"logout_url"`
+	AccessPolicy    int            `json:"access_policy"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	CreatedBy       *int64         `json:"created_by,string,omitempty"`
+	UpdatedBy       *int64         `json:"updated_by,string,omitempty"`
 }
 
 // AppGroupResponse is the API response for an app group.
@@ -189,23 +189,23 @@ func ToAppResponse(a *App) *AppResponse {
 		SubjectStrategy: a.SubjectStrategy,
 		Name:            a.Name,
 		Code:            a.Code,
-		Protocol:       a.Protocol,
-		ClientType:     a.ClientType,
-		Status:         a.Status,
-		Icon:           a.Icon,
-		Env:            a.Env,
-		Description:    a.Description,
-		ClientID:       a.ClientID,
-		HomeURL:        a.HomeURL,
-		IsFirstParty:   a.IsFirstParty,
-		RequireConsent: a.RequireConsent,
-		LoginURL:       a.LoginURL,
-		LogoutURL:      a.LogoutURL,
-		AccessPolicy:   a.AccessPolicy,
-		CreatedAt:      a.CreatedAt,
-		UpdatedAt:      a.UpdatedAt,
-		CreatedBy:      a.CreatedBy,
-		UpdatedBy:      a.UpdatedBy,
+		Protocol:        a.Protocol,
+		ClientType:      a.ClientType,
+		Status:          a.Status,
+		Icon:            a.Icon,
+		Env:             a.Env,
+		Description:     a.Description,
+		ClientID:        a.ClientID,
+		HomeURL:         a.HomeURL,
+		IsFirstParty:    a.IsFirstParty,
+		RequireConsent:  a.RequireConsent,
+		LoginURL:        a.LoginURL,
+		LogoutURL:       a.LogoutURL,
+		AccessPolicy:    a.AccessPolicy,
+		CreatedAt:       a.CreatedAt,
+		UpdatedAt:       a.UpdatedAt,
+		CreatedBy:       a.CreatedBy,
+		UpdatedBy:       a.UpdatedBy,
 	}
 
 	// Unmarshal protocol_config from JSON

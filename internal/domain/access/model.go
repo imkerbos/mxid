@@ -45,19 +45,19 @@ type IntSlice []int
 
 // Eligibility: who may request which role, for how long, approved by whom.
 type Eligibility struct {
-	ID                   int64     `gorm:"column:id;primaryKey" json:"id,string"`
-	TenantID             int64     `gorm:"column:tenant_id;not null;default:0" json:"tenant_id,string"`
-	TargetKind           string    `gorm:"column:target_kind;size:16;not null" json:"target_kind"`
-	RoleID               int64     `gorm:"column:role_id;not null" json:"role_id,string"`
-	ScopeType            *string   `gorm:"column:scope_type;size:16" json:"scope_type,omitempty"`
-	ScopeID              *int64    `gorm:"column:scope_id" json:"scope_id,omitempty,string"`
-	AppID                *int64    `gorm:"column:app_id" json:"app_id,omitempty,string"`
-	RequesterSubjectType string    `gorm:"column:requester_subject_type;size:16;not null" json:"requester_subject_type"`
-	RequesterSubjectID   int64     `gorm:"column:requester_subject_id;not null;default:0" json:"requester_subject_id,string"`
-	AllowedDurations     IntSlice  `gorm:"column:allowed_durations;serializer:json" json:"allowed_durations"`
-	MaxDurationSeconds   int       `gorm:"column:max_duration_seconds;not null" json:"max_duration_seconds"`
-	ApproverSubjectType  string    `gorm:"column:approver_subject_type;size:16;not null;default:role" json:"approver_subject_type"`
-	ApproverSubjectID    int64     `gorm:"column:approver_subject_id;not null;default:0" json:"approver_subject_id,string"`
+	ID                   int64    `gorm:"column:id;primaryKey" json:"id,string"`
+	TenantID             int64    `gorm:"column:tenant_id;not null;default:0" json:"tenant_id,string"`
+	TargetKind           string   `gorm:"column:target_kind;size:16;not null" json:"target_kind"`
+	RoleID               int64    `gorm:"column:role_id;not null" json:"role_id,string"`
+	ScopeType            *string  `gorm:"column:scope_type;size:16" json:"scope_type,omitempty"`
+	ScopeID              *int64   `gorm:"column:scope_id" json:"scope_id,omitempty,string"`
+	AppID                *int64   `gorm:"column:app_id" json:"app_id,omitempty,string"`
+	RequesterSubjectType string   `gorm:"column:requester_subject_type;size:16;not null" json:"requester_subject_type"`
+	RequesterSubjectID   int64    `gorm:"column:requester_subject_id;not null;default:0" json:"requester_subject_id,string"`
+	AllowedDurations     IntSlice `gorm:"column:allowed_durations;serializer:json" json:"allowed_durations"`
+	MaxDurationSeconds   int      `gorm:"column:max_duration_seconds;not null" json:"max_duration_seconds"`
+	ApproverSubjectType  string   `gorm:"column:approver_subject_type;size:16;not null;default:role" json:"approver_subject_type"`
+	ApproverSubjectID    int64    `gorm:"column:approver_subject_id;not null;default:0" json:"approver_subject_id,string"`
 	// NOTE: no gorm "default:..." tag on these two booleans. GORM's Create()
 	// treats a Go zero value (false) on a field that carries a "default" tag
 	// as "not set" and omits the column from the INSERT, letting the DB's

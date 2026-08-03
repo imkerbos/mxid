@@ -41,9 +41,9 @@ const Product = "mxid"
 // license-authority signer (which imports this package), so changes here are
 // the single source of truth for the token shape.
 type Payload struct {
-	Product    string    `json:"product"` // must equal Product ("mxid")
-	Customer   string    `json:"customer"`
-	Features   []Feature `json:"features"`
+	Product   string    `json:"product"` // must equal Product ("mxid")
+	Customer  string    `json:"customer"`
+	Features  []Feature `json:"features"`
 	IssuedAt  int64     `json:"iat"`
 	ExpiresAt int64     `json:"exp"` // unix seconds; 0 = perpetual
 	MaxUsers  int       `json:"max_users,omitempty"`

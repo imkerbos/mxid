@@ -7,12 +7,12 @@ import (
 )
 
 const (
-	epoch         = int64(1700000000000) // Custom epoch: 2023-11-14
-	nodeBits      = uint(10)
-	sequenceBits  = uint(12)
-	nodeMax       = -1 ^ (-1 << nodeBits)
-	sequenceMask  = -1 ^ (-1 << sequenceBits)
-	nodeShift     = sequenceBits
+	epoch          = int64(1700000000000) // Custom epoch: 2023-11-14
+	nodeBits       = uint(10)
+	sequenceBits   = uint(12)
+	nodeMax        = -1 ^ (-1 << nodeBits)
+	sequenceMask   = -1 ^ (-1 << sequenceBits)
+	nodeShift      = sequenceBits
 	timestampShift = nodeBits + sequenceBits
 )
 

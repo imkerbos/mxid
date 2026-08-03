@@ -162,9 +162,9 @@ func TestSecretGoStringMasks(t *testing.T) {
 
 func TestSecretUnmarshalJSON(t *testing.T) {
 	tests := []struct {
-		name    string
-		input   string
-		wantVal string
+		name     string
+		input    string
+		wantVal  string
 		wantZero bool
 	}{
 		{name: "plaintext", input: `"new-secret-value"`, wantVal: "new-secret-value"},
@@ -309,6 +309,6 @@ func TestSecretScanUnsupportedType(t *testing.T) {
 
 // Compile-time assertions that Secret satisfies the required interfaces.
 var (
-	_ driver.Valuer = Secret{}
+	_ driver.Valuer  = Secret{}
 	_ json.Marshaler = Secret{}
 )

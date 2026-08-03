@@ -1,6 +1,6 @@
 // Package public exposes pre-auth endpoints both SPAs use to bootstrap:
 //
-//   GET /api/v1/system/bootstrap → branding + login methods + i18n
+//	GET /api/v1/system/bootstrap → branding + login methods + i18n
 //
 // This is intentionally unauthenticated (login pages need it BEFORE the
 // user is signed in) and root-mounted (NOT under /portal or /console)

@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/response"
 )
 
@@ -23,7 +24,7 @@ import (
 func ParseInt64Param(c *gin.Context, name string) (int64, bool) {
 	id, err := strconv.ParseInt(c.Param(name), 10, 64)
 	if err != nil {
-		response.BadRequest(c, 40001, "invalid "+name)
+		response.BadRequest(c, errcode.NumBadRequest, "invalid "+name)
 		return 0, false
 	}
 	return id, true
@@ -40,4 +41,3 @@ func UserIDFromContext(c *gin.Context) (int64, bool) {
 	id, ok := v.(int64)
 	return id, ok
 }
-

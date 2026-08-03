@@ -7,8 +7,8 @@ import "net"
 // outbound server-side fetch must still never reach. Parsed once at init.
 //
 //   - 100.64.0.0/10   carrier-grade NAT / shared address space (RFC 6598) —
-//                     heavily used for k8s node/pod CIDRs and cloud internal
-//                     VIPs, so a prime SSRF target in this project's deploys.
+//     heavily used for k8s node/pod CIDRs and cloud internal
+//     VIPs, so a prime SSRF target in this project's deploys.
 //   - 192.0.0.0/24    IETF protocol assignments (incl. 192.0.0.171/.170 DNS64).
 //   - 198.18.0.0/15   benchmarking (RFC 2544).
 //   - 240.0.0.0/4     reserved / future use.

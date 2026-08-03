@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/pkg/authz"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/ginutil"
 	"github.com/imkerbos/mxid/pkg/idstr"
 	"github.com/imkerbos/mxid/pkg/pagination"
@@ -173,7 +174,7 @@ func (h *Handler) ListRoles(c *gin.Context) {
 func (h *Handler) CreateRole(c *gin.Context) {
 	var req CreateRoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
@@ -223,7 +224,7 @@ func (h *Handler) UpdateRole(c *gin.Context) {
 
 	var req UpdateRoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
@@ -281,12 +282,12 @@ func (h *Handler) SetPermissions(c *gin.Context) {
 
 	var req UpdatePermissionsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 	permIDs, err := idstr.ParseList(req.PermissionIDs)
 	if err != nil {
-		response.BadRequest(c, 40002, err.Error())
+		response.BadRequest(c, errcode.NumInvalidInput, err.Error())
 		return
 	}
 
@@ -295,7 +296,7 @@ func (h *Handler) SetPermissions(c *gin.Context) {
 	// role.permission.manage could add any catalog permission (incl. their own
 	// escalation) to a role they belong to.
 	if err := h.checkSetPermissionsAllowed(c, id, permIDs); err != nil {
-		response.Error(c, http.StatusForbidden, 40300, err.Error(), "")
+		response.Error(c, http.StatusForbidden, errcode.NumForbidden, err.Error(), "")
 		return
 	}
 
@@ -381,13 +382,13 @@ func (h *Handler) AddMember(c *gin.Context) {
 
 	var req AddMemberRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
 	// Privilege-escalation check.
 	if err := h.checkAssignAllowed(c, id, &req); err != nil {
-		response.Error(c, http.StatusForbidden, 40300, err.Error(), "")
+		response.Error(c, http.StatusForbidden, errcode.NumForbidden, err.Error(), "")
 		return
 	}
 

@@ -30,15 +30,17 @@ func (s *lastLoginSpy) GetByID(_ context.Context, id int64) (*UserInfo, error) {
 func (s *lastLoginSpy) GetDetail(context.Context, int64) (*UserDetail, error) {
 	return &UserDetail{}, nil
 }
-func (s *lastLoginSpy) UpdateProfile(context.Context, int64, string, string, string) error { return nil }
-func (s *lastLoginSpy) UpdateAvatar(context.Context, int64, string) error                  { return nil }
-func (s *lastLoginSpy) ChangePassword(context.Context, int64, string, string) error        { return nil }
-func (s *lastLoginSpy) SetInitialPassword(context.Context, int64, string) error            { return nil }
-func (s *lastLoginSpy) MarkEmailVerified(context.Context, int64) error                     { return nil }
-func (s *lastLoginSpy) GetEmail(context.Context, int64) (string, error)                    { return "", nil }
-func (s *lastLoginSpy) LookupByEmail(context.Context, int64, string) (int64, error)        { return 0, nil }
-func (s *lastLoginSpy) ResetPassword(context.Context, int64, string) error                 { return nil }
-func (s *lastLoginSpy) LookupByPhone(context.Context, int64, string) (int64, error)        { return 0, nil }
+func (s *lastLoginSpy) UpdateProfile(context.Context, int64, string, string, string) error {
+	return nil
+}
+func (s *lastLoginSpy) UpdateAvatar(context.Context, int64, string) error           { return nil }
+func (s *lastLoginSpy) ChangePassword(context.Context, int64, string, string) error { return nil }
+func (s *lastLoginSpy) SetInitialPassword(context.Context, int64, string) error     { return nil }
+func (s *lastLoginSpy) MarkEmailVerified(context.Context, int64) error              { return nil }
+func (s *lastLoginSpy) GetEmail(context.Context, int64) (string, error)             { return "", nil }
+func (s *lastLoginSpy) LookupByEmail(context.Context, int64, string) (int64, error) { return 0, nil }
+func (s *lastLoginSpy) ResetPassword(context.Context, int64, string) error          { return nil }
+func (s *lastLoginSpy) LookupByPhone(context.Context, int64, string) (int64, error) { return 0, nil }
 func (s *lastLoginSpy) UpdateLastLogin(_ context.Context, id int64, ip string) error {
 	s.calls++
 	s.calledUser = id
