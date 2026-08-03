@@ -36,10 +36,10 @@ const (
 // via multiple sources (direct + several groups); each appears as its own
 // entry so the console can show the full provenance.
 type EffectiveRoleResponse struct {
-	Role        *RoleResponse       `json:"role"`
-	Source      EffectiveRoleSource `json:"source"`
-	SourceID    int64               `json:"source_id,string"`
-	SourceName  string              `json:"source_name,omitempty"`
+	Role       *RoleResponse       `json:"role"`
+	Source     EffectiveRoleSource `json:"source"`
+	SourceID   int64               `json:"source_id,string"`
+	SourceName string              `json:"source_name,omitempty"`
 }
 
 // EffectiveRolesForUser resolves every role a user holds across all three
@@ -63,72 +63,76 @@ func (s *Service) EffectiveRolesForUser(
 	groups GroupLookup,
 	orgs OrgLookup,
 ) ([]*EffectiveRoleResponse, error) {
-	out := make([]*EffectiveRoleResponse, 0)
+	// Collected first, resolved second. The previous shape issued one binding
+	// query per group and per org ancestor, then one role query per binding —
+	// for a user in eight groups under a five-level org that is roughly 55 round
+	// trips, every one of them landing on mxid_role_binding. The batch methods
+	// this now uses were already in the repository and simply unused here.
+	type pending struct {
+		roleID   int64
+		source   EffectiveRoleSource
+		sourceID int64
+	}
+	var want []pending
 
-	// 1. Direct user→role bindings.
-	directBindings, err := s.repo.GetBySubject(ctx, "user", userID)
+	direct, err := s.repo.GetBySubject(ctx, "user", userID)
 	if err != nil {
 		return nil, fmt.Errorf("get direct bindings: %w", err)
 	}
-	for _, b := range directBindings {
-		r, err := s.repo.GetRoleByID(ctx, b.RoleID)
-		if err != nil {
+	for _, b := range direct {
+		want = append(want, pending{b.RoleID, SourceDirect, userID})
+	}
+
+	// Group and org lookups stay best-effort, as before: a failure to resolve
+	// membership degrades the answer rather than failing the request.
+	if groups != nil {
+		if groupIDs, gerr := groups.GroupIDsForUser(ctx, tenantID, userID); gerr == nil && len(groupIDs) > 0 {
+			bindings, berr := s.repo.GetBySubjects(ctx, "group", groupIDs)
+			if berr != nil {
+				return nil, fmt.Errorf("get group bindings: %w", berr)
+			}
+			for _, b := range bindings {
+				want = append(want, pending{b.RoleID, SourceGroup, b.SubjectID})
+			}
+		}
+	}
+
+	if orgs != nil {
+		if orgIDs, oerr := orgs.AncestorIDsForUser(ctx, tenantID, userID); oerr == nil && len(orgIDs) > 0 {
+			bindings, berr := s.repo.GetBySubjects(ctx, "org", orgIDs)
+			if berr != nil {
+				return nil, fmt.Errorf("get org bindings: %w", berr)
+			}
+			for _, b := range bindings {
+				want = append(want, pending{b.RoleID, SourceOrg, b.SubjectID})
+			}
+		}
+	}
+
+	out := make([]*EffectiveRoleResponse, 0, len(want))
+	if len(want) == 0 {
+		return out, nil
+	}
+
+	roleIDs := make([]int64, 0, len(want))
+	for _, p := range want {
+		roleIDs = append(roleIDs, p.roleID)
+	}
+	roles, err := s.repo.GetRolesByIDs(ctx, roleIDs)
+	if err != nil {
+		return nil, fmt.Errorf("get roles: %w", err)
+	}
+	for _, p := range want {
+		r, ok := roles[p.roleID]
+		if !ok {
+			// A binding pointing at a deleted role: skipped, as before.
 			continue
 		}
 		out = append(out, &EffectiveRoleResponse{
 			Role:     ToRoleResponse(r, nil, 0),
-			Source:   SourceDirect,
-			SourceID: userID,
+			Source:   p.source,
+			SourceID: p.sourceID,
 		})
 	}
-
-	// 2. Group-inherited bindings.
-	if groups != nil {
-		groupIDs, err := groups.GroupIDsForUser(ctx, tenantID, userID)
-		if err == nil {
-			for _, gid := range groupIDs {
-				bindings, err := s.repo.GetBySubject(ctx, "group", gid)
-				if err != nil {
-					continue
-				}
-				for _, b := range bindings {
-					r, err := s.repo.GetRoleByID(ctx, b.RoleID)
-					if err != nil {
-						continue
-					}
-					out = append(out, &EffectiveRoleResponse{
-						Role:     ToRoleResponse(r, nil, 0),
-						Source:   SourceGroup,
-						SourceID: gid,
-					})
-				}
-			}
-		}
-	}
-
-	// 3. Org-inherited bindings (member orgs + every ancestor on the ltree path).
-	if orgs != nil {
-		orgIDs, err := orgs.AncestorIDsForUser(ctx, tenantID, userID)
-		if err == nil {
-			for _, oid := range orgIDs {
-				bindings, err := s.repo.GetBySubject(ctx, "org", oid)
-				if err != nil {
-					continue
-				}
-				for _, b := range bindings {
-					r, err := s.repo.GetRoleByID(ctx, b.RoleID)
-					if err != nil {
-						continue
-					}
-					out = append(out, &EffectiveRoleResponse{
-						Role:     ToRoleResponse(r, nil, 0),
-						Source:   SourceOrg,
-						SourceID: oid,
-					})
-				}
-			}
-		}
-	}
-
 	return out, nil
 }

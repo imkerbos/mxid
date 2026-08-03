@@ -19,6 +19,9 @@ type Repository interface {
 	// Role CRUD
 	CreateRole(ctx context.Context, role *Role) error
 	GetRoleByID(ctx context.Context, id int64) (*Role, error)
+	// GetRolesByIDs fetches many roles in one query. Ids with no row are absent
+	// from the result rather than an error.
+	GetRolesByIDs(ctx context.Context, ids []int64) (map[int64]*Role, error)
 	GetRoleByCode(ctx context.Context, tenantID int64, code string) (*Role, error)
 	UpdateRole(ctx context.Context, role *Role) error
 	DeleteRole(ctx context.Context, id int64) error
