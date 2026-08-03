@@ -41,6 +41,13 @@ func (UserGroup) TableName() string {
 	return "mxid_user_group"
 }
 
+// AuditResource implements audit.Audited. Groups are subjects of app access
+// policies, so creating or retargeting one grants access; that has to be
+// provable after the audit log has been purged.
+func (UserGroup) AuditResource() string {
+	return "group"
+}
+
 // TenantScoped marks mxid_user_group for automatic tenant isolation.
 func (UserGroup) TenantScoped() {}
 
@@ -75,4 +82,12 @@ type UserGroupMember struct {
 
 func (UserGroupMember) TableName() string {
 	return "mxid_user_group_member"
+}
+
+// AuditResource implements audit.Audited. Membership is the act that actually
+// grants access — the group only describes it — so "who was added to which
+// group, by whom" is the record that matters most, and it must outlive the
+// audit log's retention window.
+func (UserGroupMember) AuditResource() string {
+	return "group_member"
 }

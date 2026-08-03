@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/imkerbos/mxid/pkg/metrics"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -126,6 +127,13 @@ func (c *Chainer) Run(ctx context.Context, interval time.Duration) {
 	for {
 		if _, err := c.ProcessBatch(ctx, 100); err != nil {
 			c.logger.Warn("audit chainer: batch failed", zap.Error(err))
+		}
+		// Report queue depth every tick. A stalled chainer is otherwise silent:
+		// captures keep succeeding on the caller's transaction, so the only
+		// visible symptom is a table quietly growing.
+		var depth int64
+		if err := c.db.WithContext(ctx).Model(&AuditPending{}).Count(&depth).Error; err == nil {
+			metrics.AuditPendingDepth(depth)
 		}
 		select {
 		case <-ctx.Done():

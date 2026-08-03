@@ -62,6 +62,14 @@ func (Organization) TableName() string {
 	return "mxid_organization"
 }
 
+// AuditResource implements audit.Audited. The org tree drives access policy
+// and dynamic group membership, so a change here silently changes who can
+// reach what — it belongs in the tamper-evident ledger, not only in the
+// retention-purged audit log.
+func (Organization) AuditResource() string {
+	return "org"
+}
+
 // TenantScoped marks mxid_organization for automatic tenant isolation.
 func (Organization) TenantScoped() {}
 
@@ -76,4 +84,11 @@ type UserOrg struct {
 
 func (UserOrg) TableName() string {
 	return "mxid_user_org"
+}
+
+// AuditResource implements audit.Audited. Org membership feeds dynamic group
+// rules and org-scoped access policies, so moving a user between orgs changes
+// their effective access.
+func (UserOrg) AuditResource() string {
+	return "org_member"
 }
