@@ -2,6 +2,9 @@ package authn
 
 import (
 	"context"
+	"errors"
+	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -149,5 +152,91 @@ func TestBruteForceLock_LegacyFallbackNoStatusFlip(t *testing.T) {
 	}
 	if repo.statusCalls != 0 {
 		t.Fatalf("legacy fallback must not flip status, got %d calls", repo.statusCalls)
+	}
+}
+
+// unknownUserProvider is what the local provider does for a username that
+// resolves to nobody: a uniform AuthFailed with no UserID.
+type unknownUserProvider struct{}
+
+func (unknownUserProvider) Type() string { return "local" }
+func (unknownUserProvider) Authenticate(_ context.Context, _ *AuthRequest) (*AuthResult, error) {
+	return &AuthResult{Status: AuthFailed}, nil
+}
+
+// A login attempt against a username that matches no account still has to move
+// the per-IP counter.
+//
+// It did not: Login skipped trackFailure entirely whenever the provider
+// returned UserID 0, which is exactly what an unknown username returns. Both
+// dimensions were skipped with it, so a scripted scan over invented usernames
+// incremented nothing — no captcha was ever demanded (the threshold reads the
+// per-IP count) and no IP lock ever tripped, however many attempts it made. The
+// comment on trackFailure claimed the per-IP dimension "throttles a scripted
+// scan"; that was the one case where it did not.
+//
+// Driven through Login, not trackFailure: the guard being removed lived at the
+// call site, so a test that called trackFailure directly passed against the
+// broken version too. It did, on the first attempt.
+func TestFailedLoginForAnUnknownUserStillCountsAgainstTheIP(t *testing.T) {
+	e, _, _, maxAttempts := newLockoutEngine(t)
+	e.providers = map[string]Provider{"local": unknownUserProvider{}}
+	ctx := context.Background()
+	const ip = "203.0.113.7"
+
+	if got := e.LoginFailureCount(ctx, ip); got != 0 {
+		t.Fatalf("precondition: count = %d, want 0", got)
+	}
+
+	for i := 1; i <= maxAttempts; i++ {
+		_, err := e.Login(ctx, &AuthRequest{
+			AuthType:    "local",
+			ClientIP:    ip,
+			Credentials: map[string]string{"username": "ghost" + strconv.Itoa(i), "password": "x"},
+		}, "portal")
+		if err == nil {
+			t.Fatalf("attempt %d: login succeeded against the unknown-user provider", i)
+		}
+		if got := e.LoginFailureCount(ctx, ip); got != i {
+			t.Fatalf("after %d unknown-user logins the IP count is %d, want %d — "+
+				"username enumeration is unthrottled and the captcha threshold is never reached",
+				i, got, i)
+		}
+	}
+
+	// Having crossed the threshold, the next attempt is refused pre-auth.
+	_, err := e.Login(ctx, &AuthRequest{
+		AuthType:    "local",
+		ClientIP:    ip,
+		Credentials: map[string]string{"username": "ghost-final", "password": "x"},
+	}, "portal")
+	if !errors.Is(err, ErrAccountLocked) {
+		t.Fatalf("err = %v, want ErrAccountLocked — the IP was not locked after the threshold", err)
+	}
+}
+
+// An unknown username has no account to lock, so no UserLocked event may claim
+// one: a subscriber acting on user_id 0 would be acting on nothing.
+func TestUnknownUserLockoutEmitsNoUserLockedEvent(t *testing.T) {
+	e, _, _, maxAttempts := newLockoutEngine(t)
+	e.providers = map[string]Provider{"local": unknownUserProvider{}}
+	ctx := context.Background()
+
+	var locked int32
+	e.eventBus.Subscribe(event.UserLocked, func(_ context.Context, _ event.Event) {
+		atomic.AddInt32(&locked, 1)
+	})
+
+	for i := 0; i < maxAttempts+1; i++ {
+		_, _ = e.Login(ctx, &AuthRequest{
+			AuthType:    "local",
+			ClientIP:    "203.0.113.11",
+			Credentials: map[string]string{"username": "ghost", "password": "x"},
+		}, "portal")
+	}
+	// The bus delivers asynchronously.
+	time.Sleep(150 * time.Millisecond)
+	if n := atomic.LoadInt32(&locked); n != 0 {
+		t.Fatalf("UserLocked fired %d times for a username that matches no account", n)
 	}
 }

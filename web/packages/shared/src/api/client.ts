@@ -24,6 +24,8 @@ declare module 'axios' {
 // findable from one place. CAPTCHA_REQUIRED moved from 40003 to 40016 when the
 // backend stopped reusing a code the SPA localizes: 40003 renders as "that code
 // was just used", so a login that needed a captcha said the wrong thing.
+export const CODE_UNAUTHENTICATED = 40101
+export const CODE_INVALID_MFA_CODE = 40102
 export const CODE_CAPTCHA_REQUIRED = 40016
 export const CODE_CAPTCHA_INVALID = 40004
 export const CODE_STEP_UP_REQUIRED = 40330
@@ -157,6 +159,25 @@ export function createApiClient(baseURL: string): AxiosInstance {
   )
 
   return instance
+}
+
+// apiErrorCode reads the backend's numeric business code off a rejected
+// request, whichever shape it arrives in.
+//
+// There are two, and mixing them up is silent. The interceptors below reject
+// with an ApiError carrying a numeric `.code` and NO `.response`, while a
+// failure that never reached them (or a raw axios error) carries the code at
+// `response.data.code` and a STRING `.code` such as "ERR_BAD_REQUEST".
+//
+// Reading only `response.data.code` is what stopped the login captcha from ever
+// appearing: the message lookup fell back to `.code` and showed the right text,
+// while the branch that reveals the captcha box read the other shape, got
+// undefined, and never fired. A user who tripped the captcha threshold could
+// not log in at all.
+export function apiErrorCode(err: unknown): number | undefined {
+  const e = err as { code?: number | string; response?: { data?: { code?: number } } }
+  if (typeof e?.code === 'number') return e.code
+  return e?.response?.data?.code
 }
 
 export class ApiError extends Error {

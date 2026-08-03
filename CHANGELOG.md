@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   second unused copy (`FormField`) has been removed as well.
 
 ### Security
+- Failed logins against a username that matches no account now count towards the
+  per-IP brute-force limit. They were skipped entirely, so a scripted scan over
+  invented usernames incremented nothing: no captcha was ever demanded and no IP
+  lock ever tripped, however many attempts it made.
 - A mistyped SAML `sp_cert` is now rejected when the SP descriptor is built.
   Most short strings are valid base64, so garbage decoded cleanly and only
   surfaced later as an opaque signature failure on the SP's next signed
@@ -42,10 +46,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   background jobs) are unchanged, since they have no tenant to filter by.
 
 ### Fixed
-- The login captcha could not appear. Both login screens branched on the old
-  numeric code for "captcha required", so after the backend moved that code the
-  widget was never revealed or fetched — under captcha enforcement, login was
-  impossible. The codes are now named constants shared by both screens.
+- The login captcha could not appear, on either screen, for two separate
+  reasons. Both branched on the old numeric code for "captcha required", and
+  both read that code off the wrong property of the rejected request: the API
+  client rejects with an error carrying a numeric `code` and no `response`, so
+  the message lookup (which falls back correctly) showed the right text while
+  the branch that reveals the widget got `undefined` and never fired. A user who
+  tripped the captcha threshold could not log in at all. Both fixed, and the
+  codes are now named constants read through one shared helper.
 - A captcha that fails to load now says so instead of reading "loading…"
   forever. It is only ever fetched because the backend has made it mandatory,
   so the user could not log in and had no way to tell that from a slow network.
