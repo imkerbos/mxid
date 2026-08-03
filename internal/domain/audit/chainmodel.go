@@ -23,6 +23,13 @@ type AuditPending struct {
 	SessionID    string          `gorm:"column:session_id;not null;size:128"`
 	Detail       json.RawMessage `gorm:"column:detail;type:jsonb;default:'{}'"`
 	OccurredAt   time.Time       `gorm:"column:occurred_at;not null"`
+	// Human-readable identifiers carried into the ledger so it holds everything
+	// the projection needs. Pointers, not strings: NULL means "not recorded"
+	// (a row queued before enrichment), which is a different claim from "".
+	ActorName    *string `gorm:"column:actor_name;size:128"`
+	ResourceName *string `gorm:"column:resource_name;size:256"`
+	GeoCity      *string `gorm:"column:geo_city;size:64"`
+	GeoCountry   *string `gorm:"column:geo_country;size:64"`
 }
 
 func (AuditPending) TableName() string { return "mxid_audit_pending" }

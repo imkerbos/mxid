@@ -37,9 +37,6 @@ func (s *Service) bridgeToChain(ctx context.Context, log *AuditLog) {
 		actor.ActorID = *log.ActorID
 	}
 	if log.ActorName != nil {
-		// Currently unused: AuditPending has no actor_name column, so
-		// Capturer.Capture never persists this. Kept for forward compat /
-		// if the chain schema grows an actor_name field.
 		actor.ActorName = *log.ActorName
 	}
 	if log.IP != nil {
@@ -68,6 +65,17 @@ func (s *Service) bridgeToChain(ctx context.Context, log *AuditLog) {
 	}
 	if log.ResourceID != nil {
 		ev.ResourceID = *log.ResourceID
+	}
+	// The enriched AuditLog is the only place these are resolved (name lookup
+	// and GeoIP both happen there), so this is where the ledger gets them.
+	if log.ResourceName != nil {
+		ev.ResourceName = *log.ResourceName
+	}
+	if log.GeoCity != nil {
+		ev.GeoCity = *log.GeoCity
+	}
+	if log.GeoCountry != nil {
+		ev.GeoCountry = *log.GeoCountry
 	}
 	// The originating HTTP request ctx is frequently already canceled by the
 	// time the async audit handler runs this (event.Bus dispatches detached
