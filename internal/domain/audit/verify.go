@@ -136,6 +136,16 @@ func VerifyAnchorsWithSink(ctx context.Context, db *gorm.DB, sink AnchorSink, ke
 	if err != nil || !res.OK {
 		return res, err
 	}
+	// A nil sink means anchoring runs in checkpoint-only mode: there is no
+	// external record, so there is nothing to diff against. The anchors have
+	// still been verified above (Merkle root + signature over the entries),
+	// which catches a forged or truncated range; the cross-check that a nil
+	// sink skips is specifically the one aimed at an attacker who can rewrite
+	// the database itself. Guarded here rather than at the call site so a
+	// future caller cannot reintroduce a nil dereference.
+	if sink == nil {
+		return res, nil
+	}
 
 	var dbAnchors []AuditAnchor
 	if err := db.WithContext(ctx).

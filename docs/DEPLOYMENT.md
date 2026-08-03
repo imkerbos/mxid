@@ -104,7 +104,7 @@ prod set:
 | `MXID_CRYPTO_AUDIT_ANCHOR_KEY` | ✅* | — | Audit anchor Ed25519 seed (`openssl rand -base64 32`). Required in release mode when anchoring is enabled (the default). |
 | `MXID_CRYPTO_AUDIT_ANCHOR_RETIRED_PUBKEYS` | — | — | Comma-separated base64 ed25519 public keys retired from anchoring; add the old public key here when rotating `MXID_CRYPTO_AUDIT_ANCHOR_KEY` so old anchors still verify. |
 | `MXID_AUDIT_ANCHOR_ENABLED` | — | `true` | Enable/disable audit anchoring. Setting `false` is an explicit opt-out; otherwise release mode requires the anchor key. |
-| `MXID_AUDIT_ANCHOR_SINK_PATH` | — | `data/audit-anchors.log` | File the signed audit anchors are appended to. |
+| `MXID_AUDIT_ANCHOR_SINK_PATH` | — | *(empty)* | Optional external mirror of each signed anchor. Empty = anchors are database checkpoints only. Set it only to a path outside the database's blast radius **and** shared by every replica — anchors are written by whichever replica holds the leader lock, so a per-pod volume scatters them and breaks verification. |
 | `POSTGRES_PASSWORD` | ✅ | — | DB password. |
 | `REDIS_PASSWORD` | ✅ | — | Redis password. |
 | `MXID_SERVER_ALLOWED_ORIGINS` | ✅ | — | CORS/CSRF allow-list, comma-separated origins (e.g. `https://id.example.com`). Boot-time. |

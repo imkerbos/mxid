@@ -1065,11 +1065,18 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	})
 
 	// Audit anchorer — periodically seals the un-anchored tail of each chain
-	// into a signed Merkle root written to an external sink, so a full DB
-	// compromise (including mxid_audit_entry) can still be caught against the
-	// external record. Single goroutine, gated on audit.anchor_enabled;
-	// key decode/validity errors fail startup rather than anchoring silently
-	// with a bad key.
+	// into a signed Merkle root recorded in mxid_audit_anchor. Those rows are
+	// checkpoints: a compact summary of a range that makes it verifiable, and
+	// eventually archivable, without walking the chain from genesis.
+	//
+	// An external sink is written IN ADDITION only when audit.anchor_sink_path
+	// is set. That is the piece which would catch an attacker with database
+	// write access, and it is opt-in because the guarantee depends entirely on
+	// the path being outside the database's blast radius and shared by every
+	// replica — a per-pod volume gives neither. See AuditConfig.
+	//
+	// Single goroutine, gated on audit.anchor_enabled; key decode/validity
+	// errors fail startup rather than anchoring silently with a bad key.
 	if a.Config.Audit.AnchorEnabled {
 		auditAnchorSeed, err := base64.StdEncoding.DecodeString(a.Config.Crypto.AuditAnchorKey)
 		if err != nil {
@@ -1079,7 +1086,16 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 		if err != nil {
 			a.Logger.Fatal("crypto.audit_anchor_key invalid", zap.Error(err))
 		}
-		auditAnchorSink := audit.NewFileSink(a.Config.Audit.AnchorSinkPath)
+		// nil sink = checkpoints only. Constructing a FileSink unconditionally is
+		// what previously made every deployment carry the external-witness
+		// machinery — and its failure modes — whether or not it wanted it.
+		var auditAnchorSink audit.AnchorSink
+		if path := strings.TrimSpace(a.Config.Audit.AnchorSinkPath); path != "" {
+			auditAnchorSink = audit.NewFileSink(path)
+			a.Logger.Info("audit anchor external sink enabled",
+				zap.String("path", path),
+				zap.String("note", "must be shared by all replicas and outside the DB blast radius to be meaningful"))
+		}
 		anchorer := audit.NewAnchorer(a.DB, auditAnchorPriv, auditAnchorSink, a.IDGen, a.Logger)
 		// Single-writer like the chainer: one replica anchors, others idle until
 		// failover. Also avoids two pods writing anchors to their own local sinks.

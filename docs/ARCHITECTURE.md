@@ -236,12 +236,48 @@ user is signed into** — not only when logout arrives through a protocol endpoi
    (migration 000050) that unconditionally rejects UPDATE/DELETE; `mxid_audit_chain_head`
    tracks each chain tip.
 5. **Anchoring** — an anchorer periodically seals the un-anchored tail into a SHA-256 Merkle
-   root, signs the (tenant, class, from_seq, to_seq, root) range with Ed25519, and writes the
-   anchor to an external `AnchorSink`, so even a full DB compromise is detectable against the
-   external record. A multi-key anchor registry supports key rotation.
+   root and signs the (tenant, class, from_seq, to_seq, root) range with Ed25519, recording it
+   in `mxid_audit_anchor`. A multi-key anchor registry supports key rotation.
+
+   An anchor serves two purposes, and only one of them is on by default:
+
+   - **Checkpoint (always).** ~375 bytes summarising a range, which is what makes that range
+     verifiable — and eventually archivable — without walking the chain from genesis.
+   - **External witness (opt-in, `audit.anchor_sink_path`).** Mirroring the signed root
+     outside the database is what would catch an operator holding database write access
+     rewriting history, since they cannot also rewrite a copy they do not control.
+
+   The witness is **off by default** because the guarantee is real only when the sink is both
+   outside the database's blast radius and shared by every replica. Anchors are written by
+   whichever replica holds the leader lock, so a per-pod volume scatters them across ordinals
+   and makes verification fail depending on which pod runs it — operational failure in place
+   of assurance. Turn it on only against a genuinely shared, append-only location.
 6. **Verification** — operator subcommands on the server binary: `verify-audit` (walk every
    chain head in place), `audit-export` (build a third-party-verifiable bundle), and
    `verify-export` (offline verification needing only the bundle + trusted public key).
+
+### What the audit chain does and does not prove
+
+Stating this plainly matters more than the machinery, because the layers defend
+against different attackers and only some of them are on by default.
+
+| Attacker | Defended by | On by default |
+|---|---|---|
+| Application bug or careless operator deleting rows | append-only DB trigger (migration 000050) | ✅ |
+| Someone who obtains the database (dump, SQL injection, stolen backup) and edits history | HMAC hash chain — recomputing it requires `MXID_CRYPTO_AUDIT_CHAIN_KEY`, which lives in the environment, not the database | ✅ |
+| An operator with **both** database write access **and** the chain key, rewriting history end to end | external anchor sink — they cannot also rewrite a copy held outside the database | ❌ opt-in |
+
+So in the default configuration MXID detects tampering by anyone who does not
+hold the chain key, and blocks deletion outright. It does **not** claim to prove
+that a fully privileged operator did not rewrite history — that requires an
+external sink, and a sink is only worth enabling when it genuinely lives outside
+the database's trust domain.
+
+Deployments that must make the stronger claim (an external audit obligation, a
+contractual tamper-evidence commitment) should enable the sink against shared,
+append-only storage, or export signed bundles regularly with `audit-export` —
+`verify-export` checks a bundle offline with nothing but the public key, and it
+accepts a non-genesis starting sequence, so an exported range stands on its own.
 
 ### Partition lifecycle
 
