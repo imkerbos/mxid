@@ -80,9 +80,22 @@ func (r *gormRepository) CreateWithIdentity(ctx context.Context, user *User, det
 // what history records.
 func (r *gormRepository) ResetPasswordTx(ctx context.Context, id int64, hash string, mustChange bool, history *UserPasswordHistory) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		updates := map[string]any{"password_hash": hash, "updated_at": time.Now()}
-		if mustChange {
-			updates["must_change_pwd"] = true
+		now := time.Now()
+		// Same column set UpdatePassword writes, plus the flag. All three matter:
+		//
+		//   password_changed_at drives the password-expiry check in the local
+		//   auth provider. Omitting it leaves an expired account expired after
+		//   the admin has just reset it — the user is refused at login with no
+		//   way for the admin to tell why the reset did not take.
+		//
+		//   must_change_pwd is written unconditionally, not only when setting it.
+		//   Reset-without-forcing has to clear a flag left over from an earlier
+		//   forced reset, or the user is still made to change on next login.
+		updates := map[string]any{
+			"password_hash":       hash,
+			"password_changed_at": now,
+			"must_change_pwd":     mustChange,
+			"updated_at":          now,
 		}
 		res := tx.Model(&User{}).Where("id = ?", id).Updates(updates)
 		if res.Error != nil {
@@ -117,6 +130,11 @@ func (r *gormRepository) DeleteMFATx(ctx context.Context, userID int64, mfaType 
 		if res.RowsAffected == 0 {
 			return gorm.ErrRecordNotFound
 		}
+		// Written through the transaction's handle rather than the backupCodeRepo
+		// seam: that seam has no way to join an in-flight transaction, and being
+		// in the same transaction is the entire point here. Deleting the secret
+		// while codes survive leaves a working second factor behind after "MFA
+		// removed".
 		if err := tx.Where("user_id = ?", userID).Delete(&MFABackupCode{}).Error; err != nil {
 			return fmt.Errorf("delete backup codes: %w", err)
 		}
@@ -431,21 +449,6 @@ func (r *gormRepository) DeleteIdentity(ctx context.Context, userID, identityID 
 		Delete(&UserIdentity{})
 	if result.Error != nil {
 		return fmt.Errorf("delete user identity: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	return nil
-}
-
-// SetMustChangePassword updates only the must_change_pwd flag.
-func (r *gormRepository) SetMustChangePassword(ctx context.Context, id int64, must bool) error {
-	result := r.db.WithContext(ctx).
-		Model(&User{}).
-		Where("id = ?", id).
-		Update("must_change_pwd", must)
-	if result.Error != nil {
-		return fmt.Errorf("set must change password: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
 		return gorm.ErrRecordNotFound
