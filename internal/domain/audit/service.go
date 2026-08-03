@@ -9,6 +9,7 @@ import (
 	"github.com/imkerbos/mxid/pkg/auditctx"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/geoip"
+	"github.com/imkerbos/mxid/pkg/metrics"
 	"github.com/imkerbos/mxid/pkg/snowflake"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -593,6 +594,28 @@ func (s *Service) enrich(ctx context.Context, log *AuditLog) {
 // createLog enriches the row with request-scoped actor context, then persists
 // it. Uses a background context for the write because event handlers may run
 // after the HTTP request context is canceled.
+// auditFailReason buckets a write failure into a low-cardinality metric label.
+// "no_partition" is called out on its own because it is not a transient fault:
+// it means the table has run past its provisioned partitions and EVERY audit
+// write will fail until a partition is created. That deserves a different
+// alert and a different runbook from a connection blip.
+func auditFailReason(err error) string {
+	if err == nil {
+		return "none"
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "no partition of relation"):
+		return "no_partition"
+	case strings.Contains(msg, "context canceled"), strings.Contains(msg, "context deadline"):
+		return "context"
+	case strings.Contains(msg, "connection"), strings.Contains(msg, "closed pool"):
+		return "connection"
+	default:
+		return "other"
+	}
+}
+
 func (s *Service) createLog(ctx context.Context, log *AuditLog) {
 	s.enrich(ctx, log)
 	if log.IP != nil {
@@ -604,8 +627,11 @@ func (s *Service) createLog(ctx context.Context, log *AuditLog) {
 		// (it already committed), so the log line below MUST stand in as the
 		// fallback record — it carries every field needed to reconstruct the
 		// lost row. The stable "audit_write_failed" marker + alert=true field
-		// are what log-based alerting keys on; wire a metrics counter here if
-		// one is ever added. See [[project_audit_architecture]].
+		// are what log-based alerting keys on.
+		// The counter is the machine-readable half: log-based alerting needs a
+		// log pipeline, and the deployments most likely to lose audit rows are
+		// the ones least likely to have one. Alert on any increase.
+		metrics.AuditWriteFailed(auditFailReason(err))
 		fields := []zap.Field{
 			zap.String("marker", "audit_write_failed"),
 			zap.Bool("alert", true),
