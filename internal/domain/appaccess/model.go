@@ -36,7 +36,8 @@ const (
 //
 // AppID is set     →  rule applies only to this specific app
 // AppGroupID is set →  rule applies to every app currently in this group;
-//                       new apps added later inherit automatically
+//
+//	new apps added later inherit automatically
 type Policy struct {
 	ID          int64     `gorm:"column:id;primaryKey" json:"id,string"`
 	AppID       *int64    `gorm:"column:app_id" json:"app_id,omitempty,string"`

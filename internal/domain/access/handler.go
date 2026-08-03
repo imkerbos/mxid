@@ -8,6 +8,7 @@ import (
 	"github.com/imkerbos/mxid/internal/middleware"
 	"github.com/imkerbos/mxid/pkg/authz"
 	"github.com/imkerbos/mxid/pkg/ee/license"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/ginutil"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/tenantctx"
@@ -125,7 +126,7 @@ func (h *Handler) RegisterPortal(rg *gin.RouterGroup) {
 // Bind-failure codes (literal, this file):
 //	40002 — createEligibility: bad request body
 //	40008 — createRequest (portal): bad request body
-//	40010 — updateEligibility: bad request body
+//	40001 — updateEligibility: bad request body
 //	40101 — createRequest (portal): no authenticated user in context
 //
 // Service-error codes (bound sentinels, see errcodes.go):
@@ -144,7 +145,7 @@ func (h *Handler) RegisterPortal(rg *gin.RouterGroup) {
 func (h *Handler) createEligibility(c *gin.Context) {
 	var body CreateEligibilityRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.BadRequest(c, 40002, "invalid request body")
+		response.BadRequest(c, errcode.NumInvalidInput, "invalid request body")
 		return
 	}
 	uid := h.userID(c)
@@ -163,7 +164,8 @@ func (h *Handler) updateEligibility(c *gin.Context) {
 	}
 	var body CreateEligibilityRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.BadRequest(c, 40010, "invalid request body")
+		// Was 40010, which the SPA renders as appNoLoginURL.
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 	e, err := h.svc.UpdateEligibility(c.Request.Context(), h.tenantID(c), id, body)
@@ -310,14 +312,14 @@ func (h *Handler) myRequests(c *gin.Context) {
 func (h *Handler) createRequest(c *gin.Context) {
 	var body CreateAccessRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.BadRequest(c, 40008, "invalid request body")
+		response.BadRequest(c, errcode.NumSignatureFailed, "invalid request body")
 		return
 	}
 	uid := h.userID(c)
 	if uid == 0 {
 		// Auth middleware normally guarantees a caller identity; defend here so
 		// a misconfigured route never creates a request with requester_id=0.
-		response.Unauthorized(c, 40101, "authentication required")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "authentication required")
 		return
 	}
 	out, err := h.svc.CreateRequest(c.Request.Context(), h.tenantID(c), uid, body)

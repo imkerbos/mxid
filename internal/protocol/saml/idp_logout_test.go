@@ -147,7 +147,9 @@ func setupSAMLLogoutHarness(t *testing.T) (*Handler, *SessionIndexStore, *record
 	}
 
 	appRes := resolver.NewAppResolver(
-		func(ctx context.Context, tenantID int64, code string) (*resolver.AppConfig, error) { return appCfg, nil },
+		func(ctx context.Context, tenantID int64, code string) (*resolver.AppConfig, error) {
+			return appCfg, nil
+		},
 		func(ctx context.Context, id int64) (*resolver.AppConfig, error) { return appCfg, nil },
 		func(ctx context.Context, clientID string) (*resolver.AppConfig, error) { return appCfg, nil },
 		func(ctx context.Context, id int64, certType string) (*resolver.CertConfig, error) { return cert, nil },

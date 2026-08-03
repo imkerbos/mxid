@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/pkg/authz"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/ginutil"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/session"
@@ -114,21 +115,21 @@ func (h *AdminSessionHandler) revokeOne(c *gin.Context) {
 	}
 	sid := c.Param("sid")
 	if sid == "" {
-		response.BadRequest(c, 40002, "missing session id")
+		response.BadRequest(c, errcode.NumInvalidInput, "missing session id")
 		return
 	}
 	ns := c.Query("namespace")
 	if ns == "" {
 		// 40004 (not 40003): 40003 is the frontend's global totpCodeReused
 		// localization; keep this admin-session error off that number.
-		response.BadRequest(c, 40004, "missing namespace query")
+		response.BadRequest(c, errcode.NumInputRejected, "missing namespace query")
 		return
 	}
 	switch ns {
 	case session.NamespaceConsole, session.NamespacePortal, session.NamespaceProtocol:
 		// valid
 	default:
-		response.BadRequest(c, 40004, "invalid namespace")
+		response.BadRequest(c, errcode.NumInputRejected, "invalid namespace")
 		return
 	}
 	// Ownership guard: the opaque session id must actually belong to :id,
@@ -136,7 +137,7 @@ func (h *AdminSessionHandler) revokeOne(c *gin.Context) {
 	// arbitrary session (incl. another user's / a super_admin's) by id.
 	sess, err := h.sessionMgr.Get(c.Request.Context(), ns, sid)
 	if err != nil || sess == nil || sess.UserID != uid {
-		response.NotFound(c, 40401, "session not found")
+		response.NotFound(c, errcode.NumNotFound, "session not found")
 		return
 	}
 	if err := h.sessionMgr.Delete(c.Request.Context(), ns, sid); err != nil {

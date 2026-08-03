@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/gin-gonic/gin"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/ginutil"
 	"github.com/imkerbos/mxid/pkg/idstr"
 	"github.com/imkerbos/mxid/pkg/pagination"
@@ -63,7 +64,7 @@ func (h *Handler) ListByUser(c *gin.Context) {
 func (h *Handler) Create(c *gin.Context) {
 	var req CreateGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
@@ -107,7 +108,7 @@ func (h *Handler) Update(c *gin.Context) {
 
 	var req UpdateGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
@@ -170,7 +171,7 @@ func (h *Handler) AddMember(c *gin.Context) {
 
 	var req AddMemberRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 
@@ -192,7 +193,7 @@ func (h *Handler) BatchAddMembers(c *gin.Context) {
 
 	var req BatchMembersRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 	userIDs, err := idstr.ParseList(req.UserIDs)
@@ -200,7 +201,7 @@ func (h *Handler) BatchAddMembers(c *gin.Context) {
 		// Malformed id list is a bad request body, not a service error. 40001
 		// (not 40003) — 40003 collides with the frontend's global
 		// totpCodeReused localization and would misrender the message.
-		response.BadRequest(c, 40001, "invalid user id list")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid user id list")
 		return
 	}
 
@@ -243,7 +244,7 @@ func (h *Handler) BatchRemoveMembers(c *gin.Context) {
 
 	var req BatchMembersRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 	userIDs, err := idstr.ParseList(req.UserIDs)
@@ -251,7 +252,7 @@ func (h *Handler) BatchRemoveMembers(c *gin.Context) {
 		// Malformed id list is a bad request body, not a service error. 40001
 		// (not 40003) — 40003 collides with the frontend's global
 		// totpCodeReused localization and would misrender the message.
-		response.BadRequest(c, 40001, "invalid user id list")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid user id list")
 		return
 	}
 
@@ -293,15 +294,15 @@ func (h *Handler) UpsertRule(c *gin.Context) {
 	}
 	var body json.RawMessage
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 	expr, err := ValidateRule(body)
 	if err != nil {
-		// 40010 (codeBadRule), NOT 40003 — 40003 collides with the frontend's
-		// global totpCodeReused localization. Rule errors carry safe, specific
-		// messages (bad field/operator/value, or a JSON decode error).
-		response.BadRequest(c, 40010, err.Error())
+		// Rule errors carry safe, specific messages (bad field/operator/value, or
+		// a JSON decode error), so the code must be a generic one that lets the
+		// SPA show them. See pkg/errcode/catalog.go.
+		response.BadRequest(c, errcode.NumBadGroupRule, err.Error())
 		return
 	}
 	rule, err := h.service.UpsertRule(c.Request.Context(), id, expr)

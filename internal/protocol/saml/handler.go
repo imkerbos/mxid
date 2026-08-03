@@ -21,6 +21,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/imkerbos/mxid/internal/protocol/resolver"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/ssoflow"
 	"github.com/imkerbos/mxid/pkg/tenantscope"
@@ -161,7 +162,7 @@ func (h *Handler) metadata(c *gin.Context) {
 		if err != nil {
 			h.logger.Warn("saml metadata: resolve app failed", zap.String("app_code", appCode), zap.Error(err))
 		}
-		response.NotFound(c, 40401, "application not found")
+		response.NotFound(c, errcode.NumNotFound, "application not found")
 		return
 	}
 
@@ -234,7 +235,7 @@ func (h *Handler) ssoRedirect(c *gin.Context) {
 	requestID, err := extractRequestID(samlRequest)
 	if err != nil {
 		h.logger.Warn("saml sso (redirect): decode SAMLRequest failed", zap.String("app_code", appCode), zap.Error(err))
-		response.BadRequest(c, 40001, "invalid SAMLRequest")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid SAMLRequest")
 		return
 	}
 
@@ -255,7 +256,7 @@ func (h *Handler) ssoPost(c *gin.Context) {
 	requestID, err := extractRequestID(samlRequest)
 	if err != nil {
 		h.logger.Warn("saml sso (post): decode SAMLRequest failed", zap.String("app_code", appCode), zap.Error(err))
-		response.BadRequest(c, 40001, "invalid SAMLRequest")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid SAMLRequest")
 		return
 	}
 
@@ -269,12 +270,12 @@ func (h *Handler) processSSO(c *gin.Context, appCode, requestID, relayState stri
 		if err != nil {
 			h.logger.Warn("saml sso: resolve app failed", zap.String("app_code", appCode), zap.Error(err))
 		}
-		response.NotFound(c, 40401, "application not found")
+		response.NotFound(c, errcode.NumNotFound, "application not found")
 		return
 	}
 
 	if app.Status != 1 {
-		response.Error(c, http.StatusForbidden, 40301, "application is disabled", "")
+		response.Error(c, http.StatusForbidden, errcode.NumForbiddenScope, "application is disabled", "")
 		return
 	}
 
@@ -333,13 +334,13 @@ func (h *Handler) processSSO(c *gin.Context, appCode, requestID, relayState stri
 		if aerr != nil {
 			h.logger.Error("saml sso: app-access check failed",
 				zap.String("app_code", appCode), zap.Int64("user_id", ssoSess.UserID), zap.Error(aerr))
-			response.Error(c, http.StatusForbidden, 40302, "access denied", "")
+			response.Error(c, http.StatusForbidden, errcode.NumAccessDenied, "access denied", "")
 			return
 		}
 		if !allowed {
 			h.logger.Warn("saml sso: access denied by policy",
 				zap.String("app_code", appCode), zap.Int64("user_id", ssoSess.UserID), zap.String("reason", reason))
-			response.Error(c, http.StatusForbidden, 40302, "access denied", reason)
+			response.Error(c, http.StatusForbidden, errcode.NumAccessDenied, "access denied", reason)
 			return
 		}
 	}
@@ -482,13 +483,13 @@ func (h *Handler) emitCrewjamResponse(c *gin.Context, appCode string, appID, use
 		if err != nil {
 			h.logger.Warn("saml sso: parse AuthnRequest failed",
 				zap.String("app_code", appCode), zap.Int64("app_id", appID), zap.Error(err))
-			response.BadRequest(c, 40001, "invalid SAML AuthnRequest")
+			response.BadRequest(c, errcode.NumBadRequest, "invalid SAML AuthnRequest")
 			return
 		}
 		if err := req.Validate(); err != nil {
 			h.logger.Warn("saml sso: validate AuthnRequest failed",
 				zap.String("app_code", appCode), zap.Int64("app_id", appID), zap.Error(err))
-			response.BadRequest(c, 40001, "SAML AuthnRequest validation failed")
+			response.BadRequest(c, errcode.NumBadRequest, "SAML AuthnRequest validation failed")
 			return
 		}
 	} else {
@@ -606,7 +607,7 @@ func (h *Handler) slo(c *gin.Context) {
 	// forged/unsigned LogoutRequest must not log the user out (logout CSRF) or
 	// elicit a signed LogoutResponse we could be tricked into reflecting.
 	if err := h.verifySPLogoutRequestSig(c); err != nil {
-		response.BadRequest(c, 40008, "invalid LogoutRequest signature")
+		response.BadRequest(c, errcode.NumSignatureFailed, "invalid LogoutRequest signature")
 		return
 	}
 

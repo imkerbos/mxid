@@ -25,7 +25,9 @@ func TestMetadata_SigningCertLoadFailure_DoesNotLeakInternalError(t *testing.T) 
 	sensitive := "pq: connection refused to internal-db-host.corp:5432"
 
 	appRes := resolver.NewAppResolver(
-		func(ctx context.Context, tenantID int64, code string) (*resolver.AppConfig, error) { return appCfg, nil },
+		func(ctx context.Context, tenantID int64, code string) (*resolver.AppConfig, error) {
+			return appCfg, nil
+		},
 		func(ctx context.Context, id int64) (*resolver.AppConfig, error) { return appCfg, nil },
 		func(ctx context.Context, clientID string) (*resolver.AppConfig, error) { return appCfg, nil },
 		func(ctx context.Context, id int64, certType string) (*resolver.CertConfig, error) { return nil, nil },
@@ -66,7 +68,9 @@ func TestSSORedirect_InvalidSAMLRequest_DoesNotLeakInternalError(t *testing.T) {
 
 	appCfg := &resolver.AppConfig{ID: 1, Protocol: "saml", Code: "app1", Status: 1}
 	appRes := resolver.NewAppResolver(
-		func(ctx context.Context, tenantID int64, code string) (*resolver.AppConfig, error) { return appCfg, nil },
+		func(ctx context.Context, tenantID int64, code string) (*resolver.AppConfig, error) {
+			return appCfg, nil
+		},
 		func(ctx context.Context, id int64) (*resolver.AppConfig, error) { return appCfg, nil },
 		func(ctx context.Context, clientID string) (*resolver.AppConfig, error) { return appCfg, nil },
 		func(ctx context.Context, id int64, certType string) (*resolver.CertConfig, error) { return nil, nil },

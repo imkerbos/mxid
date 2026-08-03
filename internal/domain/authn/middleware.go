@@ -3,6 +3,7 @@ package authn
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/pkg/auditctx"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/session"
 	"github.com/imkerbos/mxid/pkg/tenantscope"
@@ -37,21 +38,21 @@ func AuthMiddleware(sessionMgr *session.Manager, namespace string) gin.HandlerFu
 
 	return func(c *gin.Context) {
 		if cookieName == "" {
-			response.Unauthorized(c, 40101, "unsupported namespace")
+			response.Unauthorized(c, errcode.NumUnauthenticated, "unsupported namespace")
 			c.Abort()
 			return
 		}
 
 		sessionID, err := c.Cookie(cookieName)
 		if err != nil || sessionID == "" {
-			response.Unauthorized(c, 40101, "authentication required")
+			response.Unauthorized(c, errcode.NumUnauthenticated, "authentication required")
 			c.Abort()
 			return
 		}
 
 		sess, err := sessionMgr.Get(c.Request.Context(), namespace, sessionID)
 		if err != nil || sess == nil {
-			response.Unauthorized(c, 40101, "invalid or expired session")
+			response.Unauthorized(c, errcode.NumUnauthenticated, "invalid or expired session")
 			c.Abort()
 			return
 		}

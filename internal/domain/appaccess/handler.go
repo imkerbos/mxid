@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/pkg/authz"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/ginutil"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/tenantctx"
@@ -79,7 +80,7 @@ func (h *Handler) createForApp(c *gin.Context) {
 	}
 	var body createBody
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.BadRequest(c, 40002, "invalid request body")
+		response.BadRequest(c, errcode.NumInvalidInput, "invalid request body")
 		return
 	}
 	p, err := h.service.AddPolicy(c.Request.Context(), AddPolicyRequest{
@@ -119,7 +120,7 @@ func (h *Handler) createForAppGroup(c *gin.Context) {
 	}
 	var body createBody
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.BadRequest(c, 40002, "invalid request body")
+		response.BadRequest(c, errcode.NumInvalidInput, "invalid request body")
 		return
 	}
 	p, err := h.service.AddPolicy(c.Request.Context(), AddPolicyRequest{
@@ -166,14 +167,14 @@ func (h *Handler) batchForAppGroup(c *gin.Context) {
 func (h *Handler) batch(c *gin.Context, appID, groupID *int64) {
 	var body batchBody
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.BadRequest(c, 40002, "invalid request body")
+		response.BadRequest(c, errcode.NumInvalidInput, "invalid request body")
 		return
 	}
 	ids := make([]int64, 0, len(body.SubjectIDs))
 	for _, s := range body.SubjectIDs {
 		id, err := strconv.ParseInt(s, 10, 64)
 		if err != nil || id == 0 {
-			response.BadRequest(c, 40002, "invalid subject_id")
+			response.BadRequest(c, errcode.NumInvalidInput, "invalid subject_id")
 			return
 		}
 		ids = append(ids, id)

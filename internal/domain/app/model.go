@@ -83,33 +83,33 @@ const (
 // ClientSecret stores the bcrypt hash of the OIDC client_secret. Plaintext is
 // returned exactly once on create or rotate; subsequent reads expose hash only.
 type App struct {
-	ID             int64           `gorm:"column:id;primaryKey" json:"id"`
-	TenantID       *int64          `gorm:"column:tenant_id" json:"tenant_id"` // NULL for ScopeShared
-	Scope          int             `gorm:"column:scope;not null;default:1" json:"scope"`
-	SubjectStrategy string         `gorm:"column:subject_strategy;not null;size:32;default:username" json:"subject_strategy"`
-	Name           string          `gorm:"column:name;not null;size:128" json:"name"`
-	Code           string          `gorm:"column:code;not null;size:64" json:"code"`
-	Protocol       string          `gorm:"column:protocol;not null;size:16" json:"protocol"`
-	Status         int             `gorm:"column:status;not null;default:1" json:"status"`
-	Icon           *string         `gorm:"column:icon;size:512" json:"icon"`
-	Env            *string         `gorm:"column:env;size:64" json:"env"` // environment label: qa/uat/prod/... or custom; NULL = unlabelled
-	Description    *string         `gorm:"column:description;type:text" json:"description"`
-	ClientID       *string         `gorm:"column:client_id;size:128" json:"client_id"`
-	ClientSecret   *string         `gorm:"column:client_secret;size:255" json:"-"`
-	ClientType     string          `gorm:"column:client_type;not null;size:20;default:web_app" json:"client_type"`
-	HomeURL        *string         `gorm:"column:home_url;size:512" json:"home_url"`
-	IsFirstParty   bool            `gorm:"column:is_first_party;not null;default:true" json:"is_first_party"`
-	RequireConsent bool            `gorm:"column:require_consent;not null;default:false" json:"require_consent"`
-	ProtocolConfig json.RawMessage `gorm:"column:protocol_config;type:jsonb;not null;default:'{}'" json:"protocol_config"`
-	LoginURL       *string         `gorm:"column:login_url;size:512" json:"login_url"`
-	RedirectURIs   json.RawMessage `gorm:"column:redirect_uris;type:jsonb;default:'[]'" json:"redirect_uris"`
-	LogoutURL      *string         `gorm:"column:logout_url;size:512" json:"logout_url"`
-	AccessPolicy   int             `gorm:"column:access_policy;not null;default:1" json:"access_policy"`
-	CreatedAt      time.Time       `gorm:"column:created_at;not null" json:"created_at"`
-	UpdatedAt      time.Time       `gorm:"column:updated_at;not null" json:"updated_at"`
-	CreatedBy      *int64          `gorm:"column:created_by" json:"created_by"`
-	UpdatedBy      *int64          `gorm:"column:updated_by" json:"updated_by"`
-	DeletedAt      gorm.DeletedAt  `gorm:"column:deleted_at;index" json:"-"`
+	ID              int64           `gorm:"column:id;primaryKey" json:"id"`
+	TenantID        *int64          `gorm:"column:tenant_id" json:"tenant_id"` // NULL for ScopeShared
+	Scope           int             `gorm:"column:scope;not null;default:1" json:"scope"`
+	SubjectStrategy string          `gorm:"column:subject_strategy;not null;size:32;default:username" json:"subject_strategy"`
+	Name            string          `gorm:"column:name;not null;size:128" json:"name"`
+	Code            string          `gorm:"column:code;not null;size:64" json:"code"`
+	Protocol        string          `gorm:"column:protocol;not null;size:16" json:"protocol"`
+	Status          int             `gorm:"column:status;not null;default:1" json:"status"`
+	Icon            *string         `gorm:"column:icon;size:512" json:"icon"`
+	Env             *string         `gorm:"column:env;size:64" json:"env"` // environment label: qa/uat/prod/... or custom; NULL = unlabelled
+	Description     *string         `gorm:"column:description;type:text" json:"description"`
+	ClientID        *string         `gorm:"column:client_id;size:128" json:"client_id"`
+	ClientSecret    *string         `gorm:"column:client_secret;size:255" json:"-"`
+	ClientType      string          `gorm:"column:client_type;not null;size:20;default:web_app" json:"client_type"`
+	HomeURL         *string         `gorm:"column:home_url;size:512" json:"home_url"`
+	IsFirstParty    bool            `gorm:"column:is_first_party;not null;default:true" json:"is_first_party"`
+	RequireConsent  bool            `gorm:"column:require_consent;not null;default:false" json:"require_consent"`
+	ProtocolConfig  json.RawMessage `gorm:"column:protocol_config;type:jsonb;not null;default:'{}'" json:"protocol_config"`
+	LoginURL        *string         `gorm:"column:login_url;size:512" json:"login_url"`
+	RedirectURIs    json.RawMessage `gorm:"column:redirect_uris;type:jsonb;default:'[]'" json:"redirect_uris"`
+	LogoutURL       *string         `gorm:"column:logout_url;size:512" json:"logout_url"`
+	AccessPolicy    int             `gorm:"column:access_policy;not null;default:1" json:"access_policy"`
+	CreatedAt       time.Time       `gorm:"column:created_at;not null" json:"created_at"`
+	UpdatedAt       time.Time       `gorm:"column:updated_at;not null" json:"updated_at"`
+	CreatedBy       *int64          `gorm:"column:created_by" json:"created_by"`
+	UpdatedBy       *int64          `gorm:"column:updated_by" json:"updated_by"`
+	DeletedAt       gorm.DeletedAt  `gorm:"column:deleted_at;index" json:"-"`
 }
 
 // TableName returns the table name for App.

@@ -77,4 +77,3 @@ func (s *CaptchaService) Generate() (*CaptchaResponse, error) {
 func (s *CaptchaService) Verify(id, answer string) bool {
 	return s.captcha.Verify(id, answer, true)
 }
-

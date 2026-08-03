@@ -42,6 +42,7 @@ func NewRepository(db *gorm.DB) Repository { return &repo{db: db} }
 // ListByApp returns the effective rule set for an app:
 //   - rows where app_id = appID
 //   - PLUS rows where app_group_id is any group containing appID
+//
 // Used by CanAccess at /authorize time.
 func (r *repo) ListByApp(ctx context.Context, appID, tenantID int64) ([]*Policy, error) {
 	const q = `
@@ -113,18 +114,19 @@ func (r *repo) DeleteBySubject(ctx context.Context, subjectType string, subjectI
 
 // AppsForUser implements the SQL-side eval. Computed as:
 //
-//   allowed = ∃ row with effect=allow that matches the user AND the app
-//             (either app_id directly OR app belongs to a group whose
-//             app_group_id matches the rule)
-//   denied  = ∃ row with effect=deny  same matching
-//   final   = allowed AND NOT denied
+//	allowed = ∃ row with effect=allow that matches the user AND the app
+//	          (either app_id directly OR app belongs to a group whose
+//	          app_group_id matches the rule)
+//	denied  = ∃ row with effect=deny  same matching
+//	final   = allowed AND NOT denied
 //
 // Matching:
-//   public                                  → always matches
-//   user / subject_id == userID             → match
-//   group / user in member set              → match
-//   org   / user in org subtree             → match  (uses ltree path)
-//   role  / user has role binding (any scope) → match
+//
+//	public                                  → always matches
+//	user / subject_id == userID             → match
+//	group / user in member set              → match
+//	org   / user in org subtree             → match  (uses ltree path)
+//	role  / user has role binding (any scope) → match
 //
 // We project (effect, app_id) using a UNION ALL between direct app rules
 // and group-inherited rules. The portal /apps query joins on the result.

@@ -42,9 +42,9 @@ func NewKeyService(repo Repository, db *gorm.DB, idGen *snowflake.Generator, mas
 
 // Errors.
 var (
-	ErrKeyNotFound        = errors.New("signing key not found")
-	ErrMasterKeyMissing   = errors.New("master key not configured")
-	ErrUnsupportedAlgo    = errors.New("unsupported signing algorithm")
+	ErrKeyNotFound      = errors.New("signing key not found")
+	ErrMasterKeyMissing = errors.New("master key not configured")
+	ErrUnsupportedAlgo  = errors.New("unsupported signing algorithm")
 )
 
 // SigningKeyTTL is the default validity window for an OIDC signing key.

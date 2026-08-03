@@ -124,15 +124,15 @@ type ProvisioningConfigFunc func(ctx context.Context, appID int64) (enabled bool
 // exposes DB/Redis/router/route-groups/config; the func hooks bridge to CE
 // domains the EE module must not import.
 type InitContext struct {
-	App          *bootstrap.App
-	SessionMgr   *session.Manager
+	App           *bootstrap.App
+	SessionMgr    *session.Manager
 	ExternalLogin ExternalLoginFunc
-	TenantByCode TenantByCodeFunc
-	ConsoleGate  ConsoleGateFunc
+	TenantByCode  TenantByCodeFunc
+	ConsoleGate   ConsoleGateFunc
 	// IsAdmin reports whether a user holds admin (console) permissions, without
 	// the built-in-account rejection ConsoleGate applies. Gates admin writes made
 	// over the portal (form-fill descriptor push).
-	IsAdmin AdminCheckFunc
+	IsAdmin      AdminCheckFunc
 	ExternalURLs ExternalURLsFunc
 	// UpdateLastLogin stamps last-login after a federated sign-in (external IdP
 	// runs outside the CE password engine that normally owns the stamp).

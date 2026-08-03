@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/authn"
 	"github.com/imkerbos/mxid/internal/domain/consent"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/ssoflow"
@@ -71,7 +72,7 @@ func registerConsentRoutes(rg *gin.RouterGroup, h *consentHandler) {
 func (h *consentHandler) preview(c *gin.Context) {
 	appID, err := parseID(c.Query("app_id"))
 	if err != nil {
-		response.BadRequest(c, 40001, "invalid app_id")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid app_id")
 		return
 	}
 	scopesQ := c.QueryArray("scope")
@@ -81,7 +82,7 @@ func (h *consentHandler) preview(c *gin.Context) {
 
 	app, err := h.queryier.GetApp(c.Request.Context(), appID)
 	if err != nil || app == nil {
-		response.NotFound(c, 40401, "app not found")
+		response.NotFound(c, errcode.NumNotFound, "app not found")
 		return
 	}
 
@@ -107,7 +108,7 @@ func (h *consentHandler) preview(c *gin.Context) {
 func (h *consentHandler) grant(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 	var req struct {
@@ -116,7 +117,7 @@ func (h *consentHandler) grant(c *gin.Context) {
 		ReturnTo string   `json:"return_to" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 	// Record the scope grant. Empty for non-OIDC confirmations (SAML/CAS carry
@@ -159,7 +160,7 @@ func (h *consentHandler) grant(c *gin.Context) {
 func (h *consentHandler) list(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 	rows, err := h.consentSvc.ListByUser(c.Request.Context(), h.tenantID, userID)
@@ -185,12 +186,12 @@ func (h *consentHandler) list(c *gin.Context) {
 func (h *consentHandler) revoke(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 	appID, err := parseID(c.Param("app_id"))
 	if err != nil {
-		response.BadRequest(c, 40001, "invalid app_id")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid app_id")
 		return
 	}
 	if err := h.consentSvc.Revoke(c.Request.Context(), h.tenantID, userID, appID); err != nil {

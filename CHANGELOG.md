@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- Five error responses showed the user a message about something else. The SPA
+  replaces the server message with a fixed translated sentence for certain
+  numeric codes, and those codes had been reused: a bad dynamic-group rule and an
+  invalid access-eligibility body both rendered as "this app has no login URL", a
+  missing captcha rendered as "that code was just used", and a disabled login
+  method and a missing TOTP code both rendered as "that password matches a recent
+  one". All five now carry codes of their own.
 - Access-policy label resolvers now filter by tenant. They query with `.Table()`
   into anonymous scan structs, which the tenantscope plugin cannot see, so any id
   from any tenant resolved to a name — a cross-tenant label oracle. Request-bound

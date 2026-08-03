@@ -24,6 +24,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/authn"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/ratelimit"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/session"
@@ -132,13 +133,13 @@ type smsSendResponse struct {
 
 func (h *SMSOTPHandler) send(c *gin.Context) {
 	if h.enabled != nil && !h.enabled(c.Request.Context()) {
-		response.Error(c, http.StatusForbidden, 40301, "sms otp login disabled", "")
+		response.Error(c, http.StatusForbidden, errcode.NumForbiddenScope, "sms otp login disabled", "")
 		return
 	}
 
 	var req smsSendRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 	phone := strings.TrimSpace(req.Phone)
@@ -150,7 +151,7 @@ func (h *SMSOTPHandler) send(c *gin.Context) {
 	if exists, _ := h.rdb.Exists(c.Request.Context(), cooldownKey).Result(); exists > 0 {
 		// Cooldown is a rate-limit condition — emit 429 to match the other 42901
 		// sites (it was a 400 here, a status collision on the same code).
-		response.Error(c, http.StatusTooManyRequests, 42901, "please wait before requesting another code", "")
+		response.Error(c, http.StatusTooManyRequests, errcode.NumTooManyAttempts, "please wait before requesting another code", "")
 		return
 	}
 
@@ -227,13 +228,13 @@ type smsLoginResponse struct {
 
 func (h *SMSOTPHandler) login(c *gin.Context) {
 	if h.enabled != nil && !h.enabled(c.Request.Context()) {
-		response.Error(c, http.StatusForbidden, 40301, "sms otp login disabled", "")
+		response.Error(c, http.StatusForbidden, errcode.NumForbiddenScope, "sms otp login disabled", "")
 		return
 	}
 
 	var req smsLoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 	phone := strings.TrimSpace(req.Phone)
@@ -266,7 +267,7 @@ func (h *SMSOTPHandler) login(c *gin.Context) {
 				return
 			}
 		}
-		response.BadRequest(c, 40002, "code invalid or expired")
+		response.BadRequest(c, errcode.NumInvalidInput, "code invalid or expired")
 		return
 	}
 	// Correct code — clear the phone's failure budget.

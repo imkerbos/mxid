@@ -8,6 +8,7 @@ import (
 
 	"github.com/imkerbos/mxid/internal/domain/authn"
 	"github.com/imkerbos/mxid/pkg/dberr"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/urlswap"
@@ -53,7 +54,7 @@ func registerAppsRoutes(rg *gin.RouterGroup, h *appsHandler) {
 func (h *appsHandler) listApps(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 	tenantID, _ := authn.GetTenantID(c)
@@ -71,7 +72,7 @@ func (h *appsHandler) listApps(c *gin.Context) {
 func (h *appsHandler) listAppGroups(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 	tenantID, _ := authn.GetTenantID(c)
@@ -90,7 +91,7 @@ func (h *appsHandler) listAppGroups(c *gin.Context) {
 func (h *appsHandler) listFavorites(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 	ids, err := h.appQuerier.ListFavoriteAppIDs(c.Request.Context(), userID)
@@ -106,7 +107,7 @@ func (h *appsHandler) listFavorites(c *gin.Context) {
 func (h *appsHandler) listRecent(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 	tenantID, _ := authn.GetTenantID(c)
@@ -129,13 +130,13 @@ func (h *appsHandler) listRecent(c *gin.Context) {
 func (h *appsHandler) addFavorite(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 	tenantID, _ := authn.GetTenantID(c)
 	appID, err := parseID(c.Param("id"))
 	if err != nil {
-		response.BadRequest(c, 40001, "invalid app id")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid app id")
 		return
 	}
 	if err := h.appQuerier.AddFavorite(c.Request.Context(), userID, tenantID, appID); err != nil {
@@ -153,21 +154,21 @@ func (h *appsHandler) addFavorite(c *gin.Context) {
 func (h *appsHandler) reorderFavorites(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 	var req struct {
 		AppIDs []string `json:"app_ids" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
 		return
 	}
 	parsedIDs := make([]int64, 0, len(req.AppIDs))
 	for _, s := range req.AppIDs {
 		id, err := strconv.ParseInt(s, 10, 64)
 		if err != nil {
-			response.BadRequest(c, 40001, "invalid app id in app_ids")
+			response.BadRequest(c, errcode.NumBadRequest, "invalid app id in app_ids")
 			return
 		}
 		parsedIDs = append(parsedIDs, id)
@@ -183,12 +184,12 @@ func (h *appsHandler) reorderFavorites(c *gin.Context) {
 func (h *appsHandler) removeFavorite(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 	appID, err := parseID(c.Param("id"))
 	if err != nil {
-		response.BadRequest(c, 40001, "invalid app id")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid app id")
 		return
 	}
 	if err := h.appQuerier.RemoveFavorite(c.Request.Context(), userID, appID); err != nil {
@@ -204,7 +205,7 @@ func (h *appsHandler) removeFavorite(c *gin.Context) {
 func (h *appsHandler) launchApp(c *gin.Context) {
 	userID, ok := authn.GetUserID(c)
 	if !ok {
-		response.Unauthorized(c, 40101, "not authenticated")
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
 		return
 	}
 	tenantID, _ := authn.GetTenantID(c)
@@ -212,21 +213,21 @@ func (h *appsHandler) launchApp(c *gin.Context) {
 
 	appID, err := parseID(c.Param("id"))
 	if err != nil {
-		response.BadRequest(c, 40001, "invalid app id")
+		response.BadRequest(c, errcode.NumBadRequest, "invalid app id")
 		return
 	}
 
 	url, err := h.appQuerier.GetAppLaunchURL(c.Request.Context(), appID, userID)
 	if err != nil {
 		if dberr.IsNotFound(err) {
-			response.NotFound(c, 40401, "app not found")
+			response.NotFound(c, errcode.NumNotFound, "app not found")
 			return
 		}
 		if errors.Is(err, ErrNoLaunchURL) {
 			// Not a server fault: the app (typically a form-fill app) has no login
 			// URL configured yet. A 500 here made it look broken; surface it as a
 			// clear 4xx the SPA can show.
-			response.BadRequest(c, 40010, "app has no login URL configured yet")
+			response.BadRequest(c, errcode.NumAppNoLoginURL, "app has no login URL configured yet")
 			return
 		}
 		response.InternalError(c, "failed to get launch url", err)

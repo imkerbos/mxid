@@ -3,6 +3,7 @@ package approle
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/pkg/authz"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/ginutil"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/tenantctx"
@@ -130,7 +131,7 @@ func (h *Handler) createRoleForApp(c *gin.Context) {
 	}
 	var body createRoleBody
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.BadRequest(c, 40002, "invalid request body")
+		response.BadRequest(c, errcode.NumInvalidInput, "invalid request body")
 		return
 	}
 	r, err := h.service.CreateRole(c.Request.Context(), CreateRoleRequest{
@@ -157,7 +158,7 @@ func (h *Handler) createRoleForAppGroup(c *gin.Context) {
 	}
 	var body createRoleBody
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.BadRequest(c, 40002, "invalid request body")
+		response.BadRequest(c, errcode.NumInvalidInput, "invalid request body")
 		return
 	}
 	r, err := h.service.CreateRole(c.Request.Context(), CreateRoleRequest{
@@ -191,7 +192,7 @@ func (h *Handler) updateRole(c *gin.Context) {
 	}
 	var body updateRoleBody
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.BadRequest(c, 40002, "invalid request body")
+		response.BadRequest(c, errcode.NumInvalidInput, "invalid request body")
 		return
 	}
 	r, err := h.service.UpdateRole(c.Request.Context(), UpdateRoleRequest{
@@ -273,7 +274,7 @@ func (h *Handler) createBindingForApp(c *gin.Context) {
 	}
 	var body createBindingBody
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.BadRequest(c, 40002, "invalid request body")
+		response.BadRequest(c, errcode.NumInvalidInput, "invalid request body")
 		return
 	}
 	b, err := h.service.AddBinding(c.Request.Context(), AddBindingRequest{
@@ -298,7 +299,7 @@ func (h *Handler) createBindingForAppGroup(c *gin.Context) {
 	}
 	var body createBindingBody
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.BadRequest(c, 40002, "invalid request body")
+		response.BadRequest(c, errcode.NumInvalidInput, "invalid request body")
 		return
 	}
 	b, err := h.service.AddBinding(c.Request.Context(), AddBindingRequest{

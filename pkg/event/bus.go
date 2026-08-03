@@ -190,7 +190,7 @@ const (
 	SettingsUpdated = "settings.updated"
 
 	// Portal self-service identity changes.
-	ProfileUpdated   = "profile.updated"
-	APITokenCreated  = "api_token.created"
-	APITokenRevoked  = "api_token.revoked"
+	ProfileUpdated  = "profile.updated"
+	APITokenCreated = "api_token.created"
+	APITokenRevoked = "api_token.revoked"
 )

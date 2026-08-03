@@ -23,8 +23,8 @@ const (
 // Redis key + channel layout. Kept private so callers cannot construct
 // raw keys that bypass the cache invariants.
 const (
-	cacheKeyPrefix       = "authz:bindings:"
-	invalidateChannel    = "authz:invalidate"
+	cacheKeyPrefix        = "authz:bindings:"
+	invalidateChannel     = "authz:invalidate"
 	invalidateAllSentinel = "*"
 )
 
