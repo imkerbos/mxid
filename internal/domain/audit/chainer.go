@@ -81,6 +81,11 @@ func (c *Chainer) chainOne(tx *gorm.DB, p *AuditPending) error {
 		SessionID:    p.SessionID,
 		Detail:       jsonToMap(p.Detail),
 		OccurredAt:   p.OccurredAt.UTC().Format(time.RFC3339),
+		Version:      PayloadV2,
+		ActorName:    deref(p.ActorName),
+		ResourceName: deref(p.ResourceName),
+		GeoCity:      deref(p.GeoCity),
+		GeoCountry:   deref(p.GeoCountry),
 	}
 	canonical, err := CanonicalJSON(payload)
 	if err != nil {
