@@ -29,10 +29,16 @@ type e2eWidget struct {
 func (e2eWidget) TableName() string     { return "e2e_widget" }
 func (e2eWidget) AuditResource() string { return "e2e_widget" }
 
+// The trigger definition deliberately lives ONLY in the migrations. It used to
+// be duplicated here, and the copy went stale the moment migration 000064 gave
+// the function a prune gate: this test's CREATE OR REPLACE silently reinstated
+// the older, gateless version, so every later test that legitimately pruned
+// failed with "append-only" — a failure pointing at the pruner, which was fine,
+// rather than at this constant, which was not.
+//
+// Only the trigger is (re)created here, since the table itself is created by
+// the migrations that the e2e database is set up with.
 const e2eTrigger = `
-CREATE OR REPLACE FUNCTION mxid_audit_entry_append_only() RETURNS TRIGGER AS $$
-BEGIN RAISE EXCEPTION 'mxid_audit_entry is append-only: % is not permitted', TG_OP; END;
-$$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS trg_audit_entry_append_only ON mxid_audit_entry;
 CREATE TRIGGER trg_audit_entry_append_only BEFORE UPDATE OR DELETE ON mxid_audit_entry
 FOR EACH ROW EXECUTE FUNCTION mxid_audit_entry_append_only();`
@@ -52,6 +58,20 @@ func TestZZ_E2E_Postgres(t *testing.T) {
 	if err := db.Exec(e2eTrigger).Error; err != nil {
 		t.Fatalf("install trigger: %v", err)
 	}
+	// Leave the ledger as we found it. Without this the test only passes against
+	// a database created fresh for the run, and re-running it locally fails on a
+	// duplicate key from its own previous pass.
+	t.Cleanup(func() {
+		db.Transaction(func(tx *gorm.DB) error {
+			tx.Exec(`SET LOCAL mxid.audit_prune = 'on'`)
+			tx.Exec(`DELETE FROM mxid_audit_entry WHERE tenant_id = 7`)
+			return nil
+		})
+		db.Exec(`DELETE FROM mxid_audit_pending WHERE tenant_id = 7`)
+		db.Exec(`DELETE FROM mxid_audit_anchor WHERE tenant_id = 7`)
+		db.Exec(`DELETE FROM mxid_audit_chain_head WHERE tenant_id = 7`)
+		db.Exec(`DROP TABLE IF EXISTS e2e_widget`)
+	})
 	if err := db.Use(NewCapturePlugin(NewCapturer(newTestIDGen(t)))); err != nil {
 		t.Fatal(err)
 	}

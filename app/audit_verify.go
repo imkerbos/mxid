@@ -241,3 +241,51 @@ func runVerifyExport(args []string) error {
 	}
 	return nil
 }
+
+// runAuditRebuild reconstructs mxid_audit_log rows from the ledger.
+//
+// Intended for after retention has dropped a partition, or the projection has
+// been lost or corrupted. It is additive: existing rows are left untouched, so
+// it is safe to run against a table that is only partly missing, which is the
+// usual case.
+//
+// It cannot restore everything, and says so rather than implying otherwise.
+// Read and access events (org.read, app.launched, the api.* catch-all) are
+// never chained — they change no state — so they exist only in the projection
+// and are gone for good once their partition is dropped.
+func runAuditRebuild(a *bootstrap.App, args []string) error {
+	fs := flag.NewFlagSet("audit-rebuild", flag.ContinueOnError)
+	tenant := fs.Int64("tenant", 0, "tenant id (0 = every chain head)")
+	class := fs.String("class", "", "chain class (empty = every class for the tenant)")
+	after := fs.Int64("after-seq", 0, "resume after this seq (0 = from the start of the retained ledger)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+	var heads []audit.ChainHead
+	q := a.DB.WithContext(ctx).Order("tenant_id, chain_class")
+	if *tenant != 0 {
+		q = q.Where("tenant_id = ?", *tenant)
+	}
+	if *class != "" {
+		q = q.Where("chain_class = ?", *class)
+	}
+	if err := q.Find(&heads).Error; err != nil {
+		return fmt.Errorf("load chain heads: %w", err)
+	}
+	if len(heads) == 0 {
+		return fmt.Errorf("no matching chain heads")
+	}
+
+	for _, h := range heads {
+		res, err := audit.RebuildFromLedger(ctx, a.DB, h.TenantID, h.ChainClass, *after)
+		if err != nil {
+			return fmt.Errorf("rebuild tenant=%d class=%s: %w", h.TenantID, h.ChainClass, err)
+		}
+		fmt.Printf("rebuild tenant=%d class=%s: read %d entries through seq %d, wrote %d rows\n",
+			h.TenantID, h.ChainClass, res.EntriesRead, res.ThroughSeq, res.RowsWritten)
+	}
+	fmt.Println("note: read/access events (*.read, app.launched, api.*) are not chained and cannot be rebuilt.")
+	return nil
+}
