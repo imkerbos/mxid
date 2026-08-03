@@ -47,7 +47,9 @@ export function clearResumeGuard(): void {
   try {
     sessionStorage.removeItem(GUARD_KEY)
   } catch {
-    // ignore
+    // sessionStorage throws in private-mode / storage-disabled browsers. The
+    // tripwire is a best-effort guard against a redirect loop, so failing to
+    // clear it costs nothing a user would notice.
   }
 }
 

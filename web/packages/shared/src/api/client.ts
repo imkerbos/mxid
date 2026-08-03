@@ -18,6 +18,14 @@ declare module 'axios' {
 }
 
 // Backend response codes the client reacts to globally.
+//
+// These live here rather than inline at each branch because the numbers are a
+// wire contract with pkg/errcode/catalog.go, and a backend renumber has to be
+// findable from one place. CAPTCHA_REQUIRED moved from 40003 to 40016 when the
+// backend stopped reusing a code the SPA localizes: 40003 renders as "that code
+// was just used", so a login that needed a captcha said the wrong thing.
+export const CODE_CAPTCHA_REQUIRED = 40016
+export const CODE_CAPTCHA_INVALID = 40004
 export const CODE_STEP_UP_REQUIRED = 40330
 export const CODE_MFA_ENROLL_REQUIRED = 40331
 export const CODE_EE_FEATURE_REQUIRED = 40332

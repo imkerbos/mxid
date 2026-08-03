@@ -279,14 +279,18 @@ export default function OrgsPage() {
                 newMap.set(uid, user)
               }
             } catch {
-              // ignore individual failures
+              // One unresolvable member must not blank the whole roster; the
+              // row falls back to showing the raw id.
             }
           })
         )
         setMemberUsers(newMap)
       }
-    } catch {
-      // ignore
+    } catch (e) {
+      // An empty member list and a failed load looked identical, so an admin
+      // could conclude an org had no members when the request had simply
+      // failed.
+      toast.error(extractMessage(e, t('orgs.membersLoadFailed')))
     } finally {
       setMembersLoading(false)
     }
