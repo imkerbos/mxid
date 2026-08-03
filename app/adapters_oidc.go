@@ -14,6 +14,7 @@ import (
 	appdomain "github.com/imkerbos/mxid/internal/domain/app"
 	"github.com/imkerbos/mxid/internal/domain/appaccess"
 	"github.com/imkerbos/mxid/internal/domain/approle"
+	"github.com/imkerbos/mxid/pkg/tenantctx"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -28,6 +29,28 @@ func logResolveErr(app *bootstrap.App, table string, id int64, err error) {
 	}
 	app.Logger.Warn("subject resolve query failed; renders as unknown",
 		zap.String("table", table), zap.Int64("id", id), zap.Error(err))
+}
+
+// scopeToTenant appends `tenant_id = ?` when the caller has a request tenant.
+//
+// These resolvers query with .Table() against anonymous scan structs, which the
+// tenantscope plugin cannot see — it keys off the model type, and these types
+// deliberately do not implement TenantScoped() because some call paths (logout
+// terminators, background jobs) have no request tenant at all and must still
+// resolve a label.
+//
+// That combination made them a cross-tenant label oracle: any id, from anywhere,
+// resolved to a name. Adding the predicate only when a tenant is actually known
+// closes the oracle for request-bound callers without breaking the tenant-less
+// paths, which stay exactly as unscoped as they have to be.
+func scopeToTenant(c *gin.Context, q *gorm.DB) *gorm.DB {
+	if c == nil {
+		return q
+	}
+	if tid := tenantctx.FromContext(c, 0); tid > 0 {
+		return q.Where("tenant_id = ?", tid)
+	}
+	return q
 }
 
 // appProtocolResolver adapts the app domain service to access.ProtocolResolver:
@@ -137,15 +160,17 @@ type userNameRow struct {
 	DisplayName string `gorm:"column:display_name"`
 }
 
-func (r *appLabelResolver) App(_ *gin.Context, id int64) (string, string) {
+func (r *appLabelResolver) App(c *gin.Context, id int64) (string, string) {
 	var row nameCodeRow
-	logResolveErr(r.app, "mxid_app", id, r.app.DB.Table("mxid_app").Where("id = ? AND deleted_at IS NULL", id).Take(&row).Error)
+	q := scopeToTenant(c, r.app.DB.Table("mxid_app").Where("id = ? AND deleted_at IS NULL", id))
+	logResolveErr(r.app, "mxid_app", id, q.Take(&row).Error)
 	return row.Name, row.Code
 }
 
-func (r *appLabelResolver) AppGroup(_ *gin.Context, id int64) (string, string) {
+func (r *appLabelResolver) AppGroup(c *gin.Context, id int64) (string, string) {
 	var row nameCodeRow
-	logResolveErr(r.app, "mxid_app_group", id, r.app.DB.Table("mxid_app_group").Where("id = ? AND deleted_at IS NULL", id).Take(&row).Error)
+	q := scopeToTenant(c, r.app.DB.Table("mxid_app_group").Where("id = ? AND deleted_at IS NULL", id))
+	logResolveErr(r.app, "mxid_app_group", id, q.Take(&row).Error)
 	return row.Name, row.Code
 }
 
@@ -155,26 +180,32 @@ func newAccessSubjectResolver(app *bootstrap.App) *accessSubjectResolver {
 	return &accessSubjectResolver{app: app}
 }
 
-func (r *accessSubjectResolver) Resolve(_ *gin.Context, subjectType string, id int64) (string, string) {
+func (r *accessSubjectResolver) Resolve(c *gin.Context, subjectType string, id int64) (string, string) {
 	switch subjectType {
 	case appaccess.SubjectUser:
 		var row userNameRow
-		logResolveErr(r.app, "mxid_user", id, r.app.DB.Table("mxid_user").Select("username, COALESCE(display_name, '') as display_name").Where("id = ?", id).Take(&row).Error)
+		q := scopeToTenant(c, r.app.DB.Table("mxid_user").
+			Select("username, COALESCE(display_name, '') as display_name").
+			Where("id = ?", id))
+		logResolveErr(r.app, "mxid_user", id, q.Take(&row).Error)
 		if row.DisplayName != "" {
 			return row.DisplayName, row.Username
 		}
 		return row.Username, row.Username
 	case appaccess.SubjectGroup:
 		var row nameCodeRow
-		logResolveErr(r.app, "mxid_user_group", id, r.app.DB.Table("mxid_user_group").Where("id = ? AND deleted_at IS NULL", id).Take(&row).Error)
+		q := scopeToTenant(c, r.app.DB.Table("mxid_user_group").Where("id = ? AND deleted_at IS NULL", id))
+		logResolveErr(r.app, "mxid_user_group", id, q.Take(&row).Error)
 		return row.Name, row.Code
 	case appaccess.SubjectOrg:
 		var row nameCodeRow
-		logResolveErr(r.app, "mxid_organization", id, r.app.DB.Table("mxid_organization").Where("id = ? AND deleted_at IS NULL", id).Take(&row).Error)
+		q := scopeToTenant(c, r.app.DB.Table("mxid_organization").Where("id = ? AND deleted_at IS NULL", id))
+		logResolveErr(r.app, "mxid_organization", id, q.Take(&row).Error)
 		return row.Name, row.Code
 	case appaccess.SubjectRole:
 		var row nameCodeRow
-		logResolveErr(r.app, "mxid_role", id, r.app.DB.Table("mxid_role").Where("id = ? AND deleted_at IS NULL", id).Take(&row).Error)
+		q := scopeToTenant(c, r.app.DB.Table("mxid_role").Where("id = ? AND deleted_at IS NULL", id))
+		logResolveErr(r.app, "mxid_role", id, q.Take(&row).Error)
 		return row.Name, row.Code
 	}
 	return "", ""

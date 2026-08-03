@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Access-policy label resolvers now filter by tenant. They query with `.Table()`
+  into anonymous scan structs, which the tenantscope plugin cannot see, so any id
+  from any tenant resolved to a name — a cross-tenant label oracle. Request-bound
+  callers now carry the predicate; the tenant-less paths (logout terminators,
+  background jobs) are unchanged, since they have no tenant to filter by.
+
 ### Fixed
 - Admin password reset is now one transaction. A partial failure could leave the
   temporary password live without the must-change flag (making it permanent) or
