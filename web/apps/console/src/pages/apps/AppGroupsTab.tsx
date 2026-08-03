@@ -51,6 +51,7 @@ export default function AppGroupsTab() {
   const openCreate = () => {
     setEditing(null)
     setForm({ name: '', code: '', description: '', sort_order: 0 })
+    setCodeError('')
     setShowForm(true)
   }
   const openEdit = (g: AppGroup) => {
@@ -61,6 +62,7 @@ export default function AppGroupsTab() {
       description: g.description ?? '',
       sort_order: g.sort_order,
     })
+    setCodeError('')
     setShowForm(true)
   }
 
@@ -184,7 +186,7 @@ export default function AppGroupsTab() {
             >
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-lg font-semibold">{editing ? t('apps.appGroupDetail.editGroup') : t('apps.appGroupDetail.createGroup')}</h3>
-                <button onClick={() => setShowForm(false)} className="rounded p-1 text-faint hover:bg-surface-muted">
+                <button onClick={() => { setShowForm(false); setCodeError('') }} className="rounded p-1 text-faint hover:bg-surface-muted">
                   <X className="h-4 w-4" />
                 </button>
               </div>
@@ -224,7 +226,7 @@ export default function AppGroupsTab() {
                   <input type="number" value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: Number(e.target.value) })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
                 </Field>
                 <div className="flex justify-end gap-3 pt-2">
-                  <Button type="button" variant="secondary" onClick={() => setShowForm(false)}>{t('common.cancel')}</Button>
+                  <Button type="button" variant="secondary" onClick={() => { setShowForm(false); setCodeError('') }}>{t('common.cancel')}</Button>
                   <Button type="submit" loading={saving}>
                     {editing ? t('common.save') : t('common.create')}
                   </Button>
