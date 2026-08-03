@@ -126,21 +126,47 @@ push_one "$MXID_WEB_IMAGE"     "$WEB_NAME"
 push_one "$MXID_DEPS_IMAGE"    "$DEPS_NAME"
 
 # ── helm ─────────────────────────────────────────────────────────────────────
-HELM_ARGS=(
-  upgrade --install "$RELEASE" "$HERE/chart/$MXID_CHART"
-  --namespace "$NAMESPACE" --create-namespace
-  --values "$VALUES"
+# Shared value overrides. These four are derived from the bundle + --registry,
+# so they always win over whatever the values file says — the whole point is
+# that images resolve to the registry this cluster can actually reach.
+OVERRIDES=(
   --set-string "image.registry=$REGISTRY"
   --set-string "image.tag=$MXID_VERSION"
   --set-string "edition=$MXID_EDITION"
   --set-string "backend.waitForDeps.image=$REGISTRY/$DEPS_NAME"
 )
-[ "$DRY_RUN" -eq 1 ] && HELM_ARGS+=(--dry-run)
 
-log "helm ${HELM_ARGS[*]}"
-helm "${HELM_ARGS[@]}"
+if [ "$DRY_RUN" -eq 1 ]; then
+  # `helm template`, NOT `helm upgrade --dry-run`: even with --dry-run=client,
+  # upgrade contacts the API server to read release history, so it fails on a
+  # machine without cluster access. template renders purely locally, which is
+  # what a rehearsal needs — it catches the failures that actually bite
+  # (missing secrets, unrenderable values, images left pointing off-site).
+  log "rendering (helm template — no cluster contact)"
+  RENDER="$(mktemp)"
+  helm template "$RELEASE" "$HERE/chart/$MXID_CHART" \
+    --namespace "$NAMESPACE" --values "$VALUES" "${OVERRIDES[@]}" > "$RENDER"
 
-[ "$DRY_RUN" -eq 1 ] && exit 0
+  echo
+  log "rendered $(grep -c '^---' "$RENDER") manifests. Image references:"
+  grep -E '^[[:space:]]+image:' "$RENDER" | sed 's/^ *//' | sort -u | sed 's/^/  /'
+
+  # An image that did not get rewritten is an ImagePullBackOff waiting to
+  # happen on a cluster with no route off-site.
+  if grep -E '^[[:space:]]+image:' "$RENDER" | grep -qv "$REGISTRY"; then
+    rm -f "$RENDER"
+    die "some images do NOT point at $REGISTRY (shown above) — they would be unpullable in an air-gapped cluster"
+  fi
+  rm -f "$RENDER"
+  echo
+  log "dry run OK — values render and every image resolves to $REGISTRY"
+  exit 0
+fi
+
+log "helm upgrade --install $RELEASE (namespace $NAMESPACE)"
+helm upgrade --install "$RELEASE" "$HERE/chart/$MXID_CHART" \
+  --namespace "$NAMESPACE" --create-namespace \
+  --values "$VALUES" "${OVERRIDES[@]}"
 
 echo
 log "waiting for rollout"
