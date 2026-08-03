@@ -23,6 +23,7 @@ import (
 	"bufio"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -56,7 +57,7 @@ var allowedCalls = map[string]string{
 	// Junction/relation table with no tenant_id column; the relation is
 	// pre-scoped by the (app_id, group_id) pair whose parents are already
 	// tenant-checked at the service layer before insert.
-	"internal/domain/app/repository_impl.go:256": "mxid_app_group_rel junction has no tenant_id column; scoped by app_id+group_id",
+	"internal/domain/app/repository_impl.go:314": "mxid_app_group_rel junction has no tenant_id column; scoped by app_id+group_id",
 	// ltree subtree path rewrite scoped by the path LIKE prefix + id; operates
 	// within a single org subtree already resolved under the caller's tenant.
 	"internal/domain/org/repository_impl.go:106": "ltree descendant path move scoped by path prefix + id, single resolved subtree",
@@ -206,5 +207,48 @@ func moduleRootTS(t *testing.T) string {
 			t.Fatalf("could not locate go.mod from %s", dir)
 		}
 		dir = parent
+	}
+}
+
+// allowedCalls is keyed by line number, which drifts the moment anything above
+// it moves. The dangerous direction is not the entry that stops matching — that
+// just produces a failure — but the one that lands on a DIFFERENT Raw/Exec and
+// exempts it silently. This asserts every entry still points at a raw call.
+//
+// (The .Table() guard next door was re-keyed by table name after hitting this;
+// these keys are left as line numbers because several of the entries name a
+// specific statement in a file that issues more than one against the same
+// table, so the table alone would not identify them.)
+func TestAllowedRawCallsStillPointAtARawCall(t *testing.T) {
+	root := moduleRootTS(t)
+
+	for key, reason := range allowedCalls {
+		idx := strings.LastIndex(key, ":")
+		if idx < 0 {
+			t.Errorf("malformed allowedCalls key %q", key)
+			continue
+		}
+		rel, lineStr := key[:idx], key[idx+1:]
+		lineNo, err := strconv.Atoi(lineStr)
+		if err != nil {
+			t.Errorf("allowedCalls key %q has a non-numeric line", key)
+			continue
+		}
+		lines, err := readLines(filepath.Join(root, rel))
+		if err != nil {
+			t.Errorf("allowedCalls names %s, which cannot be read: %v", rel, err)
+			continue
+		}
+		if lineNo < 1 || lineNo > len(lines) {
+			t.Errorf("allowedCalls entry %q is past the end of the file (%d lines). "+
+				"The exemption is stale — re-point it or drop it.", key, len(lines))
+			continue
+		}
+		if !containsAny(lines[lineNo-1], rawExecMarkers) {
+			t.Errorf("allowedCalls exempts %q (%s) but that line is no longer a Raw/Exec call:\n  %s\n"+
+				"The code moved and the exemption did not. Left as is, it will eventually land on a "+
+				"different raw statement and exempt that one instead.",
+				key, reason, strings.TrimSpace(lines[lineNo-1]))
+		}
 	}
 }

@@ -228,12 +228,14 @@ func (s *Service) topApps(ctx context.Context, tenantID int64, rangeStart time.T
 		Name string `gorm:"column:name"`
 	}
 	var names []nameRow
-	// tenant_id is redundant given the ids came from a tenant-scoped audit query,
-	// but .Table() with an anonymous scan struct is invisible to the tenantscope
-	// plugin, so the predicate has to be written out rather than assumed.
+	// .Table() with an anonymous scan struct is invisible to the tenantscope
+	// plugin, so the predicate is written out. It has to match
+	// appdomain.App.TenantScopePredicate, NOT a plain equality: a globally
+	// shared app has tenant_id NULL, and equality alone would drop those rows —
+	// the chart would then show their launch counts against a blank name.
 	if err := s.db.WithContext(ctx).Table("mxid_app").
 		Select("id, name").
-		Where("id IN ? AND tenant_id = ?", ids, tenantID).
+		Where("id IN ? AND (tenant_id = ? OR tenant_id IS NULL)", ids, tenantID).
 		Scan(&names).Error; err != nil {
 		return nil, err
 	}
