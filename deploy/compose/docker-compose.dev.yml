@@ -143,6 +143,15 @@ services:
       - "5173"
     volumes:
       - ../..:/app
+      # node_modules stays INSIDE the container. The bind mount above shares the
+      # whole repo, so without these the container's `pnpm install` writes
+      # linux/arm64 native binaries over the host's darwin ones — and the next
+      # `pnpm -r build` on the host dies with "Cannot find native binding",
+      # pointing at npm rather than at the dev stack that caused it.
+      - /app/web/node_modules
+      - /app/web/apps/console/node_modules
+      - /app/web/apps/portal/node_modules
+      - /app/web/packages/shared/node_modules
       - mxid-pnpm-store:/root/.local/share/pnpm/store
     depends_on:
       mxid:
@@ -161,6 +170,15 @@ services:
       - "5174"
     volumes:
       - ../..:/app
+      # node_modules stays INSIDE the container. The bind mount above shares the
+      # whole repo, so without these the container's `pnpm install` writes
+      # linux/arm64 native binaries over the host's darwin ones — and the next
+      # `pnpm -r build` on the host dies with "Cannot find native binding",
+      # pointing at npm rather than at the dev stack that caused it.
+      - /app/web/node_modules
+      - /app/web/apps/console/node_modules
+      - /app/web/apps/portal/node_modules
+      - /app/web/packages/shared/node_modules
       - mxid-pnpm-store:/root/.local/share/pnpm/store
     depends_on:
       mxid:
