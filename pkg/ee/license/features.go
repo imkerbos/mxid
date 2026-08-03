@@ -31,7 +31,7 @@ const (
 	// FeatureFormFill — form-fill / SWA credential vault: store a user's
 	// downstream username+password and auto-submit the target site's login form
 	// via the browser extension. Credential-custodian feature; code lives only in
-	// mxid-ee. See docs/FORM-FILL-SSO-DESIGN.md.
+	// mxid-ee. See docs/archive/FORM-FILL-SSO-DESIGN.md.
 	FeatureFormFill Feature = "form_fill"
 )
 

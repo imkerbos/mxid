@@ -7,8 +7,9 @@
 // + kill every active session across all namespaces. Together that revokes a
 // departing user's access to every app they reach through MXID SSO.
 //
-// Later slices (outbox-backed delivery, L2 SCIM deprovisioning, L3 offboarding
-// report + webhook) build on this seam; see docs/PHASE1-DESIGN.md.
+// L2 SCIM deprovisioning and L3 (offboarding report + webhook, outbox-backed
+// delivery) build on this seam; see the offboarding section of
+// docs/ARCHITECTURE.md.
 package offboarding
 
 import (

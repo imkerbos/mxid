@@ -218,9 +218,9 @@ talks to the app, and the password never leaves the browser at fill time.
 logging into it once. Users who'd rather not vault a password simply skip it: the
 app degrades to a plain launcher and they type the password manually.
 
-Design & security: [form-fill design](docs/FORM-FILL-SSO-DESIGN.md) ·
-[security spec](docs/FORM-FILL-SSO-B0-SECURITY-SPEC.md) ·
-[extension token binding](docs/FORM-FILL-EXTENSION-TOKEN-BINDING.md).
+Architecture: [form-fill seam](docs/ARCHITECTURE.md). Original design records:
+[form-fill design](docs/archive/FORM-FILL-SSO-DESIGN.md) ·
+[security spec](docs/archive/FORM-FILL-SSO-B0-SECURITY-SPEC.md).
 
 ## Project layout
 

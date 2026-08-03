@@ -208,9 +208,9 @@ MXID,由 **MXID Login** 浏览器扩展把它填进应用**自己的**登录表�
 凭证,用户对着应用登录一次即完成接入。不想托管密码的用户直接跳过即可:应用降级为
 普通启动入口,手动输入密码。
 
-设计与安全:[表单填充设计](docs/FORM-FILL-SSO-DESIGN.md) ·
-[安全规格](docs/FORM-FILL-SSO-B0-SECURITY-SPEC.md) ·
-[扩展令牌绑定](docs/FORM-FILL-EXTENSION-TOKEN-BINDING.md)。
+架构说明见 [ARCHITECTURE.md](docs/ARCHITECTURE.md) 的表单填充 seam 一节。原始设计存档:
+[表单填充设计](docs/archive/FORM-FILL-SSO-DESIGN.md) ·
+[安全规格](docs/archive/FORM-FILL-SSO-B0-SECURITY-SPEC.md)。
 
 ## 项目结构
 

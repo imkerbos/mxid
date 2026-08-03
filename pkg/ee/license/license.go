@@ -44,10 +44,9 @@ type Payload struct {
 	Product    string    `json:"product"` // must equal Product ("mxid")
 	Customer   string    `json:"customer"`
 	Features   []Feature `json:"features"`
-	IssuedAt   int64     `json:"iat"`
-	ExpiresAt  int64     `json:"exp"` // unix seconds; 0 = perpetual
-	MaxTenants int       `json:"max_tenants,omitempty"`
-	MaxUsers   int       `json:"max_users,omitempty"`
+	IssuedAt  int64     `json:"iat"`
+	ExpiresAt int64     `json:"exp"` // unix seconds; 0 = perpetual
+	MaxUsers  int       `json:"max_users,omitempty"`
 	// InstallID, when set, binds the license to one installation fingerprint
 	// (see Fingerprint). Empty = portable (runs on any install).
 	InstallID string `json:"install_id,omitempty"`
@@ -221,13 +220,7 @@ func (m *Manager) ExpiresAt() time.Time {
 	return time.Unix(m.payload.ExpiresAt, 0)
 }
 
-// MaxTenants / MaxUsers expose signed limits (0 = unlimited / unset).
-func (m *Manager) MaxTenants() int {
-	if m == nil || m.payload == nil {
-		return 0
-	}
-	return m.payload.MaxTenants
-}
+// MaxUsers exposes the signed user limit (0 = unlimited / unset).
 func (m *Manager) MaxUsers() int {
 	if m == nil || m.payload == nil {
 		return 0
