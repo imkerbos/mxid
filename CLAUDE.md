@@ -184,6 +184,13 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full picture.
   (no `latest` tag). See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 - **Pre-commit hook** runs `verify-mod / vet / build / gormtags / exports`. Keep
   it green; don't `--no-verify` without saying so.
+- Start dev with `make dev-up`, never a bare `docker compose up`. The Makefile
+  passes `--env-file .env`; without it Compose substitutes its defaults and the
+  backend comes up unable to authenticate to Postgres.
+- The vite containers keep their own `node_modules` (anonymous volumes in the
+  dev compose file). They share the repo by bind mount, so without that the
+  container's `pnpm install` overwrites the host's native binaries with
+  linux/arm64 ones and `pnpm -r build` on the host dies pointing at npm.
 - Repo-root tool configs (`.air.toml`, `.golangci.yml`, `.dockerignore`) are
   **shared project config and are committed** — CI and the Makefile read them.
   Never gitignore them.
