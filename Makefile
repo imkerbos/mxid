@@ -214,7 +214,7 @@ verify-gormtags:
 	@cd tools/gormtaglint && go build -o "$(CURDIR)/bin/gormtaglint" .
 	@./bin/gormtaglint ./app/... ./internal/... ./cmd/...
 
-# golangci-lint — exhaustruct on cmd/server/adapters_*, nilness, errcheck, staticcheck.
+# golangci-lint — exhaustruct on app/adapters_*, nilness, errcheck, staticcheck.
 verify-lint:
 	@echo "==> verify-lint"
 	@command -v golangci-lint >/dev/null 2>&1 || { echo "golangci-lint not installed: https://golangci-lint.run/welcome/install/"; exit 1; }
