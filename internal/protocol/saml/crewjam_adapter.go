@@ -46,6 +46,14 @@ func spEntityDescriptor(cfg *SAMLConfig) (*crewjam.EntityDescriptor, error) {
 		if err != nil {
 			return nil, err
 		}
+		// pemCertBytes only proves the input decodes, and most short strings
+		// happen to be valid base64 — "not a cert" decodes cleanly. Without this
+		// parse, a mistyped sp_cert reaches the SP descriptor intact and only
+		// surfaces later, as an opaque signature failure on the SP's next signed
+		// AuthnRequest.
+		if _, err := x509.ParseCertificate(certDER); err != nil {
+			return nil, fmt.Errorf("sp_cert is not a valid X.509 certificate: %w", err)
+		}
 		b64 := encodeCertB64(certDER)
 		for _, use := range []string{"signing", "encryption"} {
 			sp.KeyDescriptors = append(sp.KeyDescriptors, crewjam.KeyDescriptor{
