@@ -869,6 +869,22 @@ registry 前缀下,再执行 `helm upgrade --install`,同时把 `image.registry`
 升级就是换个新版本的包跑同样的命令。回滚就跑旧版本的包;镜像从不打 `latest`,
 钉哪个版本就是哪个版本。
 
+## 出站请求不走出口代理
+
+服务端发起的每一次外部请求 —— 外部 IdP 换 token、SCIM 下游注销、离职 webhook、
+OIDC discovery、SAML metadata、头像抓取 —— 都走带 SSRF 防护的客户端,它
+**忽略 `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`**,直连目标。
+
+这是有意的。该客户端在每一次拨号和每一跳重定向上重新解析并复查目标 IP;
+走代理意味着复查的是代理地址而不是真实目标,等于没查。
+
+对必须经出口代理才能上外网的环境,后果是:
+
+- 外部 IdP 登录(Lark / 飞书 / Teams)、SCIM、webhook 会连不通。**没有**环境变量
+  可以改变这一点。
+- 请在防火墙上直接放行这些目标域名,或把 MXID 部署在无需代理即可访问它们的位置。
+- 完全离线部署不受影响 —— 只要不启用上述功能,就没有任何出站请求。
+
 ## 升级
 
 1. 读 [CHANGELOG.md](../CHANGELOG.md) 看目标版本说明。

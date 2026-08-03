@@ -21,7 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - External-IdP providers (Lark/Feishu, Teams, GitHub) now make their OAuth calls
   through the SSRF-guarded client instead of a bare HTTP client, so a redirect
   from a compromised IdP cannot walk the request onto an internal address with
-  the app's bearer token attached. (EE)
+  the app's bearer token attached. (EE) **Deployment note:** that client ignores
+  `HTTPS_PROXY`, as every other outbound fetch already did, so a network that
+  needs an egress proxy to reach Lark/Feishu/Teams must allow those hosts
+  directly. See *Outbound requests do not use an egress proxy* in
+  `docs/DEPLOYMENT.md`.
 - Five error responses showed the user a message about something else. The SPA
   replaces the server message with a fixed translated sentence for certain
   numeric codes, and those codes had been reused: a bad dynamic-group rule and an

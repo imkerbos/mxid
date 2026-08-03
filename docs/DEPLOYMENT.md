@@ -792,6 +792,27 @@ Helm chart this is `routing.forwardedProtoHttps: true`, on by default).
 
 If the proxy doesn't add these headers, leave `trusted_proxies` empty so MXID treats the proxy IP as the client IP.
 
+## Outbound requests do not use an egress proxy
+
+Every server-side fetch — external IdP token exchange, SCIM deprovisioning,
+offboarding webhooks, OIDC discovery, SAML metadata, avatar fetches — goes
+through the SSRF-guarded client, which **ignores `HTTP_PROXY` / `HTTPS_PROXY` /
+`NO_PROXY`** and connects directly.
+
+That is deliberate. The guard re-resolves the destination and re-checks the
+resolved IP on every dial and every redirect hop; routing through a proxy would
+mean checking the proxy's address instead of the real one, which is the same as
+not checking at all.
+
+Consequences for a network that requires an egress proxy to reach the internet:
+
+- External IdP login (Lark / Feishu / Teams), SCIM, and webhooks will fail to
+  connect. There is no env var that changes this.
+- Allow the specific destination hosts through the firewall directly, or run
+  MXID where those hosts are reachable without a proxy.
+- A fully air-gapped install is unaffected as long as none of those features are
+  enabled — they are the only things that reach outside the cluster.
+
 ## Production checklist
 
 - [ ] HTTPS everywhere. Set `server.cookie_secure: true`.
