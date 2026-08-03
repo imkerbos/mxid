@@ -40,6 +40,24 @@ func (r *gormRepository) GetRoleByID(ctx context.Context, id int64) (*Role, erro
 	return &role, nil
 }
 
+// GetRolesByIDs fetches many roles in one query, keyed by id. Missing ids are
+// simply absent from the map, matching GetRoleByID's caller behaviour of
+// skipping a binding whose role has been deleted.
+func (r *gormRepository) GetRolesByIDs(ctx context.Context, ids []int64) (map[int64]*Role, error) {
+	out := make(map[int64]*Role, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var roles []*Role
+	if err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&roles).Error; err != nil {
+		return nil, fmt.Errorf("get roles by ids: %w", err)
+	}
+	for _, role := range roles {
+		out[role.ID] = role
+	}
+	return out, nil
+}
+
 // GetRoleByCode finds a role by tenant and code.
 func (r *gormRepository) GetRoleByCode(ctx context.Context, tenantID int64, code string) (*Role, error) {
 	var role Role
