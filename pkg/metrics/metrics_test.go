@@ -27,7 +27,11 @@ func TestMiddlewareRecordsRedAndExposesMetrics(t *testing.T) {
 
 	// Scrape /metrics.
 	mw := httptest.NewRecorder()
-	Handler()(func() *gin.Context { c, _ := gin.CreateTestContext(mw); c.Request = httptest.NewRequest("GET", "/metrics", nil); return c }())
+	Handler()(func() *gin.Context {
+		c, _ := gin.CreateTestContext(mw)
+		c.Request = httptest.NewRequest("GET", "/metrics", nil)
+		return c
+	}())
 	body := mw.Body.String()
 
 	// RED counter present, labelled by the pattern (path param collapsed).

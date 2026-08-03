@@ -151,6 +151,13 @@ func (AppGroup) TableName() string {
 	return "mxid_app_group"
 }
 
+// AuditResource implements audit.Audited. Access policies and app roles can be
+// attached to a group rather than an app, so an app group is an access-granting
+// object in its own right.
+func (AppGroup) AuditResource() string {
+	return "app_group"
+}
+
 // TenantScoped marks mxid_app_group for automatic tenant isolation.
 func (AppGroup) TenantScoped() {}
 

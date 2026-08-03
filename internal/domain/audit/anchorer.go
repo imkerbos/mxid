@@ -6,9 +6,11 @@ import (
 	"crypto/ed25519"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/imkerbos/mxid/pkg/dberr"
+	"github.com/imkerbos/mxid/pkg/metrics"
 	"github.com/imkerbos/mxid/pkg/snowflake"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -138,6 +140,36 @@ func (a *Anchorer) AnchorChain(ctx context.Context, tenantID int64, class string
 	return anchor, nil
 }
 
+// reportLag publishes, per chain, how many entries are written but not yet
+// sealed into an anchor. Entries only become verifiable as a range once
+// anchored, so a lag that keeps growing is a growing window of history that
+// cannot be proven intact — and, like a stalled chainer, nothing else surfaces
+// it.
+func (a *Anchorer) reportLag(ctx context.Context) {
+	var heads []ChainHead
+	if err := a.db.WithContext(ctx).Find(&heads).Error; err != nil {
+		return
+	}
+	for i := range heads {
+		h := &heads[i]
+		var anchoredThrough int64
+		var last AuditAnchor
+		err := a.db.WithContext(ctx).
+			Where("tenant_id = ? AND chain_class = ?", h.TenantID, h.ChainClass).
+			Order("to_seq desc").First(&last).Error
+		switch {
+		case err == nil:
+			anchoredThrough = last.ToSeq
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			// Never anchored: the whole chain is the lag.
+		default:
+			continue
+		}
+		metrics.AuditAnchorLag(
+			strconv.FormatInt(h.TenantID, 10), h.ChainClass, h.LastSeq-anchoredThrough)
+	}
+}
+
 // AnchorAll anchors every chain that has a head. Returns the number of new anchors.
 func (a *Anchorer) AnchorAll(ctx context.Context) (int, error) {
 	var heads []ChainHead
@@ -166,6 +198,9 @@ func (a *Anchorer) Run(ctx context.Context, interval time.Duration) {
 		if _, err := a.AnchorAll(ctx); err != nil {
 			a.logger.Warn("audit anchorer: batch failed", zap.Error(err))
 		}
+		// Reported after the attempt, and unconditionally: when anchoring is
+		// failing is exactly when the lag needs to be visible.
+		a.reportLag(ctx)
 		select {
 		case <-ctx.Done():
 			return

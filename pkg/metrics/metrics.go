@@ -94,13 +94,30 @@ var (
 		Name: "mxid_partitions_dropped_total",
 		Help: "Partitions dropped by retention.",
 	}, []string{"table"})
+
+	// Depth of the audit capture queue. The chainer is a single leader-elected
+	// writer, so if it stops or falls behind, this grows without bound and
+	// nothing else reports it — the captures themselves keep succeeding.
+	auditPendingDepth = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "mxid_audit_pending_depth",
+		Help: "Rows waiting in mxid_audit_pending. Sustained growth means the chainer is stalled.",
+	})
+
+	// How far the anchorer trails the chain tail, per chain. Entries are only
+	// verifiable as a range once anchored, so a growing lag is a growing window
+	// of history that cannot be proven intact.
+	auditAnchorLag = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "mxid_audit_anchor_lag",
+		Help: "Chain entries written but not yet anchored, by tenant and chain class.",
+	}, []string{"tenant", "chain_class"})
 )
 
 func init() {
 	reg.MustRegister(collectors.NewGoCollector())
 	reg.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	reg.MustRegister(reqTotal, reqDuration, buildInfo, workerRuns, workerLastSuccess, outboxDispatch, dlockLeader, authzCache,
-		auditWriteFailed, partitionsAhead, partitionDefaultRows, partitionsDropped)
+		auditWriteFailed, partitionsAhead, partitionDefaultRows, partitionsDropped,
+		auditPendingDepth, auditAnchorLag)
 }
 
 // WorkerRun records that a background worker completed a pass; WorkerSuccess
@@ -137,6 +154,15 @@ func PartitionDefaultRows(table string, n int64) {
 	partitionDefaultRows.WithLabelValues(table).Set(float64(n))
 }
 func PartitionsDropped(table string, n int) { partitionsDropped.WithLabelValues(table).Add(float64(n)) }
+
+// AuditPendingDepth and AuditAnchorLag expose the two silent failure modes of
+// the audit pipeline: a stalled chainer (captures still succeed, so nothing
+// else notices) and an anchorer falling behind (history accumulates that cannot
+// yet be proven intact as a range).
+func AuditPendingDepth(n int64) { auditPendingDepth.Set(float64(n)) }
+func AuditAnchorLag(tenant, chainClass string, n int64) {
+	auditAnchorLag.WithLabelValues(tenant, chainClass).Set(float64(n))
+}
 
 // SetBuildInfo records a single mxid_build_info series so a fleet-wide dashboard
 // can group by running version.
