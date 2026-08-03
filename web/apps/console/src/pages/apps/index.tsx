@@ -833,7 +833,7 @@ export default function AppsPage() {
         description={view === 'apps' ? t('apps.subtitle') : t('apps.appGroups.subtitle')}
         actions={
           view === 'apps' ? (
-            <Button onClick={() => setShowCreate(true)} icon={<Plus className="h-4 w-4" />}>
+            <Button onClick={() => { setCreateCodeError(''); setShowCreate(true) }} icon={<Plus className="h-4 w-4" />}>
               {t('apps.createModal.title')}
             </Button>
           ) : null
@@ -1083,7 +1083,7 @@ export default function AppsPage() {
       <Modal
         open={showCreate}
         title={t('apps.createModal.title')}
-        onClose={() => { setShowCreate(false); setActiveTemplate(null); setTplFieldValues({}) }}
+        onClose={() => { setShowCreate(false); setCreateCodeError(''); setActiveTemplate(null); setTplFieldValues({}) }}
         size="xl"
       >
             <form onSubmit={handleCreate} className="space-y-4">
@@ -1241,7 +1241,7 @@ export default function AppsPage() {
               )}
 
               <div className="flex justify-end gap-3 pt-2">
-                <Button type="button" variant="secondary" onClick={() => { setShowCreate(false); setActiveTemplate(null); setTplFieldValues({}) }}>
+                <Button type="button" variant="secondary" onClick={() => { setShowCreate(false); setCreateCodeError(''); setActiveTemplate(null); setTplFieldValues({}) }}>
                   {t('common.cancel')}
                 </Button>
                 <Button type="submit" loading={creating}>

@@ -281,7 +281,7 @@ function ResetPasswordButton({
   return (
     <>
       <button
-        onClick={() => setOpen(true)}
+        onClick={() => { setPwdError(''); setOpen(true) }}
         className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700 hover:bg-amber-100"
       >
         <KeyRound className="h-4 w-4" />
@@ -316,7 +316,7 @@ function ResetPasswordButton({
                 {t('users.detail.resetPwd.forceChange')}
               </label>
               <div className="flex justify-end gap-3 pt-2">
-                <Button variant="secondary" onClick={() => setOpen(false)}>
+                <Button variant="secondary" onClick={() => { setOpen(false); setPwdError('') }}>
                   {t('users.detail.common.cancel')}
                 </Button>
                 <Button onClick={submit} loading={submitting} disabled={submitting || pwd.length < 6}>
