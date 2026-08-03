@@ -94,12 +94,19 @@ crypto:
   # MXID_CRYPTO_AUDIT_ANCHOR_RETIRED_PUBKEYS. Optional.
   audit_anchor_retired_pubkeys: ""
 
-# Periodic signed checkpoints of the audit hash chain, written to an
-# out-of-band sink so a full DB compromise (which could rewrite
-# entry_hash end-to-end) is still detectable.
+# Periodic signed checkpoints of the audit hash chain. Anchors are recorded in
+# mxid_audit_anchor, where they summarise a range in ~375 bytes so it can be
+# verified without walking the chain from genesis.
+#
+# anchor_sink_path additionally mirrors each anchor to a file OUTSIDE the
+# database. That is what would catch an operator with database write access
+# rewriting history — but only if the path is outside the DB's blast radius AND
+# shared by every replica. Anchors are written by whichever replica holds the
+# leader lock, so a per-pod volume scatters them and makes verification fail
+# depending on which pod runs it. Empty (the default) = checkpoints only.
 audit:
   anchor_enabled: true
-  anchor_sink_path: data/audit-anchors.log
+  anchor_sink_path: ""
 
 log:
   level: info # debug/info/warn/error

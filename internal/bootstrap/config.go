@@ -223,10 +223,10 @@ type TenantConfig struct {
 //
 // Optional; when empty, only the active AuditAnchorKey's public key can verify.
 type CryptoConfig struct {
-	KeyEncryptionKey           string `mapstructure:"key_encryption_key"`
-	AuditChainKey              string `mapstructure:"audit_chain_key"`
-	AuditAnchorKey             string `mapstructure:"audit_anchor_key"`
-	AuditAnchorRetiredPubKeys  string `mapstructure:"audit_anchor_retired_pubkeys"`
+	KeyEncryptionKey          string `mapstructure:"key_encryption_key"`
+	AuditChainKey             string `mapstructure:"audit_chain_key"`
+	AuditAnchorKey            string `mapstructure:"audit_anchor_key"`
+	AuditAnchorRetiredPubKeys string `mapstructure:"audit_anchor_retired_pubkeys"`
 }
 
 // GeoIPConfig points the audit subsystem at a MaxMind GeoLite2-City
@@ -247,18 +247,34 @@ type SnowflakeConfig struct {
 	NodeID int64 `mapstructure:"node_id"`
 }
 
-// AuditConfig controls the audit-anchoring subsystem: periodically sealing
-// a checkpoint of the tamper-evident audit hash chain (signed with
-// Crypto.AuditAnchorKey) to an external sink so that even a full DB
-// compromise (which could rewrite entry_hash end-to-end) is detectable
-// against an out-of-band anchor.
+// AuditConfig controls audit anchoring: periodically sealing a range of the
+// tamper-evident hash chain into a signed Merkle root.
+//
+// Anchors are always written to mxid_audit_anchor, where they act as
+// checkpoints — a ~375-byte summary of a range, which is what lets a range be
+// verified (and later archived) without walking the chain from genesis.
+//
+// Writing them additionally to an EXTERNAL sink is a separate, optional
+// concern. It is what would catch an attacker holding database write access,
+// since they cannot also rewrite a copy held outside the database. It is off by
+// default because the guarantee is only real when the sink is genuinely outside
+// the DB's trust domain — a file on the pod's own volume is not — and because
+// a sink that is written by one replica and read by another is a source of
+// operational failure rather than assurance.
 type AuditConfig struct {
-	// AnchorEnabled turns anchoring on. Defaults to true (see
-	// configs/config.yaml); when true in release mode, Crypto.AuditAnchorKey
-	// MUST be set (validateSecrets fails closed otherwise).
+	// AnchorEnabled turns anchoring on. Defaults to true: the checkpoints are
+	// cheap and are a prerequisite for range verification. When true in release
+	// mode, Crypto.AuditAnchorKey MUST be set (validateSecrets fails closed).
 	AnchorEnabled bool `mapstructure:"anchor_enabled"`
-	// AnchorSinkPath is the file the signed anchors are appended to.
-	// Defaults to data/audit-anchors.log.
+	// AnchorSinkPath enables the optional external sink and names the file that
+	// signed anchors are appended to. EMPTY (the default) means no external
+	// sink: anchors are database checkpoints only.
+	//
+	// Only set this to a path that is outside the database's blast radius and
+	// writable by every replica — otherwise it buys operational risk without
+	// buying the guarantee. Anchors are written by whichever replica holds the
+	// leader lock, so a per-pod volume scatters them and makes verification
+	// fail on whichever pod it runs from.
 	AnchorSinkPath string `mapstructure:"anchor_sink_path"`
 }
 

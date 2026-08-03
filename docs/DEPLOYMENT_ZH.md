@@ -99,7 +99,7 @@ nginx pod 持有 SPA 静态(烤进 `mxid-web` 镜像);后端 pod 是无状态 Go
 | `MXID_CRYPTO_AUDIT_ANCHOR_KEY` | ✅* | — | 审计锚 Ed25519 seed(`openssl rand -base64 32`)。审计锚开启(默认)时 release 模式必填 |
 | `MXID_CRYPTO_AUDIT_ANCHOR_RETIRED_PUBKEYS` | — | — | 已退役的锚签名 ed25519 公钥(base64,逗号分隔);轮换 `MXID_CRYPTO_AUDIT_ANCHOR_KEY` 时把旧公钥加进来,旧锚才验得过 |
 | `MXID_AUDIT_ANCHOR_ENABLED` | — | `true` | 开/关审计锚。设 `false` 是显式退出;否则 release 模式要求锚密钥 |
-| `MXID_AUDIT_ANCHOR_SINK_PATH` | — | `data/audit-anchors.log` | 签名审计锚追加写入的文件 |
+| `MXID_AUDIT_ANCHOR_SINK_PATH` | — | *(空)* | 可选:把签名锚点额外镜像到数据库之外的文件。留空=锚点仅作数据库检查点。只有当该路径既在数据库爆炸半径之外、又被所有副本共享时才有意义——锚点由持有 leader 锁的副本写入,per-pod 卷会让锚点散落各处并使验证失败 |
 | `POSTGRES_PASSWORD` | ✅ | — | DB 密码 |
 | `REDIS_PASSWORD` | ✅ | — | Redis 密码 |
 | `MXID_SERVER_ALLOWED_ORIGINS` | ✅ | — | CORS/CSRF 白名单,逗号分隔(如 `https://id.example.com`)。启动时定 |

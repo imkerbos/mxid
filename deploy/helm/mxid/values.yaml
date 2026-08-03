@@ -276,27 +276,44 @@ secrets:
   auditAnchorKey: ""
 
 # ---------------------------------------------------------------------------
-# Audit anchor sink
+# Audit anchoring
 #
-# The anchorer (a single leader-elected replica) seals the audit hash-chain
-# tail into signed Merkle anchors and appends them to an external sink. On K8s
-# the pod filesystem is ephemeral, so the sink is backed by a per-pod
-# PersistentVolume. NOTE: only the leader replica writes anchors, so sink files
-# are distributed across the replicas' PVCs over the lifetime of the deployment
-# (a leadership move writes to a different ordinal's PVC). Offline verification
-# must aggregate the sink files from every replica's PVC. A shared object-store
-# sink (S3 with Object Lock) is the durable alternative and is future work.
+# A leader-elected anchorer seals ranges of the audit hash chain into signed
+# Merkle roots stored in mxid_audit_anchor. Those rows are checkpoints: ~375
+# bytes summarising a range, which is what lets a range be verified without
+# walking the chain from genesis. This is always on and needs no storage.
+#
+# anchorSink additionally mirrors every anchor to a FILE OUTSIDE the database.
+# That is the piece which would catch an operator holding database write access
+# rewriting history — they cannot also rewrite a copy they do not control.
+#
+# It is OFF by default, because the guarantee is real only if the path is both
+# outside the database's blast radius and shared by every replica. A per-pod
+# PersistentVolume is neither: anchors are written by whichever replica holds
+# the leader lock, so they scatter across ordinals and verification fails on
+# whichever pod runs it. Enabling this on anything other than a genuinely
+# shared, append-only location buys operational failure instead of assurance.
+#
+# Without it you still have: the HMAC hash chain (tamper is detectable by
+# anyone without the chain key) and the append-only DB trigger (rows cannot be
+# updated or deleted). What you give up is proving that someone WITH full
+# database access did not rewrite history.
 # ---------------------------------------------------------------------------
 audit:
+  # Checkpoint anchoring. Keep on: it is cheap, needs no storage, and is a
+  # prerequisite for verifying (and later archiving) a range of the chain.
+  # Requires secrets.auditAnchorKey.
+  anchorEnabled: true
   anchorSink:
-    enabled: true
-    # File the signed anchors are appended to (must live under the mount path).
+    enabled: false
+    # Only meaningful with enabled: true. Must be a ReadWriteMany volume shared
+    # by every replica — see above for why a per-pod volume does not work.
     path: /app/data/audit-anchors.log
-    # Mount point for the anchor-sink PersistentVolume.
     mountPath: /app/data
     persistence:
       size: 1Gi
-      # Empty => cluster default StorageClass.
+      # Empty => cluster default StorageClass. For a shared sink this MUST name
+      # a ReadWriteMany-capable class.
       storageClass: ""
 
 # ---------------------------------------------------------------------------

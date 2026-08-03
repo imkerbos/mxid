@@ -57,11 +57,11 @@ func TestProjectDetail_KnownEventOnlyAllowsListed(t *testing.T) {
 
 func TestProjectDetail_FallbackKeepsCommonFields(t *testing.T) {
 	raw := projectDetail("unknown.event.type", map[string]any{
-		"tenant_id":   int64(1),
-		"user_id":     int64(7),
-		"reason":      "policy",
-		"random_key":  "drop",
-		"new_token":   "secret-token",
+		"tenant_id":  int64(1),
+		"user_id":    int64(7),
+		"reason":     "policy",
+		"random_key": "drop",
+		"new_token":  "secret-token",
 	})
 	m := decode(t, raw)
 	if _, ok := m["random_key"]; ok {
