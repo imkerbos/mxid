@@ -841,11 +841,17 @@ Enterprise image is a private package. But if **one machine** can reach both
 `ghcr.io` and your registry (your laptop, a jump box, a CI runner), that's all
 you need. Mirror the images once per release, then upgrade with Helm normally.
 
+The whole upgrade is two steps: **mirror the images, then point Helm at the new
+tag.**
+
 ```bash
 docker login ghcr.io                     # once — the EE image is private
 docker login harbor.internal             # once
 
+# step 1 — mirror. Either form; the make target is a two-line wrapper around
+# the script, so use the script directly if the machine has no make/checkout.
 make sync-images TAG=v1.8.0 REGISTRY=harbor.internal/mxid    # add EDITION=ce for CE
+./scripts/sync-images.sh v1.8.0 harbor.internal/mxid         # identical
 ```
 
 That pulls the backend, the web image and `busybox` (the chart's `waitForDeps`
@@ -854,7 +860,7 @@ them under your prefix and pushes. Repo names must stay `mxid` / `mxid-ee` /
 `mxid-web` / `busybox`, since the chart appends exactly those to
 `image.registry`.
 
-Then upgrade — the script prints this command with your values filled in:
+Step 2 — upgrade. The script prints this command with your values filled in:
 
 ```bash
 helm upgrade --install mxid deploy/helm/mxid -n mxid -f values.yaml \
@@ -864,9 +870,17 @@ helm upgrade --install mxid deploy/helm/mxid -n mxid -f values.yaml \
   --set backend.waitForDeps.image=harbor.internal/mxid/busybox:1.37
 ```
 
-Keep `values.yaml` in your own config repo and edit it once; upgrades only
-change `image.tag`. Harbor note: create the project first — Harbor does not
-auto-create one on push, and the error is unhelpful.
+Keep `values.yaml` in your own config repo and edit it once; **later upgrades
+only change the version** — re-run step 1 with the new `TAG`, then step 2 with
+the same `--set image.tag`. Everything else stays put.
+
+`busybox` is only the `waitForDeps` init container. If you already have one in
+your registry, point `backend.waitForDeps.image` at it instead; or set
+`backend.waitForDeps.enabled=false` to drop it entirely (the backend then
+crash-loops a few times while Postgres/Redis come up, rather than waiting).
+
+Harbor note: create the project first — Harbor does not auto-create one on
+push, and the error is unhelpful.
 
 Any OCI registry works (Harbor, Nexus, ECR, a plain `registry:2`).
 
