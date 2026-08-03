@@ -503,8 +503,12 @@ func TestLoadThroughTheEmbeddedKey(t *testing.T) {
 	if m := Load("garbage", now); !errors.Is(m.LoadErr(), ErrMalformed) {
 		t.Fatalf("LoadErr = %v, want ErrMalformed", m.LoadErr())
 	}
-	if _, err := verify("garbage", now); !errors.Is(err, ErrMalformed) {
-		t.Fatalf("verify LoadErr = %v, want ErrMalformed", err)
+	pub, err := publicKey()
+	if err != nil {
+		t.Fatalf("publicKey: %v", err)
+	}
+	if _, err := verifyWith(pub, "garbage", now); !errors.Is(err, ErrMalformed) {
+		t.Fatalf("verifyWith = %v, want ErrMalformed", err)
 	}
 }
 
