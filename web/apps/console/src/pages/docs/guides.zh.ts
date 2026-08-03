@@ -198,15 +198,28 @@ curl {{ISSUER}}/protocol/oidc/.well-known/openid-configuration
   "userinfo_endpoint": "{{ISSUER}}/protocol/oidc/userinfo",
   "jwks_uri": "{{ISSUER}}/protocol/oidc/jwks",
   "end_session_endpoint": "{{ISSUER}}/protocol/oidc/end-session",
-  "response_types_supported": ["code", "id_token", "token id_token", "code id_token", "code token", "code id_token token"],
+  "response_types_supported": ["code"],
   "grant_types_supported": ["authorization_code", "refresh_token", "client_credentials"],
-  "subject_types_supported": ["public", "pairwise"],
   "id_token_signing_alg_values_supported": ["RS256"],
-  "token_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post", "client_secret_jwt", "private_key_jwt", "none"],
+  "token_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post", "private_key_jwt", "none"],
   "code_challenge_methods_supported": ["S256"],
-  "scopes_supported": ["openid", "profile", "email", "phone", "groups", "offline_access"]
+  "backchannel_logout_supported": true,
+  "scopes_supported": ["openid", "profile", "email", "phone", "address", "groups", "offline_access"]
 }
-\`\`\``,
+\`\`\`
+
+**当前引擎能力矩阵**（zitadel/oidc v3）：
+
+| 项 | 支持情况 |
+|----|----------|
+| \`response_type\` | **仅 \`code\`**（授权码 + PKCE S256）。implicit / hybrid 已在 v1.2.0 移除（OAuth 2.1） |
+| \`grant_type\` | \`authorization_code\`、\`refresh_token\`、\`client_credentials\` |
+| 客户端认证 | \`client_secret_basic\`、\`client_secret_post\`、\`private_key_jwt\`、\`none\`（公共客户端 + PKCE） |
+| **不支持** | \`client_secret_jwt\`（HS256）—— 密钥单向 bcrypt 存储无法 HMAC；请用 \`private_key_jwt\` |
+| refresh token | 必须请求 **\`offline_access\`** scope 才签发 |
+| 后台通道登出 | 支持（离职 / JIT 到期强制登出下游应用） |
+
+⚠️ **反代必须传 \`X-Forwarded-Proto: https\`**（Helm 值 \`routing.forwardedProtoHttps\`；nginx 在每个 \`location\` 里显式 \`proxy_set_header\`）。TLS 在边缘卸载后后端只看到 http，与 https issuer 不匹配 → discovery / authorize 全部 **403**（客户端常表现为 \`ParseException: Unexpected token <!doctype html>\`，因为 403 落到了 SPA 的 index.html）。`,
       },
       {
         title: '3. JWKS（签名公钥）',
@@ -248,7 +261,9 @@ curl -X POST {{ISSUER}}/protocol/oidc/token \\
   -d "code_verifier=<original_verifier>"
 \`\`\`
 
-返回：\`access_token\`（JWT）、\`id_token\`（JWT）、\`refresh_token\`、\`expires_in\`、\`token_type=Bearer\`。`,
+返回：\`access_token\`、\`id_token\`（RS256 签名 JWT）、\`expires_in\`、\`token_type=Bearer\`。**\`refresh_token\` 只有在 authorize 请求带了 \`offline_access\` scope 时才会返回** —— 这是「拿不到 refresh token」最常见的原因。
+
+\`access_token\` 是**不透明 bearer token**（不是 JWT），别在本地解析；资源服务器走 \`/introspect\`（RFC 7662）校验。这是有意为之：不透明 token 可即时吊销，自包含 JWT 则要等过期。`,
       },
       {
         title: '6. id_token 含 tenant_code',
@@ -295,9 +310,13 @@ GET {{ISSUER}}/protocol/oidc/end-session?
       },
     ],
     notes: [
-      'MXID 不发 plain JWT access_token —— access_token 也是 RS256 签名 JWT',
-      'access_token 默认 15m（900s）、refresh_token 默认 7d（604800s）；每个应用可在协议信息 tab 的 token_endpoint TTL 字段（protocol_config.access_token_ttl / refresh_token_ttl）覆盖',
+      'access_token 是不透明 bearer token（走 /introspect 校验，可即时吊销）；id_token 才是 RS256 签名 JWT —— 别去解析 access_token',
+      'access_token 默认 15m（900s）、refresh_token 默认 7d（604800s）、id_token 默认 1h；每个应用可在协议信息 tab 的 token_endpoint TTL 字段（protocol_config.access_token_ttl / refresh_token_ttl）覆盖',
+      'refresh_token 必须请求 offline_access scope 才会签发',
+      'client_secret_jwt 不支持（密钥 bcrypt 单向存储）；JWT 客户端认证请用 private_key_jwt',
+      'response_type 仅 code —— implicit / hybrid 已在 v1.2.0 移除，改 protocol_config 也开不回来',
       '同一个用户在不同 app 下 sub 可能不同：subject_strategy=pairwise 会按 client_id hash',
+      '反代必须传 X-Forwarded-Proto: https，否则整个 OIDC 面 403',
     ],
   },
   {
@@ -330,7 +349,7 @@ curl {{ISSUER}}/protocol/saml/jira/metadata
 \`\`\`
 
 XML 包含：
-- \`<EntityDescriptor entityID="{{ISSUER}}/protocol/saml/jira">\`
+- \`<EntityDescriptor entityID="{{ISSUER}}">\` —— **IdP EntityID 就是 issuer 根**（不带 \`/protocol/saml/...\` 后缀），且**所有 SAML 应用共用同一个 EntityID**，按应用变化的只有 SSO / SLO 地址
 - \`<KeyDescriptor use="signing">\` 公钥
 - \`<SingleSignOnService>\` Redirect + POST binding
 - \`<SingleLogoutService>\`
@@ -345,7 +364,7 @@ XML 包含：
         body: `给到 SP 管理员的清单：
 
 \`\`\`
-IDP Entity ID:        {{ISSUER}}/protocol/saml/<app_code>
+IDP Entity ID:        {{ISSUER}}                        ← issuer 根，所有 SAML 应用相同
 SSO URL (Redirect):   {{ISSUER}}/protocol/saml/<app_code>/sso
 SSO URL (POST):       {{ISSUER}}/protocol/saml/<app_code>/sso
 SLO URL:              {{ISSUER}}/protocol/saml/<app_code>/slo
@@ -516,7 +535,7 @@ GET {{ISSUER}}/protocol/cas/<app_code>/p3/serviceValidate?
 - 验证一次后立即作废（防重放）
 - 同一 service URL 重复登录会签发新 ticket，旧 ticket 不会自动失效（直到 TTL）
 
-**安全要求**：\`service_urls\` 非空时，service 必须命中白名单（scheme+host 精确、path 前缀匹配），否则 \`INVALID_SERVICE\`。**\`service_urls\` 留空 = fail-open**（仅做 URL 合法性 sanity check，不限定目标）—— 生产务必显式配白名单防开放重定向。`,
+⚠️ **\`service_urls\` 是 fail-CLOSED**：留空 = **拒绝所有登录**（\`invalid service URL\`），不是"任意放行"。接入前必须先登记至少一个 service URL。匹配规则：scheme + host（含端口）大小写不敏感精确匹配 + path 前缀匹配，所以一条 \`https://app.example.com/cas\` 同时覆盖 \`/cas\`、\`/cas/\`、\`/cas/foo\`；带 userinfo 的 URL 直接拒绝。`,
       },
       {
         title: '5. SP 端配置必填',
@@ -547,13 +566,18 @@ GET {{ISSUER}}/protocol/cas/<app_code>/logout?service=<return_url>
 
 MXID 清 session 后重定向到 \`service\`（也必须在白名单）。
 
-CAS 协议不支持反向通知 SP（不像 SAML SLO）。SP 需自己 poll session 或接受 ticket 失效。`,
+MXID 还实现了 **CAS 后台通道单点登出**：会记录用户登录过的每个 service，portal / console 登出时向各 SP 的登出端点（\`logout_url\`，未配则用记录的 service URL）POST \`logoutRequest\` XML（\`<samlp:SessionIndex>\` 带原 service ticket）。尽力而为投递，走 SSRF 防护的 HTTP 客户端。
+
+反方向不行：SP 侧登出不会通知 MXID —— CAS 协议没这个通道，SP 需自己过期本地会话。`,
       },
     ],
     notes: [
       'CAS 协议简单但不带签名 —— 安全完全依赖 HTTPS + service URL 白名单',
+      'service_urls fail-closed：留空 = 所有登录被拒（invalid service URL），接入前必须登记 SP 回调地址',
       'p3/serviceValidate 与 serviceValidate 的差异仅在 attributes —— 永远用 p3',
-      'service URL 严格匹配（含 query string），不匹配直接 INVALID_SERVICE',
+      'service URL 匹配：scheme+host 精确 + path 前缀，https://app.com.evil.com 这类前缀绕过不成立',
+      '角色走 role_attribute（默认 roles，每角色一个元素，JIT 提权排最前）；组要显式配 group_attribute 才发（v1.7.0+）',
+      '代理票据（PGT/PT）默认关闭，需在应用上开 proxy_enabled',
     ],
   },
 
@@ -590,10 +614,10 @@ CAS 协议不支持反向通知 SP（不像 SAML SLO）。SP 需自己 poll sess
 
 访问策略：至少加一条 \`allow public\`（让所有已登录用户能访问）。
 
-**协议配置**（默认即可）：
+**协议配置**：
 \`\`\`json
 {
-  "service_urls": [],
+  "service_urls": ["http://<jumpserver>/core/auth/cas/login/"],
   "ticket_ttl": 30,
   "attribute_mapping": {
     "username": "uid",
@@ -604,7 +628,7 @@ CAS 协议不支持反向通知 SP（不像 SAML SLO）。SP 需自己 poll sess
 }
 \`\`\`
 
-\`service_urls\` 留空 = 任意 service URL 放行（最方便）。要严格白名单就填 \`["http://<jumpserver>/core/auth/cas/login/"]\`。`,
+⚠️ **\`service_urls\` 不能留空**：它是 fail-closed，留空 = 所有登录被拒（\`invalid service URL\`）。填 JumpServer 的 CAS 落地地址 \`http://<jumpserver>/core/auth/cas/login/\`；匹配是 scheme+host 精确 + path 前缀，这一条足以覆盖 JumpServer 追加的 query。`,
       },
       {
         title: '2. MXID 端点（按 app_code 隔离）',
@@ -724,9 +748,9 @@ JumpServer 自动拉 \`{{ISSUER}}/protocol/oidc/.well-known/openid-configuration
       '⚠️ MXID 服务端地址必须 trailing slash, urljoin 相对解析坑',
       '⚠️ JumpServer 回调地址只填根 URL (无 path), 是 CAS_ROOT_PROXIED_AS 不是 callback path',
       'v4 必须 DOMAINS env. 缺这条登录页 "Configuration file has problems"',
-      'service_urls 留空 = 任意 service 放行. 严格白名单要 HasPrefix 匹配整个 URL (含 query)',
-      'CAS 1.0/2.0/3.0: 默认走 3.0 (p3/serviceValidate), 返回 XML + attributes',
-      '社区版 CAS 不支持单点登出 (SLO) - JumpServer 注销不会 propagate 到 MXID',
+      '⚠️ service_urls 是 fail-closed: 留空 = 所有登录被拒 (invalid service URL). 必须登记 http://<jumpserver>/core/auth/cas/login/',
+      'CAS 1.0/2.0/3.0: JumpServer 侧配版本 3 (p3/serviceValidate), 返回 XML + attributes',
+      'CAS 没有 SP→IdP 登出通道: JumpServer 注销不会 propagate 到 MXID. 反向可以 —— MXID 登出会后台通道推 logoutRequest 给 JumpServer',
       'system_roles 无法 CAS 自动映射, 手动 / 升级 EE 走 OIDC / 写 signal hook 三选一',
     ],
   },
@@ -980,42 +1004,53 @@ https://<confluence-domain>/plugins/servlet/samlconsumer
     protocol: 'saml',
     difficulty: 3,
     tags: ['AWS', 'Cloud', 'SAML'],
-    summary: 'AWS Identity Provider + IAM Role mapping，IAM 角色按 group 自动分配。',
+    summary: '通过 SAML 联邦进 AWS。走 IAM Identity Center 是当前支持的路径。',
     steps: [
       {
-        title: '1. AWS IAM Identity Provider',
-        body: `AWS Console → IAM → Identity providers → Add provider
+        title: '1. 先选对 AWS 集成模式',
+        body: `AWS 有两种 SAML 联邦模式，对 MXID 来说差别很关键：
 
-- Provider type: **SAML**
-- Provider name: MXID
-- Metadata document: 上传 \`{{ISSUER}}/protocol/saml/aws/metadata\` 的内容`,
+**① IAM Identity Center（原 AWS SSO）—— 推荐。** 把 MXID 注册成整个 AWS Organization 的外部身份源，账号/权限集的分配由 Identity Center 自己管，SAML 断言只需标识用户是谁。MXID 现在就能直接用。
+
+**② 直接 IAM SAML 联邦进控制台。** IAM 要求断言里带 \`https://aws.amazon.com/SAML/Attributes/Role\` 属性，值是字面量 \`<role_arn>,<provider_arn>\`。MXID **没有静态/常量属性映射器** —— \`attribute_mapping\` 只能投影五个用户字段（username / email / display_name / phone / avatar），而角色 / 组的 code 上限 64 字符，一对 ARN（约 85 字符）放不下。**模式 ② 当前不支持**，请用 Identity Center。`,
       },
       {
-        title: '2. 建 IAM Role (Trust SAML)',
-        body: `创建 IAM Role，Trust relationship 选「SAML 2.0 federation」→ 指向 MXID provider。
+        title: '2. 在 AWS 侧注册身份提供商',
+        body: `**IAM Identity Center** → Settings → Identity source → 改成 **External identity provider**。
 
-记下 Role ARN：\`arn:aws:iam::123456789012:role/MXIDUserRole\``,
+- 下载 AWS 的 *service provider metadata*（里面有 ACS URL 和 SP Entity ID，形如 \`https://<region>.signin.aws.amazon.com/platform/saml/acs/<id>\`）。
+- 上传 MXID 的 IdP metadata \`{{ISSUER}}/protocol/saml/aws/metadata\`，或直接填 metadata URL。
+
+（若确实要建裸 IAM identity provider：IAM → Identity providers → Add provider → SAML → 上传同一份 MXID metadata。但角色映射为什么走不通见第 1 步 ②。）`,
       },
       {
-        title: '3. MXID 应用 attribute',
-        body: `协议 SAML / 编码 \`aws\` / protocol_config：
+        title: '3. MXID 应用配置',
+        body: `协议 SAML / 编码 \`aws\`，\`protocol_config\` 取自上一步下载的 AWS SP metadata：
 
 \`\`\`json
 {
-  "acs_url": "https://signin.aws.amazon.com/saml",
-  "sp_entity_id": "urn:amazon:webservices",
+  "acs_url": "https://<region>.signin.aws.amazon.com/platform/saml/acs/<id>",
+  "sp_entity_id": "https://<region>.signin.aws.amazon.com/platform/saml/<id>",
   "name_id_format": "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent",
   "attribute_mapping": {
-    "email": "https://aws.amazon.com/SAML/Attributes/RoleSessionName",
-    "static.role": "arn:aws:iam::123:role/MXIDUserRole,arn:aws:iam::123:saml-provider/MXID"
-  }
+    "email": "email",
+    "display_name": "displayName"
+  },
+  "session_ttl": 28800
 }
 \`\`\`
 
-AWS 要求 attribute name 用 full URN（与普通 SAML 不同）。`,
+subject_strategy 设 \`email\` 或 \`persistent_id\` —— 跟 Identity Center 里配的用户匹配规则对齐。Identity Center 按 NameID 匹配用户，所以必须稳定，绝不要指向可变的用户名。
+
+SAML 只解决"认证"，用户在 Identity Center 里的账号/权限集分配仍需手工创建或 SCIM 下发。`,
       },
     ],
-    notes: ['AWS 必须用 RoleSessionName + Role 双 attribute', 'Session 默认 1h，可在 IAM Role 改'],
+    notes: [
+      '用 IAM Identity Center。直连 IAM 控制台联邦需要静态 Role 属性（<role_arn>,<idp_arn>），MXID 发不出来 —— 没有常量属性映射器，且角色/组 code 上限 64 字符',
+      'AWS 要求 NameID 稳定：subject_strategy 用 email 或 persistent_id，别用可变用户名',
+      'acs_url / sp_entity_id 从 AWS 给的 SP metadata 里抄，别手敲 —— 它们跟 region 和实例绑定',
+      '联邦控制台会话时长由 AWS 侧 assume 的角色决定（默认 1h），跟 session_ttl 无关',
+    ],
   },
 
   /* ─────────────── CAS ─────────────── */
