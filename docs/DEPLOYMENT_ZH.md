@@ -737,11 +737,16 @@ make migrate-create NAME=foo    # 生成新迁移对
 能同时够到 `ghcr.io` 和你的 registry(你的电脑、跳板机、CI runner),就够了:
 每次发版把镜像同步一次,然后照常用 Helm 升级。
 
+整个升级就两步:**同步镜像,然后让 Helm 指向新 tag。**
+
 ```bash
 docker login ghcr.io                     # 一次即可,EE 是私有包
 docker login harbor.internal             # 一次即可
 
+# 第 1 步 —— 同步镜像。两种写法等价;make 目标只是脚本的两行包装,
+# 机器上没有 make 或没 clone 仓库时直接跑脚本即可。
 make sync-images TAG=v1.8.0 REGISTRY=harbor.internal/mxid    # 社区版加 EDITION=ce
+./scripts/sync-images.sh v1.8.0 harbor.internal/mxid         # 完全等价
 ```
 
 它会拉后端、web 和 `busybox`(chart 的 `waitForDeps` 初始化容器,漏了所有 Pod 会卡在
@@ -749,7 +754,7 @@ make sync-images TAG=v1.8.0 REGISTRY=harbor.internal/mxid    # 社区版加 EDIT
 `mxid` / `mxid-ee` / `mxid-web` / `busybox`,因为 chart 就是拿 `image.registry`
 直接拼这些名字。
 
-然后升级——脚本会把这条命令连同你的参数一起打印出来:
+第 2 步 —— 升级。脚本会把这条命令连同你的参数一起打印出来:
 
 ```bash
 helm upgrade --install mxid deploy/helm/mxid -n mxid -f values.yaml \
@@ -759,7 +764,13 @@ helm upgrade --install mxid deploy/helm/mxid -n mxid -f values.yaml \
   --set backend.waitForDeps.image=harbor.internal/mxid/busybox:1.37
 ```
 
-`values.yaml` 放你自己的配置仓库里,改一次就行;以后升级只动 `image.tag`。
+`values.yaml` 放你自己的配置仓库里,改一次就行;**以后升级只换版本号**——
+用新 `TAG` 重跑第 1 步,再用同样的 `--set image.tag` 跑第 2 步,其余全不动。
+
+`busybox` 只是 `waitForDeps` 初始化容器。你的 registry 里如果已经有,把
+`backend.waitForDeps.image` 指过去即可;或者 `backend.waitForDeps.enabled=false`
+直接不用它(那样 Postgres/Redis 还没起来时后端会 crash-loop 几次再成功,而不是等待)。
+
 Harbor 注意:**项目要先建好**——推送时不会自动创建,报错还很难懂。
 
 任何 OCI registry 都支持(Harbor、Nexus、ECR、裸 `registry:2`)。
