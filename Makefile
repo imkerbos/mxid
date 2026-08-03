@@ -89,6 +89,20 @@ dev-dump:
 dev-watch:
 	./scripts/dev-watch.sh
 
+# ── Air-gapped release ───────────────────────────────────────────────────────
+# Build ONE tarball (images + packaged chart + values template + checksums) to
+# carry into a site with no internet. Run on a machine that CAN reach ghcr.io;
+# `docker login ghcr.io` first for the private EE image.
+#
+#   make offline-bundle TAG=v1.8.0            # EE (default)
+#   make offline-bundle TAG=v1.8.0 EDITION=ce
+#
+# Then at the site: tar xzf the bundle and run ./install.sh --help.
+.PHONY: offline-bundle
+offline-bundle:
+	@[ -n "$(TAG)" ] || { echo "usage: make offline-bundle TAG=v1.8.0 [EDITION=ce]"; exit 1; }
+	./scripts/offline-bundle.sh $(TAG) --$(if $(EDITION),$(EDITION),ee)
+
 # Seed the demo fixture: org tree, user groups, memberships, app access and app
 # roles, so the demo users (alice … nancy) actually see apps in the portal.
 # Idempotent — every statement is ON CONFLICT DO NOTHING against a reserved id
