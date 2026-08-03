@@ -111,6 +111,19 @@ func Run() {
 	// the same chain). Flags must precede the subcommand (Go's flag package
 	// stops parsing at the first non-flag arg): `mxid-server -config=configs
 	// verify-audit`.
+	// Operator subcommand: `audit-rebuild` reconstructs mxid_audit_log rows from
+	// the ledger, for use after retention has dropped a partition or the table
+	// has been lost. Same constraints as the other audit subcommands — it needs
+	// the DB but must not start the server or a second chain writer:
+	// `mxid-server -config=configs audit-rebuild -tenant=1 -class=data`.
+	if flag.Arg(0) == "audit-rebuild" {
+		if err := runAuditRebuild(a, flag.Args()[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "audit-rebuild failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if flag.Arg(0) == "verify-audit" {
 		if err := runVerifyAudit(a); err != nil {
 			fmt.Fprintf(os.Stderr, "verify-audit failed: %v\n", err)
