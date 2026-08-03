@@ -174,10 +174,13 @@ func (e *Engine) Login(ctx context.Context, req *AuthRequest, namespace string) 
 
 	switch result.Status {
 	case AuthFailed:
-		// Track failure count
-		if result.UserID > 0 {
-			e.trackFailure(ctx, result.UserID, req)
-		}
+		// Tracked even when the username matched nobody (UserID 0). Skipping
+		// those skipped the per-IP dimension too, so a scripted scan over
+		// invented usernames never incremented anything: no captcha was ever
+		// demanded and no IP lock ever tripped, however many attempts it made.
+		// The per-user dimension is simply absent for an unknown account —
+		// loginIdentifiers already omits it.
+		e.trackFailure(ctx, result.UserID, req)
 		e.publishLoginEvent(ctx, result, req, false)
 		return nil, ErrAuthFailed
 
@@ -535,7 +538,9 @@ func (e *Engine) trackFailure(ctx context.Context, userID int64, req *AuthReques
 	// subsequent attempt while already locked.
 	alreadyLocked := e.loginLimiter.CheckMany(ctx, ids...) != nil
 	tripped := e.loginLimiter.RecordFailureMany(ctx, ids...)
-	if tripped != nil && !alreadyLocked {
+	// userID 0 means the username matched no account: the IP counter still
+	// moved, but there is no user to report as locked.
+	if tripped != nil && !alreadyLocked && userID > 0 {
 		e.eventBus.Publish(ctx, event.Event{
 			Type: event.UserLocked,
 			Payload: map[string]any{
@@ -551,7 +556,10 @@ func (e *Engine) trackFailure(ctx context.Context, userID int64, req *AuthReques
 // no-redis-limiter path. It records the failure and emits UserLocked at the
 // threshold but never touches mxid_user.status (no permanent auto-lock).
 func (e *Engine) trackFailureLegacy(ctx context.Context, userID int64, req *AuthRequest) {
-	if e.rdb == nil {
+	// Purely per-user, so an unknown username (userID 0) has nothing to count
+	// here — it would key every failed enumeration attempt onto a single
+	// bucket for a user that does not exist.
+	if e.rdb == nil || userID <= 0 {
 		return
 	}
 	key := e.failCountKey(userID)

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { authApi, externalIdpApi, ExternalIdpButtons, useAuthStore, useBootstrap, useTranslation, safeReturnPath, CODE_CAPTCHA_REQUIRED, CODE_CAPTCHA_INVALID } from '@mxid/shared'
+import { authApi, externalIdpApi, ExternalIdpButtons, useAuthStore, useBootstrap, useTranslation, safeReturnPath, apiErrorCode, CODE_CAPTCHA_REQUIRED, CODE_CAPTCHA_INVALID, CODE_UNAUTHENTICATED, CODE_INVALID_MFA_CODE } from '@mxid/shared'
 import type { PublicIDP } from '@mxid/shared'
 import { Eye, EyeOff, Loader2, RefreshCw } from 'lucide-react'
 import logo from '../../assets/logo.png'
@@ -10,15 +10,15 @@ import logo from '../../assets/logo.png'
 // message so the user knows whether it was the captcha or the credentials —
 // not a bare "Request failed with status code 400".
 function loginErrorMessage(err: unknown, t: (k: string) => string): string {
-  const e = err as { code?: number; response?: { data?: { code?: number; message?: string } } }
-  const code = e?.response?.data?.code ?? e?.code
+  const e = err as { message?: string; response?: { data?: { message?: string } } }
+  const code = apiErrorCode(err)
   switch (code) {
     case CODE_CAPTCHA_REQUIRED:
     case CODE_CAPTCHA_INVALID:
       return t('login.invalidCaptcha')
-    case 40101: // invalid credentials
+    case CODE_UNAUTHENTICATED:
       return t('login.invalidCredentials')
-    case 40102: // invalid mfa code
+    case CODE_INVALID_MFA_CODE:
       return t('login.invalidMfaCode')
     default:
       return e?.response?.data?.message || t('login.failedRetry')
@@ -122,7 +122,7 @@ export default function LoginPage() {
     } catch (err: unknown) {
       setError(loginErrorMessage(err, t))
       // Backend demands a captcha or rejected the one supplied → reveal + load.
-      const code = (err as { response?: { data?: { code?: number } } })?.response?.data?.code
+      const code = apiErrorCode(err)
       if (code === CODE_CAPTCHA_REQUIRED || code === CODE_CAPTCHA_INVALID) setCaptchaRequired(true)
       if (captchaRequired || code === CODE_CAPTCHA_REQUIRED || code === CODE_CAPTCHA_INVALID) loadCaptcha()
     } finally {
