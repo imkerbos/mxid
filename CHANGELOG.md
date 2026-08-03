@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- External-IdP providers (Lark/Feishu, Teams, GitHub) now make their OAuth calls
+  through the SSRF-guarded client instead of a bare HTTP client, so a redirect
+  from a compromised IdP cannot walk the request onto an internal address with
+  the app's bearer token attached. (EE)
 - Five error responses showed the user a message about something else. The SPA
   replaces the server message with a fixed translated sentence for certain
   numeric codes, and those codes had been reused: a bad dynamic-group rule and an
