@@ -104,7 +104,8 @@ store; Redis for sessions / tickets / TOTP rate-limit / event SSE.
 git clone https://github.com/imkerbos/mxid.git
 cd mxid
 cp .env.example .env
-make dev-docker-up          # backend + console + portal + air hot-reload
+make dev-up                 # postgres + redis + backend + console + portal, hot-reload
+make seed-demo              # optional: demo org, groups, users and app access
 ```
 
 Dev runs behind a dev nginx on **port 3500** (hot-reload, not for production):
