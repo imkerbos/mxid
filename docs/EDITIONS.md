@@ -12,14 +12,30 @@ with a signed license.
 | OIDC / SAML / CAS / JWT protocols | ✅ | ✅ |
 | Users / orgs / groups, RBAC | ✅ | ✅ |
 | SMTP email, basic audit | ✅ | ✅ |
+| SMS OTP login | ✅ | ✅ |
+| Step-up MFA (sudo mode for high-risk operations) | ✅ | ✅ |
 | **Single-tenant** (one identity domain per deployment) | ✅ | ✅ |
 | **External IdP login** (social / enterprise SSO) | ❌ | ✅ |
 | **Branding / white-label** (logo, colors, login page) | ❌ | ✅ |
-| Conditional access, WebAuthn/passkeys, SCIM, SMS, advanced step-up | ❌ | ✅ |
+| **Conditional access** (risk-based / adaptive access policies) | ❌ | ✅ |
+| **JIT privileged access** (eligibility → request → approval → time-boxed elevation; gated via `conditional_access`) | ❌ | ✅ |
+| **SCIM outbound deprovisioning** (offboarding L2 connector) | ❌ | ✅ |
 | **Form-fill SSO (SWA)** — browser-extension auto-login for password-only web apps | ❌ | ✅ |
 
-Feature keys (in the license payload): `external_idp`, `branding`,
-`conditional_access`, `webauthn`, `scim`, `advanced_stepup`, `sms`, `form_fill`.
+**Feature keys sold today** (every valid EE license grants exactly these —
+see `ImplementedFeatures` in `pkg/ee/license/features.go`): `branding`,
+`conditional_access`, `external_idp`, `scim`, `form_fill`.
+
+**Reserved catalog keys** — accepted in a license payload for forward
+compatibility but with **no shipping code; they never grant anything**:
+`webauthn`, `sms`, `advanced_stepup`, `multi_tenant`. Two clarifications:
+
+- `sms` / `advanced_stepup` being reserved does **not** mean the capability is
+  missing — SMS OTP login and step-up MFA ship in **CE**, ungated. The reserved
+  keys exist only for a possible future *advanced* EE tier.
+- `multi_tenant` is a permanently reserved key that is never granted: the
+  product is **single-tenant by design in both editions**, and multi-tenancy is
+  not a roadmap item.
 
 ### CE capabilities
 
@@ -27,6 +43,19 @@ Feature keys (in the license payload): `external_idp`, `branding`,
   presets (Feishu, DingTalk, WeCom, GitLab, Grafana, Jenkins, Jira,
   Confluence, JumpServer). Templates are declarative and contain no secrets;
   template-created apps run the same validation as hand-filled ones.
+- **SMS OTP login** and **step-up MFA** (sudo mode for high-risk operations) —
+  both ship ungated in CE (the `sms` / `advanced_stepup` license keys are
+  reserved and unrelated to these).
+- **Offboarding L1/L3**: on user disable/delete, kill sessions and revoke
+  downstream SSO access (L1) plus notification/webhook fan-out (L3). The L2
+  SCIM deprovision connector is EE (`scim`).
+- **Transactional outbox** for durable event delivery (offboarding domain).
+- **Tamper-proof audit chain**: hash-chained audit log with Merkle anchoring,
+  plus third-party verifiable export (`export` + `verify`).
+- **Per-app provisioning config UI** (offboarding actions per application).
+- **Batch access policies** (bulk assignment of app access).
+- **Rate limiting** (login and portal API, console-configurable).
+- **Dashboard** and Prometheus **`/metrics`** endpoint.
 
 ## How editions are built (architecture)
 
@@ -82,7 +111,7 @@ COMPOSE_FILE=deploy/compose/docker-compose.yml:deploy/compose/docker-compose.ee.
 # self-contained (containerized Postgres + Redis):
 # COMPOSE_FILE=deploy/compose/docker-compose.yml:deploy/compose/docker-compose.standalone.yml:deploy/compose/docker-compose.ee.yml
 
-MXID_TAG=v0.0.2
+MXID_TAG=v1.8.0
 ```
 
 ```bash
@@ -156,7 +185,8 @@ token being reused across many deployments, issue an **install-bound** license:
 | Users | **100** (`CEMaxUsers`) | unlimited (or the license's `max_users`) |
 | Apps / orgs / groups / roles / API tokens | unlimited | unlimited |
 | Audit retention | unlimited (default 365d, console-configurable) | unlimited |
-| External IdP · branding · conditional access · WebAuthn · SCIM · SMS · advanced step-up | ❌ | ✅ |
+| SMS OTP · step-up MFA | ✅ | ✅ |
+| External IdP · branding · conditional access (incl. JIT privileged access) · SCIM deprovisioning · form-fill SSO | ❌ | ✅ |
 
 | Control | Source | Enforced |
 |---------|--------|----------|

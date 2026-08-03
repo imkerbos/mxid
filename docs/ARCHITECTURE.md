@@ -16,49 +16,80 @@ The SPAs are independent pnpm workspaces (`web/apps/{console,portal}`) sharing a
 ## Layered packages
 
 ```
-cmd/server/                  binary entrypoint + thin adapter glue (1 file ~700 LOC, intentional god-file per project memory)
-└── internal/
-    ├── bootstrap/           viper config, gorm wiring, snowflake IDs, router, structured logger
-    ├── domain/              one package per business capability
-    │   ├── user/            local accounts, MFA, password history
-    │   ├── tenant/          multi-tenant model
-    │   ├── app/             SP registration + protocol_config + access policy
-    │   ├── authn/           login orchestration, captcha, MFA challenge, login policy
-    │   ├── audit/           append-only log + retention
-    │   ├── setting/         hot-reload runtime config (the central knob)
-    │   ├── consent/         OIDC scope consent grants
-    │   ├── appaccess/       per-app allow/deny rules
-    │   ├── approle/         per-app role bindings
-    │   ├── externalidp/     Lark / Feishu / Teams (and any others added via providers/)
-    │   ├── apitoken/        headless API tokens
-    │   ├── org/             org tree (departments)
-    │   ├── group/           static + dynamic user groups
-    │   ├── permission/      role-based authz primitive
-    │   └── upload/          binary asset store (icons / logos → mxid_upload, bytea, ≤2 MB)
-    ├── protocol/            stateless protocol handlers
-    │   ├── oidc/            authorize, token, userinfo, revoke, introspect, end_session, jwks, discovery
-    │   ├── saml/            metadata, sso (POST + redirect bindings), slo
-    │   ├── cas/             login, validate, serviceValidate, p3/serviceValidate, logout
-    │   └── resolver/        AppResolver / IdentityResolver / SessionResolver / TenantResolver — interfaces protocols use to read domain state without importing domain packages
-    ├── gateway/             HTTP boundary
-    │   ├── console/         admin REST surface (CRUD over domain)
-    │   └── portal/          end-user REST + SSO bounce + magic-link / SMS / password-reset
-    └── middleware/          cors, structured logger, request-id propagation
-└── pkg/                     reusable libs
-    ├── event/               in-process pub-sub bus
-    ├── mailer/              SMTP + Go text/template templates
-    ├── sms/                 Aliyun / Tencent / Twilio senders
-    ├── session/             redis-backed session manager
-    ├── urlswap/             canonical-URL resolution (admin setting → defaults → request-host swap)
-    ├── snowflake/           globally unique IDs
-    ├── crypto/              AES + bcrypt helpers
-    └── authz/               role + scope check primitives
+app/                         real entrypoint: app.Run() + adapter glue (~1300 LOC god-file, intentional per
+                             project memory — importable so the EE module can reuse it)
+cmd/server/                  thin main() shim that calls app.Run()
+internal/
+├── bootstrap/               viper config, gorm wiring, migrations, snowflake IDs, router (+/readyz), logger
+├── domain/                  one package per business capability
+│   ├── user/                local accounts, MFA, password history
+│   ├── tenant/              the single default tenant record (see "Tenant column" below)
+│   ├── app/                 SP registration + protocol_config + access policy
+│   ├── authn/               login orchestration, captcha, MFA challenge, login policy, global logout seam
+│   ├── audit/               tamper-proof audit chain (capture plugin → chainer → anchors, see below)
+│   ├── setting/             hot-reload runtime config (the central knob)
+│   ├── consent/             OIDC scope consent grants
+│   ├── appaccess/           per-app allow/deny rules
+│   ├── approle/             per-app role bindings
+│   ├── access/              JIT privileged access (eligibility → request → approval → binding)
+│   ├── conditionalaccess/   conditional-access policies (EE runtime-gated)
+│   ├── offboarding/         leaver workflow: L1 SSO cut / L3 review checklist / L2 deprovision seam
+│   ├── provisioning/        per-app outbound-provisioning config (SCIM connector config; connector is EE)
+│   ├── oidckey/             provider-level OIDC signing keyset with active/passive rotation
+│   ├── platformconfig/      pre-tenant config: license token, install fingerprint (see below)
+│   ├── dashboard/           console dashboard aggregate queries
+│   ├── apitoken/            headless API tokens
+│   ├── org/                 org tree (departments)
+│   ├── group/               static + dynamic user groups
+│   ├── permission/          role-based authz primitive
+│   └── upload/              binary asset store (icons / logos → mxid_upload, bytea, ≤2 MB)
+├── protocol/                stateless protocol handlers
+│   ├── oidcop/              OIDC provider built on zitadel/oidc v3 (authorize, token, userinfo,
+│   │                        introspect, revoke, jwks, discovery)
+│   ├── oidclogout/          OIDC RP-initiated end_session + back-channel logout dispatch
+│   ├── saml/                metadata, sso (POST + redirect bindings), slo, per-user SessionIndexStore
+│   ├── cas/                 login, validate, serviceValidate, p3/serviceValidate, proxy, logout
+│   └── resolver/            AppResolver / IdentityResolver / SessionResolver interfaces — protocols
+│                            read domain state without importing domain packages
+├── gateway/                 HTTP boundary
+│   ├── console/             admin REST surface (CRUD over domain)
+│   └── portal/              end-user REST + SSO bounce + magic-link / SMS / password-reset
+├── middleware/              cors, csrf, security headers, request-id, structured logger,
+│                            rate-limit, feature gate (RequireFeature), tenant override
+└── outbox/                  transactional outbox: durable at-least-once side-effect delivery
+pkg/                         ~30 reusable libs; the load-bearing ones:
+├── safehttp/                SSRF-guarded HTTP client — MANDATORY for all outbound requests
+├── saferedirect/            fail-closed validators for return_to / RelayState / CAS service URLs
+├── tenantscope/             gorm plugin: automatic fail-closed tenant row scoping
+├── tenantctx/               effective tenant_id from gin.Context
+├── authz/                   role + scope check primitives (authz.Require / authz.Protect)
+├── dlock/                   Postgres advisory-lock leader election for single-writer jobs
+├── ratelimit/               Redis-backed brute-force limiter keyed by (purpose, identifier)
+├── secure/                  wrapper types that suppress secrets in String()/encoding
+├── crypto/                  AES-GCM, bcrypt, HMAC, Ed25519 helpers
+├── errcode/                 single registry: domain sentinel → (HTTP status, stable numeric code)
+├── dberr/                   persistence error sentinels (not-found etc.) without gorm imports
+├── response/                API envelope + MapError / InternalError conventions
+├── auditctx/                request-scoped actor identity carried via context for audit writes
+├── mask/                    PII redaction helpers for API responses
+├── ssoflow/                 one-time SSO login-confirmation tokens
+├── metrics/                 Prometheus RED metrics + /metrics handler
+├── geoip/                   IP → city/country for the audit pipeline
+├── event/                   in-process pub-sub bus (at-most-once — see outbox)
+├── session/                 redis-backed session manager
+├── urlswap/                 canonical-URL resolution (admin setting → defaults → request-host swap)
+├── mailer/ sms/ snowflake/  SMTP + templates, SMS senders, globally unique IDs
+├── updatecheck/ version/    release update check, build-time identity
+└── ee/                      license verification, feature gate, EE registry seam (see Editions)
 ```
+
+Note: `externalidp` is **not** a CE package. External IdP login (Lark / GitHub / Teams …) is a
+code-separated EE feature living in `mxid-ee/features/externalidp`; the CE binary contains none of it.
 
 ### Why this shape
 
 - **Domain packages own their model + service + repository**. They expose narrow interfaces. Gateways import domain services; domain packages never import gateways.
-- **Protocol handlers are stateless** and read state through `resolver` interfaces. Adding a new protocol (e.g. WS-Federation) means a new `internal/protocol/wsfed/` package and a few adapter functions wired in `cmd/server`.
+- **Protocol handlers are stateless** and read state through `resolver` interfaces. Adding a new protocol (e.g. WS-Federation) means a new `internal/protocol/wsfed/` package and a few adapter functions wired in `app/run.go`.
 - **Setting domain is the runtime config bus**. Every operationally-adjustable knob lives here. Handlers read settings via per-tenant accessors. Admin UI is a CRUD over the same shape. No restart required for any operational change.
 - **`pkg/` is for libraries that don't know about MXID's business model**. Anything in `pkg/` could theoretically be open-sourced as a separate dependency.
 - **`upload` domain keeps binary assets in the database** (`mxid_upload`, `bytea`). Served with `ETag` + `Cache-Control: immutable` so browsers get one-hit caching without a CDN. The side-effect: the backend carries zero local file state → no PVC needed on Kubernetes, no asset loss on container restart, and all replicas are consistent.
@@ -99,6 +130,19 @@ Browser                Portal SPA            MXID backend                  Exter
 
 CAS and SAML follow the same general shape with protocol-specific details.
 
+## OIDC engine
+
+Since v1.2.0 the OIDC provider is `github.com/zitadel/oidc/v3` — the sole engine (the
+self-built provider was deleted). `internal/protocol/oidcop` wraps it with MXID storage,
+discovery filtering, and rate limiting. Capability posture (OAuth 2.1 alignment):
+
+- `response_type=code` only — implicit and hybrid flows are removed, and the discovery
+  document is filtered so they are never advertised.
+- Refresh tokens require the `offline_access` scope.
+- `client_secret_jwt` is unsupported by design: client secrets are stored bcrypt-hashed,
+  so the raw secret needed to HMAC a JWT never exists server-side. Use `private_key_jwt`
+  for asymmetric client authentication.
+
 ## Settings domain — the hot-reload bus
 
 Operational config is split into typed groups:
@@ -116,19 +160,24 @@ Operational config is split into typed groups:
 | `AuditPolicy` | retention cron + alert dispatch | Settings → Audit |
 | `ExternalURLs` | every protocol handler via `urlswap.Resolve`; IdP callback / post-login redirect URLs resolved at runtime from this setting (no env required) | Settings → External URLs |
 
-Sensitive fields (SMTP password, SMS secret) are AES-encrypted with `MXID_MASTER_KEY` at write time, decrypted on read. The encryption pipeline is in `setting.Service` — adding a new sensitive field requires only registering it in `sensitiveFields`.
+Sensitive fields (SMTP password, SMS secret) are AES-encrypted with the master KEK (`MXID_CRYPTO_KEY_ENCRYPTION_KEY`) at write time, decrypted on read. The encryption pipeline is in `setting.Service` — adding a new sensitive field requires only registering it in `sensitiveFields`.
 
 ## Platform-level config — physical isolation from tenant settings
 
-Certain records must be read **before** a tenant context is known — most notably the license token and the installation fingerprint (`install_uuid`). These live in a dedicated table `mxid_platform_config` rather than in the tenant-scoped `mxid_setting` table. The reason is structural: the GORM `tenantscope` plugin is fail-closed by design; if a query runs without a tenant scope it silently returns no rows instead of the intended row. Placing license / fingerprint data in `mxid_setting` would cause them to be invisible at startup time and during login (before any tenant is resolved), leading to silent fallback values and install-fingerprint drift across restarts.
+Certain records must be read **before** a tenant context is known — most notably the license token and the installation fingerprint (`install_uuid`). These live in a dedicated table `mxid_platform_config` (domain `platformconfig`) rather than in the tenant-scoped `mxid_setting` table. The reason is structural: the GORM `tenantscope` plugin is fail-closed by design; if a query runs without a tenant scope it silently returns no rows instead of the intended row. Placing license / fingerprint data in `mxid_setting` would cause them to be invisible at startup time and during login (before any tenant is resolved), leading to silent fallback values and install-fingerprint drift across restarts.
 
 `mxid_platform_config` is **not** partitioned by `tenant_id`. Reads require no scope and are safe at any lifecycle phase.
 
-## Tenant scope — automatic scope injection for unscoped setting reads
+## Tenant column — schema artefact, not a product capability
 
-The `tenantscope` GORM plugin is fail-closed: queries that lack a scope return empty results rather than leaking cross-tenant data. This is correct for data rows but caused a category of silent bugs in the `setting` domain — functions like `getRaw` called before or outside a request context (startup, login flow, scheduled tasks) produced empty rows and fell back to defaults.
+MXID is **permanently single-tenant** in both CE and EE. `pkg/ee/license/features.go`
+deliberately excludes `FeatureMultiTenant` from `ImplementedFeatures` (and a test asserts no
+license ever grants it). The `tenant_id` column and the default tenant row (`id=1`, created on
+first migration) are foundational schema artefacts kept for row-scoping discipline — the
+`tenantscope` GORM plugin enforces per-row scoping defensively, so any query missing a scope
+fails closed (returns nothing) instead of leaking rows.
 
-The fix is applied in `setting.getRaw`: when the GORM context carries no tenant scope, the function injects one explicitly using the tenant ID supplied to the call. Queries that already carry a scope (including `cross-tenant` / `system` scopes) are left untouched. This single change uniformly resolves all pre-authentication and background-task setting reads without weakening the fail-closed guarantee.
+That fail-closed default caused a category of silent bugs in the `setting` domain — functions like `getRaw` called before or outside a request context (startup, login flow, scheduled tasks) produced empty rows and fell back to defaults. The fix is applied in `setting.getRaw`: when the GORM context carries no tenant scope, the function injects one explicitly using the tenant ID supplied to the call. Queries that already carry a scope (including `cross-tenant` / `system` scopes) are left untouched.
 
 ## URL resolution
 
@@ -152,28 +201,128 @@ This means dev / LAN testing works without admin intervention, while prod canoni
 
 Each SPA imports from `@mxid/shared/...` paths. Tailwind v4 needs an `@source` directive in each app's `index.css` to scan shared package files; without it, classes used only in `Toaster` etc. are tree-shaken out.
 
-## Multi-tenancy model
+## Logout — global teardown + downstream Single Logout
 
-- One PostgreSQL table per resource is partitioned by `tenant_id`.
-- The default tenant (`id=1`) is created on first migration.
-- Apps may be `scope=tenant` (visible only to that tenant) or `scope=shared` (visible to all tenants).
-- Protocols infer the tenant from session, or from a `?tenant=<code>` query parameter on the portal login URL.
-
-## Logout — global session teardown
-
-Logout is a cross-surface operation. A single logout request (from console, portal, or a protocol `end_session` / SLO endpoint) destroys **all** sessions held by the user:
+Logout is a cross-surface operation. A single logout request — from console, portal, or a
+protocol `end_session` / SLO endpoint — first destroys **all** local state for the user:
 
 1. Console admin session (Redis key)
 2. Portal end-user session (Redis key)
-3. Any active protocol tickets (OIDC refresh tokens, CAS ticket-granting tickets, SAML assertions in flight)
+3. Active protocol tickets (OIDC refresh tokens, CAS ticket-granting tickets, SAML assertions in flight)
 
-This achieves true single sign-out: after logout, the user cannot resume any surface without re-authenticating, regardless of which surface triggered the logout. When logout runs through a protocol `end_session` / SLO endpoint, back-channel SLO notifications to the relevant SPs (OIDC Back-Channel Logout, SAML SLO) are dispatched as well.
+Since v1.7.1 a portal/console logout also fans **Single Logout out to every downstream SP the
+user is signed into** — not only when logout arrives through a protocol endpoint:
 
-## Extending — add a new external IdP
+- Each protocol keeps a per-user app index: the SAML `SessionIndexStore` and the CAS service
+  registry both answer `AppsForUser`, and OIDC tracks RPs with back-channel logout configured.
+- `authn.Handler.SetGlobalLogout` is the seam: `app/run.go` wires a fan-out function that the
+  logout handler invokes **before** local teardown, so downstream notification uses still-valid
+  session context.
+- Dispatch is best-effort on detached goroutines (OIDC Back-Channel Logout, SAML SLO,
+  CAS SLO POSTs) — a slow or dead SP never delays the user's logout response.
 
-1. Implement the `externalidp/providers.Provider` interface.
-2. Register the provider type in `internal/domain/externalidp/providers/init.go`.
-3. Add UI: the IdP CRUD page (`web/apps/console/src/pages/idps`) will pick up the new `type` from the API automatically; add an icon + label only if you want them branded.
+## Tamper-proof audit
+
+`internal/domain/audit` implements an evidence-grade pipeline, not just a log table:
+
+1. **Capture** — a GORM plugin snapshots the row *before* a write and records the delta.
+   If capture fails, the business write is aborted (`cb.AddError`) — no unaudited mutation.
+2. **Staging** — captured events land in `mxid_audit_pending`.
+3. **Chaining** — a single-writer chainer (leader-elected via `pkg/dlock`, key
+   `KeyAuditChainer`) assigns contiguous sequence numbers and computes
+   `HMAC-SHA256(key, seq ‖ prev_hash ‖ canonical_json)` over a frozen canonical payload
+   (`MXID_CRYPTO_AUDIT_CHAIN_KEY`; startup fails on a missing/garbage key).
+4. **Append-only storage** — entries go to `mxid_audit_entry`, protected by a DB trigger
+   (migration 000050) that unconditionally rejects UPDATE/DELETE; `mxid_audit_chain_head`
+   tracks each chain tip.
+5. **Anchoring** — an anchorer periodically seals the un-anchored tail into a SHA-256 Merkle
+   root, signs the (tenant, class, from_seq, to_seq, root) range with Ed25519, and writes the
+   anchor to an external `AnchorSink`, so even a full DB compromise is detectable against the
+   external record. A multi-key anchor registry supports key rotation.
+6. **Verification** — operator subcommands on the server binary: `verify-audit` (walk every
+   chain head in place), `audit-export` (build a third-party-verifiable bundle), and
+   `verify-export` (offline verification needing only the bundle + trusted public key).
+
+## JIT privileged access
+
+`internal/domain/access` implements request-based temporary elevation (rule-based, no vaulted
+accounts). Flow: admin defines an **eligibility** (which role/group, max duration, approver
+scope) → user files a **request** with justification → an approver **approves** under
+separation-of-duties (self-approval is a hard error), per-eligibility approver scoping, and an
+optional step-up MFA requirement (default on) → approval creates a **time-bound binding** →
+an **expiry sweeper** (leader-elected, `KeyAccessSweeper`) revokes lapsed bindings → a
+**CompositeTerminator** then forces downstream logout per app protocol: OIDC back-channel
+logout, SAML IdP-initiated SLO, or CAS SLO (best-effort). All routes are gated behind the
+EE `conditional_access` feature via `middleware.RequireFeature`.
+
+## Offboarding & durable delivery
+
+Revoking a departing user's access is tiered by how much MXID controls the
+target (`internal/domain/offboarding`):
+
+- **L1 — SSO cut (CE).** One admin action disables the account (which also makes
+  the OIDC refresh grant reject the user) and kills every session across the
+  console / portal / protocol namespaces, then back-channel-logs-out the apps the
+  user is signed into. This revokes access to every app reached through MXID SSO,
+  with no downstream credentials.
+- **L3 — review checklist (CE).** Records the user's app footprint as a console
+  review panel so an admin can confirm cleanup for apps that also hold local
+  accounts, and (optionally) fires a signed webhook to the customer's IT/HR/ITSM
+  system.
+- **L2 — downstream deprovision (EE).** For an app with provisioning enabled, an
+  EE-only SCIM 2.0 connector (`mxid-ee/features/scim`, license-gated `scim`)
+  deactivates the downstream account (`PATCH active=false`). The per-app config
+  schema (`internal/domain/provisioning`) is CE; only the connector is EE.
+
+Side effects that must survive a crash (the offboarding webhook, the SCIM
+deprovision) ride a **transactional outbox** (`internal/outbox`, `mxid_outbox`):
+producers `EnqueueTx` in the same DB transaction as the state change, and a
+worker claims due rows with `FOR UPDATE SKIP LOCKED` (replica-safe, no leader
+election needed), dispatches by kind, and backs off / dead-letters on failure.
+The in-memory event bus is at-most-once, so security actions never ride it.
+
+## High availability
+
+The binary is replica-safe; nothing assumes a single instance:
+
+- **Single-writer jobs** run under Postgres advisory-lock leader election
+  (`pkg/dlock.RunAsLeader`): audit chainer, audit anchorer, audit retention, dynamic-group
+  reconcile, API-token purge, JIT expiry sweeper. Non-leaders idle until failover.
+- **Cross-pod cache invalidation**: settings changes publish on a Redis pub/sub channel so
+  every replica drops its cached copy immediately.
+- **Migrations** run via golang-migrate at startup; its Postgres driver holds an advisory
+  lock, so concurrently booting replicas don't race.
+- **Outbox** claims with `FOR UPDATE SKIP LOCKED`, so any replica may host the worker.
+- **`/readyz`** for readiness probes; SIGTERM triggers graceful HTTP shutdown and stops the
+  background workers via a shared context.
+
+## Error contract
+
+`pkg/errcode` is the single registry mapping domain sentinel errors to `(HTTP status, stable
+numeric business code)` pairs. Handlers end error paths with `response.MapError(c, err)`, which
+unwraps to the registered sentinel; unregistered errors become a 500 via
+`response.InternalError`, which logs the real cause server-side and never leaks it to the
+client. The frontend localizes known numeric codes in `extractMessage` — one toast per error.
+
+## Form-fill SSO (SWA) seam
+
+CE ships the `form` application protocol type and its descriptor schema (login URL + field
+selectors, stored in the app's `protocol_config`); the portal launch path reads it like any
+other protocol. Everything credential-bearing is EE: the encrypted credential vault, extension
+token binding, and step-up-gated reveal endpoints live in `mxid-ee/features/formfill`
+(license feature `form_fill`, registered through the `RegisterInit` DI seam). The companion
+MV3 browser extension is a separate open-source repo
+([mxid-extension](https://github.com/imkerbos/mxid-extension)) whose Record mode pushes the
+descriptor back to the server — see the README for the user-facing flow.
+
+## Extending — add a new external IdP (EE)
+
+External IdP is a code-separated EE feature; there is nothing to extend in this repo.
+
+1. In `mxid-ee`, implement the provider interface in
+   `features/externalidp/providers/` (see `github.go`, `lark.go`, `teams.go`).
+2. Register the provider type in `features/externalidp/registry.go`.
+3. Add UI: the IdP CRUD page (`web/apps/console/src/pages/idps`) picks up the new `type` from the API automatically; add an icon + label only if you want them branded.
 
 ## Extending — add a new protocol
 
@@ -197,20 +346,23 @@ packages, and runs the same `app.Run()`.
   Offline + product-bound; expiry reverts to CE limits with existing data
   grandfathered.
 - **`pkg/ee/registry`** — the extension seam. EE feature packages call
-  `registry.RegisterConsole(...)` from `init()`; `app.Run` invokes the registered
-  mounters. CE imports none, so EE code is *absent* from the CE binary.
+  `registry.RegisterConsole(...)` / `registry.RegisterInit(...)` from `init()`;
+  `app.Run` invokes the registered mounters. CE imports none, so EE code is
+  *absent* from the CE binary.
 - **Two gating tiers**:
   - *Runtime-gated* (`middleware.RequireFeature` → `license.Current().Has(feature)`):
-    `multi_tenant`, `branding`, `conditional_access`. The code and DB schema ship
-    in the CE binary (the schema is foundational / grandfathered); the capability
-    is locked behind a license check at the HTTP layer and unlocked when a valid
-    EE license is present.
-  - *Code-separated*: `external_idp`, `webauthn`, `scim`, `advanced_stepup`, `sms`
-    and other high-value features exist **only** in the private `mxid-ee` module
-    and in `garble`-obfuscated EE images. They are registered at startup via
-    `pkg/ee/registry` (`RegisterConsole` for route mounting, `RegisterInit` /
-    `InitContext` for the DI seam). The CE binary contains none of their code;
-    their routes return 404 on CE.
+    `branding`, `conditional_access`. The code and DB schema ship in the CE binary
+    (the schema is foundational / grandfathered); the capability is locked behind
+    a license check at the HTTP layer and unlocked when a valid EE license is
+    present.
+  - *Code-separated*: `external_idp`, `scim`, `form_fill` exist **only** in the
+    private `mxid-ee` module and in `garble`-obfuscated EE images, registered at
+    startup via `pkg/ee/registry` (`RegisterConsole` for route mounting,
+    `RegisterInit` / `InitContext` for the DI seam). The CE binary contains none
+    of their code; their routes return 404 on CE. Further keys (`webauthn`,
+    `sms`, `advanced_stepup`, `multi_tenant`) are reserved in the catalog but
+    never grant — SMS OTP and step-up MFA actually ship in CE, ungated.
+    `ImplementedFeatures` in `pkg/ee/license` is the single source of truth.
 - **Feature advertisement** (`/api/v1/system/info`): the endpoint reports only
   the features actually registered in the running binary. CE binaries do not list
   `external_idp` (its package is absent; the route does not exist). EE binaries
@@ -220,40 +372,15 @@ packages, and runs the same `app.Run()`.
 
 User-facing matrix, activation, and limits: [EDITIONS.md](EDITIONS.md).
 
-## Offboarding & durable delivery
+## Things deliberately not done
 
-Revoking a departing user's access is tiered by how much MXID controls the
-target (`internal/domain/offboarding`):
-
-- **L1 — SSO cut (CE).** One admin action disables the account (which also makes
-  the OIDC refresh grant reject the user) and kills every session across the
-  console / portal / protocol namespaces, then back-channel-logs-out the apps the
-  user is signed into. This revokes access to every app reached through MXID SSO,
-  with no downstream credentials.
-- **L3 — review checklist (CE).** Records the user's app footprint as a console
-  review panel so an admin can confirm cleanup for apps that also hold local
-  accounts, and (optionally) fires a signed webhook to the customer's IT/HR/ITSM
-  system.
-- **L2 — downstream deprovision (EE).** For an app with provisioning enabled, an
-  EE-only SCIM 2.0 connector (`mxid-ee/features/scim`, license-gated `scim`)
-  deactivates the downstream account (`PATCH active=false`). The per-app config
-  schema is CE; only the connector is EE.
-
-Side effects that must survive a crash (the offboarding webhook, the SCIM
-deprovision) ride a **transactional outbox** (`internal/outbox`,
-`mxid_outbox`): producers `EnqueueTx` in the same DB transaction as the state
-change, and a worker claims due rows with `FOR UPDATE SKIP LOCKED` (replica-safe,
-no leader election), dispatches by kind, and backs off / dead-letters on failure.
-The in-memory event bus is at-most-once, so security actions never ride it.
-
-## Things deliberately not done (yet)
-
-- **Federation across MXID instances.** Single-instance only.
-- **WebAuthn / FIDO2** — only TOTP for MFA today.
-- **SCIM inbound provisioning** — MXID is not yet a SCIM *service provider* (no
-  inbound create/update of MXID users via SCIM). Outbound SCIM 2.0
-  *deprovisioning* exists for offboarding (L2, EE) — see below.
-- **DPoP / OAuth 2.1 strict mode** — token endpoint stays on Bearer.
-- **JIT user provisioning from external IdP** — exists per-IdP but not configurable through UI.
-
-These are all candidate features for future versions.
+- **Multi-tenancy** — permanently out of scope, in CE *and* EE. The tenant column
+  stays as a schema artefact only (see "Tenant column" above).
+- **Federation across MXID instances** — no IdP-to-IdP brokering between MXID deployments.
+- **WebAuthn / FIDO2** — only TOTP for MFA today (`webauthn` is a reserved EE catalog
+  key with no shipping code).
+- **SCIM inbound provisioning** — MXID is not a SCIM *service provider* (no inbound
+  create/update of MXID users via SCIM). Outbound SCIM 2.0 *deprovisioning* exists
+  for offboarding (L2, EE) — see above.
+- **DPoP / OAuth 2.1 strict token binding** — the token endpoint stays on Bearer.
+- **JIT user provisioning from external IdP** — exists per-IdP (EE) but not configurable through UI.

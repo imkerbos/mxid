@@ -20,7 +20,9 @@ https://<host>/protocol/oidc/...      → OIDC IdP
 https://<host>/protocol/saml/...      → SAML IdP
 https://<host>/protocol/cas/...       → CAS IdP
 https://<host>/static/...             → 后端静态
-https://<host>/health                 → 存活探针
+https://<host>/health                 → 存活探针(进程存活)
+https://<host>/readyz                 → 就绪探针(ping DB + Redis;未就绪返 503)
+https://<host>/metrics               → Prometheus 指标(必须只对内网开放)
 ```
 
 dev(`http://localhost:3500/...`)和 prod(`https://id.example.com/...`)只差 host。集成文档、OIDC `redirect_uri` 白名单、CAS service URL 都按这套路径。
@@ -93,18 +95,34 @@ nginx pod 持有 SPA 静态(烤进 `mxid-web` 镜像);后端 pod 是无状态 Go
 | `COMPOSE_FILE` | ✅ | — | 加载哪些 compose 文件 = 部署模式。见下文 |
 | `MXID_TAG` | ✅ | — | 钉的镜像版本(如 `v0.1.0`)。无 `latest` |
 | `MXID_CRYPTO_KEY_ENCRYPTION_KEY` | ✅ | — | 主 KEK(`openssl rand -base64 32`) |
+| `MXID_CRYPTO_AUDIT_CHAIN_KEY` | ✅ | — | 审计哈希链 HMAC 密钥(`openssl rand -base64 32`)。只生成一次、永不更改 |
+| `MXID_CRYPTO_AUDIT_ANCHOR_KEY` | ✅* | — | 审计锚 Ed25519 seed(`openssl rand -base64 32`)。审计锚开启(默认)时 release 模式必填 |
+| `MXID_CRYPTO_AUDIT_ANCHOR_RETIRED_PUBKEYS` | — | — | 已退役的锚签名 ed25519 公钥(base64,逗号分隔);轮换 `MXID_CRYPTO_AUDIT_ANCHOR_KEY` 时把旧公钥加进来,旧锚才验得过 |
+| `MXID_AUDIT_ANCHOR_ENABLED` | — | `true` | 开/关审计锚。设 `false` 是显式退出;否则 release 模式要求锚密钥 |
+| `MXID_AUDIT_ANCHOR_SINK_PATH` | — | `data/audit-anchors.log` | 签名审计锚追加写入的文件 |
 | `POSTGRES_PASSWORD` | ✅ | — | DB 密码 |
 | `REDIS_PASSWORD` | ✅ | — | Redis 密码 |
 | `MXID_SERVER_ALLOWED_ORIGINS` | ✅ | — | CORS/CSRF 白名单,逗号分隔(如 `https://id.example.com`)。启动时定 |
+| `MXID_SERVER_ISSUER_URL` | ✅ | `https://id.example.com` | 规范 OIDC issuer(`iss`)/ SAML EntityID 基 / CAS 根。必须是真实的外部可达 HTTPS URL —— release 模式拒绝 localhost;第三方会重定向回它 |
+| `MXID_SERVER_PORTAL_URL` | ✅ | `https://id.example.com` | 规范门户 URL。单域名部署与 issuer 相同 |
+| `MXID_SERVER_CONSOLE_URL` | ✅ | `https://id.example.com/admin` | 规范控制台 URL。单域名部署 = issuer + `/admin` |
+| `MXID_SERVER_TRUSTED_PROXIES` | — | — | 受信反代 / LB CIDR(逗号分隔)—— 仅对这些来源从 `X-Forwarded-For` 解析真实客户端 IP。见*反向代理头* |
 | `SERVER_NAME` | ✅ | `_` | nginx TLS `server_name`(你的域名) |
 | `CERT_FILE` | ✅ | `server.crt` | `deploy/compose/cert/` 下证书文件名 |
 | `KEY_FILE` | ✅ | `server.key` | `deploy/compose/cert/` 下私钥文件名 |
 | `POSTGRES_USER` / `POSTGRES_DB` | — | `postgres` / `mxid` | DB 用户 / 库名 |
+| `POSTGRES_PORT` / `REDIS_PORT` | — | `5432` / `6379` | 宿主机映射的 Postgres / Redis 端口(compose) |
 | `MXID_DATABASE_HOST` | — | `host.docker.internal`(standalone:`postgres`) | 外部 DB host(仅外部DB模式) |
-| `MXID_DATABASE_PORT` / `MXID_REDIS_PORT` | — | `5432` / `6379` | DB / Redis 端口 |
+| `MXID_DATABASE_NAME` / `MXID_DATABASE_USER` | — | `mxid` / `postgres` | 后端视角的 DB 库名 / 用户 |
+| `MXID_DATABASE_PORT` / `MXID_REDIS_PORT` | — | `5432` / `6379` | 后端视角的 DB / Redis 端口 |
 | `MXID_REDIS_HOST` | — | `host.docker.internal`(standalone:`redis`) | 外部 Redis host |
 
-> 域名 / issuer / portal / console URL **不是** env —— 首次登录后在控制台(设置 → 外部 URL)设,热生效。唯一例外是 `MXID_SERVER_ALLOWED_ORIGINS`,必须启动时已知。License 也**不是** env —— 在控制台激活(存 DB)。
+> **规范外部 URL(`MXID_SERVER_ISSUER_URL` / `MXID_SERVER_PORTAL_URL` /
+> `MXID_SERVER_CONSOLE_URL`)在生产环境必须设为真实 HTTPS URL。**
+> 它们是 OIDC issuer(`iss`)、SAML EntityID 基、CAS 根,也是第三方(Lark 及其他
+> IdP/SP)重定向回来的地址;release 模式拒绝 localhost。不设的话应用会以
+> `id.example.com` 占位符启动。运行时仍可在控制台改(设置 → 外部 URL),但新部署
+> 的初始值来自这些 env。License **不是** env —— 在控制台激活(存 DB)。
 
 ## 容器镜像与版本
 
@@ -149,8 +167,11 @@ cp .env.example .env
 COMPOSE_FILE=deploy/compose/docker-compose.yml
 # COMPOSE_FILE=deploy/compose/docker-compose.yml:deploy/compose/docker-compose.standalone.yml
 
-MXID_TAG=v1.0.0                                      # 必需 — 钉一个发布版
+MXID_TAG=v1.8.0                                      # 必需 — 钉一个发布版
 MXID_SERVER_ALLOWED_ORIGINS=https://id.example.com   # CORS/CSRF 白名单(启动时定)
+MXID_SERVER_ISSUER_URL=https://id.example.com        # 规范 OIDC issuer / SAML EntityID / CAS 根
+MXID_SERVER_PORTAL_URL=https://id.example.com        # 规范门户 URL
+MXID_SERVER_CONSOLE_URL=https://id.example.com/admin # 规范控制台 URL
 SERVER_NAME=id.example.com
 CERT_FILE=fullchain.pem
 KEY_FILE=privkey.pem
@@ -176,7 +197,7 @@ make prod-docker-up           # 等价于:docker compose up -d
 
 > **容器名隔离**:dev compose 的 nginx 容器名为 `mxid-nginx-dev`,prod 为 `mxid-nginx`。同一宿主机同时跑 dev 和 prod 时名称不冲突,两栈均可正常启动。
 
-**为什么只配这几个 env?** `MXID_SERVER_ALLOWED_ORIGINS` 是 CORS/CSRF 白名单,必须启动时已知(它决定谁能访问控制台去改其它设置)。其余 URL(issuer/portal/console)在**控制台**(设置 → 外部 URL)设、热生效;YAML 只是兜底。
+**为什么配这几个 env?** `MXID_SERVER_ALLOWED_ORIGINS` 是 CORS/CSRF 白名单,必须启动时已知(它决定谁能访问控制台去改其它设置)。规范 URL(`MXID_SERVER_ISSUER_URL` / `MXID_SERVER_PORTAL_URL` / `MXID_SERVER_CONSOLE_URL`)从首次启动起就必须是真实的外部 HTTPS URL —— 它们播种第三方依赖的 OIDC issuer / SAML EntityID / CAS 根。运行时仍可在**控制台**(设置 → 外部 URL)改、热生效;YAML 配置值只是最后兜底。
 
 ### TLS 证书
 
@@ -239,7 +260,7 @@ License 在控制台激活(设置 → 许可信息);存 DB 并热重载,换镜�
 | PostgreSQL | 外部托管(RDS、CloudSQL)或 operator(如 CloudNativePG) | 生产不要裸 `Deployment` 跑 PG |
 | Redis | 外部托管(ElastiCache、MemoryStore)或 operator | |
 | TLS 入口 | `Ingress` + cert-manager | 或云 LB 托管证书 |
-| DB schema 迁移 | Helm `pre-upgrade` / `pre-install` `Job` | 见下文 *迁移* |
+| DB schema 迁移 | 后端启动时自动执行(advisory lock) | 可选:自建 pre-upgrade `Job` —— 见下文 *迁移* |
 
 ### nodeID 唯一性约束
 
@@ -272,28 +293,16 @@ EE license 指纹 = `HMAC(install_uuid | PostgreSQL system_identifier)`。因为
 
 ### 数据库迁移
 
-迁移在后端启动时自动跑,使用 golang-migrate + postgres driver 的**advisory lock** —— 并发 pod 不会重复执行迁移。如果你倾向于在 GitOps / Helm 工作流中显式控制,可将迁移作为 `pre-upgrade` Helm hook Job 在滚动更新前执行:
+迁移在后端启动时自动跑,使用 golang-migrate + postgres driver 的**advisory lock** —— 并发 pod 不会重复执行迁移,普通滚动更新即安全,无需额外机制。Helm chart **有意不带** pre-upgrade 迁移 Job 模板。
 
-```yaml
-# helm/templates/migration-job.yaml(节选)
-annotations:
-  "helm.sh/hook": pre-upgrade,pre-install
-  "helm.sh/hook-weight": "-5"
-  "helm.sh/hook-delete-policy": before-hook-creation
-spec:
-  template:
-    spec:
-      containers:
-        - name: migrate
-          image: ghcr.io/imkerbos/mxid:{{ .Values.image.tag }}
-          command: ["/app/mxid", "migrate", "up"]
-```
-
-无论哪种方式 —— 自动或 Job —— advisory lock 均能保证安全。
+如果你的 GitOps / 变更管理流程仍想显式控制,可自建 `Job`(例如在你的包装 chart 里加 Helm `pre-upgrade` hook),在滚动更新前用后端镜像对数据库先跑一遍;之后各 pod 启动时的迁移因 advisory lock 成为 no-op。无论哪种方式 —— 自动或 Job —— advisory lock 均能保证安全。
 
 ### 健康检查
 
-`/health` 端点同时用于 liveness 和 readiness 探针:
+**liveness 用 `/health`**(便宜的"进程是否活着",不查依赖),**readiness 用
+`/readyz`** —— `/readyz` 会 ping PostgreSQL 和 Redis,任一不可达即返 `503`,
+依赖连接坏掉的 pod 会被摘出 Service 而不是继续吐错。Helm chart 的探针就是
+这样接的:
 
 ```yaml
 livenessProbe:
@@ -304,7 +313,7 @@ livenessProbe:
   periodSeconds: 15
 readinessProbe:
   httpGet:
-    path: /health
+    path: /readyz          # 依赖感知:ping DB + Redis,失败返 503
     port: 10050
   initialDelaySeconds: 5
   periodSeconds: 10
@@ -321,7 +330,7 @@ readinessProbe:
 ```bash
 helm upgrade mxid ./helm/mxid \
   --set image.repository=ghcr.io/imkerbos/mxid-ee \
-  --set image.tag=v1.0.0
+  --set image.tag=v1.8.0
 ```
 
 Kubernetes 执行滚动更新:新 EE pod 启动(自动注册 `external_idp` 等 EE 功能),旧 CE pod 终止。数据库中已有的 license 自动生效 —— 无需重新激活。回退:
@@ -384,7 +393,7 @@ helm install mxid deploy/helm/mxid \
   -n mxid --create-namespace \
   --set edition=ce \
   --set host=id.example.com \
-  --set image.tag=v1.0.0 \
+  --set image.tag=v1.8.0 \
   --set database.host=pg.internal \
   --set redis.host=redis.internal \
   --set secrets.databasePassword=<db-pw> \
@@ -405,7 +414,7 @@ edition: ce               # "ce" (ghcr.io/imkerbos/mxid) 或
 host: id.example.com      # 对外域名 — 用于路由规则
 
 image:
-  tag: "v1.0.0"           # 钉一个发布版,不要用 "latest"
+  tag: "v1.8.0"           # 钉一个发布版,不要用 "latest"
 
 database:
   host: "pg.prod.internal"
@@ -476,13 +485,18 @@ Sealed Secrets,而非手动 `kubectl create secret`。`create: false` 时 chart
 | `edition` | `ce` | `ce` → 后端镜像 `ghcr.io/imkerbos/mxid`;`ee` → `ghcr.io/imkerbos/mxid-ee` |
 | `host` | `id.example.com` | 对外域名,用于所有路由资源 |
 | `image.registry` | `ghcr.io/imkerbos` | 所有镜像的仓库+命名空间前缀。改它即可指向私有仓库 / Harbor(隔离环境)——需把 `mxid`/`mxid-ee`/`mxid-web`(及 `backend.waitForDeps.image` 的 busybox)镜像到该前缀下,repo 名保持一致 |
-| `image.tag` | `v1.1.1` | 后端与前端共用的镜像 tag(钉发布版) |
+| `image.tag` | `v1.8.0` | 后端与前端共用的镜像 tag(钉发布版) |
+| `image.backendTag` | `""` | 可选覆盖 —— 独立钉后端镜像(按 `edition` 对应 CE `mxid` 或 EE `mxid-ee`),不跟 `tag`。留空 = 用 `tag` |
+| `image.webTag` | `""` | 可选覆盖 —— 独立钉 web 镜像,不跟 `tag`。留空 = 用 `tag` |
 | `image.pullPolicy` | `IfNotPresent` | 镜像拉取策略 |
 | `imagePullSecrets` | `[]` | 私有仓库拉取 Secret 名列表(`edition: ee` 时需要) |
 | `backend.replicaCount` | `2` | 后端副本数(默认 2,HA);每个 pod 从序号派生唯一 Snowflake nodeID。单写后台任务已 leader 选举,>1 安全 |
+| `backend.waitForDeps.enabled` | `true` | init 容器:等 Postgres + Redis 能建 TCP 连接后才启动主容器(依赖未起时不 crash-loop) |
+| `backend.waitForDeps.image` | `busybox:1.37` | wait-for-deps init 容器镜像(隔离环境记得一并镜像) |
 | `backend.autoscaling.enabled` | `false` | 开启对后端 StatefulSet 的 HPA |
 | `backend.autoscaling.minReplicas` | `1` | HPA 最小副本数 |
 | `backend.autoscaling.maxReplicas` | `5` | HPA 最大副本数 |
+| `web.replicaCount` | `2` | web(nginx + SPA)副本数 —— 无状态,任意副本数均安全 |
 | `database.host` | `postgres` | PostgreSQL 主机名 |
 | `database.port` | `5432` | PostgreSQL 端口 |
 | `database.name` | `mxid` | 数据库名 |
@@ -500,15 +514,22 @@ Sealed Secrets,而非手动 `kubectl create secret`。`create: false` 时 chart
 | `secrets.auditAnchorKey` | `""` | 审计锚 Ed25519 seed — `openssl rand -base64 32`;`audit.anchorSink.enabled` 时必填 |
 | `audit.anchorSink.enabled` | `true` | 把签名的外部审计锚持久化到 per-pod PVC(StatefulSet `volumeClaimTemplates`) |
 | `routing.type` | `gatewayapi` | 路由后端:`gatewayapi`(默认)、`istio`、`ingress` 或 `none` |
+| `routing.forwardedProtoHttps` | `true` | 在后端路由上强制加 `X-Forwarded-Proto: https`(gatewayapi 的 HTTPRoute filter / istio 的 VirtualService header)。**在 TLS 于 Gateway/LB 终止的部署中至关重要:没有这个头,OIDC(zitadel)引擎看到 `scheme=http`,与 https issuer URL 不匹配,discovery/authorize 直接 403。**Ingress controller 通常自己注入该头。只有当你的边缘已转发可信的 `X-Forwarded-Proto` 时才设 `false` |
+| `routing.gke.healthCheck.enabled` | `false` | 仅 GKE Gateway API:渲染 `HealthCheckPolicy` 把 Google Cloud LB 健康检查指向 `/health`(LB 默认探 `/` → 404 → 后端被判不健康)。非 GKE 保持关闭(CRD 不存在) |
 | `config.serverMode` | `release` | `release` 或 `debug` |
 | `config.allowedOrigins` | `""` | CORS 白名单;留空则默认 `https://<host>` |
+| `config.trustedProxies` | `[]` | 受信反代 / LB CIDR 列表(渲染为 `MXID_SERVER_TRUSTED_PROXIES`)。设为边缘代理 CIDR,真实客户端 IP 才会从 `X-Forwarded-For` 取;留空回退到宽泛的 RFC1918 默认并在 release 模式告警。见*反向代理头* |
+| `config.formFillExtension` | `false` | Form-fill SSO 浏览器扩展(EE `form_fill`):把扩展 origin 加入白名单并把门户 cookie 设为 `SameSite=None`。仅在铺开扩展时才开 |
+| `config.issuerUrl` | `""` | 规范 OIDC issuer / SAML EntityID 基 / CAS 根。留空 = 派生为 `https://<host>`;分域部署需显式设置 |
+| `config.portalUrl` | `""` | 规范门户 URL。留空 = `https://<host>` |
+| `config.consoleUrl` | `""` | 规范控制台 URL。留空 = `https://<host>/admin` |
 
 #### 入口路由三选一
 
 chart 根据 `routing.type` 渲染唯一一个路由资源。**chart 不负责创建
 Gateway 或 Ingress controller**,需引用集群中已有的资源。
 
-**Istio — VirtualService(默认)**
+**Istio — VirtualService**
 
 chart 渲染 `VirtualService`,按路径分流:
 `/api`、`/protocol`、`/static`、`/health` 转发到后端 `Service`,其余转到前端
@@ -656,6 +677,15 @@ server:
     - 10.0.0.0/8
 ```
 
+同一配置也可用环境变量 `MXID_SERVER_TRUSTED_PROXIES`(逗号分隔 CIDR),
+Kubernetes 上对应 chart 值 `config.trustedProxies`。设为你的边缘代理 / LB
+CIDR,应用才会从 `X-Forwarded-For` 解析真实客户端 IP —— 否则所有内网客户端
+都塌缩成 LB 的 IP,按客户端的审计、限流、条件访问全部失真。
+
+终止 TLS 的代理**必须向后端转发 `X-Forwarded-Proto: https`** —— OIDC 引擎会
+拿请求 scheme 和 https issuer URL 比对,看到裸 `http` 时 discovery/authorize
+直接 403(Helm chart 对应 `routing.forwardedProtoHttps: true`,默认开)。
+
 代理若不加这些头,`trusted_proxies` 留空,MXID 把代理 IP 当客户端 IP。
 
 ## 生产检查清单
@@ -674,7 +704,7 @@ server:
 - [ ] 应用访问策略已设(除非有意,否则没有应用是 `allow public`)。
 - [ ] 在反代后则设了 `trusted_proxies`。
 - [ ] **(Kubernetes)** 每个后端副本有唯一 `MXID_SNOWFLAKE_NODE_ID`(用 StatefulSet ordinal 或 Redis 租约)。
-- [ ] **(Kubernetes)** liveness + readiness 探针指向 `/health`。
+- [ ] **(Kubernetes)** liveness 探针 → `/health`;readiness 探针 → `/readyz`(依赖感知)。
 - [ ] **(Kubernetes)** 逻辑恢复 PostgreSQL(`pg_dump` → 新集群)后,需在控制台重新激活 EE license —— `system_identifier` 已变。
 
 ## 迁移
@@ -692,8 +722,13 @@ make migrate-create NAME=foo    # 生成新迁移对
 ## 可观测性
 
 - 后端写结构化 JSON 日志到 stdout(`level`、`ts`、`caller`、`msg`)。
-- 通过 `X-Request-Id` 头传递请求 ID。
-- `/health` 端点用于存活 / 就绪探针(后端就绪时返回 `200 OK`)。
+- 通过 `X-Request-Id` 头传递请求 ID;错误响应带 `traceId` 字段 —— 让用户报
+  traceId,再去日志里 grep。
+- `/health` —— 存活探针(进程存活,不查依赖)。`/readyz` —— 就绪探针
+  (ping DB + Redis,任一挂了返 `503`)。
+- `/metrics` —— Prometheus 指标(HTTP 请求、后台 worker、构建信息)。
+  **安全:`/metrics` 必须只对内网开放** —— 不要经公网 ingress/nginx 路由出去;
+  只在网络 / 集群内部抓取。
 - 审计日志是主要安全信号 —— 查 `mxid_audit_log` 表或接告警 webhook。
 
 ## 升级
@@ -702,6 +737,12 @@ make migrate-create NAME=foo    # 生成新迁移对
 2. 备份数据库(`pg_dump`)。
 3. 改 `MXID_TAG` 到新版,`docker compose pull && up -d`。迁移启动时自动跑。
 4. 验证关键 SP 的集成手册(控制台 `/admin/docs`)仍通过。
+
+> **从 < v1.7.2 升级:** v1.7.2 修了 SPA 缓存头 —— `index.html` 现在按
+> `Cache-Control: no-cache` 下发(每次都重新验证),带 hash 的 `/assets/*`
+> 保持 immutable,之后的升级都会干净地铺开。缓存了 v1.7.2 之前 `index.html`
+> 的浏览器可能还会显示一次旧 SPA —— 升级后让用户强刷一次
+> (Ctrl/Cmd+Shift+R)即可,此后全自动。
 
 ## 排错
 

@@ -20,7 +20,9 @@ https://<host>/protocol/oidc/...      → OIDC IdP
 https://<host>/protocol/saml/...      → SAML IdP
 https://<host>/protocol/cas/...       → CAS IdP
 https://<host>/static/...             → backend static
-https://<host>/health                 → liveness probe
+https://<host>/health                 → liveness probe (process alive)
+https://<host>/readyz                 → readiness probe (pings DB + Redis; 503 when not ready)
+https://<host>/metrics               → Prometheus metrics (keep INTERNAL-ONLY at the edge)
 ```
 
 dev (`http://localhost:3500/...`) and prod (`https://id.example.com/...`) only differ by host. Integration docs, OIDC `redirect_uri` allowlists, and CAS service URLs all use this scheme verbatim.
@@ -98,21 +100,36 @@ prod set:
 | `COMPOSE_FILE` | ✅ | — | Which compose files to load = deployment mode. See *Production with Docker compose*. |
 | `MXID_TAG` | ✅ | — | Image version to pin (e.g. `v0.1.0`). No `latest`. |
 | `MXID_CRYPTO_KEY_ENCRYPTION_KEY` | ✅ | — | Master KEK (`openssl rand -base64 32`). |
+| `MXID_CRYPTO_AUDIT_CHAIN_KEY` | ✅ | — | Audit hash-chain HMAC key (`openssl rand -base64 32`). Generate once, never change. |
+| `MXID_CRYPTO_AUDIT_ANCHOR_KEY` | ✅* | — | Audit anchor Ed25519 seed (`openssl rand -base64 32`). Required in release mode when anchoring is enabled (the default). |
+| `MXID_CRYPTO_AUDIT_ANCHOR_RETIRED_PUBKEYS` | — | — | Comma-separated base64 ed25519 public keys retired from anchoring; add the old public key here when rotating `MXID_CRYPTO_AUDIT_ANCHOR_KEY` so old anchors still verify. |
+| `MXID_AUDIT_ANCHOR_ENABLED` | — | `true` | Enable/disable audit anchoring. Setting `false` is an explicit opt-out; otherwise release mode requires the anchor key. |
+| `MXID_AUDIT_ANCHOR_SINK_PATH` | — | `data/audit-anchors.log` | File the signed audit anchors are appended to. |
 | `POSTGRES_PASSWORD` | ✅ | — | DB password. |
 | `REDIS_PASSWORD` | ✅ | — | Redis password. |
 | `MXID_SERVER_ALLOWED_ORIGINS` | ✅ | — | CORS/CSRF allow-list, comma-separated origins (e.g. `https://id.example.com`). Boot-time. |
+| `MXID_SERVER_ISSUER_URL` | ✅ | `https://id.example.com` | Canonical OIDC issuer (`iss`) / SAML EntityID base / CAS root. MUST be your real externally-reachable HTTPS URL — release mode rejects localhost; third parties redirect back to it. |
+| `MXID_SERVER_PORTAL_URL` | ✅ | `https://id.example.com` | Canonical portal URL. Single-domain deploy: same as the issuer. |
+| `MXID_SERVER_CONSOLE_URL` | ✅ | `https://id.example.com/admin` | Canonical console URL. Single-domain deploy: issuer + `/admin`. |
+| `MXID_SERVER_TRUSTED_PROXIES` | — | — | Comma-separated CIDRs of trusted reverse proxies / LBs — the app resolves the real client IP from `X-Forwarded-For` only for these. See *Reverse proxy headers*. |
 | `SERVER_NAME` | ✅ | `_` | nginx TLS `server_name` (your domain). |
 | `CERT_FILE` | ✅ | `server.crt` | TLS cert filename under `deploy/compose/cert/`. |
 | `KEY_FILE` | ✅ | `server.key` | TLS key filename under `deploy/compose/cert/`. |
 | `POSTGRES_USER` / `POSTGRES_DB` | — | `postgres` / `mxid` | DB user / name. |
+| `POSTGRES_PORT` / `REDIS_PORT` | — | `5432` / `6379` | Host-mapped Postgres / Redis ports (compose). |
 | `MXID_DATABASE_HOST` | — | `host.docker.internal` (standalone: `postgres`) | External DB host (external-DB mode only). |
-| `MXID_DATABASE_PORT` / `MXID_REDIS_PORT` | — | `5432` / `6379` | DB / Redis ports. |
+| `MXID_DATABASE_NAME` / `MXID_DATABASE_USER` | — | `mxid` / `postgres` | DB name / user as seen by the backend. |
+| `MXID_DATABASE_PORT` / `MXID_REDIS_PORT` | — | `5432` / `6379` | DB / Redis ports as seen by the backend. |
 | `MXID_REDIS_HOST` | — | `host.docker.internal` (standalone: `redis`) | External Redis host. |
 
-> Domain / issuer / portal / console URLs are **not** env vars — set them in the
-> console (Settings → External URLs) after first login; they hot-reload. The one
-> exception is `MXID_SERVER_ALLOWED_ORIGINS`, which must be known at boot.
-> License is **not** an env var either — activate it in the console (DB-stored).
+> **The canonical external URLs (`MXID_SERVER_ISSUER_URL` / `MXID_SERVER_PORTAL_URL` /
+> `MXID_SERVER_CONSOLE_URL`) MUST be set to your real HTTPS URLs in production.**
+> They are the OIDC issuer (`iss`), SAML EntityID base, CAS root, and the origins
+> third parties (Lark and other IdPs/SPs) redirect back to; release mode rejects
+> localhost. Without them the app boots on the `id.example.com` placeholder. They
+> remain admin-editable at runtime (Console → Settings → External URLs), but the
+> env values are what a fresh deployment starts from.
+> License is **not** an env var — activate it in the console (DB-stored).
 
 ## Container images & versioning
 
@@ -167,8 +184,11 @@ Edit `.env` — the prod section:
 COMPOSE_FILE=deploy/compose/docker-compose.yml
 # COMPOSE_FILE=deploy/compose/docker-compose.yml:deploy/compose/docker-compose.standalone.yml
 
-MXID_TAG=v1.0.0                                      # required — pin a release
+MXID_TAG=v1.8.0                                      # required — pin a release
 MXID_SERVER_ALLOWED_ORIGINS=https://id.example.com   # CORS/CSRF allow-list (boot-time)
+MXID_SERVER_ISSUER_URL=https://id.example.com        # canonical OIDC issuer / SAML EntityID / CAS root
+MXID_SERVER_PORTAL_URL=https://id.example.com        # canonical portal URL
+MXID_SERVER_CONSOLE_URL=https://id.example.com/admin # canonical console URL
 SERVER_NAME=id.example.com
 CERT_FILE=fullchain.pem
 KEY_FILE=privkey.pem
@@ -201,11 +221,14 @@ Two **deployment modes** are available via `COMPOSE_FILE`:
 > build machine that also serves production), the names do not collide and both
 > stacks start cleanly.
 
-**Why only those env values?** `MXID_SERVER_ALLOWED_ORIGINS` is the CORS/CSRF
+**Why these env values?** `MXID_SERVER_ALLOWED_ORIGINS` is the CORS/CSRF
 allow-list — it must be known at startup because it gates who can even reach the
-console to change other settings. Everything else URL-related (issuer / portal /
-console URLs that protocol handlers use) is **set in the console** under
-*Settings → External URLs* and takes effect live; the YAML values are only a fallback.
+console to change other settings. The canonical URLs
+(`MXID_SERVER_ISSUER_URL` / `MXID_SERVER_PORTAL_URL` / `MXID_SERVER_CONSOLE_URL`)
+must be your real external HTTPS URLs from the first boot — they seed the OIDC
+issuer / SAML EntityID / CAS root that third parties depend on. They remain
+admin-editable at runtime under *Settings → External URLs* (hot-reload); the
+YAML config values are only a last-resort fallback.
 
 ### TLS certificates
 
@@ -286,7 +309,7 @@ the only thing that needs persistence.
 | PostgreSQL | External managed (RDS, CloudSQL) or operator (e.g. CloudNativePG) | Do **not** run on raw `Deployment` in prod |
 | Redis | External managed (ElastiCache, MemoryStore) or operator | |
 | TLS ingress | `Ingress` + cert-manager | Or cloud LB with managed certs |
-| DB schema migrations | Helm `pre-upgrade` / `pre-install` `Job` | See *Migrations* below |
+| DB schema migrations | Automatic on backend startup (advisory lock) | Optional: your own pre-upgrade `Job` — see *Migrations* below |
 
 ### nodeID — uniqueness constraint
 
@@ -334,29 +357,22 @@ to a new cluster, re-activate the license in the console (Settings → License).
 
 Migrations run automatically on backend startup using golang-migrate with the
 postgres driver's **advisory lock** — concurrent pods cannot double-apply a
-migration. For GitOps / Helm workflows where you prefer explicit control, run
-migrations as a `pre-upgrade` Helm hook Job before the rolling update:
+migration, so a plain rolling update is safe with no extra machinery. The Helm
+chart ships **no** pre-upgrade migration-job template on purpose.
 
-```yaml
-# helm/templates/migration-job.yaml (excerpt)
-annotations:
-  "helm.sh/hook": pre-upgrade,pre-install
-  "helm.sh/hook-weight": "-5"
-  "helm.sh/hook-delete-policy": before-hook-creation
-spec:
-  template:
-    spec:
-      containers:
-        - name: migrate
-          image: ghcr.io/imkerbos/mxid:{{ .Values.image.tag }}
-          command: ["/app/mxid", "migrate", "up"]
-```
-
-Either way — automatic or Job — the advisory lock makes it safe.
+If your GitOps / change-management workflow wants explicit control anyway, run
+your own `Job` (e.g. a Helm `pre-upgrade` hook in your wrapper chart) that starts
+the backend image against the database before the rolling update; the advisory
+lock makes the subsequent pod boots no-ops. Either way — automatic or Job — the
+advisory lock keeps it safe.
 
 ### Health checks
 
-The `/health` endpoint is available for both liveness and readiness probes:
+Use **`/health` for liveness** (cheap "is the process alive", no dependency
+check) and **`/readyz` for readiness** — `/readyz` pings PostgreSQL and Redis
+and returns `503` when either is unreachable, so a pod with a broken dependency
+connection is pulled from the Service instead of serving errors. The Helm chart
+wires the probes exactly this way:
 
 ```yaml
 livenessProbe:
@@ -367,7 +383,7 @@ livenessProbe:
   periodSeconds: 15
 readinessProbe:
   httpGet:
-    path: /health
+    path: /readyz          # dependency-aware: DB + Redis ping, 503 on failure
     port: 10050
   initialDelaySeconds: 5
   periodSeconds: 10
@@ -390,7 +406,7 @@ with a rolling update:
 ```bash
 helm upgrade mxid ./helm/mxid \
   --set image.repository=ghcr.io/imkerbos/mxid-ee \
-  --set image.tag=v1.0.0
+  --set image.tag=v1.8.0
 ```
 
 Kubernetes performs a rolling update: new EE pods start (registering
@@ -459,7 +475,7 @@ helm install mxid deploy/helm/mxid \
   -n mxid --create-namespace \
   --set edition=ce \
   --set host=id.example.com \
-  --set image.tag=v1.0.0 \
+  --set image.tag=v1.8.0 \
   --set database.host=pg.internal \
   --set redis.host=redis.internal \
   --set secrets.databasePassword=<db-pw> \
@@ -487,7 +503,7 @@ edition: ce               # "ce" (ghcr.io/imkerbos/mxid) or
 host: id.example.com      # public hostname — used in routing rules
 
 image:
-  tag: "v1.0.0"           # pin a release; no "latest"
+  tag: "v1.8.0"           # pin a release; no "latest"
 
 database:
   host: "pg.prod.internal"
@@ -559,13 +575,18 @@ fails-closed at boot if any are missing.
 | `edition` | `ce` | `ce` → backend image `ghcr.io/imkerbos/mxid`; `ee` → `ghcr.io/imkerbos/mxid-ee` |
 | `host` | `id.example.com` | Public hostname used in all routing resources |
 | `image.registry` | `ghcr.io/imkerbos` | Registry + namespace prefix for all images. Override to pull from a private registry / Harbor (air-gapped) — mirror `mxid`/`mxid-ee`/`mxid-web` (and `backend.waitForDeps.image` busybox) under it |
-| `image.tag` | `v1.1.1` | Image tag for both backend and web (pin to a release) |
+| `image.tag` | `v1.8.0` | Image tag for both backend and web (pin to a release) |
+| `image.backendTag` | `""` | Optional override — pin the backend image (CE `mxid` or EE `mxid-ee`, per `edition`) independently of `tag`. Empty = use `tag` |
+| `image.webTag` | `""` | Optional override — pin the web image independently of `tag`. Empty = use `tag` |
 | `image.pullPolicy` | `IfNotPresent` | Image pull policy |
 | `imagePullSecrets` | `[]` | Pull-secret names for private registries (needed for `edition: ee`) |
 | `backend.replicaCount` | `2` | Backend replica count (default 2 for HA); each pod gets a unique Snowflake nodeID from its ordinal. Single-writer jobs are leader-elected, so >1 is safe |
+| `backend.waitForDeps.enabled` | `true` | Init container that blocks pod startup until Postgres + Redis accept TCP connections (no crash-loop while deps come up) |
+| `backend.waitForDeps.image` | `busybox:1.37` | Image for the wait-for-deps init container (mirror it too for air-gapped registries) |
 | `backend.autoscaling.enabled` | `false` | Enable HPA on the backend StatefulSet |
 | `backend.autoscaling.minReplicas` | `1` | HPA minimum |
 | `backend.autoscaling.maxReplicas` | `5` | HPA maximum |
+| `web.replicaCount` | `2` | Web (nginx + SPA) replica count — stateless, any count is safe |
 | `database.host` | `postgres` | PostgreSQL hostname |
 | `database.port` | `5432` | PostgreSQL port |
 | `database.name` | `mxid` | Database name |
@@ -583,15 +604,22 @@ fails-closed at boot if any are missing.
 | `secrets.auditAnchorKey` | `""` | Audit anchor Ed25519 seed — `openssl rand -base64 32`; required when `audit.anchorSink.enabled` |
 | `audit.anchorSink.enabled` | `true` | Persist signed external audit anchors to a per-pod PVC (StatefulSet `volumeClaimTemplates`) |
 | `routing.type` | `gatewayapi` | Routing backend: `gatewayapi` (default), `istio`, `ingress`, or `none` |
+| `routing.forwardedProtoHttps` | `true` | Force `X-Forwarded-Proto: https` on backend routes (gatewayapi HTTPRoute filter / istio VirtualService header). **CRITICAL behind a TLS-terminating Gateway/LB: without this header the OIDC (zitadel) engine sees `scheme=http`, mismatches the https issuer URL, and rejects discovery/authorize with HTTP 403.** Ingress controllers usually inject the header themselves. Set `false` only if your edge already forwards a trustworthy `X-Forwarded-Proto` |
+| `routing.gke.healthCheck.enabled` | `false` | GKE Gateway API only: emit a `HealthCheckPolicy` pointing the Google Cloud LB health check at `/health` (the LB default probes `/` → 404 → backend marked unhealthy). Keep disabled off GKE (the CRD won't exist) |
 | `config.serverMode` | `release` | `release` or `debug` |
 | `config.allowedOrigins` | `""` | CORS allow-list; defaults to `https://<host>` when empty |
+| `config.trustedProxies` | `[]` | Trusted reverse-proxy / LB CIDRs (rendered as `MXID_SERVER_TRUSTED_PROXIES`). Set to your edge proxy CIDR(s) so the real client IP is taken from `X-Forwarded-For`; empty falls back to a broad RFC1918 default with a release-mode warning. See *Reverse proxy headers* |
+| `config.formFillExtension` | `false` | Form-fill SSO browser extension (EE `form_fill`): allow-lists the extension origin and sets the portal cookie `SameSite=None`. Enable only when rolling out the extension |
+| `config.issuerUrl` | `""` | Canonical OIDC issuer / SAML EntityID base / CAS root. Empty = derived as `https://<host>`; set explicitly for split-domain deployments |
+| `config.portalUrl` | `""` | Canonical portal URL. Empty = `https://<host>` |
+| `config.consoleUrl` | `""` | Canonical console URL. Empty = `https://<host>/admin` |
 
 #### Ingress routing options (choose one)
 
 The chart renders exactly one routing resource based on `routing.type`. It does
 not provision a Gateway or Ingress controller — point it at one you already have.
 
-**Istio — VirtualService (default)**
+**Istio — VirtualService**
 
 The chart renders a `VirtualService` that splits traffic by path: `/api`,
 `/protocol`, `/static`, and `/health` go to the backend `Service`; everything
@@ -749,6 +777,18 @@ server:
     - 10.0.0.0/8
 ```
 
+The same setting is available as the env var `MXID_SERVER_TRUSTED_PROXIES`
+(comma-separated CIDRs) and, on Kubernetes, as the chart value
+`config.trustedProxies`. Set it to your edge proxy / LB CIDR(s) so the app
+resolves the real client IP from `X-Forwarded-For` — otherwise every intranet
+client collapses onto the LB IP, which breaks per-client audit, rate limiting,
+and conditional access.
+
+Your TLS-terminating proxy **must forward `X-Forwarded-Proto: https`** to the
+backend — the OIDC engine compares the request scheme against the https issuer
+URL and rejects discovery/authorize with 403 when it sees plain `http` (on the
+Helm chart this is `routing.forwardedProtoHttps: true`, on by default).
+
 If the proxy doesn't add these headers, leave `trusted_proxies` empty so MXID treats the proxy IP as the client IP.
 
 ## Production checklist
@@ -767,7 +807,7 @@ If the proxy doesn't add these headers, leave `trusted_proxies` empty so MXID tr
 - [ ] App access policies set (no app is `allow public` unless intentional).
 - [ ] `trusted_proxies` set if behind a reverse proxy.
 - [ ] **(Kubernetes)** Each backend replica has a unique `MXID_SNOWFLAKE_NODE_ID` (use StatefulSet ordinal or Redis lease).
-- [ ] **(Kubernetes)** Liveness + readiness probes point to `/health`.
+- [ ] **(Kubernetes)** Liveness probe → `/health`; readiness probe → `/readyz` (dependency-aware).
 - [ ] **(Kubernetes)** After a logical PostgreSQL restore (`pg_dump` → new cluster), re-activate the EE license — `system_identifier` changes.
 
 ## Migrations
@@ -785,8 +825,13 @@ DB schema is **forward-only in production**. The down migrations exist for local
 ## Observability
 
 - Backend writes structured JSON logs to stdout (`level`, `ts`, `caller`, `msg`).
-- Request ID propagation via `X-Request-Id` header.
-- `/health` endpoint for liveness / readiness probes (returns `200 OK` when the backend is ready).
+- Request ID propagation via `X-Request-Id` header; error responses carry a
+  `traceId` field — ask users to quote it and grep the logs.
+- `/health` — liveness (process alive, no dependency check). `/readyz` —
+  readiness (pings DB + Redis, `503` when either is down).
+- `/metrics` — Prometheus metrics (HTTP requests, background workers, build
+  info). **Security: keep `/metrics` internal-only** — do not route it through
+  the public ingress/nginx; scrape it from inside the network/cluster only.
 - Audit log is the primary security-relevant signal — query the `mxid_audit_log` table or wire up the alert webhook.
 
 ## Upgrade
@@ -795,6 +840,13 @@ DB schema is **forward-only in production**. The down migrations exist for local
 2. Back up the database (`pg_dump`).
 3. Pull the new tag, rebuild, restart. Migrations run on startup.
 4. Verify the integration playbooks under console `/docs` still pass for your critical SPs.
+
+> **Upgrading from < v1.7.2:** v1.7.2 fixed SPA cache headers — `index.html` is
+> now served with `Cache-Control: no-cache` (always revalidated) while the
+> hashed `/assets/*` stay immutable, so future upgrades roll out cleanly.
+> Browsers that cached a pre-v1.7.2 `index.html` may still show the old SPA
+> once — have users hard-refresh (Ctrl/Cmd+Shift+R) a single time after the
+> upgrade; from then on it is automatic.
 
 ## Troubleshooting
 
