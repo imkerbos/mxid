@@ -13,7 +13,27 @@ import (
 )
 
 // Anchorer summarizes the un-anchored tail of each chain into a signed Merkle
-// root written to an external sink. Single-writer per process (run one).
+// root. Single-writer per process (run one).
+//
+// An anchor serves two distinct purposes, and they are worth separating because
+// only one of them is universally wanted:
+//
+//   - Checkpoint (always). The (from_seq, to_seq, merkle_root) row in
+//     mxid_audit_anchor summarises a range of the chain in ~375 bytes. That is
+//     what makes it possible to verify — and eventually to archive and prune —
+//     a range without walking the chain from genesis.
+//
+//   - External witness (optional, sink != nil). Writing the signed root
+//     somewhere outside the database is what would catch an attacker who holds
+//     database write access and rewrites history, since they cannot also
+//     rewrite the external copy. That guarantee is only real if the sink is
+//     genuinely outside the DB's trust domain; a file on a pod's own volume is
+//     not, which is why it is opt-in rather than the default.
+//
+// With sink == nil the chain still detects tampering by anyone who lacks the
+// HMAC chain key, and the append-only trigger still blocks deletion. What is
+// given up is the ability to prove that an operator with full database access
+// did not rewrite history.
 type Anchorer struct {
 	db     *gorm.DB
 	priv   ed25519.PrivateKey
@@ -23,6 +43,9 @@ type Anchorer struct {
 	logger *zap.Logger
 }
 
+// NewAnchorer builds an anchorer. sink may be nil, in which case anchors are
+// recorded in the database as checkpoints only — see the type comment for what
+// that trades away.
 func NewAnchorer(db *gorm.DB, priv ed25519.PrivateKey, sink AnchorSink, idGen *snowflake.Generator, logger *zap.Logger) *Anchorer {
 	pub := priv.Public().(ed25519.PublicKey)
 	return &Anchorer{db: db, priv: priv, keyID: KeyIDForPublic(pub), sink: sink, idGen: idGen, logger: logger}
@@ -58,12 +81,19 @@ func (a *Anchorer) AnchorChain(ctx context.Context, tenantID int64, class string
 	toSeq := entries[len(entries)-1].Seq
 	sig := SignAnchor(a.priv, tenantID, class, fromSeq, toSeq, root)
 
-	uri, err := a.sink.Put(ctx, AnchorRecord{
-		TenantID: tenantID, ChainClass: class, FromSeq: fromSeq, ToSeq: toSeq,
-		MerkleRoot: root, Signature: sig, KeyID: a.keyID, CreatedAt: time.Now().UTC(),
-	})
-	if err != nil {
-		return nil, err // sink failure -> no DB record, retried next tick
+	var uri string
+	if a.sink != nil {
+		// Sink first, and a failure aborts the whole anchor: the external record
+		// is the point of running a sink at all, so an anchor that exists only in
+		// the database would be a witness that cannot witness. Retried next tick.
+		var err error
+		uri, err = a.sink.Put(ctx, AnchorRecord{
+			TenantID: tenantID, ChainClass: class, FromSeq: fromSeq, ToSeq: toSeq,
+			MerkleRoot: root, Signature: sig, KeyID: a.keyID, CreatedAt: time.Now().UTC(),
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	anchor := &AuditAnchor{

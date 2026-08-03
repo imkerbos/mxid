@@ -119,11 +119,19 @@ spec:
                 secretKeyRef:
                   name: {{ include "mxid.secretName" . }}
                   key: MXID_CRYPTO_AUDIT_ANCHOR_KEY
-            {{- if .Values.audit.anchorSink.enabled }}
-            # Anchor sink lives on the mounted PersistentVolume (the pod
-            # filesystem is ephemeral). Written only by the leader replica.
+            # Anchoring itself is independent of the external sink: the anchor
+            # rows in mxid_audit_anchor are checkpoints that make a range
+            # verifiable without replaying the chain from genesis, and they cost
+            # no storage. Only the external mirror below is optional.
+            # `default true` would be wrong here: Helm's default fires on any
+            # empty value, and false IS empty, so an explicit anchorEnabled=false
+            # would silently render as true. Test for presence instead.
             - name: MXID_AUDIT_ANCHOR_ENABLED
-              value: "true"
+              value: {{ if kindIs "invalid" .Values.audit.anchorEnabled }}"true"{{ else }}{{ .Values.audit.anchorEnabled | quote }}{{ end }}
+            {{- if .Values.audit.anchorSink.enabled }}
+            # Setting a path turns on the external mirror. It is only meaningful
+            # on a volume shared by every replica — anchors are written by
+            # whichever pod holds the leader lock.
             - name: MXID_AUDIT_ANCHOR_SINK_PATH
               value: {{ .Values.audit.anchorSink.path | quote }}
             {{- end }}

@@ -100,7 +100,15 @@ func runVerifyAudit(a *bootstrap.App) error {
 	if err != nil {
 		return err
 	}
-	sink := audit.NewFileSink(a.Config.Audit.AnchorSinkPath)
+	// No sink configured = anchors are database checkpoints only, so there is no
+	// external record to diff against. Verifying the anchors themselves (Merkle
+	// root + signature over the entries) still works and still catches a forged
+	// or truncated range; what is skipped is the cross-check that would catch
+	// someone who can rewrite the database itself.
+	var sink audit.AnchorSink
+	if path := strings.TrimSpace(a.Config.Audit.AnchorSinkPath); path != "" {
+		sink = audit.NewFileSink(path)
+	}
 
 	ctx := context.Background()
 	var heads []audit.ChainHead
