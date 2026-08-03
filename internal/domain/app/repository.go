@@ -51,12 +51,6 @@ type Repository interface {
 	RemoveAccess(ctx context.Context, id int64) error
 	ListAccessByApp(ctx context.Context, appID int64) ([]*AppAccess, error)
 
-	// AppAccount
-	CreateAccount(ctx context.Context, account *AppAccount) error
-	GetAccountByID(ctx context.Context, id int64) (*AppAccount, error)
-	UpdateAccount(ctx context.Context, account *AppAccount) error
-	DeleteAccount(ctx context.Context, id int64) error
-
 	// AppCert
 	CreateCert(ctx context.Context, cert *AppCert) error
 	GetCertByID(ctx context.Context, id int64) (*AppCert, error)

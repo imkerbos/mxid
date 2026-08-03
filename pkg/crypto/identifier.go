@@ -47,16 +47,6 @@ func GenerateClientSecret() (string, error) {
 	return base64URLNoPad(b), nil
 }
 
-// GenerateOpaqueToken returns n random bytes encoded as URL-safe base64
-// without padding. Used for authorization codes (n=32) and refresh tokens (n=64).
-func GenerateOpaqueToken(n int) (string, error) {
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return base64URLNoPad(b), nil
-}
-
 func base64URLNoPad(b []byte) string {
 	const table = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
 	// Standard base64 emit without padding.

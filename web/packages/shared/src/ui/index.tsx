@@ -20,13 +20,6 @@ export const pageMotion = {
   transition: { duration: 0.2 },
 } as const
 
-// Standard modal/dialog enter+exit (matches the shared Modal).
-export const dialogMotion = {
-  initial: { opacity: 0, scale: 0.95 },
-  animate: { opacity: 1, scale: 1 },
-  exit: { opacity: 0, scale: 0.95 },
-} as const
-
 /* ──────────────── Input / Textarea / Select base classes ──────────────── */
 
 export const INPUT_CLASS =
@@ -284,12 +277,6 @@ export function LoadingState() {
     <div className="flex items-center justify-center py-12">
       <Loader2 className="h-5 w-5 animate-spin text-faint" />
     </div>
-  )
-}
-
-export function CodeBadge({ children }: { children: ReactNode }) {
-  return (
-    <code className="rounded bg-surface-muted px-1.5 py-0.5 text-xs text-muted">{children}</code>
   )
 }
 

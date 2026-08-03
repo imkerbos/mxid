@@ -109,13 +109,6 @@ type AddAppToGroupRequest struct {
 	AppID int64 `json:"app_id,string" binding:"required"`
 }
 
-// AppAccountRequest is the request body for creating/updating an app account.
-type AppAccountRequest struct {
-	UserID     int64   `json:"user_id,string" binding:"required"`
-	Account    string  `json:"account" binding:"required,max=256"`
-	Credential *string `json:"credential" binding:"omitempty,max=512"`
-}
-
 // AppResponse is the API response for an application.
 //
 // ClientSecret is never echoed back after create / rotate. Field is reserved

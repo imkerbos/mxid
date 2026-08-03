@@ -394,45 +394,6 @@ func (r *gormRepository) ListAccessByApp(ctx context.Context, appID int64) ([]*A
 	return accesses, nil
 }
 
-// --- AppAccount ---
-
-// CreateAccount inserts a new app account record.
-func (r *gormRepository) CreateAccount(ctx context.Context, account *AppAccount) error {
-	if err := r.db.WithContext(ctx).Create(account).Error; err != nil {
-		return fmt.Errorf("create app account: %w", err)
-	}
-	return nil
-}
-
-// GetAccountByID finds an app account by primary key.
-func (r *gormRepository) GetAccountByID(ctx context.Context, id int64) (*AppAccount, error) {
-	var account AppAccount
-	if err := r.db.WithContext(ctx).First(&account, id).Error; err != nil {
-		return nil, fmt.Errorf("get app account by id: %w", err)
-	}
-	return &account, nil
-}
-
-// UpdateAccount saves changes to an existing app account.
-func (r *gormRepository) UpdateAccount(ctx context.Context, account *AppAccount) error {
-	if err := r.db.WithContext(ctx).Save(account).Error; err != nil {
-		return fmt.Errorf("update app account: %w", err)
-	}
-	return nil
-}
-
-// DeleteAccount deletes an app account by ID.
-func (r *gormRepository) DeleteAccount(ctx context.Context, id int64) error {
-	result := r.db.WithContext(ctx).Delete(&AppAccount{}, id)
-	if result.Error != nil {
-		return fmt.Errorf("delete app account: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	return nil
-}
-
 // --- AppCert ---
 
 // CreateCert inserts a new app certificate record.

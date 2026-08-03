@@ -27,9 +27,3 @@ export function parseAppIcon(value: string | null | undefined): ParsedIconValue 
   return { kind: 'url', url: value }
 }
 
-// isRenderableAsImage tells callers using a plain <img src=...> whether
-// they can pass the value through directly. Useful in legacy components
-// that don't (yet) want to depend on a full icon-picker library.
-export function isRenderableAsImage(value: string | null | undefined): boolean {
-  return parseAppIcon(value).kind === 'url'
-}

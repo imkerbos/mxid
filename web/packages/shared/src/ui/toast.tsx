@@ -14,6 +14,7 @@
 import { CheckCircle2, XCircle, Info, AlertTriangle, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import i18next from 'i18next'
+import { CODE_EE_FEATURE_REQUIRED } from '../api/client'
 import { cn } from '../utils'
 
 type ToastKind = 'success' | 'error' | 'info' | 'warning'
@@ -68,7 +69,7 @@ const LOCALIZED_CODES: Record<number, string> = {
   40007: 'errors.totpRequired', // change-password step-up: TOTP enrolled but code missing
   40012: 'errors.selfApproval', // JIT approve: separation of duties — can't approve own request
   40013: 'errors.approverNotEligible', // JIT approve: not in the eligibility's approver_subject
-  40332: 'errors.eeFeatureRequired', // CODE_EE_FEATURE_REQUIRED
+  [CODE_EE_FEATURE_REQUIRED]: 'errors.eeFeatureRequired',
 }
 
 // extractMessage pulls a human-readable error message from an axios / ApiError

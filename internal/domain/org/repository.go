@@ -11,7 +11,6 @@ type Repository interface {
 	Delete(ctx context.Context, id int64) error
 	GetTree(ctx context.Context, tenantID int64) ([]*Organization, error)
 	GetChildren(ctx context.Context, parentID int64) ([]*Organization, error)
-	GetByPath(ctx context.Context, tenantID int64, path string) ([]*Organization, error)
 	Move(ctx context.Context, id int64, newParentID *int64, newPath string) error
 
 	// Members

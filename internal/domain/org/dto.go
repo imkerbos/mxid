@@ -49,11 +49,6 @@ type OrgResponse struct {
 	Children  []*OrgResponse `json:"children,omitempty"`
 }
 
-// OrgTreeResponse is the recursive tree structure for organizations.
-type OrgTreeResponse struct {
-	Items []*OrgResponse `json:"items"`
-}
-
 // UserOrgInfo is one org-membership row enriched for display on the user
 // detail page: which org the user is planted in, plus whether it's primary.
 type UserOrgInfo struct {

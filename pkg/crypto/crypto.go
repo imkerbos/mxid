@@ -11,7 +11,6 @@ import (
 	"io"
 	"strings"
 
-	"golang.org/x/crypto/argon2"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -46,19 +45,6 @@ func HashPassword(password string) (string, error) {
 // CheckPassword compares a password with its hash.
 func CheckPassword(password, hash string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
-}
-
-// HashPasswordArgon2 hashes a password using Argon2id (preferred for new passwords).
-func HashPasswordArgon2(password string, salt []byte) string {
-	hash := argon2.IDKey([]byte(password), salt, 1, 64*1024, 4, 32)
-	return base64.RawStdEncoding.EncodeToString(hash)
-}
-
-// GenerateSalt creates a random salt.
-func GenerateSalt(n int) ([]byte, error) {
-	salt := make([]byte, n)
-	_, err := rand.Read(salt)
-	return salt, err
 }
 
 // EncryptAES256GCM encrypts data using AES-256-GCM.

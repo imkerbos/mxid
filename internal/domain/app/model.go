@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/imkerbos/mxid/pkg/crypto"
 	"gorm.io/gorm"
 )
 
@@ -181,25 +180,6 @@ type AppAccess struct {
 // TableName returns the table name for AppAccess.
 func (AppAccess) TableName() string {
 	return "mxid_app_access"
-}
-
-// AppAccount represents the mxid_app_account table.
-type AppAccount struct {
-	ID         int64     `gorm:"column:id;primaryKey" json:"id"`
-	AppID      int64     `gorm:"column:app_id;not null" json:"app_id"`
-	UserID     int64     `gorm:"column:user_id;not null" json:"user_id"`
-	Account    string    `gorm:"column:account;not null;size:256" json:"account"`
-	// Credential is AES-256-GCM encrypted at rest via crypto.Secret's
-	// driver.Valuer/Scanner and serializes to a masked sentinel (never the
-	// plaintext) in JSON responses. Requires crypto.SetSecretMasterKey at boot.
-	Credential crypto.Secret `gorm:"column:credential;size:512" json:"credential"`
-	CreatedAt  time.Time `gorm:"column:created_at;not null" json:"created_at"`
-	UpdatedAt  time.Time `gorm:"column:updated_at;not null" json:"updated_at"`
-}
-
-// TableName returns the table name for AppAccount.
-func (AppAccount) TableName() string {
-	return "mxid_app_account"
 }
 
 // AppCert represents the mxid_app_cert table.

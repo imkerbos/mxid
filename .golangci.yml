@@ -17,18 +17,18 @@ linters-settings:
     enable:
       - nilness
   exhaustruct:
-    # Only enforce on dependency-wiring structs in cmd/server. Missing a
+    # Only enforce on dependency-wiring structs in package app. Missing a
     # field here = runtime nil-deref. exhaustruct uses fully-qualified
     # type names: <module path>.<TypeName>.
     include:
-      - 'github.com/imkerbos/mxid/cmd/server\.authzBindingProvider$'
-      - 'github.com/imkerbos/mxid/cmd/server\.permissionGroupLookupAdapter$'
-      - 'github.com/imkerbos/mxid/cmd/server\.permissionOrgLookupAdapter$'
-      - 'github.com/imkerbos/mxid/cmd/server\.authzOrgAncestry$'
-      - 'github.com/imkerbos/mxid/cmd/server\.userMFAVerifierAdapter$'
-      - 'github.com/imkerbos/mxid/cmd/server\.userLoginRecorderAdapter$'
-      - 'github.com/imkerbos/mxid/cmd/server\.userExternalResolver$'
-      - 'github.com/imkerbos/mxid/cmd/server\.dbTenantResolver$'
+      - 'github.com/imkerbos/mxid/app\.authzBindingProvider$'
+      - 'github.com/imkerbos/mxid/app\.permissionGroupLookupAdapter$'
+      - 'github.com/imkerbos/mxid/app\.permissionOrgLookupAdapter$'
+      - 'github.com/imkerbos/mxid/app\.authzOrgAncestry$'
+      - 'github.com/imkerbos/mxid/app\.userMFAVerifierAdapter$'
+      - 'github.com/imkerbos/mxid/app\.userLoginRecorderAdapter$'
+      - 'github.com/imkerbos/mxid/app\.userExternalResolver$'
+      - 'github.com/imkerbos/mxid/app\.dbTenantResolver$'
 
 issues:
   max-issues-per-linter: 0

@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -56,18 +55,3 @@ func DefaultCORSConfig() CORSConfig {
 	}
 }
 
-// ParseCORSOrigins parses a comma-separated list of origins.
-func ParseCORSOrigins(origins string) []string {
-	if origins == "" {
-		return nil
-	}
-	parts := strings.Split(origins, ",")
-	result := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			result = append(result, p)
-		}
-	}
-	return result
-}
