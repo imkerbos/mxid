@@ -1,10 +1,11 @@
 // Tenant 管理页 — super_admin only.
 //
 // 普通 tenant_admin 调 GET /tenants 仍能拿自己 row（用于左上角 switcher），
-// 但 POST/PUT/DELETE 被 authz.Require("tenant.manage") 拒绝。后端 503/403。
+// 但 PUT/DELETE 被 authz.Require("tenant.manage") 拒绝。产品永久单租户：
+// 没有创建入口（后端也无 POST /tenants 路由），默认租户由迁移种子。
 import { useCallback, useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Pencil, Trash2, Building } from 'lucide-react'
+import { Pencil, Trash2, Building } from 'lucide-react'
 import { tenantApi, useTranslation, TenantStatus } from '@mxid/shared'
 import type { Tenant } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
@@ -36,11 +37,6 @@ export default function TenantsPage() {
     load()
   }, [load])
 
-  const openCreate = () => {
-    setEditing(null)
-    setForm({ name: '', code: '', status: 1 })
-    setShowForm(true)
-  }
   const openEdit = (tenant: Tenant) => {
     setEditing(tenant)
     setForm({ name: tenant.name, code: tenant.code, status: tenant.status })
@@ -49,13 +45,10 @@ export default function TenantsPage() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!editing) return
     setSaving(true)
     try {
-      if (editing) {
-        await tenantApi.update(editing.id, { name: form.name, status: form.status })
-      } else {
-        await tenantApi.create({ name: form.name, code: form.code, status: form.status })
-      }
+      await tenantApi.update(editing.id, { name: form.name, status: form.status })
       toast.success(t('common.saveSuccess'))
       setShowForm(false)
       await load()
@@ -86,11 +79,6 @@ export default function TenantsPage() {
       <PageHeader
         title={t('tenants.title')}
         description={t('tenants.subtitle')}
-        actions={
-          <Button onClick={openCreate} icon={<Plus className="h-4 w-4" />}>
-            {t('tenants.create')}
-          </Button>
-        }
       />
 
       <Card className="overflow-hidden hover:shadow-card">
@@ -139,19 +127,14 @@ export default function TenantsPage() {
       <Modal
         open={showForm}
         onClose={() => setShowForm(false)}
-        title={editing ? t('tenants.editTitle') : t('tenants.createTitle')}
+        title={t('tenants.editTitle')}
       >
         <form onSubmit={submit} className="space-y-4">
           <Field label={t('tenants.fields.name')} required>
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
           </Field>
-          <Field label={editing ? t('tenants.fields.codeImmutable') : t('tenants.fields.code')} required={!editing} hint={t('tenants.fields.codeHint')}>
-            <Input
-              value={form.code}
-              onChange={(e) => setForm({ ...form, code: e.target.value })}
-              disabled={!!editing}
-              required={!editing}
-            />
+          <Field label={t('tenants.fields.codeImmutable')} hint={t('tenants.fields.codeHint')}>
+            <Input value={form.code} disabled />
           </Field>
           <Field label={t('tenants.fields.status')}>
             <Select value={form.status} onChange={(e) => setForm({ ...form, status: Number(e.target.value) })}>
@@ -162,7 +145,7 @@ export default function TenantsPage() {
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="secondary" onClick={() => setShowForm(false)}>{t('common.cancel')}</Button>
             <Button type="submit" loading={saving}>
-              {editing ? t('common.save') : t('common.create')}
+              {t('common.save')}
             </Button>
           </div>
         </form>

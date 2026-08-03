@@ -7,9 +7,6 @@ package license
 const (
 	// CEMaxUsers caps the total user count in CE. 0 would mean unlimited.
 	CEMaxUsers = 100
-	// CEMaxTenants — CE is single-tenant (the default tenant only). Creating
-	// additional tenants also requires the multi_tenant feature.
-	CEMaxTenants = 1
 )
 
 // UserCap returns the effective max user count for the current edition: the EE
@@ -20,13 +17,4 @@ func (m *Manager) UserCap() int {
 		return m.MaxUsers() // EE: license value, 0 = unlimited
 	}
 	return CEMaxUsers // CE / expired
-}
-
-// TenantCap returns the effective max tenant count: the EE license's MaxTenants
-// when active (0 = unlimited), else the CE cap (1). 0 means unlimited.
-func (m *Manager) TenantCap() int {
-	if m != nil && m.valid {
-		return m.MaxTenants()
-	}
-	return CEMaxTenants
 }

@@ -2,9 +2,7 @@ package tenant
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/imkerbos/mxid/internal/middleware"
 	"github.com/imkerbos/mxid/pkg/authz"
-	"github.com/imkerbos/mxid/pkg/ee/license"
 	"github.com/imkerbos/mxid/pkg/ginutil"
 	"github.com/imkerbos/mxid/pkg/response"
 )
@@ -30,9 +28,9 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 		g.GET("", h.List)
 		g.GET("/:id", h.Get)
 		// write ops gated to super_admin via tenant.manage permission.
-		// Creating tenants beyond the single default is an EE feature (CE is
-		// single-tenant), so the multi_tenant license gate sits on Create.
-		g.POST("", authz.Require("tenant.manage", nil), middleware.RequireFeature(license.FeatureMultiTenant), h.Create)
+		// No POST: the product is permanently single-tenant — the default
+		// tenant is seeded by migration and additional tenants cannot be
+		// created in any edition.
 		g.PUT("/:id", authz.Require("tenant.manage", nil), h.Update)
 		g.DELETE("/:id", authz.Require("tenant.manage", nil), h.Delete)
 	}
@@ -58,20 +56,6 @@ func (h *Handler) Get(c *gin.Context) {
 		return
 	}
 	response.OK(c, t)
-}
-
-func (h *Handler) Create(c *gin.Context) {
-	var req CreateRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 40001, "invalid request body")
-		return
-	}
-	t, err := h.svc.Create(c.Request.Context(), &req)
-	if err != nil {
-		response.MapError(c, err)
-		return
-	}
-	response.Created(c, t)
 }
 
 func (h *Handler) Update(c *gin.Context) {

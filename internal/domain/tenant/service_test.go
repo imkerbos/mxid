@@ -7,6 +7,7 @@ import (
 
 	"github.com/glebarez/sqlite"
 	"github.com/imkerbos/mxid/pkg/snowflake"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
@@ -26,15 +27,28 @@ func newTestService(t *testing.T) *Service {
 	return &Service{repo: NewRepository(db), idGen: idGen}
 }
 
-func TestService_CreateAndGet(t *testing.T) {
-	svc := newTestService(t)
-	ctx := context.Background()
-
-	created, err := svc.Create(ctx, &CreateRequest{Name: "Acme", Code: "acme"})
-	if err != nil {
-		t.Fatalf("create: %v", err)
+// seedTenant inserts a row directly through the repository — tenants are
+// seeded by migration in production (no create API; single-tenant product).
+func seedTenant(t *testing.T, svc *Service, name, code string) *Tenant {
+	t.Helper()
+	row := &Tenant{
+		ID:     svc.idGen.Generate(),
+		Name:   name,
+		Code:   code,
+		Status: StatusEnabled,
+		Config: datatypes.JSON([]byte("{}")),
 	}
-	got, err := svc.Get(ctx, created.ID)
+	if err := svc.repo.Create(context.Background(), row); err != nil {
+		t.Fatalf("seed tenant: %v", err)
+	}
+	return row
+}
+
+func TestService_Get(t *testing.T) {
+	svc := newTestService(t)
+	seeded := seedTenant(t, svc, "Acme", "acme")
+
+	got, err := svc.Get(context.Background(), seeded.ID)
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -43,14 +57,16 @@ func TestService_CreateAndGet(t *testing.T) {
 	}
 }
 
-func TestService_CreateDuplicateCode(t *testing.T) {
+func TestService_GetByCode(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
-	if _, err := svc.Create(ctx, &CreateRequest{Name: "A", Code: "dup"}); err != nil {
-		t.Fatalf("first create: %v", err)
+	seeded := seedTenant(t, svc, "Acme", "acme")
+
+	got, err := svc.GetByCode(context.Background(), "acme")
+	if err != nil {
+		t.Fatalf("get by code: %v", err)
 	}
-	if _, err := svc.Create(ctx, &CreateRequest{Name: "B", Code: "dup"}); !errors.Is(err, ErrTenantCodeExists) {
-		t.Errorf("duplicate code: got %v, want ErrTenantCodeExists", err)
+	if got.ID != seeded.ID {
+		t.Errorf("got id %d, want %d", got.ID, seeded.ID)
 	}
 }
 
@@ -58,13 +74,5 @@ func TestService_GetNotFound(t *testing.T) {
 	svc := newTestService(t)
 	if _, err := svc.Get(context.Background(), 999999); !errors.Is(err, ErrTenantNotFound) {
 		t.Errorf("get missing: got %v, want ErrTenantNotFound", err)
-	}
-}
-
-func TestService_LicenseQuotaBlocksCreate(t *testing.T) {
-	svc := newTestService(t)
-	svc.SetLicenseQuotaCheck(func(ctx context.Context) error { return ErrLicenseQuotaExceeded })
-	if _, err := svc.Create(context.Background(), &CreateRequest{Name: "X", Code: "x"}); !errors.Is(err, ErrLicenseQuotaExceeded) {
-		t.Errorf("quota exceeded: got %v, want ErrLicenseQuotaExceeded", err)
 	}
 }

@@ -13,21 +13,15 @@ import (
 )
 
 var (
-	ErrTenantNotFound       = errors.New("tenant not found")
-	ErrTenantCodeExists     = errors.New("tenant code already exists")
-	ErrLicenseQuotaExceeded = errors.New("license tenant quota exceeded")
+	ErrTenantNotFound   = errors.New("tenant not found")
+	ErrTenantCodeExists = errors.New("tenant code already exists")
 )
-
-// LicenseQuotaCheck returns ErrLicenseQuotaExceeded when creating one more
-// tenant would exceed the active license. nil = no quota.
-type LicenseQuotaCheck func(ctx context.Context) error
 
 // Service handles tenant CRUD.
 type Service struct {
-	repo         Repository
-	idGen        *snowflake.Generator
-	eventBus     *event.Bus
-	licenseQuota LicenseQuotaCheck
+	repo     Repository
+	idGen    *snowflake.Generator
+	eventBus *event.Bus
 }
 
 // NewService wires the service.
@@ -47,61 +41,11 @@ func (s *Service) publish(ctx context.Context, eventType string, t *Tenant) {
 	})
 }
 
-// SetLicenseQuotaCheck wires the runtime tenant-quota lookup.
-func (s *Service) SetLicenseQuotaCheck(c LicenseQuotaCheck) { s.licenseQuota = c }
-
-// CreateRequest is the request body for POST /tenants.
-type CreateRequest struct {
-	Name   string         `json:"name" binding:"required,max=128"`
-	Code   string         `json:"code" binding:"required,max=64"`
-	Status *int           `json:"status" binding:"omitempty,oneof=1 2"`
-	Config map[string]any `json:"config"`
-}
-
 // UpdateRequest is the request body for PUT /tenants/:id.
 type UpdateRequest struct {
 	Name   *string        `json:"name" binding:"omitempty,max=128"`
 	Status *int           `json:"status" binding:"omitempty,oneof=1 2"`
 	Config map[string]any `json:"config"`
-}
-
-// Create persists a new tenant. Code must be globally unique.
-func (s *Service) Create(ctx context.Context, req *CreateRequest) (*Tenant, error) {
-	if s.licenseQuota != nil {
-		if err := s.licenseQuota(ctx); err != nil {
-			return nil, err
-		}
-	}
-	if _, err := s.repo.GetByCode(ctx, req.Code); err == nil {
-		return nil, ErrTenantCodeExists
-	} else if !dberr.IsNotFound(err) {
-		return nil, fmt.Errorf("check code: %w", err)
-	}
-
-	cfg := datatypes.JSON([]byte("{}"))
-	if req.Config != nil {
-		raw, err := json.Marshal(req.Config)
-		if err != nil {
-			return nil, fmt.Errorf("marshal config: %w", err)
-		}
-		cfg = datatypes.JSON(raw)
-	}
-	status := StatusEnabled
-	if req.Status != nil {
-		status = *req.Status
-	}
-	t := &Tenant{
-		ID:     s.idGen.Generate(),
-		Name:   req.Name,
-		Code:   req.Code,
-		Status: status,
-		Config: cfg,
-	}
-	if err := s.repo.Create(ctx, t); err != nil {
-		return nil, err
-	}
-	s.publish(ctx, event.TenantCreated, t)
-	return t, nil
 }
 
 // Get returns a tenant by ID.
