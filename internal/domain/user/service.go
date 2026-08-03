@@ -636,29 +636,23 @@ func (s *Service) ResetPassword(ctx context.Context, id int64, req *ResetPasswor
 		return fmt.Errorf("hash password: %w", err)
 	}
 
-	if err := s.repo.UpdatePassword(ctx, id, hash); err != nil {
-		return fmt.Errorf("update password: %w", err)
-	}
-
 	mustChange := true
 	if req.MustChange != nil {
 		mustChange = *req.MustChange
 	}
-	if mustChange {
-		if err := s.repo.SetMustChangePassword(ctx, id, true); err != nil {
-			return fmt.Errorf("set must change password: %w", err)
-		}
-	}
 
-	// Save to history
+	// One transaction: the three writes are a single decision. Split, a failure
+	// after the hash landed left the temporary password permanent (no
+	// must-change flag) or reusable forever (no history row) — both silent, both
+	// weakening the account the reset was meant to secure.
 	pwdHistory := &UserPasswordHistory{
 		ID:           s.idGen.Generate(),
 		UserID:       id,
 		PasswordHash: hash,
 		CreatedAt:    time.Now(),
 	}
-	if err := s.repo.CreatePasswordHistory(ctx, pwdHistory); err != nil {
-		return fmt.Errorf("create password history: %w", err)
+	if err := s.repo.ResetPasswordTx(ctx, id, hash, mustChange, pwdHistory); err != nil {
+		return err
 	}
 
 	s.eventBus.Publish(ctx, event.Event{
@@ -911,14 +905,17 @@ func (s *Service) DeleteMFA(ctx context.Context, userID int64, mfaType string) e
 	if err := s.requireUser(ctx, userID); err != nil {
 		return err
 	}
-	if err := s.repo.DeleteMFA(ctx, userID, mfaType); err != nil {
-		return fmt.Errorf("delete mfa: %w", err)
-	}
-	// Removing TOTP nukes the backup codes too — leaving stale codes alive
-	// after the factor is gone is a silent way to weaken the account's
-	// security posture.
+	// Removing TOTP nukes the backup codes too — leaving stale codes alive after
+	// the factor is gone is a silent way to weaken the account's security
+	// posture, so the two deletes share a transaction. Previously the backup-code
+	// delete ran separately with its error discarded, which turned "MFA removed"
+	// into "MFA removed, backup codes still authenticate".
 	if mfaType == MFATypeTotp {
-		_ = s.DeleteBackupCodes(ctx, userID)
+		if err := s.repo.DeleteMFATx(ctx, userID, mfaType); err != nil {
+			return fmt.Errorf("delete mfa: %w", err)
+		}
+	} else if err := s.repo.DeleteMFA(ctx, userID, mfaType); err != nil {
+		return fmt.Errorf("delete mfa: %w", err)
 	}
 	s.eventBus.Publish(ctx, event.Event{
 		Type:    event.UserUpdated,
