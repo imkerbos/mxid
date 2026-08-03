@@ -53,6 +53,18 @@ func (s *Service) SetRedisInvalidation(ctx context.Context, rdb *redis.Client) {
 		return
 	}
 	sub := rdb.Subscribe(ctx, settingsInvalidateChannel)
+	// Block until the server confirms the SUBSCRIBE. rdb.Subscribe is lazy —
+	// it returns before the command reaches Redis — and pub/sub has no
+	// buffering for absent subscribers, so anything published in that window
+	// is lost and this pod serves a stale value until the 60s TTL expires.
+	// Waiting here closes the window for callers that publish right after
+	// wiring (notably the cross-pod invalidation test, which is otherwise
+	// flaky). Best-effort: on error the goroutine still starts, since
+	// go-redis re-subscribes on reconnect and cache invalidation must never
+	// block startup.
+	recvCtx, cancelRecv := context.WithTimeout(ctx, 5*time.Second)
+	_, _ = sub.Receive(recvCtx)
+	cancelRecv()
 	go func() {
 		defer sub.Close()
 		ch := sub.Channel()
