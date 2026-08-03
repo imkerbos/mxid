@@ -55,7 +55,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `required` attribute, so nothing stopped the submit and nothing explained it.
 - Admin password reset is now one transaction. A partial failure could leave the
   temporary password live without the must-change flag (making it permanent) or
-  without a history row (making it reusable past the reuse policy).
+  without a history row (making it reusable past the reuse policy). The reset
+  also refreshes the password-expiry clock and clears a stale must-change flag,
+  so resetting an expired account actually lets its owner back in.
 - Removing a TOTP factor now deletes its backup codes in the same transaction,
   and only that factor. Previously the backup-code delete ran separately with its
   error discarded, so "MFA removed" could leave working backup codes behind.

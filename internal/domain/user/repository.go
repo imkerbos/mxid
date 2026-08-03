@@ -48,10 +48,6 @@ type Repository interface {
 	// CountAll returns the total number of users across all tenants. Used
 	// by the global license MaxUsers quota.
 	CountAll(ctx context.Context) (int64, error)
-	// SetMustChangePassword toggles the must_change_pwd flag without touching
-	// the hash itself — used right after an admin-initiated reset to force the
-	// user to pick a new password on their next login.
-	SetMustChangePassword(ctx context.Context, id int64, must bool) error
 	// SetSuperAdmin flips the is_super_admin flag. Mutations to this
 	// field MUST go through Service.SetSuperAdmin so the grant/revoke
 	// audit event is emitted alongside the column update.
