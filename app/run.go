@@ -696,23 +696,6 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	groupModule := group.Register(a)
 	permissionModule := permission.Register(a)
 	tenantModule := tenant.Register(a)
-	// Tenant license quota. CE / expired EE can't reach here anyway (the
-	// multi_tenant feature gate blocks tenant create), so this caps EE: its
-	// MaxTenants (0 = unlimited). Existing tenants over a cap are grandfathered.
-	tenantModule.Service.SetLicenseQuotaCheck(func(ctx context.Context) error {
-		cap := license.Current().TenantCap()
-		if cap <= 0 {
-			return nil // unlimited
-		}
-		ts, err := tenantModule.Repo.List(ctx)
-		if err != nil {
-			return nil
-		}
-		if len(ts) >= cap {
-			return tenant.ErrLicenseQuotaExceeded
-		}
-		return nil
-	})
 	// Portal login can resolve `tenant` field on the request to a tenant_id
 	// via the tenant service. Hooked up here so authn's NewHandler stays
 	// decoupled from the tenant domain package.

@@ -157,7 +157,6 @@ var consoleProtectedRoutes = [][2]string{
 	{http.MethodPost, "/api/v1/console/roles/:id/members"},
 	{http.MethodPost, "/api/v1/console/settings/mail/smtp/test"},
 	{http.MethodPost, "/api/v1/console/system/version/check"},
-	{http.MethodPost, "/api/v1/console/tenants"},
 	{http.MethodPost, "/api/v1/console/upload/app-icon"},
 	{http.MethodPost, "/api/v1/console/upload/brand-logo"},
 	{http.MethodPost, "/api/v1/console/users"},
