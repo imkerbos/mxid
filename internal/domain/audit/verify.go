@@ -224,7 +224,13 @@ func VerifyAnchorsFrom(ctx context.Context, db *gorm.DB, keys KeyRegistry, tenan
 //     replacement, and silently drop the uncovered tail of the range from
 //     AnchoredThrough coverage.
 func VerifyAnchorsWithSink(ctx context.Context, db *gorm.DB, sink AnchorSink, keys KeyRegistry, tenantID int64, class string) (AnchorVerifyResult, error) {
-	res, err := VerifyAnchors(ctx, db, keys, tenantID, class)
+	return VerifyAnchorsWithSinkFrom(ctx, db, sink, keys, tenantID, class, 1)
+}
+
+// VerifyAnchorsWithSinkFrom is VerifyAnchorsWithSink starting at fromSeq, for a
+// chain whose earlier ranges have been pruned under a checkpoint.
+func VerifyAnchorsWithSinkFrom(ctx context.Context, db *gorm.DB, sink AnchorSink, keys KeyRegistry, tenantID int64, class string, fromSeq int64) (AnchorVerifyResult, error) {
+	res, err := VerifyAnchorsFrom(ctx, db, keys, tenantID, class, fromSeq)
 	if err != nil || !res.OK {
 		return res, err
 	}
