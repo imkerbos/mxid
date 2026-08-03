@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The account page's form labels now match the rest of the console. It declared
+  a private copy of the shared `Field` primitive that shadowed the import, so its
+  labels were styled differently and it had no slot for a validation message. A
+  second unused copy (`FormField`) has been removed as well.
+
 ### Security
 - A mistyped SAML `sp_cert` is now rejected when the SP descriptor is built.
   Most short strings are valid base64, so garbage decoded cleanly and only
@@ -30,6 +36,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   background jobs) are unchanged, since they have no tenant to filter by.
 
 ### Fixed
+- Eight forms did nothing when submitted with a missing or too-short value: the
+  group, app and app-group create dialogs (empty code), the API-token dialog
+  (empty name), the admin password reset (under six characters), and the portal
+  forgot-password, magic-link and SMS-login screens (empty email/phone). Each
+  now shows the reason on the field. These were the inputs with no native
+  `required` attribute, so nothing stopped the submit and nothing explained it.
 - Admin password reset is now one transaction. A partial failure could leave the
   temporary password live without the must-change flag (making it permanent) or
   without a history row (making it reusable past the reuse policy).

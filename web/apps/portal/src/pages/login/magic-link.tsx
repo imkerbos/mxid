@@ -20,7 +20,11 @@ export default function MagicLinkLoginPage() {
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!email.trim()) return
+    // No `required` on the input: an empty submit used to return here silently.
+    if (!email.trim()) {
+      setError(t('common.validation.emailRequired'))
+      return
+    }
     setSubmitting(true)
     setError('')
     try {

@@ -1,38 +1,13 @@
-// Form primitives — FormField (label + control + inline error), Switch, Tabs
-// (pill segmented control), RangePicker (date range with presets).
+// Form primitives — Switch, Tabs (pill segmented control), RangePicker (date
+// range with presets).
+//
+// The label/control/error group lives in ./index.tsx as Field. This file used to
+// carry a second one called FormField: same idea, weaker accessibility (no
+// htmlFor/id association, no aria-invalid), zero usages. Two primitives for one
+// job is how a design system gets bypassed — whichever one a page reaches for
+// first becomes the local convention.
 import { cn, useTranslation } from '@mxid/shared'
 import type { ReactNode } from 'react'
-
-// FormField — vertical label / control / error group. Required shows a star;
-// error renders inline below in danger color.
-export function FormField({
-  label,
-  required,
-  error,
-  hint,
-  children,
-}: {
-  label: ReactNode
-  required?: boolean
-  error?: ReactNode
-  hint?: ReactNode
-  children: ReactNode
-}) {
-  return (
-    <div>
-      <label className="mb-1.5 block text-sm font-medium text-ink">
-        {label}
-        {required && <span className="ml-0.5 text-danger">*</span>}
-      </label>
-      {children}
-      {error ? (
-        <p className="mt-1 text-xs text-danger">{error}</p>
-      ) : (
-        hint && <p className="mt-1 text-xs text-faint">{hint}</p>
-      )}
-    </div>
-  )
-}
 
 export function Switch({
   checked,

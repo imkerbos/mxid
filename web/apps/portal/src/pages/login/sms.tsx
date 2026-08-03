@@ -36,7 +36,14 @@ export default function SMSLoginPage() {
   }, [cooldown])
 
   const onSend = async () => {
-    if (!phone.trim() || sending || cooldown > 0) return
+    // sending / cooldown are legitimate no-ops (the button is already disabled
+    // for them). An empty phone is not: the input has no `required`, so tapping
+    // "send code" with a blank field did nothing at all.
+    if (!phone.trim()) {
+      setError(t('common.validation.phoneRequired'))
+      return
+    }
+    if (sending || cooldown > 0) return
     setSending(true)
     setError('')
     try {
@@ -54,7 +61,13 @@ export default function SMSLoginPage() {
 
   const onLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!phone.trim() || code.length !== 6) return
+    if (!phone.trim()) {
+      setError(t('common.validation.phoneRequired'))
+      return
+    }
+    // The code box accepts exactly six digits and the submit button is disabled
+    // until then, so this stays a plain no-op.
+    if (code.length !== 6) return
     setSubmitting(true)
     setError('')
     try {

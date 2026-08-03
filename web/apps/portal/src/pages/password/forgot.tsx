@@ -22,7 +22,12 @@ export default function ForgotPasswordPage() {
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!email.trim()) return
+    // The input carries no `required`, so an empty submit reached here and
+    // returned in silence — the button un-pressed itself and nothing was said.
+    if (!email.trim()) {
+      setError(t('common.validation.emailRequired'))
+      return
+    }
     setSubmitting(true)
     setError('')
     try {
