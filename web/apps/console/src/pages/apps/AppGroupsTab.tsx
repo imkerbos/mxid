@@ -64,9 +64,18 @@ export default function AppGroupsTab() {
     setShowForm(true)
   }
 
+  const [codeError, setCodeError] = useState('')
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.name || (!editing && !form.code)) return
+    // Name has `required`; the code field is a CodeField (bare input), so
+    // creating a group with an empty code used to do nothing at all.
+    if (!editing && !form.code.trim()) {
+      setCodeError(t('common.validation.required'))
+      return
+    }
+    setCodeError('')
+    if (!form.name) return
     setSaving(true)
     try {
       if (editing) {
@@ -185,6 +194,8 @@ export default function AppGroupsTab() {
                 </Field>
                 <Field
                   label={editing ? t('apps.appGroupDetail.codeUneditable') : t('apps.appGroupDetail.codeRequired')}
+                  required={!editing}
+                  error={codeError}
                   hint={t('apps.appGroupDetail.codeHint')}
                 >
                   {editing ? (
@@ -196,7 +207,10 @@ export default function AppGroupsTab() {
                   ) : (
                     <CodeField
                       value={form.code}
-                      onChange={(v) => setForm({ ...form, code: v })}
+                      onChange={(v) => {
+                        setForm({ ...form, code: v })
+                        setCodeError('')
+                      }}
                       nameForSlug={form.name}
                       prefix="grp"
                       placeholder="office-suite / devops ..."

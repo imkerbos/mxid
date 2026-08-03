@@ -253,8 +253,17 @@ function ResetPasswordButton({
   const [mustChange, setMustChange] = useState(true)
   const [submitting, setSubmitting] = useState(false)
 
+  const [pwdError, setPwdError] = useState('')
+
   const submit = async () => {
-    if (!pwd || pwd.length < 6) return
+    // No `required` and no `minLength` on the input, so a short password was
+    // rejected here without a word — the admin saw the dialog sit there and had
+    // no way to know six characters was the bar.
+    if (pwd.length < 6) {
+      setPwdError(t(pwd ? 'common.validation.tooShort' : 'common.validation.required', { n: 6 }))
+      return
+    }
+    setPwdError('')
     setSubmitting(true)
     try {
       await userApi.resetPassword(userID, pwd, mustChange)
@@ -285,16 +294,18 @@ function ResetPasswordButton({
               {isSet ? t('users.detail.resetPwd.setTitle') : t('users.detail.resetPwd.title')}
             </h3>
             <div className="space-y-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">{t('users.detail.resetPwd.newPassword')}</label>
+              <Field label={t('users.detail.resetPwd.newPassword')} required error={pwdError}>
                 <input
                   type="password"
                   value={pwd}
-                  onChange={(e) => setPwd(e.target.value)}
+                  onChange={(e) => {
+                    setPwd(e.target.value)
+                    setPwdError('')
+                  }}
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   placeholder={t('users.detail.resetPwd.placeholder')}
                 />
-              </div>
+              </Field>
               <label className="flex items-center gap-2 text-sm text-ink">
                 <input
                   type="checkbox"

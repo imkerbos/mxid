@@ -140,6 +140,10 @@ export default function PermissionsPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
+    // Reachable only if someone drops `required` from the name or code input
+    // below — the browser blocks the submit otherwise. If you do, give the field
+    // an inline error the way the group and app create forms do, rather than
+    // leaving this returning in silence.
     if (!createForm.name || !createForm.code) return
     setCreating(true)
     try {

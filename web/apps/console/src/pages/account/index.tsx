@@ -23,7 +23,12 @@ import {
   type ConsoleUserInfo,
   type APITokenRow,
 } from '@mxid/shared'
-import { Button, ConfirmDialog, AvatarUpload, avatarTexts, Modal } from '../../components/ui'
+// Field comes from the shared primitives. This page used to declare its own —
+// a third copy of the same label/control group, without the label association,
+// the required marker or the error slot — which silently shadowed the import.
+// Its labels were styled differently too, so the account page's forms did not
+// look like any other form in the console.
+import { Button, ConfirmDialog, AvatarUpload, avatarTexts, Modal, Field } from '../../components/ui'
 import { toast } from '@mxid/shared/ui/toast'
 import type { MFAInfo, SessionInfo } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
@@ -304,15 +309,6 @@ function ProfileSection() {
         </div>
       )}
     </SectionCard>
-  )
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <p className="mb-1 text-xs text-muted">{label}</p>
-      {children}
-    </div>
   )
 }
 
@@ -1222,9 +1218,17 @@ function CreateAPITokenModal({
   const [scopesText, setScopesText] = useState('*')
   const [days, setDays] = useState(90)
 
+  const [nameError, setNameError] = useState('')
+
   const handle = (e: FormEvent) => {
     e.preventDefault()
-    if (!name.trim()) return
+    // The input has no `required`, so submitting a nameless token did nothing
+    // visible: the dialog stayed open and no token was created.
+    if (!name.trim()) {
+      setNameError(t('common.validation.required'))
+      return
+    }
+    setNameError('')
     const scopes = scopesText
       .split(/[\s,]+/)
       .map((s) => s.trim())
@@ -1235,11 +1239,14 @@ function CreateAPITokenModal({
   return (
     <Modal open title={t('account.apiTokens.newToken')} onClose={onClose}>
         <form onSubmit={handle} className="space-y-3">
-          <Field label={t('account.apiTokens.formName')}>
+          <Field label={t('account.apiTokens.formName')} required error={nameError}>
             <input
               autoFocus
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value)
+                setNameError('')
+              }}
               placeholder={t('account.apiTokens.formNamePlaceholder')}
               className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
             />
