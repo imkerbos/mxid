@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { authApi, externalIdpApi, ExternalIdpButtons, useAuthStore, useBootstrap, useTranslation, safeReturnPath } from '@mxid/shared'
+import { authApi, externalIdpApi, ExternalIdpButtons, useAuthStore, useBootstrap, useTranslation, safeReturnPath, CODE_CAPTCHA_REQUIRED, CODE_CAPTCHA_INVALID } from '@mxid/shared'
 import type { PublicIDP } from '@mxid/shared'
 import { Eye, EyeOff, Loader2, RefreshCw } from 'lucide-react'
 import logo from '../../assets/logo.png'
@@ -13,8 +13,8 @@ function loginErrorMessage(err: unknown, t: (k: string) => string): string {
   const e = err as { code?: number; response?: { data?: { code?: number; message?: string } } }
   const code = e?.response?.data?.code ?? e?.code
   switch (code) {
-    case 40003: // captcha required
-    case 40004: // invalid captcha
+    case CODE_CAPTCHA_REQUIRED:
+    case CODE_CAPTCHA_INVALID:
       return t('login.invalidCaptcha')
     case 40101: // invalid credentials
       return t('login.invalidCredentials')
@@ -38,12 +38,13 @@ export default function LoginPage() {
   const [captchaId, setCaptchaId] = useState('')
   const [captchaImage, setCaptchaImage] = useState('')
   const [captchaCode, setCaptchaCode] = useState('')
-  // Progressive captcha: hidden until the backend demands it (40003), matching
+  // Progressive captcha: hidden until the backend demands it, matching
   // the server's "captcha only after N failed attempts" policy.
   const [captchaRequired, setCaptchaRequired] = useState(false)
   const [remember, setRemember] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [captchaFailed, setCaptchaFailed] = useState(false)
 
   // MFA challenge state — set when /auth/login returns mfa_required.
   const [mfaChallenge, setMfaChallenge] = useState('')
@@ -74,18 +75,24 @@ export default function LoginPage() {
   }, [t])
 
   const loadCaptcha = useCallback(async () => {
+    setCaptchaFailed(false)
     try {
       const data = await authApi.captcha()
       setCaptchaId(data.captcha_id)
       setCaptchaImage(data.captcha_image)
       setCaptchaCode('')
     } catch {
-      // ignore
+      // Swallowing this left the box reading "loading…" forever. The captcha is
+      // only ever fetched because the backend has made it mandatory, so a
+      // failure here means the user cannot log in at all — and had no way to
+      // tell that from a slow network.
+      setCaptchaImage('')
+      setCaptchaFailed(true)
     }
   }, [])
 
   // No captcha on mount — progressive: it loads only when the backend says it's
-  // required (see handleSubmit's 40003/40004 handling below).
+  // required (see handleSubmit's captcha-code handling below).
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -114,10 +121,10 @@ export default function LoginPage() {
       navigate(safeReturnPath((location.state as { from?: string })?.from, '/dashboard'), { replace: true })
     } catch (err: unknown) {
       setError(loginErrorMessage(err, t))
-      // Backend demands captcha (40003) or rejected it (40004) → reveal + load.
+      // Backend demands a captcha or rejected the one supplied → reveal + load.
       const code = (err as { response?: { data?: { code?: number } } })?.response?.data?.code
-      if (code === 40003 || code === 40004) setCaptchaRequired(true)
-      if (captchaRequired || code === 40003 || code === 40004) loadCaptcha()
+      if (code === CODE_CAPTCHA_REQUIRED || code === CODE_CAPTCHA_INVALID) setCaptchaRequired(true)
+      if (captchaRequired || code === CODE_CAPTCHA_REQUIRED || code === CODE_CAPTCHA_INVALID) loadCaptcha()
     } finally {
       setLoading(false)
     }
@@ -305,8 +312,11 @@ export default function LoginPage() {
                       title={t('login.captchaClickRefresh')}
                     />
                   ) : (
-                    <div className="flex h-[42px] w-[120px] items-center justify-center rounded-lg border border-white/25 bg-surface/[0.08] text-xs text-white/60">
-{t('login.captchaLoading')}
+                    <div
+                      onClick={loadCaptcha}
+                      className="flex h-[42px] w-[120px] cursor-pointer items-center justify-center rounded-lg border border-white/25 bg-surface/[0.08] px-1 text-center text-[10px] leading-tight text-white/60"
+                    >
+                      {captchaFailed ? t('login.captchaLoadFailed') : t('login.captchaLoading')}
                     </div>
                   )}
                   <button
