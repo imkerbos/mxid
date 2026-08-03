@@ -884,6 +884,34 @@ push, and the error is unhelpful.
 
 Any OCI registry works (Harbor, Nexus, ECR, a plain `registry:2`).
 
+### Building from source instead of pulling
+
+Same two-step flow, but step 1 builds the images from source. Use it when the
+released images can't be pulled at all, when you carry local patches, or when
+policy requires building from reviewed source.
+
+```bash
+make build-images TAG=v1.8.0 REGISTRY=harbor.example.com/sa02      # EDITION=ce for CE
+./scripts/build-images.sh v1.8.0 harbor.example.com/sa02           # identical
+```
+
+It clones what's missing at the requested tag, updates an existing git checkout
+to that tag, and builds a ZIP extract as-is (GitHub ZIPs have no `.git`, so
+extract and rename the folders to exactly `mxid` and `mxid-ee` — the go.mod
+`replace => ../mxid` and the EE Dockerfile's `COPY` depend on those names).
+Authentication is yours to arrange: `gh auth login` or an SSH URL via
+`MXID_EE_REPO` for the private EE repo, and `podman login` / `docker login`
+for the registry. podman is preferred when installed.
+
+The EE backend needs both trees side by side because its `go.mod` replaces the
+CE module with `../mxid`, and it is built with `garble` — slow, and **amd64
+only**, since obfuscating the whole dependency tree under arm64 emulation is
+impractical. The web image is shared by both editions (edition is a runtime
+gate via `/system/info`), so an EE build produces `mxid-ee` + `mxid-web`.
+
+Run it from inside a CE checkout and it builds that working tree as-is rather
+than checking out `TAG` — it will not swap the source out from under itself.
+
 ## Fully air-gapped install / upgrade
 
 Only when **no** machine can reach both `ghcr.io` and your registry. Otherwise

@@ -775,6 +775,31 @@ Harbor 注意:**项目要先建好**——推送时不会自动创建,报错还�
 
 任何 OCI registry 都支持(Harbor、Nexus、ECR、裸 `registry:2`)。
 
+### 自行从源码构建(替代拉取)
+
+还是同样的两步流程,只是第 1 步改成从源码构建。适用于:根本拉不到发布镜像、
+你带了本地补丁、或者合规要求必须从审阅过的源码构建。
+
+```bash
+make build-images TAG=v1.8.0 REGISTRY=harbor.example.com/sa02      # 社区版加 EDITION=ce
+./scripts/build-images.sh v1.8.0 harbor.example.com/sa02           # 完全等价
+```
+
+源码缺失会**自动按 tag 克隆**;已有 git 检出则更新到该 tag;ZIP 解压的目录
+按现状构建(GitHub ZIP 没有 `.git`,所以解压后要把文件夹**重命名为
+`mxid` 和 `mxid-ee`**——go.mod 的 `replace => ../mxid` 和 EE Dockerfile 的
+`COPY` 都依赖这两个名字)。认证由你自己准备:私有 EE 仓库用 `gh auth login`,
+或用 `MXID_EE_REPO` 指向 SSH 地址;registry 侧先 `podman login` / `docker login`。
+装了 podman 就优先用 podman。
+
+EE 后端必须两个源码树并排放,因为它的 `go.mod` 把 CE 模块 replace 成 `../mxid`;
+构建走 `garble` 混淆,**慢,且只出 amd64**(在 arm64 模拟下混淆整个依赖树不现实)。
+web 镜像两个版次共用(版次是 `/system/info` 运行时判定),所以 EE 构建产出
+`mxid-ee` + `mxid-web`。
+
+在 CE 仓库**内部**运行时,它会按当前工作区构建、**不会**切到 `TAG`——
+避免运行中把自己脚下的源码换掉。
+
 ## 完全离线安装与升级
 
 **只在没有任何机器能同时够到 `ghcr.io` 和你的 registry 时才用这条路**。
