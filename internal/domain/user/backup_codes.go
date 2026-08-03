@@ -43,7 +43,6 @@ type BackupCodeRepository interface {
 	ListActive(ctx context.Context, userID int64) ([]*MFABackupCode, error)
 	MarkUsed(ctx context.Context, id int64, when time.Time) error
 	CountActive(ctx context.Context, userID int64) (int, error)
-	DeleteAll(ctx context.Context, userID int64) error
 }
 
 type backupCodeRepo struct{ db *gorm.DB }
@@ -110,12 +109,6 @@ func (r *backupCodeRepo) CountActive(ctx context.Context, userID int64) (int, er
 	return int(n), err
 }
 
-func (r *backupCodeRepo) DeleteAll(ctx context.Context, userID int64) error {
-	return r.db.WithContext(ctx).
-		Where("user_id = ?", userID).
-		Delete(&MFABackupCode{}).Error
-}
-
 // ----- service surface -----
 
 // GenerateBackupCodes wipes any existing codes and produces 10 new
@@ -176,15 +169,6 @@ func (s *Service) ConsumeBackupCode(ctx context.Context, userID int64, code stri
 		}
 	}
 	return ErrMFAInvalidCode
-}
-
-// DeleteBackupCodes wipes the user's set — called when TOTP is disabled
-// so old codes don't linger.
-func (s *Service) DeleteBackupCodes(ctx context.Context, userID int64) error {
-	if s.backupRepo == nil {
-		return nil
-	}
-	return s.backupRepo.DeleteAll(ctx, userID)
 }
 
 // newBackupCode mints one 8-char hyphenated code like "A1B2-C3D4". Uses

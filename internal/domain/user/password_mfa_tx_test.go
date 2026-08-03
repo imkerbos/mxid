@@ -65,9 +65,13 @@ func TestResetPasswordTxWritesHashFlagAndHistory(t *testing.T) {
 	}
 }
 
-// mustChange=false must leave the flag alone rather than clearing it: the caller
-// is opting out of forcing a change, not asserting the user has none pending.
-func TestResetPasswordTxLeavesTheFlagAloneWhenNotForcing(t *testing.T) {
+// mustChange=false must CLEAR the flag, not leave it. The pre-transaction code
+// reached the same state in two steps — UpdatePassword wrote must_change_pwd
+// false, then SetMustChangePassword set it back to true when forcing — so an
+// unforced reset cleared a flag left over from an earlier forced one. Writing
+// the flag only when true would leave the user still forced to change a
+// password the admin has just set for them.
+func TestResetPasswordTxClearsTheFlagWhenNotForcing(t *testing.T) {
 	repo, db := newPwdMFARepo(t)
 	seedUser(t, db)
 	if err := db.Model(&User{}).Where("id = ?", 1).Update("must_change_pwd", true).Error; err != nil {
@@ -83,8 +87,39 @@ func TestResetPasswordTxLeavesTheFlagAloneWhenNotForcing(t *testing.T) {
 	if err := db.First(&got, 1).Error; err != nil {
 		t.Fatalf("reload: %v", err)
 	}
-	if !got.MustChangePwd {
-		t.Fatal("mustChange=false cleared a pending must-change flag")
+	if got.MustChangePwd {
+		t.Fatal("an unforced reset left the must-change flag set from a previous forced reset")
+	}
+}
+
+// password_changed_at drives the password-expiry check in the local auth
+// provider. An admin reset that does not move it leaves an expired account
+// expired: the user is refused at login, and the admin has no signal that the
+// reset they just performed did not take effect.
+func TestResetPasswordTxRefreshesTheExpiryClock(t *testing.T) {
+	repo, db := newPwdMFARepo(t)
+	seedUser(t, db)
+
+	stale := time.Now().UTC().Add(-365 * 24 * time.Hour)
+	if err := db.Model(&User{}).Where("id = ?", 1).Update("password_changed_at", stale).Error; err != nil {
+		t.Fatalf("age the password: %v", err)
+	}
+
+	h := &UserPasswordHistory{ID: 10, UserID: 1, PasswordHash: "new", CreatedAt: time.Now().UTC()}
+	if err := repo.ResetPasswordTx(context.Background(), 1, "new", true, h); err != nil {
+		t.Fatalf("reset: %v", err)
+	}
+
+	var got User
+	if err := db.First(&got, 1).Error; err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if got.PasswordChangedAt == nil {
+		t.Fatal("password_changed_at was not written, so the expiry clock never restarts")
+	}
+	if !got.PasswordChangedAt.After(stale.Add(24 * time.Hour)) {
+		t.Fatalf("password_changed_at = %v, still the stale value — the account stays expired after a reset",
+			got.PasswordChangedAt)
 	}
 }
 
