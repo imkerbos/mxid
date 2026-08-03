@@ -21,6 +21,13 @@ type Event struct {
 	Before       map[string]any
 	After        map[string]any
 	Detail       map[string]any
+	// ResourceName, GeoCity and GeoCountry are the human-readable context that
+	// used to live only in mxid_audit_log. Optional: the ORM capture path often
+	// cannot know them, and an empty value is recorded as absent rather than as
+	// an assertion that the resource had no name.
+	ResourceName string
+	GeoCity      string
+	GeoCountry   string
 }
 
 // Capturer writes captured events into mxid_audit_pending on the caller's
@@ -81,6 +88,31 @@ func (c *Capturer) Capture(ctx context.Context, tx *gorm.DB, ev Event) error {
 		SessionID:    actor.SessionID,
 		Detail:       detailJSON,
 		OccurredAt:   time.Now().UTC(),
+		// Left NULL when unknown rather than stored as "": the ledger should say
+		// "not recorded", not claim the actor had no name.
+		ActorName:    nonEmpty(actor.ActorName),
+		ResourceName: nonEmpty(ev.ResourceName),
+		GeoCity:      nonEmpty(ev.GeoCity),
+		GeoCountry:   nonEmpty(ev.GeoCountry),
 	}
 	return tx.WithContext(ctx).Create(row).Error
+}
+
+// nonEmpty returns a pointer to s, or nil when s is empty, so an unknown value
+// is stored as NULL instead of an empty string.
+func nonEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+// deref flattens a nullable column back to a string. NULL and "" both become
+// "", which the payload then omits — the distinction between them is carried by
+// the payload version, not by the field.
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
