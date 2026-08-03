@@ -104,6 +104,11 @@ func loadWith(pub ed25519.PublicKey, token string, now time.Time) *Manager {
 	if err != nil {
 		return &Manager{loadErr: err}
 	}
+	return managerFor(p)
+}
+
+// managerFor builds the valid-EE Manager for a verified payload.
+func managerFor(p *Payload) *Manager {
 	feats := make(map[Feature]bool, len(p.Features))
 	for _, f := range p.Features {
 		feats[f] = true
@@ -111,24 +116,16 @@ func loadWith(pub ed25519.PublicKey, token string, now time.Time) *Manager {
 	return &Manager{payload: p, features: feats, valid: true}
 }
 
-func verify(token string, now time.Time) (*Payload, error) {
-	pub, err := publicKey()
-	if err != nil {
-		return nil, err
-	}
-	return verifyWith(pub, token, now)
-}
-
-// verifyWith is verify against an explicit key.
+// verifyWith checks a token against an explicit key.
 //
 // The embedded key is deliberately a compile-time constant so no operator can
 // swap it, which also means the matching private half lives only in the vendor's
 // license-authority repo — nothing in this repo can mint a token that gets past
-// the signature check. Parameterising the key (rather than making it a mutable
-// package var) lets the tests sign with their own pair and exercise everything
-// downstream of the signature: product binding, expiry, install binding. It adds
-// no runtime seam, because verify is the only non-test caller and it always
-// passes the embedded key.
+// the signature check. Taking the key as a parameter (rather than reading a
+// mutable package var) lets the tests sign with their own pair and exercise
+// everything downstream of the signature: product binding, expiry, install
+// binding. It adds no runtime seam, because Load is the only non-test caller and
+// it always passes the embedded key.
 func verifyWith(pub ed25519.PublicKey, token string, now time.Time) (*Payload, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 2 {
