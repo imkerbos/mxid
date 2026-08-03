@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -39,6 +41,12 @@ type Service struct {
 	eventBus      *event.Bus
 	userValidator EntityValidator
 	logger        *zap.Logger
+
+	// Pending dynamic-group recomputes, one timer per tenant. See
+	// scheduleResync: a recompute is tenant-wide, so a burst of member changes
+	// must collapse into one pass rather than one pass per event.
+	resyncMu     sync.Mutex
+	resyncTimers map[int64]*time.Timer
 }
 
 // NewService creates a new user group service.

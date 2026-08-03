@@ -69,6 +69,61 @@ func (r *gormRepository) CreateWithIdentity(ctx context.Context, user *User, det
 	})
 }
 
+// ResetPasswordTx sets the password, the must-change flag and the history row
+// atomically.
+//
+// Unwrapped, the partial outcomes were both silent and both wrong in the same
+// direction — towards a weaker account. A failure after UpdatePassword left the
+// admin-issued temporary password live with no must-change flag, so it became a
+// permanent password nobody intended. A failure on the history write let the
+// same password be reused past the reuse policy, since the policy only knows
+// what history records.
+func (r *gormRepository) ResetPasswordTx(ctx context.Context, id int64, hash string, mustChange bool, history *UserPasswordHistory) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		updates := map[string]any{"password_hash": hash, "updated_at": time.Now()}
+		if mustChange {
+			updates["must_change_pwd"] = true
+		}
+		res := tx.Model(&User{}).Where("id = ?", id).Updates(updates)
+		if res.Error != nil {
+			return fmt.Errorf("update password: %w", res.Error)
+		}
+		if res.RowsAffected == 0 {
+			return ErrUserNotFound
+		}
+		if err := tx.Create(history).Error; err != nil {
+			return fmt.Errorf("create password history: %w", err)
+		}
+		return nil
+	})
+}
+
+// DeleteMFATx removes the TOTP secret and its backup codes together.
+//
+// Deleting the secret while leaving backup codes behind is the dangerous
+// half-state: the codes still authenticate, so "MFA removed" would silently
+// leave a working second factor in place. The old code deleted them separately
+// and discarded the second error entirely.
+func (r *gormRepository) DeleteMFATx(ctx context.Context, userID int64, mfaType string) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Scoped to the one factor: a user may hold TOTP and SMS at once, and
+		// removing one must not silently remove the other.
+		res := tx.Where("user_id = ? AND type = ?", userID, mfaType).Delete(&UserMFA{})
+		if res.Error != nil {
+			return fmt.Errorf("delete user mfa: %w", res.Error)
+		}
+		// Same not-found signal as the non-transactional DeleteMFA, so callers
+		// that distinguish "no such factor" keep working.
+		if res.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		if err := tx.Where("user_id = ?", userID).Delete(&MFABackupCode{}).Error; err != nil {
+			return fmt.Errorf("delete backup codes: %w", err)
+		}
+		return nil
+	})
+}
+
 // SetSuperAdmin toggles the super-admin flag for a user.
 func (r *gormRepository) SetSuperAdmin(ctx context.Context, id int64, makeSuper bool) error {
 	res := r.db.WithContext(ctx).
