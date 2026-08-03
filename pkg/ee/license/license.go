@@ -81,10 +81,26 @@ func CE() *Manager { return &Manager{} }
 // caller can surface "license invalid → running as CE".
 func Load(token string, now time.Time) *Manager {
 	token = strings.TrimSpace(token)
+	// Checked before the key is fetched: "no license" is CE with no error, and
+	// must stay that way even if the embedded key were unreadable.
 	if token == "" {
 		return &Manager{}
 	}
-	p, err := verify(token, now)
+	pub, err := publicKey()
+	if err != nil {
+		return &Manager{loadErr: err}
+	}
+	return loadWith(pub, token, now)
+}
+
+// loadWith is Load against an explicit key; see verifyWith for why the key is a
+// parameter rather than a settable package var.
+func loadWith(pub ed25519.PublicKey, token string, now time.Time) *Manager {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return &Manager{}
+	}
+	p, err := verifyWith(pub, token, now)
 	if err != nil {
 		return &Manager{loadErr: err}
 	}
@@ -96,6 +112,24 @@ func Load(token string, now time.Time) *Manager {
 }
 
 func verify(token string, now time.Time) (*Payload, error) {
+	pub, err := publicKey()
+	if err != nil {
+		return nil, err
+	}
+	return verifyWith(pub, token, now)
+}
+
+// verifyWith is verify against an explicit key.
+//
+// The embedded key is deliberately a compile-time constant so no operator can
+// swap it, which also means the matching private half lives only in the vendor's
+// license-authority repo — nothing in this repo can mint a token that gets past
+// the signature check. Parameterising the key (rather than making it a mutable
+// package var) lets the tests sign with their own pair and exercise everything
+// downstream of the signature: product binding, expiry, install binding. It adds
+// no runtime seam, because verify is the only non-test caller and it always
+// passes the embedded key.
+func verifyWith(pub ed25519.PublicKey, token string, now time.Time) (*Payload, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 2 {
 		return nil, ErrMalformed
@@ -107,10 +141,6 @@ func verify(token string, now time.Time) (*Payload, error) {
 	sig, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
 		return nil, ErrMalformed
-	}
-	pub, err := publicKey()
-	if err != nil {
-		return nil, err
 	}
 	// Signature is over the exact base64url payload segment (parts[0]) so we
 	// never depend on canonical JSON re-encoding.
