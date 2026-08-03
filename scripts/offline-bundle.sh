@@ -48,11 +48,17 @@ BACKEND_REPO=$([ "$EDITION" = ee ] && echo mxid-ee || echo mxid)
 BACKEND_IMAGE="$SRC_REGISTRY/$BACKEND_REPO:$VERSION"
 WEB_IMAGE="$SRC_REGISTRY/mxid-web:$VERSION"
 
-BUNDLE_DIR="mxid-offline-$EDITION-$VERSION"
+# The tarball carries the version (you need to know which one you're holding,
+# and rollback means keeping more than one). The directory inside does NOT:
+# a stable path makes every upgrade the same two commands and keeps runbooks
+# and scripts from hardcoding a version. Extracting a newer bundle over the
+# old directory is the intended flow — install.sh reads manifest.env to pick
+# the chart, so a leftover file from a previous version is never used.
+BUNDLE_DIR="mxid-offline"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 STAGE="$WORK/$BUNDLE_DIR"
-OUT="$REPO_ROOT/$BUNDLE_DIR.tar.gz"
+OUT="$REPO_ROOT/mxid-offline-$EDITION-$VERSION.tar.gz"
 
 log "bundling MXID $EDITION $VERSION from $SRC_REGISTRY"
 mkdir -p "$STAGE/images" "$STAGE/chart"
@@ -154,11 +160,18 @@ Contents
   manifest.env           image names + versions (read by install.sh)
   SHA256SUMS             integrity check
 
-Install
-  1. tar xzf mxid-offline-$EDITION-$VERSION.tar.gz && cd mxid-offline-$EDITION-$VERSION
-  2. cp values.example.yaml values.yaml && edit it
-  3. ./install.sh --registry <registry-your-cluster-can-reach> --values values.yaml
+First install
+  1. tar xzf mxid-offline-$EDITION-$VERSION.tar.gz && cd mxid-offline
+  2. mkdir -p /opt/mxid && cp values.example.yaml /opt/mxid/values.yaml
+     chmod 600 /opt/mxid/values.yaml && edit it
+  3. ./install.sh --registry <registry-your-cluster-can-reach> \\
+       --values /opt/mxid/values.yaml
 
+Upgrade (any later version)
+  1. tar xzf mxid-offline-$EDITION-<new>.tar.gz     # same mxid-offline/ dir
+  2. cd mxid-offline && ./install.sh                # no arguments needed
+
+Keep values.yaml OUTSIDE this directory — it is replaced on every upgrade.
 Run ./install.sh --help for the no-registry (load-onto-nodes) mode.
 EOF
 
