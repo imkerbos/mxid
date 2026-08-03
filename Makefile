@@ -89,7 +89,22 @@ dev-dump:
 dev-watch:
 	./scripts/dev-watch.sh
 
-# ── Air-gapped release ───────────────────────────────────────────────────────
+# ── Mirror images into your own registry ─────────────────────────────────────
+# The normal path when the cluster can't reach ghcr.io but one machine can reach
+# both it and your registry. Run on that machine, after `docker login` to both.
+#
+#   make sync-images TAG=v1.8.0 REGISTRY=harbor.internal/mxid
+#   make sync-images TAG=v1.8.0 REGISTRY=harbor.internal/mxid EDITION=ce
+#
+# Then `helm upgrade` as usual — the script prints the exact command.
+.PHONY: sync-images
+sync-images:
+	@[ -n "$(TAG)" ] && [ -n "$(REGISTRY)" ] || { echo "usage: make sync-images TAG=v1.8.0 REGISTRY=harbor.internal/mxid [EDITION=ce]"; exit 1; }
+	./scripts/sync-images.sh $(TAG) $(REGISTRY) --$(if $(EDITION),$(EDITION),ee)
+
+# ── Fully air-gapped release ─────────────────────────────────────────────────
+# Only when NO machine can reach both ghcr.io and your registry. Otherwise use
+# sync-images above — it is one step instead of bundle/carry/unpack/install.
 # Build ONE tarball (images + packaged chart + values template + checksums) to
 # carry into a site with no internet. Run on a machine that CAN reach ghcr.io;
 # `docker login ghcr.io` first for the private EE image.
