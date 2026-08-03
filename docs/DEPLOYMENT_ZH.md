@@ -747,13 +747,33 @@ make offline-bundle TAG=v1.8.0             # 企业版;社区版加 EDITION=ce
 `SHA256SUMS`。第三个镜像最容易漏也最致命:`busybox`,`waitForDeps` 初始化容器要用,
 漏了所有 Pod 都会卡在 `Init:ImagePullBackOff`。
 
-**在站点内:**
+**站点内首次安装:**
 
 ```bash
 tar xzf mxid-offline-ee-v1.8.0.tar.gz && cd mxid-offline-ee-v1.8.0
-cp values.example.yaml values.yaml     # 填 URL、数据库/Redis、密钥
-./install.sh --registry harbor.internal/mxid --values values.yaml
+mkdir -p /opt/mxid && cp values.example.yaml /opt/mxid/values.yaml
+$EDITOR /opt/mxid/values.yaml          # 填 URL、数据库/Redis、密钥
+./install.sh --registry harbor.internal/mxid --values /opt/mxid/values.yaml
 ```
+
+**之后每次升级** —— 解开新包,直接:
+
+```bash
+./install.sh
+```
+
+不用带参数,也不用重填。`values.yaml` 要放在 bundle **外面**:
+每次发版 bundle 都会被换掉,站点配置不该跟着一起丢。安装成功后,registry、
+namespace、release 名和 values 路径会记进 `site.conf`
+(`/etc/mxid/site.conf`,否则 `~/.config/mxid/`),后续运行自动读回。
+万一这个文件丢了,会退而从集群里已部署的 Helm release 反查。显式参数永远优先,
+所以临时覆盖某一项不影响记住的配置。
+
+**任何 OCI registry 都支持**——Harbor、Nexus、ECR、普通 `registry:2` 都行。
+包里的镜像带的是原始 `ghcr.io/...` 名字(`docker save` 就是这么记的),
+`install.sh` 会按你给的 `--registry` 重打 tag。Harbor 有两个坑要注意:
+先 `docker login`;并且**项目要预先建好**——Harbor 推送时不会自动建项目,
+报错信息还很难懂。
 
 `install.sh` 会校验 checksum、把镜像导入 docker / nerdctl / ctr、重打 tag 推到你的
 registry 前缀下,再执行 `helm upgrade --install`,同时把 `image.registry` 和

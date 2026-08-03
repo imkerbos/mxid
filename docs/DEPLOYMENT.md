@@ -852,13 +852,35 @@ values template and `SHA256SUMS`. The third image is easy to forget and fatal to
 omit: `busybox`, used by the `waitForDeps` init container — without it every pod
 sits in `Init:ImagePullBackOff`.
 
-**At the site:**
+**At the site — first install:**
 
 ```bash
 tar xzf mxid-offline-ee-v1.8.0.tar.gz && cd mxid-offline-ee-v1.8.0
-cp values.example.yaml values.yaml     # fill in URLs, datastores and secrets
-./install.sh --registry harbor.internal/mxid --values values.yaml
+mkdir -p /opt/mxid && cp values.example.yaml /opt/mxid/values.yaml
+$EDITOR /opt/mxid/values.yaml          # URLs, datastores, secrets
+./install.sh --registry harbor.internal/mxid --values /opt/mxid/values.yaml
 ```
+
+**Every upgrade after that** — unpack the new bundle and run:
+
+```bash
+./install.sh
+```
+
+No flags, no re-editing. Keep `values.yaml` **outside** the bundle directory:
+bundles are disposable and get replaced each release, your site config is not.
+On a successful install the registry, namespace, release name and values path
+are recorded in `site.conf` (`/etc/mxid/site.conf`, else `~/.config/mxid/`),
+and later runs read them back. If that file is ever lost, the settings are
+recovered from the deployed Helm release instead. An explicit flag always wins,
+so overriding one thing for one run costs nothing.
+
+Any OCI registry works — Harbor, Nexus, ECR, a plain `registry:2`. The bundled
+images carry their original `ghcr.io/...` names (that is just what `docker save`
+records); `install.sh` retags them under whatever `--registry` you give. Two
+Harbor-specific notes: `docker login` first, and **create the project
+beforehand** — Harbor does not auto-create one on push, and the resulting error
+is unhelpful.
 
 `install.sh` verifies checksums, loads the images into docker / nerdctl / ctr,
 retags and pushes them under your registry prefix, then runs `helm upgrade

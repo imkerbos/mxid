@@ -4,8 +4,20 @@
 # Ships INSIDE the bundle produced by scripts/offline-bundle.sh; run it from the
 # unpacked bundle directory. It never reaches the internet.
 #
-#   ./install.sh --registry harbor.internal/mxid --values values.yaml
-#   ./install.sh --registry harbor.internal/mxid --values values.yaml --dry-run
+#   First install:
+#     ./install.sh --registry harbor.internal/mxid --values /opt/mxid/values.yaml
+#   Every upgrade after that — nothing to retype, nothing to re-edit:
+#     ./install.sh
+#
+#   Site settings persist in two places that live OUTSIDE the bundle, so a new
+#   bundle never means re-entering them:
+#     - your values.yaml (URLs, datastores, secrets) — edited once
+#     - a site.conf written on first install (default /etc/mxid/site.conf, or
+#       ./site.conf) recording registry / namespace / release / values path
+#   If site.conf is missing, settings are read back from the deployed Helm
+#   release instead. Explicit flags always win.
+#
+#   ./install.sh --dry-run              # rehearse; renders locally, no cluster
 #   ./install.sh --load-only            # no registry: just import images locally
 #
 # Two delivery modes:
@@ -20,11 +32,14 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REGISTRY=""
 VALUES=""
-RELEASE="mxid"
-NAMESPACE="mxid"
+RELEASE=""
+NAMESPACE=""
 LOAD_ONLY=0
 DRY_RUN=0
 SKIP_VERIFY=0
+CONFIG=""
+# Where site settings are remembered between upgrades. First writable path wins.
+DEFAULT_CONFIGS=("/etc/mxid/site.conf" "$HOME/.config/mxid/site.conf" "$HERE/../site.conf")
 
 die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 log() { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
@@ -36,10 +51,11 @@ while [ $# -gt 0 ]; do
     --values)    VALUES="${2:?--values needs a value}"; shift 2 ;;
     --release)   RELEASE="${2:?}"; shift 2 ;;
     --namespace|-n) NAMESPACE="${2:?}"; shift 2 ;;
+    --config)    CONFIG="${2:?--config needs a value}"; shift 2 ;;
     --load-only) LOAD_ONLY=1; shift ;;
     --dry-run)   DRY_RUN=1; shift ;;
     --skip-verify) SKIP_VERIFY=1; shift ;;
-    -h|--help)   sed -n '2,22p' "$0"; exit 0 ;;
+    -h|--help)   sed -n '2,32p' "$0"; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
@@ -47,6 +63,38 @@ done
 [ -f "$HERE/manifest.env" ] || die "manifest.env not found — run this from inside the unpacked bundle"
 # shellcheck disable=SC1091
 . "$HERE/manifest.env"
+
+# ── site settings ────────────────────────────────────────────────────────────
+# Precedence: explicit flag > site.conf > the deployed Helm release. The point
+# is that a NEW BUNDLE never means re-entering site settings — the bundle is
+# disposable, the site config is not, so the config deliberately lives outside
+# the unpacked directory.
+if [ -z "$CONFIG" ]; then
+  for c in "${DEFAULT_CONFIGS[@]}"; do [ -f "$c" ] && { CONFIG="$c"; break; }; done
+fi
+if [ -n "$CONFIG" ] && [ -f "$CONFIG" ]; then
+  log "site config: $CONFIG"
+  # shellcheck disable=SC1090
+  . "$CONFIG"
+  [ -z "$REGISTRY" ]  && REGISTRY="${MXID_SITE_REGISTRY:-}"
+  [ -z "$VALUES" ]    && VALUES="${MXID_SITE_VALUES:-}"
+  [ -z "$RELEASE" ]   && RELEASE="${MXID_SITE_RELEASE:-}"
+  [ -z "$NAMESPACE" ] && NAMESPACE="${MXID_SITE_NAMESPACE:-}"
+fi
+
+RELEASE="${RELEASE:-mxid}"
+NAMESPACE="${NAMESPACE:-mxid}"
+
+# Last resort: ask the cluster what the previous install used. Lets an upgrade
+# work with zero arguments even if site.conf was lost.
+if [ "$LOAD_ONLY" -eq 0 ] && [ -z "$REGISTRY" ] && command -v helm >/dev/null; then
+  detected="$(helm get values "$RELEASE" -n "$NAMESPACE" -o json 2>/dev/null \
+    | sed -n 's/.*"registry":"\([^"]*\)".*/\1/p' | head -1)" || true
+  if [ -n "$detected" ]; then
+    REGISTRY="$detected"
+    log "reusing registry from the deployed release: $REGISTRY"
+  fi
+fi
 
 # Pick whichever container tool exists. containerd-only nodes (no docker) are
 # common in k8s, so support ctr/nerdctl too.
@@ -88,8 +136,13 @@ fi
 # Validate the values file BEFORE pushing three images, so a missing key costs
 # seconds instead of a full push cycle.
 command -v helm >/dev/null || die "helm not found on this machine"
-[ -n "$VALUES" ] || die "--values is required (start from values.example.yaml)"
-[ -f "$VALUES" ] || die "values file not found: $VALUES"
+[ -n "$VALUES" ] || die "no values file known.
+       First install:  cp values.example.yaml /opt/mxid/values.yaml && edit it,
+                       then re-run with --values /opt/mxid/values.yaml
+       (it is remembered afterwards, so upgrades need no arguments)"
+[ -f "$VALUES" ] || die "values file not found: $VALUES
+       Keep it OUTSIDE the bundle directory — bundles are disposable and get
+       replaced on every upgrade."
 grep -q 'REPLACE\.internal\.registry' "$VALUES" \
   && die "$VALUES still contains the REPLACE.internal.registry placeholder — edit it first"
 
@@ -114,7 +167,11 @@ push_one() {
   case "$RUNTIME" in
     docker|nerdctl) $RUNTIME tag "$src" "$dst" && $RUNTIME push "$dst" ;;
     ctr)  ctr -n k8s.io images tag "$src" "$dst" && ctr -n k8s.io images push "$dst" ;;
-  esac
+  esac || die "push to $dst failed.
+       - authenticated?  docker login ${REGISTRY%%/*}
+       - on Harbor the PROJECT must exist first (it is not auto-created):
+         create the '${REGISTRY#*/}' project in the Harbor UI, then re-run
+       - self-signed CA? add it to the container runtime's trust store"
 }
 
 BACKEND_NAME="${MXID_BACKEND_IMAGE##*/}"   # mxid-ee:v1.8.0
@@ -174,6 +231,30 @@ kubectl -n "$NAMESPACE" rollout status "statefulset/$RELEASE-backend" --timeout=
   warn "backend rollout did not settle — check: kubectl -n $NAMESPACE describe pod -l app.kubernetes.io/name=mxid"
 kubectl -n "$NAMESPACE" rollout status "deployment/$RELEASE-web" --timeout=3m || true
 
+# Remember the settings so the next upgrade needs no arguments at all. Written
+# after a successful install so a failed run never leaves misleading state.
+save_config() {
+  local target="$1"
+  mkdir -p "$(dirname "$target")" 2>/dev/null || return 1
+  cat > "$target" <<EOF || return 1
+# MXID site settings — written by install.sh on $MXID_VERSION.
+# Lives outside the bundle on purpose: a new bundle must never mean re-entering
+# these. Upgrades are then just:  ./install.sh
+MXID_SITE_REGISTRY=$REGISTRY
+MXID_SITE_VALUES=$(cd "$(dirname "$VALUES")" && pwd)/$(basename "$VALUES")
+MXID_SITE_RELEASE=$RELEASE
+MXID_SITE_NAMESPACE=$NAMESPACE
+EOF
+  log "site settings saved to $target"
+}
+if [ -n "$CONFIG" ]; then
+  save_config "$CONFIG" || warn "could not update $CONFIG"
+else
+  for c in "${DEFAULT_CONFIGS[@]}"; do save_config "$c" && break; done \
+    || warn "could not save site settings (not writable) — pass --registry/--values again next time"
+fi
+
 echo
 log "installed MXID $MXID_EDITION $MXID_VERSION"
 echo "Verify:  kubectl -n $NAMESPACE exec statefulset/$RELEASE-backend -- wget -qO- localhost:8080/readyz"
+echo "Upgrade: unpack the next bundle and run ./install.sh  (no arguments needed)"
