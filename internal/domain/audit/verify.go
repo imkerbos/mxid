@@ -136,6 +136,12 @@ func VerifyAnchorsFrom(ctx context.Context, db *gorm.DB, keys KeyRegistry, tenan
 	}
 	through := fromSeq - 1
 	expectedFrom := fromSeq
+	// Tracks the expected prev_anchor_hash for the next anchor. Left nil for the
+	// first anchor examined: when starting mid-chain we have not seen its
+	// predecessor and cannot assert what it committed to, and when starting at
+	// genesis there is no predecessor to assert.
+	var expectPrev []byte
+	haveExpectPrev := false
 	for i := range anchors {
 		a := &anchors[i]
 		if a.FromSeq != expectedFrom {
@@ -147,6 +153,16 @@ func VerifyAnchorsFrom(ctx context.Context, db *gorm.DB, keys KeyRegistry, tenan
 		}
 		if !VerifyAnchorSig(pub, a) {
 			return AnchorVerifyResult{OK: false, AnchoredThrough: through, FailFromSeq: a.FromSeq, Reason: "bad signature"}, nil
+		}
+		// Enforce the anchor-to-anchor link. The signature above already binds
+		// prev_anchor_hash to this anchor, so a mismatch here means the anchor it
+		// points at is not the anchor actually preceding it — a row was removed
+		// or replaced. Only checked once a predecessor has been seen in this
+		// walk, and only for v2 rows; v1 anchors carry no link to check.
+		if haveExpectPrev && a.Version >= AnchorV2 {
+			if !bytes.Equal(a.PrevAnchorHash, expectPrev) {
+				return AnchorVerifyResult{OK: false, AnchoredThrough: through, FailFromSeq: a.FromSeq, Reason: "anchor link mismatch"}, nil
+			}
 		}
 		// Stream the range's hashes. An anchor normally covers one 60s tick, but
 		// a burst — a bulk import, or a backlog drained after the anchorer was
@@ -179,6 +195,8 @@ func VerifyAnchorsFrom(ctx context.Context, db *gorm.DB, keys KeyRegistry, tenan
 		}
 		expectedFrom = a.ToSeq + 1
 		through = a.ToSeq
+		expectPrev = AnchorHash(a)
+		haveExpectPrev = true
 	}
 	return AnchorVerifyResult{OK: true, AnchoredThrough: through}, nil
 }

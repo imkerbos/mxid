@@ -37,6 +37,27 @@ func seedChain(t *testing.T, db *gorm.DB, key []byte, tenantID int64, class stri
 	return hashes
 }
 
+// seedChain2 continues a chain from `from` to `to`, linking onto prev. Returns
+// the entry hashes it wrote, in order.
+func seedChain2(t *testing.T, db *gorm.DB, key []byte, tenantID int64, class string, from, to int, prev []byte) [][]byte {
+	t.Helper()
+	var out [][]byte
+	for i := from; i <= to; i++ {
+		payload := []byte(`{"n":` + itoa(i) + `}`)
+		h := ComputeEntryHash(key, int64(i), prev, payload)
+		e := &AuditEntry{
+			TenantID: tenantID, ChainClass: class, Seq: int64(i),
+			PrevHash: prev, EntryHash: h, Payload: payload,
+		}
+		if err := db.Create(e).Error; err != nil {
+			t.Fatalf("seed entry %d: %v", i, err)
+		}
+		prev = h
+		out = append(out, h)
+	}
+	return out
+}
+
 func itoa(i int) string {
 	if i == 0 {
 		return "0"
