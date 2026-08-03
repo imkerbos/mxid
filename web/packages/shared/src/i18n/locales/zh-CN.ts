@@ -569,6 +569,7 @@ export default {
       manageMembers: '管理成员',
     },
     confirmDelete: '确定要删除用户组 "{{name}}" 吗？',
+    confirmRemoveMember: '确定将该成员移出用户组？该用户将失去此组授予的访问权限。',
     confirmCascade: '用户组 "{{name}}" 仍有 {{count}} 位成员。\n确定要级联删除（同时移除所有成员）吗？',
     needAtLeastOneRule: '动态组至少需要一条规则条件',
     syncDone: '同步完成：新增 {{added}}，移除 {{removed}}',
@@ -965,6 +966,7 @@ export default {
       acknowledge: '我已保存',
     },
     appGroupDetail: {
+      confirmRemoveApp: '确定将「{{name}}」移出该应用组？依附在组上的访问策略和角色将对它失效。',
       saved: '保存成功',
       created: '应用组已创建',
       saveFailed: '保存失败',
@@ -1011,6 +1013,8 @@ export default {
     },
   },
   idps: {
+    disableConfirm: '确定停用外部身份源「{{name}}」？',
+    disableConfirmDesc: '停用后，所有通过该身份源登录的用户将无法登录。',
     providerFields: {
       appId: 'App ID',
       appSecret: 'App Secret',
@@ -1389,6 +1393,7 @@ export default {
       hint: '授权自动填表的浏览器扩展。撤销后该浏览器需重新连接（并验证身份）。',
       empty: '暂无已连接扩展',
       revoke: '撤销',
+      revokeConfirm: '确定撤销此浏览器扩展的授权？该浏览器将立即无法自动填充。',
       revoked: '已撤销',
       revokeFailed: '撤销失败',
       lastUsedLabel: '最近使用',

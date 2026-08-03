@@ -274,8 +274,13 @@ export default function GroupsPage() {
     }
   }, [memberPage, memberGroup, loadMembers])
 
+  // Removing a member revokes whatever access the group grants. Undoing it
+  // means finding the user again, so it should not happen on a stray click.
+  const [confirmRemoveMember, setConfirmRemoveMember] = useState<string | null>(null)
+
   const handleRemoveMember = async (userId: string) => {
     if (!memberGroup) return
+    setConfirmRemoveMember(null)
     setRemovingMemberId(userId)
     try {
       await groupApi.removeMember(memberGroup.id, userId)
@@ -650,7 +655,7 @@ export default function GroupsPage() {
                           </span>
                         ) : (
                           <button
-                            onClick={() => handleRemoveMember(m.user_id)}
+                            onClick={() => setConfirmRemoveMember(m.user_id)}
                             disabled={removingMemberId === m.user_id}
                             className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-faint transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
                             title={t('groups.removeMember')}
@@ -954,6 +959,13 @@ export default function GroupsPage() {
         )}
       </AnimatePresence>
 
+      <ConfirmDialog
+        open={confirmRemoveMember !== null}
+        title={t('groups.confirmRemoveMember')}
+        loading={removingMemberId !== null}
+        onConfirm={() => confirmRemoveMember && handleRemoveMember(confirmRemoveMember)}
+        onCancel={() => setConfirmRemoveMember(null)}
+      />
       <ConfirmDialog
         open={!!delGroup}
         title={t('groups.confirmDelete', { name: delGroup?.name ?? '' })}
