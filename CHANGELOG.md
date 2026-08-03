@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- A mistyped SAML `sp_cert` is now rejected when the SP descriptor is built.
+  Most short strings are valid base64, so garbage decoded cleanly and only
+  surfaced later as an opaque signature failure on the SP's next signed
+  AuthnRequest.
 - External-IdP providers (Lark/Feishu, Teams, GitHub) now make their OAuth calls
   through the SSRF-guarded client instead of a bare HTTP client, so a redirect
   from a compromised IdP cannot walk the request onto an internal address with
