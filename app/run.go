@@ -1115,6 +1115,18 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 		go dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyAuditAnchorer, a.Logger, func(ctx context.Context) {
 			anchorer.Run(ctx, 60*time.Second)
 		})
+
+		// Ledger retention lives here, beside the anchorer, because it shares the
+		// anchor key (checkpoints are signed with it) and because it can only
+		// ever prune what the anchorer has already sealed. Opt-in: see
+		// AuditConfig.LedgerRetention for why this is a separate decision from
+		// the audit log's retention.
+		if a.Config.Audit.LedgerRetention {
+			pruner := audit.NewPruner(a.DB, auditAnchorPriv, a.IDGen)
+			go dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyAuditLedgerPrune, a.Logger, func(ctx context.Context) {
+				runLedgerRetention(ctx, a, settingService, pruner)
+			})
+		}
 	}
 
 	// Mount the per-app provisioning config API on the console group.
@@ -1916,6 +1928,62 @@ func runAuditPartitionMaintenance(stopCtx context.Context, a *bootstrap.App, pm 
 
 		if passOK {
 			metrics.WorkerSuccess("audit_partitions")
+		}
+		select {
+		case <-stopCtx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+// runLedgerRetention prunes mxid_audit_entry under the same
+// AuditPolicy.RetentionDays that governs the audit log, leaving a signed
+// checkpoint at each new floor.
+//
+// Daily rather than every six hours. The log's retention is cheap and
+// reversible — a dropped partition can be rebuilt from the ledger — whereas
+// this destroys the evidence itself, so there is no value in doing it
+// promptly and some value in doing it rarely. Pruning is bounded by the anchor
+// line regardless, so a missed pass costs nothing but a day of extra rows.
+func runLedgerRetention(stopCtx context.Context, a *bootstrap.App, ss *setting.Service, pruner *audit.Pruner) {
+	const tickEvery = 24 * time.Hour
+	ticker := time.NewTicker(tickEvery)
+	defer ticker.Stop()
+
+	for {
+		// Deliberate global cross-tenant operation, like the log purge: needs the
+		// explicit system escape or the tenant plugin fails closed.
+		ctx := tenantscope.SystemContext()
+		metrics.WorkerRun("audit_ledger_retention")
+		passOK := true
+
+		pol, err := ss.AuditPolicy(ctx, a.Config.Tenant.DefaultID)
+		if err != nil {
+			passOK = false
+		} else if pol.RetentionDays > 0 {
+			cutoff := time.Now().AddDate(0, 0, -pol.RetentionDays)
+			results, perr := pruner.PruneChainsBefore(ctx, cutoff)
+			if perr != nil {
+				passOK = false
+				a.Logger.Warn("audit ledger prune failed",
+					zap.Int("retention_days", pol.RetentionDays), zap.Error(perr))
+			}
+			// Logged per chain and at Info: this is an irreversible deletion of
+			// evidence, so the record of it should be as easy to find as the
+			// record it removed.
+			for _, r := range results {
+				a.Logger.Info("audit ledger pruned",
+					zap.Int64("tenant_id", r.TenantID),
+					zap.String("chain_class", r.ChainClass),
+					zap.Int64("pruned_through_seq", r.PrunedThroughSeq),
+					zap.Int64("entries_deleted", r.EntriesDeleted),
+					zap.Int("retention_days", pol.RetentionDays))
+			}
+		}
+
+		if passOK {
+			metrics.WorkerSuccess("audit_ledger_retention")
 		}
 		select {
 		case <-stopCtx.Done():

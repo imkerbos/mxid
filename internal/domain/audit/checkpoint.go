@@ -113,6 +113,45 @@ func NewPruner(db *gorm.DB, priv ed25519.PrivateKey, idGen *snowflake.Generator)
 	return &Pruner{db: db, priv: priv, keyID: KeyIDForPublic(pub), idGen: idGen}
 }
 
+// PruneChainsBefore prunes every chain that has a head, removing history older
+// than cutoff. Returns one result per chain that actually lost entries.
+//
+// The cutoff is resolved through the ANCHOR table rather than by scanning
+// entries for a timestamp. Anchors carry created_at, there are a few thousand
+// of them against potentially hundreds of millions of entries, and the newest
+// anchor older than the cutoff is by definition a boundary that is both time-
+// correct and already sealed — so the "never prune past the anchor line" rule
+// is satisfied by construction rather than by a second check.
+func (p *Pruner) PruneChainsBefore(ctx context.Context, cutoff time.Time) ([]PruneResult, error) {
+	var heads []ChainHead
+	if err := p.db.WithContext(ctx).Find(&heads).Error; err != nil {
+		return nil, fmt.Errorf("load chain heads: %w", err)
+	}
+
+	var out []PruneResult
+	for i := range heads {
+		h := &heads[i]
+		var anchor AuditAnchor
+		err := p.db.WithContext(ctx).
+			Where("tenant_id = ? AND chain_class = ? AND created_at < ?", h.TenantID, h.ChainClass, cutoff).
+			Order("to_seq desc").First(&anchor).Error
+		switch {
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			continue // nothing sealed is old enough yet
+		case err != nil:
+			return out, fmt.Errorf("find prune boundary for tenant=%d class=%s: %w", h.TenantID, h.ChainClass, err)
+		}
+		res, err := p.PruneChain(ctx, h.TenantID, h.ChainClass, anchor.ToSeq)
+		if err != nil {
+			return out, err
+		}
+		if res.EntriesDeleted > 0 {
+			out = append(out, res)
+		}
+	}
+	return out, nil
+}
+
 // PruneResult reports what one prune removed.
 type PruneResult struct {
 	TenantID         int64

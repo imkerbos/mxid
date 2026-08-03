@@ -104,6 +104,7 @@ prod set:
 | `MXID_CRYPTO_AUDIT_ANCHOR_KEY` | ✅* | — | Audit anchor Ed25519 seed (`openssl rand -base64 32`). Required in release mode when anchoring is enabled (the default). |
 | `MXID_CRYPTO_AUDIT_ANCHOR_RETIRED_PUBKEYS` | — | — | Comma-separated base64 ed25519 public keys retired from anchoring; add the old public key here when rotating `MXID_CRYPTO_AUDIT_ANCHOR_KEY` so old anchors still verify. |
 | `MXID_AUDIT_ANCHOR_ENABLED` | — | `true` | Enable/disable audit anchoring. Setting `false` is an explicit opt-out; otherwise release mode requires the anchor key. |
+| `MXID_AUDIT_LEDGER_RETENTION` | — | `false` | Prune `mxid_audit_entry` under the same retention policy as the audit log. A separate decision from the log's retention: dropping a log partition discards a view that can be rebuilt from the ledger, whereas this discards the evidence, leaving only the anchor and a signed checkpoint. **Off means the ledger keeps every payload for ever regardless of the configured retention** — including personal data. |
 | `MXID_AUDIT_ANCHOR_SINK_PATH` | — | *(empty)* | Optional external mirror of each signed anchor. Empty = anchors are database checkpoints only. Set it only to a path outside the database's blast radius **and** shared by every replica — anchors are written by whichever replica holds the leader lock, so a per-pod volume scatters them and breaks verification. |
 | `POSTGRES_PASSWORD` | ✅ | — | DB password. |
 | `REDIS_PASSWORD` | ✅ | — | Redis password. |
