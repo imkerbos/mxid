@@ -204,3 +204,65 @@ func TestTamperedCheckpointIsRejected(t *testing.T) {
 		t.Fatal("a checkpoint whose signature no longer matches must be rejected")
 	}
 }
+
+// Time-based pruning resolves its boundary through the anchors, so it must
+// prune the ranges sealed before the cutoff and leave the ones sealed after it.
+func TestPruneChainsBeforeRespectsTheCutoff(t *testing.T) {
+	db, tenant := pruneTestDB(t)
+	key, reg, priv, hashes := prunerFixture(t, db, tenant, 10)
+	ctx := context.Background()
+
+	// Age the first anchor so it falls before the cutoff.
+	cutoff := time.Now().Add(-24 * time.Hour)
+	if err := db.Exec(`UPDATE mxid_audit_anchor SET created_at = ? WHERE tenant_id = ?`,
+		cutoff.Add(-time.Hour), tenant).Error; err != nil {
+		t.Fatalf("age anchor: %v", err)
+	}
+
+	// A second range, sealed now, therefore after the cutoff.
+	more := seedChain2(t, db, key, tenant, "data", 11, 20, hashes[10])
+	setHead(t, db, tenant, "data", 20, more[len(more)-1])
+	idGen, err := snowflake.New(5)
+	if err != nil {
+		t.Fatalf("snowflake: %v", err)
+	}
+	if _, err := NewAnchorer(db, priv, nil, idGen, zap.NewNop()).AnchorAll(ctx); err != nil {
+		t.Fatalf("anchor: %v", err)
+	}
+
+	pruneGen, err := snowflake.New(6)
+	if err != nil {
+		t.Fatalf("snowflake: %v", err)
+	}
+	results, err := NewPruner(db, priv, pruneGen).PruneChainsBefore(ctx, cutoff)
+	if err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+
+	var mine *PruneResult
+	for i := range results {
+		if results[i].TenantID == tenant {
+			mine = &results[i]
+		}
+	}
+	if mine == nil {
+		t.Fatal("the aged range should have been pruned")
+	}
+	if mine.PrunedThroughSeq != 10 {
+		t.Fatalf("pruned through %d, want 10 — the range sealed after the cutoff must survive", mine.PrunedThroughSeq)
+	}
+
+	// What remains must still verify from the checkpoint.
+	cp, err := LoadCheckpoint(ctx, db, reg, tenant, "data")
+	if err != nil {
+		t.Fatalf("checkpoint: %v", err)
+	}
+	r, err := VerifyChainFrom(ctx, db, key, tenant, "data", cp)
+	if err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	if !r.OK || r.VerifiedThrough != 20 {
+		t.Fatalf("after a time-based prune the remainder must verify; got OK=%v through=%d (%s)",
+			r.OK, r.VerifiedThrough, r.Reason)
+	}
+}

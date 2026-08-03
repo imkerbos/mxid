@@ -266,6 +266,20 @@ type AuditConfig struct {
 	// cheap and are a prerequisite for range verification. When true in release
 	// mode, Crypto.AuditAnchorKey MUST be set (validateSecrets fails closed).
 	AnchorEnabled bool `mapstructure:"anchor_enabled"`
+	// LedgerRetention enables pruning of mxid_audit_entry under the same
+	// AuditPolicy.RetentionDays that governs mxid_audit_log.
+	//
+	// OFF by default, and deliberately a separate switch from the log's
+	// retention, because the consequences are not comparable. Dropping a log
+	// partition discards a view that can be rebuilt from the ledger; pruning
+	// the ledger discards the evidence itself. What survives is the anchor and
+	// a signed checkpoint — enough to prove the remaining chain is intact and
+	// that the pruned range existed, but not what it contained.
+	//
+	// Turning it on is what makes RetentionDays an honest promise: with it off,
+	// the ledger keeps every payload (including personal data) for ever, no
+	// matter what retention is configured.
+	LedgerRetention bool `mapstructure:"ledger_retention"`
 	// AnchorSinkPath enables the optional external sink and names the file that
 	// signed anchors are appended to. EMPTY (the default) means no external
 	// sink: anchors are database checkpoints only.

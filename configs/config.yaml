@@ -107,6 +107,14 @@ crypto:
 audit:
   anchor_enabled: true
   anchor_sink_path: ""
+  # Prune mxid_audit_entry under the same retention policy as the audit log.
+  # OFF by default: dropping a log partition discards a view that can be rebuilt
+  # from the ledger, whereas pruning the ledger discards the evidence itself.
+  # What remains is the anchor plus a signed checkpoint — enough to prove the
+  # rest of the chain is intact and that the pruned range existed, but not what
+  # it contained. Leaving it off means the ledger keeps every payload for ever,
+  # regardless of the configured retention.
+  ledger_retention: false
 
 log:
   level: info # debug/info/warn/error

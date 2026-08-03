@@ -35,6 +35,11 @@ const (
 	// is here so a fleet does not race on CREATE TABLE and fill the log with
 	// duplicate-object errors that look like a fault.
 	KeyAuditPartitions int64 = 0x4D5849440008
+	// KeyAuditLedgerPrune gates pruning of mxid_audit_entry. Single-writer for
+	// the same reason as the chainer: two pruners racing would each write a
+	// checkpoint for the same chain, and the loser's delete would run against a
+	// floor that had already moved.
+	KeyAuditLedgerPrune int64 = 0x4D5849440009
 )
 
 const retryInterval = 5 * time.Second
