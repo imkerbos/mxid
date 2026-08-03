@@ -30,6 +30,11 @@ const (
 	// API tokens to a single replica — same reasoning as audit retention (a
 	// global cross-tenant DELETE shouldn't run on every pod).
 	KeyAPITokenPurge int64 = 0x4D5849440007
+	// KeyAuditPartitions gates partition provisioning for mxid_audit_log. The
+	// DDL is idempotent, so concurrent runs are harmless in principle — the lock
+	// is here so a fleet does not race on CREATE TABLE and fill the log with
+	// duplicate-object errors that look like a fault.
+	KeyAuditPartitions int64 = 0x4D5849440008
 )
 
 const retryInterval = 5 * time.Second
