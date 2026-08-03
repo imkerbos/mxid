@@ -97,10 +97,21 @@ dev-watch:
 #   make sync-images TAG=v1.8.0 REGISTRY=harbor.internal/mxid EDITION=ce
 #
 # Then `helm upgrade` as usual — the script prints the exact command.
-.PHONY: sync-images
+.PHONY: sync-images build-images
 sync-images:
 	@[ -n "$(TAG)" ] && [ -n "$(REGISTRY)" ] || { echo "usage: make sync-images TAG=v1.8.0 REGISTRY=harbor.internal/mxid [EDITION=ce]"; exit 1; }
 	./scripts/sync-images.sh $(TAG) $(REGISTRY) --$(if $(EDITION),$(EDITION),ee)
+
+# Same destination, built from source instead of pulled from GHCR. Use when the
+# released images can't be pulled at all, you carry local patches, or policy
+# requires building from reviewed source. Clones missing sources at TAG; the EE
+# build needs ../mxid-ee and runs garble (slow, amd64-only).
+#
+#   make build-images TAG=v1.8.0 REGISTRY=harbor.example.com/sa02
+#   make build-images TAG=v1.8.0 REGISTRY=harbor.example.com/sa02 EDITION=ce
+build-images:
+	@[ -n "$(TAG)" ] && [ -n "$(REGISTRY)" ] || { echo "usage: make build-images TAG=v1.8.0 REGISTRY=harbor.example.com/sa02 [EDITION=ce]"; exit 1; }
+	./scripts/build-images.sh $(TAG) $(REGISTRY) --$(if $(EDITION),$(EDITION),ee)
 
 # ── Fully air-gapped release ─────────────────────────────────────────────────
 # Only when NO machine can reach both ghcr.io and your registry. Otherwise use
