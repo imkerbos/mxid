@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	pgtPrefix         = "mxid:cas:pgt:"
+	pgtPrefix          = "mxid:cas:pgt:"
 	defaultPGTicketTTL = 2 * time.Hour
-	proxyTicketTTL    = 30 * time.Second
+	proxyTicketTTL     = 30 * time.Second
 )
 
 // ProxyGrantingTicket (PGT) is the reusable ticket a service holds after a
@@ -24,9 +24,9 @@ type ProxyGrantingTicket struct {
 	PGT       string    `json:"pgt"`
 	UserID    int64     `json:"user_id"`
 	TenantID  int64     `json:"tenant_id"`
-	AppID     int64     `json:"app_id"`   // the CAS IdP app that minted it — /proxy under a different app_code is rejected
-	Username  string    `json:"username"` // resolved principal, copied onto minted proxy tickets
-	PGTURL    string    `json:"pgt_url"`  // the pgtUrl this PGT was delivered to; becomes the proxy-chain entry when it mints a PT
+	AppID     int64     `json:"app_id"`            // the CAS IdP app that minted it — /proxy under a different app_code is rejected
+	Username  string    `json:"username"`          // resolved principal, copied onto minted proxy tickets
+	PGTURL    string    `json:"pgt_url"`           // the pgtUrl this PGT was delivered to; becomes the proxy-chain entry when it mints a PT
 	Proxies   []string  `json:"proxies,omitempty"` // inherited chain (empty when minted from an ST, non-empty when minted from a PT)
 	CreatedAt time.Time `json:"created_at"`
 }
