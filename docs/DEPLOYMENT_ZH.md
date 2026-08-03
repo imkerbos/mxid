@@ -731,10 +731,44 @@ make migrate-create NAME=foo    # 生成新迁移对
   只在网络 / 集群内部抓取。
 - 审计日志是主要安全信号 —— 查 `mxid_audit_log` 表或接告警 webhook。
 
-## 离线(内网)安装与升级
+## 私有 registry(常规做法)
 
-适用于无外网的站点,以及企业版镜像——它在私有 GHCR 包里,集群本来就拉不到。
-做法是搬一个 tar 包过去,现场不拉任何东西。
+集群拉不到 `ghcr.io`——要么没有路由,要么企业版镜像是私有包。但只要**有一台机器**
+能同时够到 `ghcr.io` 和你的 registry(你的电脑、跳板机、CI runner),就够了:
+每次发版把镜像同步一次,然后照常用 Helm 升级。
+
+```bash
+docker login ghcr.io                     # 一次即可,EE 是私有包
+docker login harbor.internal             # 一次即可
+
+make sync-images TAG=v1.8.0 REGISTRY=harbor.internal/mxid    # 社区版加 EDITION=ce
+```
+
+它会拉后端、web 和 `busybox`(chart 的 `waitForDeps` 初始化容器,漏了所有 Pod 会卡在
+`Init:ImagePullBackOff`),重打 tag 后推到你的前缀下。仓库名必须保持
+`mxid` / `mxid-ee` / `mxid-web` / `busybox`,因为 chart 就是拿 `image.registry`
+直接拼这些名字。
+
+然后升级——脚本会把这条命令连同你的参数一起打印出来:
+
+```bash
+helm upgrade --install mxid deploy/helm/mxid -n mxid -f values.yaml \
+  --set image.registry=harbor.internal/mxid \
+  --set image.tag=v1.8.0 \
+  --set edition=ee \
+  --set backend.waitForDeps.image=harbor.internal/mxid/busybox:1.37
+```
+
+`values.yaml` 放你自己的配置仓库里,改一次就行;以后升级只动 `image.tag`。
+Harbor 注意:**项目要先建好**——推送时不会自动创建,报错还很难懂。
+
+任何 OCI registry 都支持(Harbor、Nexus、ECR、裸 `registry:2`)。
+
+## 完全离线安装与升级
+
+**只在没有任何机器能同时够到 `ghcr.io` 和你的 registry 时才用这条路**。
+否则用上面的 `sync-images`,一条命令就完事,不必走 打包/搬运/解包/安装 四步。
+这条路是搬一个 tar 包过去,现场不拉任何东西。
 
 **在能访问 ghcr.io 的机器上**(企业版先 `docker login ghcr.io`):
 
