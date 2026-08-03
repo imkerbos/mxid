@@ -118,7 +118,18 @@ func runVerifyAudit(a *bootstrap.App) error {
 
 	failed := false
 	for _, h := range heads {
-		res, err := audit.VerifyChain(ctx, a.DB, key, h.TenantID, h.ChainClass)
+		// Start from the signed checkpoint when the chain has been pruned.
+		// Without this a pruned chain reports a seq gap at its floor — the
+		// absence is accounted for, and the checkpoint is the account.
+		cp, err := audit.LoadCheckpoint(ctx, a.DB, reg, h.TenantID, h.ChainClass)
+		if err != nil {
+			return fmt.Errorf("checkpoint tenant=%d class=%s: %w", h.TenantID, h.ChainClass, err)
+		}
+		if cp.Seq > 1 {
+			fmt.Printf("chain tenant=%d class=%s: pruned through seq %d, verifying from %d\n",
+				h.TenantID, h.ChainClass, cp.Seq-1, cp.Seq)
+		}
+		res, err := audit.VerifyChainFrom(ctx, a.DB, key, h.TenantID, h.ChainClass, cp)
 		if err != nil {
 			return fmt.Errorf("verify chain tenant=%d class=%s: %w", h.TenantID, h.ChainClass, err)
 		}
@@ -131,7 +142,7 @@ func runVerifyAudit(a *bootstrap.App) error {
 			h.TenantID, h.ChainClass, res.VerifiedThrough, status)
 
 		if len(reg) > 0 {
-			ares, aerr := audit.VerifyAnchorsWithSink(ctx, a.DB, sink, reg, h.TenantID, h.ChainClass)
+			ares, aerr := audit.VerifyAnchorsWithSinkFrom(ctx, a.DB, sink, reg, h.TenantID, h.ChainClass, cp.Seq)
 			if aerr != nil {
 				return aerr
 			}

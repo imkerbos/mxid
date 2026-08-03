@@ -256,6 +256,44 @@ user is signed into** — not only when logout arrives through a protocol endpoi
    chain head in place), `audit-export` (build a third-party-verifiable bundle), and
    `verify-export` (offline verification needing only the bundle + trusted public key).
 
+### Retention on an append-only ledger
+
+`mxid_audit_entry` is append-only and was, by construction, unprunable: with
+verification able to start only at seq 1 against the genesis hash, a missing row
+was indistinguishable from a deleted one. Removing anything made the chain
+unverifiable, so nothing was ever removed and the table grew without bound —
+roughly 150k entries a day at 50k business writes, since one interactive login
+produces three to five.
+
+A **checkpoint** (`mxid_audit_checkpoint`) removes that constraint. It states,
+under Ed25519 signature, that entries up to `pruned_through_seq` existed and
+hashed to `prev_hash` — precisely what verification needs to resume mid-chain.
+`verify-audit` loads it automatically, so a pruned chain verifies from its floor
+instead of reporting a gap, and the pruned range remains attested by its anchor
+long after the entries are gone.
+
+Pruning is bounded by two rules:
+
+- **Never past the anchor line.** An anchor is the durable attestation that a
+  range existed and what it hashed to; pruning beyond it would destroy entries
+  nothing has ever committed to.
+- **Never past the caller's cutoff**, so retention policy stays a decision for
+  the operator rather than something the mechanism invents.
+
+The checkpoint is written before the entries are deleted, in one transaction. A
+crash between them leaves a claimed floor with the entries still present, which
+verifies clean; the opposite order would leave an unverifiable chain.
+
+The append-only trigger now distinguishes the two operations rather than
+refusing both. **UPDATE is still refused unconditionally** — rewriting history
+has no legitimate caller. DELETE passes only when a transaction-local setting
+(`mxid.audit_prune`) is on, which cannot leak beyond the transaction that sets
+it. This is not a defence against someone with direct database access, who could
+set it themselves or drop the trigger; its job is unchanged, which is to stop
+the application, an ORM mistake, or a careless operator from destroying
+evidence. The alternative — dropping the trigger for the duration of a prune —
+would open a window in which the guarantee does not hold at all.
+
 ### What the audit chain does and does not prove
 
 Stating this plainly matters more than the machinery, because the layers defend
