@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	ticketPrefix    = "mxid:cas:ticket:"
+	ticketPrefix     = "mxid:cas:ticket:"
 	defaultTicketTTL = 30 * time.Second
 )
 
@@ -20,11 +20,11 @@ const (
 // IsProxy flag lets /serviceValidate reject a PT (only /proxyValidate accepts
 // one) per the CAS spec.
 type ServiceTicket struct {
-	Ticket    string   `json:"ticket"`
-	UserID    int64    `json:"user_id"`
-	TenantID  int64    `json:"tenant_id"`
-	Service   string   `json:"service"`
-	Username  string   `json:"username"`
+	Ticket    string    `json:"ticket"`
+	UserID    int64     `json:"user_id"`
+	TenantID  int64     `json:"tenant_id"`
+	Service   string    `json:"service"`
+	Username  string    `json:"username"`
 	CreatedAt time.Time `json:"created_at"`
 	// IsProxy marks this as a proxy ticket (PT-) minted via /proxy from a PGT.
 	IsProxy bool `json:"is_proxy,omitempty"`

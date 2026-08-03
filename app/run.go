@@ -791,11 +791,15 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 		// partition management — the failure it guards against is invisible.
 		a.Logger.Fatal("audit partition manager", zap.Error(apErr))
 	}
-	go dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyAuditPartitions, a.Logger, func(ctx context.Context) {
-		runAuditPartitionMaintenance(ctx, a, auditPartitions)
+	a.SpawnWorker(func() {
+		dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyAuditPartitions, a.Logger, func(ctx context.Context) {
+			runAuditPartitionMaintenance(ctx, a, auditPartitions)
+		})
 	})
-	go dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyAuditRetention, a.Logger, func(ctx context.Context) {
-		runAuditRetention(ctx, a, settingService, auditModule.Repo, auditPartitions)
+	a.SpawnWorker(func() {
+		dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyAuditRetention, a.Logger, func(ctx context.Context) {
+			runAuditRetention(ctx, a, settingService, auditModule.Repo, auditPartitions)
+		})
 	})
 
 	// Dynamic-group reconcile sweeper — a safety net for the event-driven
@@ -805,16 +809,20 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	// staleness; it also heals anything that drifted while the server was down.
 	// Leader-elected: the reconcile rewrites membership, so two pods racing the
 	// same recompute would fight over the rows.
-	go dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyDynamicGroupReconcile, a.Logger, func(ctx context.Context) {
-		runDynamicGroupReconcile(ctx, groupModule.Service, a.Config.Tenant.DefaultID)
+	a.SpawnWorker(func() {
+		dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyDynamicGroupReconcile, a.Logger, func(ctx context.Context) {
+			runDynamicGroupReconcile(ctx, groupModule.Service, a.Config.Tenant.DefaultID)
+		})
 	})
 
 	// Housekeeping purge sweeper — GC for tables that only grow: expired/revoked
 	// API tokens and old login history. Neither carries live security state, so
 	// this only bounds table size. Leader-elected: global cross-tenant DELETEs
 	// belong on one pod.
-	go dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyAPITokenPurge, a.Logger, func(ctx context.Context) {
-		runHousekeepingPurge(ctx, a, apitoken.NewRepository(a.DB), user.NewGormRepository(a.DB))
+	a.SpawnWorker(func() {
+		dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyAPITokenPurge, a.Logger, func(ctx context.Context) {
+			runHousekeepingPurge(ctx, a, apitoken.NewRepository(a.DB), user.NewGormRepository(a.DB))
+		})
 	})
 
 	// Transactional outbox worker — durable at-least-once delivery for side
@@ -1053,7 +1061,7 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	}
 
 	// EE handlers (if any) are now registered — start the outbox worker.
-	go outboxWorker.Run(workerCtx)
+	a.SpawnWorker(func() { outboxWorker.Run(workerCtx) })
 
 	// Audit hash-chain writer — single goroutine, single writer (Chainer's
 	// own invariant: never run two of these against the same DB). Drains
@@ -1073,8 +1081,10 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	// Single-writer: the chainer assigns contiguous seq numbers, so exactly one
 	// replica may run it. The advisory-lock leader guarantees that across pods
 	// (others idle until failover), preventing duplicate-seq PK collisions.
-	go dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyAuditChainer, a.Logger, func(ctx context.Context) {
-		chainer.Run(ctx, 2*time.Second)
+	a.SpawnWorker(func() {
+		dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyAuditChainer, a.Logger, func(ctx context.Context) {
+			chainer.Run(ctx, 2*time.Second)
+		})
 	})
 
 	// Audit anchorer — periodically seals the un-anchored tail of each chain
@@ -1112,8 +1122,10 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 		anchorer := audit.NewAnchorer(a.DB, auditAnchorPriv, auditAnchorSink, a.IDGen, a.Logger)
 		// Single-writer like the chainer: one replica anchors, others idle until
 		// failover. Also avoids two pods writing anchors to their own local sinks.
-		go dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyAuditAnchorer, a.Logger, func(ctx context.Context) {
-			anchorer.Run(ctx, 60*time.Second)
+		a.SpawnWorker(func() {
+			dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyAuditAnchorer, a.Logger, func(ctx context.Context) {
+				anchorer.Run(ctx, 60*time.Second)
+			})
 		})
 
 		// Ledger retention lives here, beside the anchorer, because it shares the
@@ -1123,8 +1135,10 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 		// the audit log's retention.
 		if a.Config.Audit.LedgerRetention {
 			pruner := audit.NewPruner(a.DB, auditAnchorPriv, a.IDGen)
-			go dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyAuditLedgerPrune, a.Logger, func(ctx context.Context) {
-				runLedgerRetention(ctx, a, settingService, pruner)
+			a.SpawnWorker(func() {
+				dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyAuditLedgerPrune, a.Logger, func(ctx context.Context) {
+					runLedgerRetention(ctx, a, settingService, pruner)
+				})
 			})
 		}
 	}
@@ -1360,9 +1374,11 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	// trail and double-firing downstream logout. One replica sweeps; others idle
 	// until failover. StartSweeper spawns its own goroutine and returns, so the
 	// leader callback blocks on ctx.Done() to hold leadership for its lifetime.
-	go dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyAccessSweeper, a.Logger, func(ctx context.Context) {
-		access.StartSweeper(ctx, accessJITSvc, accessJITRepo, 30*time.Second, a.Logger)
-		<-ctx.Done()
+	a.SpawnWorker(func() {
+		dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyAccessSweeper, a.Logger, func(ctx context.Context) {
+			access.StartSweeper(ctx, accessJITSvc, accessJITRepo, 30*time.Second, a.Logger)
+			<-ctx.Done()
+		})
 	})
 
 	// Audit subscriptions — defense-in-depth over the catch-all RecordAPIRequest.

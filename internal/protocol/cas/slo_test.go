@@ -35,8 +35,14 @@ func newStubSP(t *testing.T) *stubSP {
 	return sp
 }
 
-func (s *stubSP) posts() int                       { return int(s.postCount.Load()) }
-func (s *stubSP) lastBodyStr() string              { v := s.lastBody.Load(); if v == nil { return "" }; return v.(string) }
+func (s *stubSP) posts() int { return int(s.postCount.Load()) }
+func (s *stubSP) lastBodyStr() string {
+	v := s.lastBody.Load()
+	if v == nil {
+		return ""
+	}
+	return v.(string)
+}
 func (s *stubSP) lastBodyContains(sub string) bool { return strings.Contains(s.lastBodyStr(), sub) }
 
 // extractLogoutRequestID extracts the ID attribute value from a CAS logoutRequest

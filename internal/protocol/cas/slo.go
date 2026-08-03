@@ -69,20 +69,40 @@ func (h *Handler) SingleLogout(ctx context.Context, userID, appID int64) {
 
 	doer := h.sloDoer()
 
+	// Build the whole batch before dispatching, then hand it to ONE goroutine
+	// that walks it. Spawning per service was unbounded by construction: the
+	// count is whatever the SP registry holds for this user, so a user with many
+	// registered services turned a single logout into an unbounded burst of
+	// concurrent outbound requests. The OIDC back-channel logout already does it
+	// this way.
+	//
+	// Sequential is the right shape here regardless of the bound: SLO is
+	// best-effort notification of already-terminated sessions, so latency does
+	// not matter, and serialising keeps the load on any one SP predictable.
+	type sloTarget struct{ url, body string }
 	now := time.Now().UTC()
+	targets := make([]sloTarget, 0, len(services))
 	for i, svc := range services {
 		target := svc.ServiceURL
 		if logoutURLOverride != "" {
 			target = logoutURLOverride
 		}
-
 		id := fmt.Sprintf("LR-%d-%d-%d-%d", userID, appID, now.UnixNano(), i)
-		body := fmt.Sprintf(casLogoutXMLTemplate, id, now.Format(time.RFC3339), svc.Ticket)
+		targets = append(targets, sloTarget{
+			url:  target,
+			body: fmt.Sprintf(casLogoutXMLTemplate, id, now.Format(time.RFC3339), svc.Ticket),
+		})
+	}
 
+	if len(targets) > 0 {
 		go func() {
-			sloCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			h.sendCASLogout(sloCtx, doer, target, body, appID)
+			for _, t := range targets {
+				// Per-request timeout, so one unresponsive SP delays the rest by at
+				// most its own timeout instead of stalling the batch indefinitely.
+				sloCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				h.sendCASLogout(sloCtx, doer, t.url, t.body, appID)
+				cancel()
+			}
 		}()
 	}
 
