@@ -750,17 +750,23 @@ make offline-bundle TAG=v1.8.0             # 企业版;社区版加 EDITION=ce
 **站点内首次安装:**
 
 ```bash
-tar xzf mxid-offline-ee-v1.8.0.tar.gz && cd mxid-offline-ee-v1.8.0
+tar xzf mxid-offline-ee-v1.8.0.tar.gz && cd mxid-offline
 mkdir -p /opt/mxid && cp values.example.yaml /opt/mxid/values.yaml
 $EDITOR /opt/mxid/values.yaml          # 填 URL、数据库/Redis、密钥
 ./install.sh --registry harbor.internal/mxid --values /opt/mxid/values.yaml
 ```
 
-**之后每次升级** —— 解开新包,直接:
+**之后每次升级:**
 
 ```bash
-./install.sh
+tar xzf mxid-offline-ee-v1.9.0.tar.gz    # 还是解到 mxid-offline/
+cd mxid-offline && ./install.sh
 ```
+
+不论哪个版本,解开后目录都固定叫 `mxid-offline/`——版本号只在 tar 包名上
+(你要能分辨手里是哪个版本,回滚时也得留旧包),但路径永不变,所以运维手册和
+脚本不会写死版本号。新包直接解到旧目录上就是预期用法;`install.sh` 按
+`manifest.env` 选 chart,旧版本残留的文件不会被误用。
 
 不用带参数,也不用重填。`values.yaml` 要放在 bundle **外面**:
 每次发版 bundle 都会被换掉,站点配置不该跟着一起丢。安装成功后,registry、

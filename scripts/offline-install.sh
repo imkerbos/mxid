@@ -38,8 +38,10 @@ LOAD_ONLY=0
 DRY_RUN=0
 SKIP_VERIFY=0
 CONFIG=""
-# Where site settings are remembered between upgrades. First writable path wins.
-DEFAULT_CONFIGS=("/etc/mxid/site.conf" "$HOME/.config/mxid/site.conf" "$HERE/../site.conf")
+# Where site settings are remembered between upgrades. Both paths are outside
+# the bundle on purpose — the unpacked directory is overwritten by the next
+# release, so anything stored in it would be lost exactly when it is needed.
+DEFAULT_CONFIGS=("/etc/mxid/site.conf" "$HOME/.config/mxid/site.conf")
 
 die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 log() { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
