@@ -58,7 +58,7 @@ body:
     attributes:
       label: Deployment
       options:
-        - Docker compose (dev — make dev-docker-up)
+        - Docker compose (dev — make dev-up)
         - Docker compose (prod example)
         - Local binary (make dev)
         - Custom

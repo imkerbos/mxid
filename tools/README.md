@@ -1,6 +1,6 @@
 # MXID OIDC test relying parties
 
-Run these against a local MXID backend (`make dev-docker-up`) to validate the
+Run these against a local MXID backend (`make dev-up`) to validate the
 full Authorization Code flow end-to-end.
 
 ## 1. Provision a test OIDC app
