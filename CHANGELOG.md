@@ -36,6 +36,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   background jobs) are unchanged, since they have no tenant to filter by.
 
 ### Fixed
+- The login captcha could not appear. Both login screens branched on the old
+  numeric code for "captcha required", so after the backend moved that code the
+  widget was never revealed or fetched — under captcha enforcement, login was
+  impossible. The codes are now named constants shared by both screens.
+- A captcha that fails to load now says so instead of reading "loading…"
+  forever. It is only ever fetched because the backend has made it mandatory,
+  so the user could not log in and had no way to tell that from a slow network.
+- The organization member list reports a failed load. An empty list and a failed
+  request looked identical, so an org could appear to have no members.
 - Eight forms did nothing when submitted with a missing or too-short value: the
   group, app and app-group create dialogs (empty code), the API-token dialog
   (empty name), the admin password reset (under six characters), and the portal
