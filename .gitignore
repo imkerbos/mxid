@@ -74,3 +74,6 @@ TODO.local.md
 
 # Local DB dumps from `make dev-dump`
 backups/
+
+# Offline install bundles from `make offline-bundle`
+mxid-offline-*.tar.gz

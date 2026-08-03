@@ -834,6 +834,55 @@ DB schema is **forward-only in production**. The down migrations exist for local
   the public ingress/nginx; scrape it from inside the network/cluster only.
 - Audit log is the primary security-relevant signal — query the `mxid_audit_log` table or wire up the alert webhook.
 
+## Air-gapped install / upgrade
+
+For sites with no internet — and for the Enterprise image, which lives in a
+private GHCR package your cluster cannot reach — ship one tarball instead of
+pulling anything.
+
+**On a machine that can reach ghcr.io** (`docker login ghcr.io` first for EE):
+
+```bash
+make offline-bundle TAG=v1.8.0             # EE; add EDITION=ce for Community
+# -> mxid-offline-ee-v1.8.0.tar.gz  (~80-200 MB)
+```
+
+The bundle contains all three images the chart needs, the packaged Helm chart, a
+values template and `SHA256SUMS`. The third image is easy to forget and fatal to
+omit: `busybox`, used by the `waitForDeps` init container — without it every pod
+sits in `Init:ImagePullBackOff`.
+
+**At the site:**
+
+```bash
+tar xzf mxid-offline-ee-v1.8.0.tar.gz && cd mxid-offline-ee-v1.8.0
+cp values.example.yaml values.yaml     # fill in URLs, datastores and secrets
+./install.sh --registry harbor.internal/mxid --values values.yaml
+```
+
+`install.sh` verifies checksums, loads the images into docker / nerdctl / ctr,
+retags and pushes them under your registry prefix, then runs `helm upgrade
+--install` with `image.registry` and `backend.waitForDeps.image` pointed at it.
+Add `--dry-run` to rehearse. Repo names must stay `mxid` / `mxid-ee` /
+`mxid-web` / `busybox` under your prefix — the chart's helpers append exactly
+those names.
+
+Before pushing anything it validates the values file, because the chart fails
+closed on missing secrets: `databasePassword`, `cryptoKeyEncryptionKey`,
+`auditChainKey` and `auditAnchorKey` are all required (the last one because
+`audit.anchorSink.enabled` defaults to `true` — set it to `false` if you don't
+want anchoring). Generate each with `openssl rand -base64 32`, and **back them
+up**: losing `cryptoKeyEncryptionKey` makes every stored secret unrecoverable.
+
+If there is genuinely no internal registry, `./install.sh --load-only` imports
+the images into the local runtime — but you must run it on **every** node, set
+`image.pullPolicy=IfNotPresent`, and repeat it for any node added later. A
+registry is strongly preferred.
+
+Upgrades are the same command with a newer bundle. To roll back, re-run the
+previous version's bundle; images are never tagged `latest`, so the version you
+pin is the version you get.
+
 ## Upgrade
 
 1. Read [CHANGELOG.md](../CHANGELOG.md) for the target version's notes.

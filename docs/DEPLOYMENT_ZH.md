@@ -731,6 +731,48 @@ make migrate-create NAME=foo    # 生成新迁移对
   只在网络 / 集群内部抓取。
 - 审计日志是主要安全信号 —— 查 `mxid_audit_log` 表或接告警 webhook。
 
+## 离线(内网)安装与升级
+
+适用于无外网的站点,以及企业版镜像——它在私有 GHCR 包里,集群本来就拉不到。
+做法是搬一个 tar 包过去,现场不拉任何东西。
+
+**在能访问 ghcr.io 的机器上**(企业版先 `docker login ghcr.io`):
+
+```bash
+make offline-bundle TAG=v1.8.0             # 企业版;社区版加 EDITION=ce
+# -> mxid-offline-ee-v1.8.0.tar.gz  (约 80-200 MB)
+```
+
+包里含 chart 需要的**全部三个镜像**、打包好的 Helm chart、values 模板和
+`SHA256SUMS`。第三个镜像最容易漏也最致命:`busybox`,`waitForDeps` 初始化容器要用,
+漏了所有 Pod 都会卡在 `Init:ImagePullBackOff`。
+
+**在站点内:**
+
+```bash
+tar xzf mxid-offline-ee-v1.8.0.tar.gz && cd mxid-offline-ee-v1.8.0
+cp values.example.yaml values.yaml     # 填 URL、数据库/Redis、密钥
+./install.sh --registry harbor.internal/mxid --values values.yaml
+```
+
+`install.sh` 会校验 checksum、把镜像导入 docker / nerdctl / ctr、重打 tag 推到你的
+registry 前缀下,再执行 `helm upgrade --install`,同时把 `image.registry` 和
+`backend.waitForDeps.image` 指过去。加 `--dry-run` 可以先演练。仓库名必须保持
+`mxid` / `mxid-ee` / `mxid-web` / `busybox`——chart 的 helper 就是按这些名字拼接的。
+
+推镜像**之前**会先校验 values,因为 chart 对缺失密钥是 fail-closed:
+`databasePassword`、`cryptoKeyEncryptionKey`、`auditChainKey`、`auditAnchorKey`
+四个都必填(最后一个是因为 `audit.anchorSink.enabled` 默认为 `true`,不想要锚定就把它设成
+`false`)。每个用 `openssl rand -base64 32` 生成,并且**务必备份**:
+`cryptoKeyEncryptionKey` 丢了,所有已存密文永久不可恢复。
+
+如果确实没有内部 registry,可以用 `./install.sh --load-only` 把镜像导进本地运行时——
+但必须**每个节点**都跑一遍,并设置 `image.pullPolicy=IfNotPresent`,而且以后新加的节点还得再跑。
+强烈建议用 registry。
+
+升级就是换个新版本的包跑同样的命令。回滚就跑旧版本的包;镜像从不打 `latest`,
+钉哪个版本就是哪个版本。
+
 ## 升级
 
 1. 读 [CHANGELOG.md](../CHANGELOG.md) 看目标版本说明。
