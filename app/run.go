@@ -53,6 +53,7 @@ import (
 	"github.com/imkerbos/mxid/pkg/geoip"
 	"github.com/imkerbos/mxid/pkg/mailer"
 	"github.com/imkerbos/mxid/pkg/metrics"
+	"github.com/imkerbos/mxid/pkg/pgpartition"
 	"github.com/imkerbos/mxid/pkg/ratelimit"
 	"github.com/imkerbos/mxid/pkg/session"
 	"github.com/imkerbos/mxid/pkg/sms"
@@ -765,8 +766,23 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	// because retention is a global compliance knob.
 	// Leader-elected: a global cross-tenant purge must run on ONE replica, not
 	// every pod (redundant large DELETEs + lock contention).
+	// Partition lifecycle for mxid_audit_log. Without this the table stops
+	// accepting writes the moment it runs past the partitions migration 000007
+	// created at install time — and because audit writes are best-effort, that
+	// failure is silent. Rolling pre-creation keeps a quarter of headroom; the
+	// DEFAULT backstop means a wedged scheduler costs an alert, not data.
+	auditPartitions, apErr := pgpartition.New(a.DB, "mxid_audit_log", 3)
+	if apErr != nil {
+		// The table name is a literal, so this can only fire if someone edits it
+		// to something unsafe. Fail at boot rather than run on silently without
+		// partition management — the failure it guards against is invisible.
+		a.Logger.Fatal("audit partition manager", zap.Error(apErr))
+	}
+	go dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyAuditPartitions, a.Logger, func(ctx context.Context) {
+		runAuditPartitionMaintenance(ctx, a, auditPartitions)
+	})
 	go dlock.RunAsLeader(workerCtx, a.DB, dlock.KeyAuditRetention, a.Logger, func(ctx context.Context) {
-		runAuditRetention(ctx, a, settingService, auditModule.Repo)
+		runAuditRetention(ctx, a, settingService, auditModule.Repo, auditPartitions)
 	})
 
 	// Dynamic-group reconcile sweeper — a safety net for the event-driven
@@ -1803,12 +1819,89 @@ func buildIdentityResolver(userModule *user.Module, a *bootstrap.App) resolver.I
 
 // OIDC adapters moved to adapters_oidc.go.
 
+// runAuditPartitionMaintenance keeps mxid_audit_log's future partitions
+// provisioned, and reports the two numbers that predict failure: how much
+// headroom is left, and whether the DEFAULT backstop has caught anything.
+//
+// Hourly rather than daily. The work is a handful of catalog lookups, and the
+// cost of being late is that writes stop — an asymmetry that argues for
+// checking far more often than strictly necessary. A pass runs immediately at
+// startup so a deployment that has been down past a month boundary recovers on
+// boot instead of at the next tick.
+func runAuditPartitionMaintenance(stopCtx context.Context, a *bootstrap.App, pm *pgpartition.Manager) {
+	const tickEvery = time.Hour
+	ticker := time.NewTicker(tickEvery)
+	defer ticker.Stop()
+
+	for {
+		// Global DDL across the partitioned table: needs the explicit system
+		// escape, like the retention purge, or the tenant plugin fails closed.
+		ctx := tenantscope.SystemContext()
+		metrics.WorkerRun("audit_partitions")
+		passOK := true
+
+		created, err := pm.Ensure(ctx)
+		if err != nil {
+			passOK = false
+			a.Logger.Error("audit partition provisioning failed — writes will stop when the current range runs out",
+				zap.String("marker", "audit_partition_ensure_failed"),
+				zap.Bool("alert", true),
+				zap.Error(err))
+		} else if len(created) > 0 {
+			a.Logger.Info("audit partitions created", zap.Strings("partitions", created))
+		}
+
+		// Report headroom even when Ensure failed, so the gauge reflects reality
+		// rather than going stale at its last good value.
+		if parts, lerr := pm.List(ctx); lerr == nil {
+			now := time.Now().UTC()
+			ahead := 0
+			for _, p := range parts {
+				if p.To != nil && p.To.After(now) {
+					ahead++
+				}
+			}
+			// Discount the current month: "ahead" should mean spare capacity.
+			if ahead > 0 {
+				ahead--
+			}
+			metrics.PartitionsAhead(pm.Table(), ahead)
+		} else {
+			passOK = false
+		}
+
+		if n, derr := pm.DefaultRows(ctx); derr != nil {
+			passOK = false
+		} else {
+			metrics.PartitionDefaultRows(pm.Table(), n)
+			if n > 0 {
+				// Not merely "some rows are misfiled": until they are adopted,
+				// PostgreSQL refuses to create the partition for their month, so
+				// this state blocks its own repair.
+				a.Logger.Error("audit DEFAULT partition is holding rows — partition creation for those months is now blocked until they are adopted",
+					zap.String("marker", "audit_partition_default_nonempty"),
+					zap.Bool("alert", true),
+					zap.Int64("rows", n))
+			}
+		}
+
+		if passOK {
+			metrics.WorkerSuccess("audit_partitions")
+		}
+		select {
+		case <-stopCtx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
 // runAuditRetention runs forever, purging audit_log rows older than
 // AuditPolicy.RetentionDays every 6 hours. A zero RetentionDays disables
 // the purge for that tick (admin can opt out by setting 0). Cron lives in
 // the binary process, not a separate worker, so OSS deployments don't have
 // to wire a job scheduler.
-func runAuditRetention(stopCtx context.Context, a *bootstrap.App, ss *setting.Service, repo audit.Repository) {
+func runAuditRetention(stopCtx context.Context, a *bootstrap.App, ss *setting.Service, repo audit.Repository, pm *pgpartition.Manager) {
 	const tickEvery = 6 * time.Hour
 	ticker := time.NewTicker(tickEvery)
 	defer ticker.Stop()
@@ -1828,6 +1921,26 @@ func runAuditRetention(stopCtx context.Context, a *bootstrap.App, ss *setting.Se
 			passOK = false
 		} else if pol.RetentionDays > 0 {
 			cutoff := time.Now().AddDate(0, 0, -pol.RetentionDays)
+			// Drop wholly-expired partitions first. This is the reason the table
+			// is partitioned at all: a catalog operation that returns the space,
+			// instead of a DELETE that writes as much WAL as the original insert
+			// and leaves the pages behind as dead tuples.
+			if pm != nil {
+				if dropped, derr := pm.DropOlderThan(ctx, cutoff); derr != nil {
+					passOK = false
+					a.Logger.Warn("audit retention drop-partition failed",
+						zap.Int("retention_days", pol.RetentionDays), zap.Error(derr))
+				} else if len(dropped) > 0 {
+					metrics.PartitionsDropped(pm.Table(), len(dropped))
+					a.Logger.Info("audit retention dropped partitions",
+						zap.Int("retention_days", pol.RetentionDays),
+						zap.Strings("partitions", dropped))
+				}
+			}
+			// Then delete the remainder by row. A partition straddling the cutoff
+			// still holds in-policy rows, so it cannot be dropped; without this
+			// pass the out-of-policy rows inside it would outlive the policy by up
+			// to a month.
 			deleted, err := repo.PurgeOlderThan(ctx, cutoff)
 			if err != nil {
 				passOK = false

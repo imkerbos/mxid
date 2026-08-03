@@ -243,6 +243,36 @@ user is signed into** — not only when logout arrives through a protocol endpoi
    chain head in place), `audit-export` (build a third-party-verifiable bundle), and
    `verify-export` (offline verification needing only the bundle + trusted public key).
 
+### Partition lifecycle
+
+`mxid_audit_log` is RANGE-partitioned by month. Declarative partitioning is only
+half a design on its own: PostgreSQL creates the parent and the first
+partitions, then rejects every INSERT once the ranges run out — a hard
+`no partition of relation found for row`, which the best-effort audit writer
+turns into a silent loss. `pkg/pgpartition` owns the missing half and is driven
+by a leader-elected hourly worker (`KeyAuditPartitions`):
+
+- **Rolling pre-creation** keeps the current month plus three ahead provisioned,
+  so a wedged scheduler has a quarter of slack before it matters.
+- **A DEFAULT backstop** guarantees a write is never lost when pre-creation has
+  failed. It is a backstop, not a landing zone: once rows for month M sit in
+  DEFAULT, PostgreSQL refuses to create M's partition until they are moved out
+  (`Manager.Adopt`, a deliberate manual operation — it holds ACCESS EXCLUSIVE on
+  the parent). So `mxid_partition_default_rows > 0` is an alarm for a state that
+  blocks its own repair, not a curiosity.
+- **Retention drops partitions** rather than deleting rows, which is the reason
+  to partition in the first place. Measured on PostgreSQL 15 over 500k rows:
+  `DELETE` 169ms with 82MB still resident as dead tuples, `DROP` 5.8ms with the
+  space returned. Only wholly-expired partitions are dropped — one straddling
+  the cutoff still holds in-policy rows — so the remainder is still deleted by
+  row, and retention is effectively granular to a month.
+
+Failure is otherwise invisible here, so the pipeline is instrumented:
+`mxid_audit_write_failed_total` (labelled `no_partition` when the table has run
+past its ranges, which is structural rather than transient),
+`mxid_partitions_ahead`, `mxid_partition_default_rows`,
+`mxid_partitions_dropped_total`.
+
 ## JIT privileged access
 
 `internal/domain/access` implements request-based temporary elevation (rule-based, no vaulted

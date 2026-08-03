@@ -64,12 +64,43 @@ var (
 		Name: "mxid_authz_cache_total",
 		Help: "authz binding-cache lookups, by result.",
 	}, []string{"result"})
+
+	// Audit writes that were lost. The action happened but left no trail, and
+	// the request still succeeded — so this counter is the ONLY signal. Alert
+	// on any increase.
+	auditWriteFailed = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "mxid_audit_write_failed_total",
+		Help: "Audit log writes that failed. Non-zero means audit trail loss.",
+	}, []string{"reason"})
+
+	// Provisioned future partitions for a time-partitioned table. When this
+	// reaches 0 the table is one month from rejecting every insert.
+	partitionsAhead = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "mxid_partitions_ahead",
+		Help: "Future monthly partitions provisioned beyond the current month.",
+	}, []string{"table"})
+
+	// Rows sitting in a DEFAULT backstop partition. Zero is the only healthy
+	// value: anything else means pre-creation fell behind AND that the affected
+	// month's partition can no longer be created until the rows are adopted.
+	partitionDefaultRows = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "mxid_partition_default_rows",
+		Help: "Rows in the DEFAULT partition. Must be 0; non-zero wedges partition creation.",
+	}, []string{"table"})
+
+	// Partitions dropped by retention, so an operator can see retention is
+	// actually reclaiming space rather than silently doing nothing.
+	partitionsDropped = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "mxid_partitions_dropped_total",
+		Help: "Partitions dropped by retention.",
+	}, []string{"table"})
 )
 
 func init() {
 	reg.MustRegister(collectors.NewGoCollector())
 	reg.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
-	reg.MustRegister(reqTotal, reqDuration, buildInfo, workerRuns, workerLastSuccess, outboxDispatch, dlockLeader, authzCache)
+	reg.MustRegister(reqTotal, reqDuration, buildInfo, workerRuns, workerLastSuccess, outboxDispatch, dlockLeader, authzCache,
+		auditWriteFailed, partitionsAhead, partitionDefaultRows, partitionsDropped)
 }
 
 // WorkerRun records that a background worker completed a pass; WorkerSuccess
@@ -92,6 +123,20 @@ func DlockLeader(key string, held bool) {
 
 // AuthzCache records a binding-cache lookup outcome: "l1", "l2" or "miss".
 func AuthzCache(result string) { authzCache.WithLabelValues(result).Inc() }
+
+// AuditWriteFailed records an audit entry that could not be persisted. The
+// originating request has already committed and returned 200, so nothing else
+// reports this — treat any non-zero value as an incident.
+func AuditWriteFailed(reason string) { auditWriteFailed.WithLabelValues(reason).Inc() }
+
+// PartitionsAhead / PartitionDefaultRows / PartitionsDropped expose the health
+// of a time-partitioned table's lifecycle. Alert on ahead == 0 (writes stop
+// within a month) and on default_rows > 0 (partition creation is wedged).
+func PartitionsAhead(table string, n int) { partitionsAhead.WithLabelValues(table).Set(float64(n)) }
+func PartitionDefaultRows(table string, n int64) {
+	partitionDefaultRows.WithLabelValues(table).Set(float64(n))
+}
+func PartitionsDropped(table string, n int) { partitionsDropped.WithLabelValues(table).Add(float64(n)) }
 
 // SetBuildInfo records a single mxid_build_info series so a fleet-wide dashboard
 // can group by running version.
