@@ -4,6 +4,8 @@ package audit
 import (
 	"context"
 	"crypto/ed25519"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/imkerbos/mxid/pkg/dberr"
@@ -79,7 +81,26 @@ func (a *Anchorer) AnchorChain(ctx context.Context, tenantID int64, class string
 	root := MerkleRoot(leaves)
 	fromSeq := entries[0].Seq
 	toSeq := entries[len(entries)-1].Seq
-	sig := SignAnchor(a.priv, tenantID, class, fromSeq, toSeq, root)
+
+	// Commit to the preceding anchor so the anchors form a chain of their own.
+	// Without this an anchor row could be deleted outright and online
+	// verification could not tell: a hole in coverage reads the same as a tail
+	// that simply has not been anchored yet.
+	var prevHash []byte
+	var prevAnchor AuditAnchor
+	err := a.db.WithContext(ctx).
+		Where("tenant_id = ? AND chain_class = ?", tenantID, class).
+		Order("to_seq desc").First(&prevAnchor).Error
+	switch {
+	case err == nil:
+		prevHash = AnchorHash(&prevAnchor)
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		// First anchor of this chain: nothing to commit to.
+	default:
+		return nil, fmt.Errorf("load preceding anchor: %w", err)
+	}
+
+	sig := SignAnchorV2(a.priv, tenantID, class, fromSeq, toSeq, prevHash, root)
 
 	var uri string
 	if a.sink != nil {
@@ -99,7 +120,8 @@ func (a *Anchorer) AnchorChain(ctx context.Context, tenantID int64, class string
 	anchor := &AuditAnchor{
 		ID: a.idGen.Generate(), TenantID: tenantID, ChainClass: class,
 		FromSeq: fromSeq, ToSeq: toSeq, MerkleRoot: root, Signature: sig,
-		KeyID: a.keyID, ExternalURI: uri, CreatedAt: time.Now().UTC(),
+		KeyID: a.keyID, Version: AnchorV2, PrevAnchorHash: prevHash,
+		ExternalURI: uri, CreatedAt: time.Now().UTC(),
 	}
 	if err := a.db.WithContext(ctx).Create(anchor).Error; err != nil {
 		// Last-resort guard: another anchorer (a failover overlap) already
