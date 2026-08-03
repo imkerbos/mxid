@@ -26,6 +26,12 @@ type Repository interface {
 	// identity binding atomically. Used by external-IdP login, where a partial
 	// write produces an unreachable account on every retry.
 	CreateWithIdentity(ctx context.Context, user *User, detail *UserDetail, identity *UserIdentity) error
+	// ResetPasswordTx sets the password, the must-change flag and the history
+	// row atomically. Both partial outcomes weaken the account silently.
+	ResetPasswordTx(ctx context.Context, id int64, hash string, mustChange bool, history *UserPasswordHistory) error
+	// DeleteMFATx removes the TOTP secret and its backup codes together, so
+	// "MFA removed" cannot leave working backup codes behind.
+	DeleteMFATx(ctx context.Context, userID int64, mfaType string) error
 	GetByID(ctx context.Context, id int64) (*User, error)
 	GetByUsername(ctx context.Context, tenantID int64, username string) (*User, error)
 	GetByEmail(ctx context.Context, tenantID int64, email string) (*User, error)

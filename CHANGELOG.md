@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Admin password reset is now one transaction. A partial failure could leave the
+  temporary password live without the must-change flag (making it permanent) or
+  without a history row (making it reusable past the reuse policy).
+- Removing a TOTP factor now deletes its backup codes in the same transaction,
+  and only that factor. Previously the backup-code delete ran separately with its
+  error discarded, so "MFA removed" could leave working backup codes behind.
+- Dynamic-group recompute is debounced per tenant (2s trailing edge). A batch
+  action over N users emitted N events, each triggering a full tenant-wide
+  recompute; it now runs once.
+
 ## [1.8.0] — 2026-07-28
 
 ### Added

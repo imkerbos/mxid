@@ -61,11 +61,11 @@ type MemberInfo struct {
 
 // GroupResponse is the API response for a single user group.
 type GroupResponse struct {
-	ID          int64     `json:"id,string"`
-	TenantID    int64     `json:"tenant_id,string"`
-	Name        string    `json:"name"`
-	Code        string    `json:"code"`
-	Description *string   `json:"description,omitempty"`
+	ID          int64   `json:"id,string"`
+	TenantID    int64   `json:"tenant_id,string"`
+	Name        string  `json:"name"`
+	Code        string  `json:"code"`
+	Description *string `json:"description,omitempty"`
 	// Type: 1=static (members managed manually), 2=dynamic (rule-driven).
 	Type        int       `json:"type"`
 	MemberCount int64     `json:"member_count"`

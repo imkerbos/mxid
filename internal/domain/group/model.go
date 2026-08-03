@@ -56,16 +56,16 @@ func (UserGroup) TenantScoped() {}
 //
 // Expr is the JSON rule body — see rule.go for the DSL grammar.
 type UserGroupRule struct {
-	ID               int64          `gorm:"column:id;primaryKey" json:"id"`
-	GroupID          int64          `gorm:"column:group_id;not null;uniqueIndex" json:"group_id"`
-	Expr             datatypes.JSON `gorm:"column:expr;type:jsonb;not null" json:"expr"`
-	Status           int            `gorm:"column:status;not null;default:1" json:"status"`
-	LastSyncAt       *time.Time     `gorm:"column:last_sync_at" json:"last_sync_at"`
-	LastSyncAdded    int            `gorm:"column:last_sync_added;not null;default:0" json:"last_sync_added"`
-	LastSyncRemoved  int            `gorm:"column:last_sync_removed;not null;default:0" json:"last_sync_removed"`
-	LastSyncError    *string        `gorm:"column:last_sync_error" json:"last_sync_error"`
-	CreatedAt        time.Time      `gorm:"column:created_at;autoCreateTime" json:"created_at"`
-	UpdatedAt        time.Time      `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
+	ID              int64          `gorm:"column:id;primaryKey" json:"id"`
+	GroupID         int64          `gorm:"column:group_id;not null;uniqueIndex" json:"group_id"`
+	Expr            datatypes.JSON `gorm:"column:expr;type:jsonb;not null" json:"expr"`
+	Status          int            `gorm:"column:status;not null;default:1" json:"status"`
+	LastSyncAt      *time.Time     `gorm:"column:last_sync_at" json:"last_sync_at"`
+	LastSyncAdded   int            `gorm:"column:last_sync_added;not null;default:0" json:"last_sync_added"`
+	LastSyncRemoved int            `gorm:"column:last_sync_removed;not null;default:0" json:"last_sync_removed"`
+	LastSyncError   *string        `gorm:"column:last_sync_error" json:"last_sync_error"`
+	CreatedAt       time.Time      `gorm:"column:created_at;autoCreateTime" json:"created_at"`
+	UpdatedAt       time.Time      `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 }
 
 func (UserGroupRule) TableName() string {

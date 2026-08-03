@@ -10,10 +10,10 @@ import (
 
 // Rule errors.
 var (
-	ErrRuleEmpty            = errors.New("rule must contain at least one condition")
-	ErrRuleUnknownField     = errors.New("unknown rule field")
-	ErrRuleUnknownCmp       = errors.New("unknown comparison operator")
-	ErrRuleInvalidValue     = errors.New("invalid rule value for this field")
+	ErrRuleEmpty              = errors.New("rule must contain at least one condition")
+	ErrRuleUnknownField       = errors.New("unknown rule field")
+	ErrRuleUnknownCmp         = errors.New("unknown comparison operator")
+	ErrRuleInvalidValue       = errors.New("invalid rule value for this field")
 	ErrRuleNestedNotSupported = errors.New("nested (and/or) rules are not supported yet")
 )
 
