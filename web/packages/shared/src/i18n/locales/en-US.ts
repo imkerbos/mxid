@@ -566,6 +566,7 @@ export default {
       manageMembers: 'Manage members',
     },
     confirmDelete: 'Delete group "{{name}}"?',
+    confirmRemoveMember: 'Remove this member from the group? They lose whatever access the group grants.',
     confirmCascade: 'Group "{{name}}" still has {{count}} members.\nCascade-delete (remove all members)?',
     needAtLeastOneRule: 'Dynamic group requires at least one rule condition',
     syncDone: 'Sync done: +{{added}}, -{{removed}}',
@@ -962,6 +963,7 @@ export default {
       acknowledge: 'I saved it',
     },
     appGroupDetail: {
+      confirmRemoveApp: 'Remove "{{name}}" from this app group? Access policies and roles attached at group level stop applying to it.',
       saved: 'Saved',
       created: 'App group created',
       saveFailed: 'Save failed',
@@ -1008,6 +1010,8 @@ export default {
     },
   },
   idps: {
+    disableConfirm: 'Disable external identity provider "{{name}}"?',
+    disableConfirmDesc: 'Everyone who signs in through this provider will be unable to log in.',
     providerFields: {
       appId: 'App ID',
       appSecret: 'App Secret',
@@ -1386,6 +1390,7 @@ export default {
       hint: 'Browser extensions authorized to auto-fill logins. Revoking one makes that browser reconnect (and verify identity) before it can fill again.',
       empty: 'No connected extensions',
       revoke: 'Revoke',
+      revokeConfirm: 'Revoke this browser extension? That browser will stop autofilling immediately.',
       revoked: 'Revoked',
       revokeFailed: 'Revoke failed',
       lastUsedLabel: 'Last used',

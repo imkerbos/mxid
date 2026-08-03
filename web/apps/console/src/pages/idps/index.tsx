@@ -102,7 +102,13 @@ export default function IDPsPage() {
       setDeleting(false)
     }
   }
+  // Only DISABLING is gated. Enabling is additive and reversible; disabling
+  // stops every user who signs in through this IdP from logging in at all, and
+  // nothing in the row conveys that blast radius.
+  const [confirmDisable, setConfirmDisable] = useState<ExternalIDP | null>(null)
+
   const toggleStatus = async (idp: ExternalIDP) => {
+    setConfirmDisable(null)
     try {
       await externalIdpApi.update(idp.id, { status: idp.status === IdpStatus.Enabled ? IdpStatus.Disabled : IdpStatus.Enabled })
       toast.success(t('common.saveSuccess'))
@@ -167,7 +173,7 @@ export default function IDPsPage() {
                   <Button
                     size="sm"
                     variant={idp.status === IdpStatus.Enabled ? 'secondary' : 'success'}
-                    onClick={() => toggleStatus(idp)}
+                    onClick={() => idp.status === IdpStatus.Enabled ? setConfirmDisable(idp) : toggleStatus(idp)}
                     icon={<Power className="h-3.5 w-3.5" />}
                   >
                     {idp.status === IdpStatus.Enabled ? t('common.disable') : t('common.enable')}
@@ -197,6 +203,13 @@ export default function IDPsPage() {
         />
       )}
 
+      <ConfirmDialog
+        open={confirmDisable !== null}
+        title={t('idps.disableConfirm', { name: confirmDisable?.name ?? '' })}
+        desc={t('idps.disableConfirmDesc')}
+        onConfirm={() => confirmDisable && toggleStatus(confirmDisable)}
+        onCancel={() => setConfirmDisable(null)}
+      />
       <ConfirmDialog
         open={!!delTarget}
         title={t('idps.confirmDelete', { name: delTarget?.name ?? '' })}

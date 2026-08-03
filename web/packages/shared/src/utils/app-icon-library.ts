@@ -15,7 +15,78 @@
 // icon picker still surfaces them.
 
 import { parseAppIcon } from './app-icon'
-import * as si from 'simple-icons'
+import {
+  siOkta, siKeycloak, siAuth0, siJira, siConfluence, siGrafana, siGitlab,
+  siGithub, siGitea, siJenkins, siHarbor, siArgo, siSpinnaker, siRancher,
+  siHelm, siTraefikproxy, siConsul, siVault, siVmware, siKubernetes,
+  siDocker, siNginx, siDiscord, siTelegram, siZoom, siWechat, siNotion,
+  siFigma, siLinear, siClickup, siObsidian, siNextcloud, siMinio,
+  siPostgresql, siMysql, siRedis, siMongodb, siEtcd, siApachecassandra,
+  siClickhouse, siGooglecloud, siAlibabacloud, siPrometheus,
+  siElasticsearch, siKibana, siSentry, siDatadog, siNewrelic, siSplunk,
+  siPagerduty, siApachekafka, siRabbitmq, siApacheairflow, siNatsdotio,
+} from 'simple-icons'
+
+// Static registry, because tree-shaking cannot follow a computed property
+// access. The previous `import * as si` plus `si['si'+Capitalized]` meant every
+// brand simple-icons ships was retained — 5.6 MB of a 7.2 MB console bundle for
+// the 54 actually used here.
+const ICONS: Record<string, { title: string; path: string; hex: string; slug: string }> = {
+  okta: siOkta,
+  keycloak: siKeycloak,
+  auth0: siAuth0,
+  jira: siJira,
+  confluence: siConfluence,
+  grafana: siGrafana,
+  gitlab: siGitlab,
+  github: siGithub,
+  gitea: siGitea,
+  jenkins: siJenkins,
+  harbor: siHarbor,
+  argo: siArgo,
+  spinnaker: siSpinnaker,
+  rancher: siRancher,
+  helm: siHelm,
+  traefikproxy: siTraefikproxy,
+  consul: siConsul,
+  vault: siVault,
+  vmware: siVmware,
+  kubernetes: siKubernetes,
+  docker: siDocker,
+  nginx: siNginx,
+  discord: siDiscord,
+  telegram: siTelegram,
+  zoom: siZoom,
+  wechat: siWechat,
+  notion: siNotion,
+  figma: siFigma,
+  linear: siLinear,
+  clickup: siClickup,
+  obsidian: siObsidian,
+  nextcloud: siNextcloud,
+  minio: siMinio,
+  postgresql: siPostgresql,
+  mysql: siMysql,
+  redis: siRedis,
+  mongodb: siMongodb,
+  etcd: siEtcd,
+  apachecassandra: siApachecassandra,
+  clickhouse: siClickhouse,
+  googlecloud: siGooglecloud,
+  alibabacloud: siAlibabacloud,
+  prometheus: siPrometheus,
+  elasticsearch: siElasticsearch,
+  kibana: siKibana,
+  sentry: siSentry,
+  datadog: siDatadog,
+  newrelic: siNewrelic,
+  splunk: siSplunk,
+  pagerduty: siPagerduty,
+  apachekafka: siApachekafka,
+  rabbitmq: siRabbitmq,
+  apacheairflow: siApacheairflow,
+  natsdotio: siNatsdotio,
+}
 
 export interface BuiltinIcon {
   slug: string
@@ -40,9 +111,7 @@ export const FALLBACK_ICON: BuiltinIcon = {
 // simple-icons doesn't ship the requested slug — better to crash here than
 // silently swallow into the UI.
 function pick(slug: string, category: BuiltinIcon['category'], nameOverride?: string): BuiltinIcon {
-  const key = 'si' + slug.charAt(0).toUpperCase() + slug.slice(1)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ic = (si as any)[key] as { title: string; path: string; hex: string; slug: string } | undefined
+  const ic = ICONS[slug]
   if (!ic) {
     // Don't throw — leave a visibly-broken placeholder so we notice in dev.
     return { ...FALLBACK_ICON, slug, name: slug }
