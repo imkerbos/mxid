@@ -13,16 +13,17 @@
 
 ## 缺口清单(去除 LDAP 后)
 
-| # | 缺口 | 工业级标杆 | 影响 | ROI |
-|---|------|-----------|------|-----|
-| G1 | 应用接入模板市场 ✅ 已实现 | Okta/MaxKey 数百模板 | 接入成本高,运维劝退 | 高 |
-| G2 | 出站供应 / SCIM push ✅ 已实现(离职销户 L1/L3 CE + L2 SCIM EE) | Okta provisioning | 离职账号清理靠人工 | 高 |
-| G3 | 身份编排 / 认证流引擎 | Keycloak Auth Flows | 认证逻辑写死,无风险驱动 | 高 |
-| G4 | 合规治理(access review/报表) | Okta/SailPoint | 过不了大客户合规 | 高 |
-| G5 | 分级管理 + 审批工作流 | 所有工业平台 | 无委派管理,无自助申请 | 中 |
-| G6 | 集群 / HA 验证 | Keycloak Infinispan | 单点,无滚动升级 | 中 |
-| G7 | 协议边角(device flow/CIBA/DPoP) | Keycloak | IoT/CLI 登录缺失 | 中 |
-| G8 | 集成生态(webhook/Terraform/SDK) | Auth0/Okta | 无 IaC 接入 | 中 |
+| # | 缺口 | 状态(2026-08-03, v1.8.0) | 工业级标杆 | 影响 | ROI |
+|---|------|------|-----------|------|-----|
+| G1 | 应用接入模板市场 | ✅ 已实现:内置模板目录(钉钉 / 企微 / GitLab / Grafana / Jenkins / Jira / Confluence / JumpServer) | Okta/MaxKey 数百模板 | 接入成本高,运维劝退 | 高 |
+| G2 | 出站供应 / SCIM push | ⚠️ 部分实现:L2 销户(deactivate)已落地(CE seam + per-app 供应配置 UI + EE SCIM connector);开户 / 改属性 / 组推送未做 | Okta provisioning | 离职账号清理靠人工 | 高 |
+| G3 | 身份编排 / 认证流引擎 | ❌ 未做 | Keycloak Auth Flows | 认证逻辑写死,无风险驱动 | 高 |
+| G4a | 审计 / 证据链 | ✅ 已实现:防篡改哈希链 + Merkle 锚定 + 第三方可验导出(export/verify) | Okta/SailPoint | — | 高 |
+| G4b | Access review / recertification + 合规报告 | ❌ 未做 | Okta/SailPoint | 过不了大客户合规 | 高 |
+| G5 | 分级管理 + 审批工作流 | ⚠️ 部分实现:审批工作流已发版(JIT privileged access:eligibility → request → approve,SoD、step-up、到期 sweeper、下游注销);委派管理未做 | 所有工业平台 | 无委派管理 | 中 |
+| G6 | 集群 / HA 验证 | ✅ 已实现:leader election、跨副本缓存同步、`/readyz`、优雅退出;Helm 默认 replicaCount 2 + HPA | Keycloak Infinispan | — | 中 |
+| G7 | 协议边角(device flow/CIBA/DPoP) | ⚠️ 部分:`jwt`/`form` 空目录已清理;implicit/hybrid 在 zitadel 迁移时**有意移除**(OAuth 2.1 对齐,记为决策非缺口);device flow / CIBA / DPoP 未做 | Keycloak | IoT/CLI 登录缺失 | 中 |
+| G8 | 集成生态(webhook/Terraform/SDK) | ⚠️ 部分:signed webhook + durable outbox 已发版,但仅覆盖 offboarding 域;通用 event-webhook / Terraform / SDK 未做 | Auth0/Okta | 无 IaC 接入 | 中 |
 
 ---
 
@@ -33,6 +34,8 @@
 让客户"进得来、接得上、清得掉"。直接决定能否落地交付。
 
 #### P1.1 应用接入模板市场(G1)
+> **状态**:✅ 已实现 — 内置模板目录:钉钉 / 企微 / GitLab / Grafana /
+> Jenkins / Jira / Confluence / JumpServer(CE)。
 - **做什么**:把现有手填的 app 创建,改为模板驱动。模板 = 预填 protocol +
   默认 redirect/claim mapping + 接入文档片段 + 图标。内置常用 SaaS
   (飞书 / 钉钉 / 企业微信 / 腾讯会议 / Jira / GitLab / Grafana / Jenkins …)。
@@ -43,6 +46,9 @@
 - **验收**:从模板创建 OIDC/SAML 应用 < 5 字段;接入文档自动生成。
 
 #### P1.2 出站供应 / SCIM push(G2)
+> **状态**:⚠️ 部分实现 — L2 销户(deactivate)已落地:CE 提供 provisioning
+> seam + per-app 供应配置 UI,EE 提供 SCIM connector(feature key `scim`);
+> 开户 / 改属性 / 组推送仍未做。
 - **做什么**:把 MXID 身份推到下游 SaaS(自动开户 / 改属性 / 销户)。
   对接 SCIM 2.0 出站 + 主流 SaaS 私有 API 适配器。
 - **架构**:`internal/domain/provisioning/`,事件驱动(用户 CRUD / 组变更 →
@@ -71,6 +77,9 @@
 - **验收**:可视化配置"境外 IP 强制 MFA + 限制应用范围",无需改代码。
 
 #### P2.2 合规治理 — Access Review + 报表(G4)
+> **状态**:拆分为两半 — **G4a 审计 / 证据链 ✅ 已实现**(防篡改哈希链 +
+> Merkle 锚定 + 第三方可验导出);**G4b access review / recertification +
+> 合规报告 ❌ 未做**,下述内容仅剩 G4b 部分有效。
 - **做什么**:
   - **Access Review / Recertification**:周期性生成权限审阅任务,
     管理员确认 / 撤销用户的角色 / 应用访问,留痕。
@@ -83,8 +92,12 @@
 - **验收**:生成季度权限审阅,导出合规报告 PDF/CSV。
 
 #### P2.3 分级管理 + 审批工作流(G5)
+> **状态**:⚠️ 部分实现 — **审批工作流已发版**(JIT privileged access:
+> eligibility → request → approve,SoD 自批拦截、step-up、到期 sweeper、
+> OIDC/SAML/CAS 下游强制注销)。**委派管理未做**;且原"租户级委派"框架
+> 作废(产品永久单租户),需 re-scope 到 org/group 维度重新设计。
 - **做什么**:
-  - **委派管理**:租户管理员只管自己租户;按 org/group 划分管理范围。
+  - **委派管理**:~~租户管理员只管自己租户~~(作废,单租户);按 org/group 划分管理范围。
   - **自助申请 + 审批**:用户申请角色 / 应用访问 → 审批人确认 → 自动授权。
 - **架构**:扩展 Casbin scope(已有 `authz.Require(perm, scope)` 基础)。
   审批 = 工作流状态机,`internal/domain/approval/`。
@@ -99,6 +112,8 @@
 让平台"扛得住、连得广"。规模化交付的基础设施。
 
 #### P3.1 集群 / HA 验证 + 加固(G6)
+> **状态**:✅ 已实现 — leader election、跨副本缓存同步、`/readyz` 健康检查、
+> 优雅退出;Helm 默认 `replicaCount: 2` + HPA。
 - **做什么**:验证多副本无状态运行。会话(Redis)/ 票据 / 限流已 Redis 化,
   需确认:protocol 会话一致性、签名密钥多副本共享、滚动升级零中断。
 - **架构**:无新域;补 Redis 集群 / 哨兵支持、PG 主从读写分离配置、
@@ -107,6 +122,9 @@
 - **注意**:CLAUDE.md 承认"CI 是唯一验证者" → HA 必须真实压测,不能只过 CI。
 
 #### P3.2 协议边角补全(G7)
+> **状态**:⚠️ 部分 — `internal/protocol/{jwt,form}` 空目录清理已做;
+> implicit / hybrid flow 在 zitadel OIDC 迁移时**有意移除**(OAuth 2.1 对齐,
+> 记为架构决策而非缺口)。device flow / CIBA / DPoP 未做。
 - **做什么**:
   - **Device Authorization Flow**(RFC 8628)— IoT / CLI / 智能电视登录。
   - **CIBA**(可选,银行 / 高安全场景)。
@@ -116,6 +134,9 @@
 - **验收**:`device_code` grant 跑通;CLI 工具可登录。
 
 #### P3.3 集成生态(G8)
+> **状态**:⚠️ 部分 — signed webhook + durable outbox(事务外发)已发版,
+> 但仅覆盖 offboarding 域;通用 event-webhook / Terraform provider / 管理 SDK
+> 未做。
 - **做什么**:
   - **Webhook / 事件外发**:用户 / 应用 / 登录事件推外部 URL(走 safehttp)。
   - **Terraform Provider**:IaC 管理应用 / 角色 / 用户。
@@ -157,4 +178,5 @@ Phase 3 (P2)  韧性与生态        ~6-8 周   G6 HA · G7 协议边角 · G8 �
 
 - **LDAP/AD 入站联邦** — 本轮剔除(用户决策)。目标客户出现 AD 存量场景时重排 P0。
 - ABAC(属性级授权)— 现 Casbin RBAC 够用,无明确需求不做。
-- 行级安全(RLS)多租户 — 现 GORM tenant 插件够单区域,跨区再议。
+- 行级安全(RLS)多租户 — **关闭(won't-do)**:产品永久单租户(CE/EE 皆是,
+  `multi_tenant` 仅为许可证保留 key,永不授予),多租户不在路线图上。

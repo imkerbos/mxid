@@ -54,7 +54,9 @@ org; canonical namespace stays `imkerbos/mxid` (images `ghcr.io/imkerbos/...`).
 - **Settings domain**: SMTP / security / branding / login-methods / protocol
   defaults / external URLs are admin-editable at runtime (hot-reload), not env.
 - Gateways: `internal/gateway/console` (admin REST) + `internal/gateway/portal`
-  (end-user REST). Protocols under `internal/protocol/{oidc,saml,cas}`.
+  (end-user REST). Protocols under
+  `internal/protocol/{oidcop,oidclogout,saml,cas,resolver}` — the OIDC engine
+  is `zitadel/oidc` v3 (sole provider since v1.2.0; no hand-rolled engine).
 
 ## Security baselines (non-negotiable)
 
@@ -93,8 +95,27 @@ org; canonical namespace stays `imkerbos/mxid` (images `ghcr.io/imkerbos/...`).
   binary, and `garble`-obfuscated. The reusable gate is `pkg/ee/feature`
   (`internal/middleware.RequireFeature` delegates to it so EE packages, in a
   separate module, can gate their own routes).
-- EE features: `external_idp`, `branding`, `conditional_access`,
-  `webauthn`, `scim`, `advanced_stepup`, `sms`.
+- EE features implemented & sold: `external_idp`, `branding`,
+  `conditional_access` (gates JIT privileged access), `scim` (outbound
+  deprovision), `form_fill`. Reserved catalog keys that NEVER grant:
+  `webauthn`, `sms`, `advanced_stepup`, `multi_tenant` (SMS OTP and step-up
+  MFA actually ship in CE, ungated). `ImplementedFeatures` in
+  `pkg/ee/license` is the single truth — update it AND `docs/EDITIONS.md`
+  together.
+
+## Docs stay in sync with code (non-negotiable)
+
+- Every user-visible change in `internal/` or `web/` adds a bullet to
+  `CHANGELOG.md` under `[Unreleased]` **in the same commit**.
+- Architecture-shaped changes (new domain package, new `pkg/`, protocol or
+  auth-flow change, new seam) update `docs/ARCHITECTURE.md` in the same PR.
+- New env var / helm value / compose knob → `docs/DEPLOYMENT.md` +
+  `DEPLOYMENT_ZH.md` (+ `.env.example`). Feature-gate change →
+  `docs/EDITIONS.md` + README feature tables (EN + ZH, kept mirrored).
+- Cutting a release: rename `[Unreleased]` → `[X.Y.Z] — date`, add the compare
+  link at the bottom, bump helm `Chart.yaml` `appVersion` + `values.yaml` tag.
+- A design doc whose feature has shipped moves to `docs/archive/` (or is
+  deleted if it has no reference value) — stale plans are worse than none.
 
 ## Frontend conventions
 
