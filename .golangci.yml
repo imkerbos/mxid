@@ -17,18 +17,46 @@ linters-settings:
     enable:
       - nilness
   exhaustruct:
-    # Only enforce on dependency-wiring structs in package app. Missing a
-    # field here = runtime nil-deref. exhaustruct uses fully-qualified
-    # type names: <module path>.<TypeName>.
+    # Every dependency-wiring struct in package app. These are constructed once,
+    # at startup, from a composite literal; a field left out compiles fine and
+    # nil-derefs on the first request that reaches it — in a package with no
+    # tests of its own, because it is the composition root.
+    #
+    # exhaustruct uses fully-qualified type names: <module path>.<TypeName>.
+    # A new adapter belongs here; app/wiring_test.go asserts the list has not
+    # fallen behind the package.
     include:
+      - 'github.com/imkerbos/mxid/app\.accessMatcher$'
+      - 'github.com/imkerbos/mxid/app\.accessSubjectMatcher$'
+      - 'github.com/imkerbos/mxid/app\.accessSubjectResolver$'
+      - 'github.com/imkerbos/mxid/app\.appLabelResolver$'
+      - 'github.com/imkerbos/mxid/app\.appProtocolResolver$'
       - 'github.com/imkerbos/mxid/app\.authzBindingProvider$'
+      - 'github.com/imkerbos/mxid/app\.authzOrgAncestry$'
+      - 'github.com/imkerbos/mxid/app\.caRiskLogger$'
+      - 'github.com/imkerbos/mxid/app\.casbinPolicyLoader$'
+      - 'github.com/imkerbos/mxid/app\.dbTenantResolver$'
+      - 'github.com/imkerbos/mxid/app\.loginHistoryAdapter$'
+      - 'github.com/imkerbos/mxid/app\.offboardDeprovisionEnqueuer$'
+      - 'github.com/imkerbos/mxid/app\.offboardFootprint$'
+      - 'github.com/imkerbos/mxid/app\.offboardWebhookDispatcher$'
+      - 'github.com/imkerbos/mxid/app\.oidcAccessAdapter$'
+      - 'github.com/imkerbos/mxid/app\.oidcAppRolesAdapter$'
       - 'github.com/imkerbos/mxid/app\.permissionGroupLookupAdapter$'
       - 'github.com/imkerbos/mxid/app\.permissionOrgLookupAdapter$'
-      - 'github.com/imkerbos/mxid/app\.authzOrgAncestry$'
-      - 'github.com/imkerbos/mxid/app\.userMFAVerifierAdapter$'
-      - 'github.com/imkerbos/mxid/app\.userLoginRecorderAdapter$'
+      - 'github.com/imkerbos/mxid/app\.portalAPITokenAdapter$'
+      - 'github.com/imkerbos/mxid/app\.portalAppQuerierAdapter$'
+      - 'github.com/imkerbos/mxid/app\.portalConsentQuerierAdapter$'
+      - 'github.com/imkerbos/mxid/app\.portalIdentityQuerierAdapter$'
+      - 'github.com/imkerbos/mxid/app\.portalLoginHistoryAdapter$'
+      - 'github.com/imkerbos/mxid/app\.portalMFAQuerierAdapter$'
+      - 'github.com/imkerbos/mxid/app\.portalSessionQuerierAdapter$'
+      - 'github.com/imkerbos/mxid/app\.portalUserQuerierAdapter$'
+      - 'github.com/imkerbos/mxid/app\.scimDeprovisionPayload$'
+      - 'github.com/imkerbos/mxid/app\.superAdminManagerAdapter$'
       - 'github.com/imkerbos/mxid/app\.userExternalResolver$'
-      - 'github.com/imkerbos/mxid/app\.dbTenantResolver$'
+      - 'github.com/imkerbos/mxid/app\.userLoginRecorderAdapter$'
+      - 'github.com/imkerbos/mxid/app\.userMFAVerifierAdapter$'
 
 issues:
   max-issues-per-linter: 0
