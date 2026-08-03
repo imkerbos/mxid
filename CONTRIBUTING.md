@@ -20,7 +20,7 @@ make smoke
 | `verify-mod`      | `go mod tidy` diff            | `// indirect` drift, missing `go.sum` rows                   |
 | `verify-vet`      | `go vet` + `nilness`/`shadow` | nil-pointer flow, shadowed err returns                       |
 | `verify-build`    | `go build ./...`              | single-file `go build main.go` skew; package-level dead refs |
-| `verify-lint`     | `golangci-lint`               | `exhaustruct` on `cmd/server` adapters; staticcheck; errcheck |
+| `verify-lint`     | `golangci-lint`               | `exhaustruct` on the `app/` wiring adapters; staticcheck; errcheck |
 | `verify-exports`  | `scripts/verify-exports.mjs`  | `package.json` `exports`/`main`/`bin` paths missing on disk  |
 | `verify-web`      | `pnpm -r build`               | Vite prod-mode strictness that dev mode tolerates             |
 | `smoke`           | `scripts/smoke-test.sh`       | runtime nil-pointer in cross-module wiring; middleware order |
@@ -61,6 +61,11 @@ honor the bypass.
 If a struct holds dependencies that would nil-panic if zero, add it to the
 `exhaustruct.include` list in `.golangci.yml` and write a `new...`
 constructor. Do not construct it via struct literal outside the constructor.
+
+The include patterns are fully-qualified type names
+(`github.com/imkerbos/mxid/app\.<Type>$`). They match nothing — and the linter
+silently passes — if the package path is wrong, so verify a new entry actually
+fires before trusting it.
 
 ## Adding a new console module
 
