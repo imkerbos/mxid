@@ -130,10 +130,6 @@ func (s *Service) ResolveExternalLogin(ctx context.Context, in *ExternalLoginInp
 	}
 	user.PasswordHash = random
 
-	if err := s.repo.Create(ctx, user); err != nil {
-		return nil, fmt.Errorf("create user: %w", err)
-	}
-
 	// Seed an empty detail row so /users/:id/detail always returns something.
 	detail := &UserDetail{
 		ID:        s.idGen.Generate(),
@@ -141,9 +137,9 @@ func (s *Service) ResolveExternalLogin(ctx context.Context, in *ExternalLoginInp
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	_ = s.repo.CreateDetail(ctx, detail)
 
-	// Bind the identity row.
+	// Build the identity row before writing anything: all three rows go in one
+	// transaction below.
 	rawJSON := ""
 	if len(in.Raw) > 0 {
 		if b, err := json.Marshal(in.Raw); err == nil {
@@ -175,8 +171,13 @@ func (s *Service) ResolveExternalLogin(ctx context.Context, in *ExternalLoginInp
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
-	if err := s.repo.CreateIdentity(ctx, identity); err != nil {
-		return nil, fmt.Errorf("create identity: %w", err)
+	// Atomic. Previously these were three separate writes, so a failure after
+	// the user row committed left an account with no identity binding — and the
+	// next login from the same external subject, finding no binding, created
+	// another account under a suffixed username. One unreachable account and one
+	// consumed seat per retry.
+	if err := s.repo.CreateWithIdentity(ctx, user, detail, identity); err != nil {
+		return nil, fmt.Errorf("create external user: %w", err)
 	}
 
 	return user, nil

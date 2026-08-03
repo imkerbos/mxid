@@ -45,6 +45,30 @@ func (r *gormRepository) CreateWithProfile(ctx context.Context, user *User, deta
 	})
 }
 
+// CreateWithIdentity inserts the user, its empty detail row and the external
+// identity binding in ONE transaction.
+//
+// Unwrapped, a failure after the user row committed left an account with no
+// identity binding. The next login from the same external subject found no
+// binding, created another account, and — because the username was taken —
+// suffixed it: alice, alice-1, alice-2, one per retry, each consuming a seat
+// against the CE user cap and none of them reachable by the person they belong
+// to.
+func (r *gormRepository) CreateWithIdentity(ctx context.Context, user *User, detail *UserDetail, identity *UserIdentity) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(user).Error; err != nil {
+			return fmt.Errorf("create user: %w", err)
+		}
+		if err := tx.Create(detail).Error; err != nil {
+			return fmt.Errorf("create user detail: %w", err)
+		}
+		if err := tx.Create(identity).Error; err != nil {
+			return fmt.Errorf("create user identity: %w", err)
+		}
+		return nil
+	})
+}
+
 // SetSuperAdmin toggles the super-admin flag for a user.
 func (r *gormRepository) SetSuperAdmin(ctx context.Context, id int64, makeSuper bool) error {
 	res := r.db.WithContext(ctx).
