@@ -228,7 +228,13 @@ func (s *Service) topApps(ctx context.Context, tenantID int64, rangeStart time.T
 		Name string `gorm:"column:name"`
 	}
 	var names []nameRow
-	if err := s.db.WithContext(ctx).Table("mxid_app").Select("id, name").Where("id IN ?", ids).Scan(&names).Error; err != nil {
+	// tenant_id is redundant given the ids came from a tenant-scoped audit query,
+	// but .Table() with an anonymous scan struct is invisible to the tenantscope
+	// plugin, so the predicate has to be written out rather than assumed.
+	if err := s.db.WithContext(ctx).Table("mxid_app").
+		Select("id, name").
+		Where("id IN ? AND tenant_id = ?", ids, tenantID).
+		Scan(&names).Error; err != nil {
 		return nil, err
 	}
 	nameByID := make(map[int64]string, len(names))
