@@ -17,6 +17,12 @@ export default {
     approverNotEligible: 'You are not a designated approver for this eligibility, so you can\'t approve this request.',
   },
   common: {
+    validation: {
+      required: 'This field is required.',
+      emailRequired: 'Enter your email address.',
+      phoneRequired: 'Enter your phone number.',
+      tooShort: 'Must be at least {{n}} characters.',
+    },
     save: 'Save',
     cancel: 'Cancel',
     delete: 'Delete',

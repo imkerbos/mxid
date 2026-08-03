@@ -18,7 +18,7 @@ import type { Group, User, PaginatedData, GroupMember, RuleExpr, GroupRule } fro
 import axios from 'axios'
 import PageHeader from '../../components/layout/PageHeader'
 import RuleEditor from './RuleEditor'
-import { CodeField, pageMotion, Button, ConfirmDialog } from '../../components/ui'
+import { CodeField, Field, pageMotion, Button, ConfirmDialog } from '../../components/ui'
 import AppRolesReverseTab from './AppRolesReverseTab'
 import { toast, extractMessage } from '../../components/ui/toast'
 
@@ -102,9 +102,23 @@ export default function GroupsPage() {
 
   // ─── Create ────────────────────────────────────────────────────
 
+  const [createErrors, setCreateErrors] = useState<{ name?: string; code?: string }>({})
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!createForm.name || !createForm.code) return
+    // The name input carries `required`, so the browser stops an empty one. The
+    // code field does not — CodeField renders a bare input — so submitting with
+    // an empty code used to return here in silence: the dialog stayed open, no
+    // message, nothing sent.
+    const errs = {
+      name: createForm.name.trim() ? undefined : t('common.validation.required'),
+      code: createForm.code.trim() ? undefined : t('common.validation.required'),
+    }
+    if (errs.name || errs.code) {
+      setCreateErrors(errs)
+      return
+    }
+    setCreateErrors({})
     if (createType === GroupType.Dynamic && createRule.conditions.length === 0) {
       toast.error(t("groups.needAtLeastOneRule"))
       return
@@ -122,6 +136,7 @@ export default function GroupsPage() {
         await groupApi.upsertRule(created.id, createRule)
       }
       setShowCreate(false)
+      setCreateErrors({})
       setCreateForm({ name: '', code: '', description: '' })
       setCreateType(GroupType.Static)
       setCreateRule(EMPTY_RULE)
@@ -717,31 +732,45 @@ export default function GroupsPage() {
             >
               <h3 className="mb-4 text-lg font-semibold">{t('groups.createModal.title')}</h3>
               <form onSubmit={handleCreate} className="space-y-4">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-ink">{t('groups.createModal.nameRequired')}</label>
+                <Field
+                  label={t('groups.createModal.nameRequired')}
+                  required
+                  error={createErrors.name}
+                  hint={t('groups.createModal.nameHint')}
+                >
                   <input
                     type="text"
                     value={createForm.name}
-                    onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value }))}
+                    onChange={(e) => {
+                      setCreateForm((f) => ({ ...f, name: e.target.value }))
+                      setCreateErrors((x) => ({ ...x, name: undefined }))
+                    }}
                     className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                     required
                   />
-                  <p className="mt-1 text-xs text-faint">{t('groups.createModal.nameHint')}</p>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-ink">{t('groups.createModal.codeRequired')}</label>
+                </Field>
+                <Field
+                  label={t('groups.createModal.codeRequired')}
+                  required
+                  error={createErrors.code}
+                  hint={
+                    <>
+                      {t('groups.createModal.harborHint')}
+                      <span className="text-amber-600">{t('groups.createModal.codeImmutable')}</span>
+                    </>
+                  }
+                >
                   <CodeField
                     value={createForm.code}
-                    onChange={(v) => setCreateForm((f) => ({ ...f, code: v }))}
+                    onChange={(v) => {
+                      setCreateForm((f) => ({ ...f, code: v }))
+                      setCreateErrors((x) => ({ ...x, code: undefined }))
+                    }}
                     nameForSlug={createForm.name}
                     prefix="ug"
                     placeholder="engineering / devops / admins ..."
                   />
-                  <p className="mt-1 text-xs text-faint">
-                    {t('groups.createModal.harborHint')}
-                    <span className="text-amber-600">{t('groups.createModal.codeImmutable')}</span>
-                  </p>
-                </div>
+                </Field>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-ink">{t('groups.createModal.desc')}</label>
                   <textarea

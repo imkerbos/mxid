@@ -20,6 +20,12 @@ export default {
     approverNotEligible: '你不是该访问资格指定的审批人,无权审批此申请。',
   },
   common: {
+    validation: {
+      required: '此项为必填。',
+      emailRequired: '请输入邮箱地址。',
+      phoneRequired: '请输入手机号。',
+      tooShort: '至少需要 {{n}} 个字符。',
+    },
     save: '保存',
     cancel: '取消',
     delete: '删除',

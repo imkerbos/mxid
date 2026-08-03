@@ -5,7 +5,7 @@ import { appApi, appGroupApi, protocolLabel, statusLabel, statusColor, cn, AppIc
 import type { App, AppGroup, PaginatedData, AppTemplate, AppTemplateListItem } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
 import AppGroupsTab from './AppGroupsTab'
-import { CodeField, pageMotion, Button, ConfirmDialog, Modal } from '../../components/ui'
+import { CodeField, Field, pageMotion, Button, ConfirmDialog, Modal } from '../../components/ui'
 import { IconPicker } from '../../components/icon-picker/IconPicker'
 import { toast, extractMessage } from '../../components/ui/toast'
 import AccessPolicyTab from './AccessPolicyTab'
@@ -689,9 +689,19 @@ export default function AppsPage() {
   // Create app
   // -------------------------------------------------------------------------
 
+  const [createCodeError, setCreateCodeError] = useState('')
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!createForm.name || !createForm.code) return
+    // Name carries `required` so the browser stops an empty one; CodeField
+    // renders a bare input, so an empty code reached here and returned in
+    // silence — the dialog stayed open with no explanation.
+    if (!createForm.code.trim()) {
+      setCreateCodeError(t('common.validation.required'))
+      return
+    }
+    setCreateCodeError('')
+    if (!createForm.name) return
     setCreating(true)
     try {
       // Build protocol_config + top-level fields from the active template (if any).
@@ -1144,19 +1154,23 @@ export default function AppsPage() {
                   required
                 />
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">{t('apps.createModal.codeLabel')}</label>
+              <Field
+                label={t('apps.createModal.codeLabel')}
+                required
+                error={createCodeError}
+                hint={t('apps.createModal.codeHint', { example: `/protocol/saml/${createForm.code || 'jira'}/metadata` })}
+              >
                 <CodeField
                   value={createForm.code}
-                  onChange={(v) => setCreateForm((f) => ({ ...f, code: v }))}
+                  onChange={(v) => {
+                    setCreateForm((f) => ({ ...f, code: v }))
+                    setCreateCodeError('')
+                  }}
                   nameForSlug={createForm.name}
                   prefix="app"
                   placeholder="jira / harbor / jumpserver ..."
                 />
-                <p className="mt-1 text-xs text-faint">
-                  {t('apps.createModal.codeHint', { example: `/protocol/saml/${createForm.code || 'jira'}/metadata` })}
-                </p>
-              </div>
+              </Field>
 
               {/* Manual Protocol/ClientType/home_url/redirect_uris — hidden when a real template is active */}
               {!activeTemplate?.key && (
