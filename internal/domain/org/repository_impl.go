@@ -83,17 +83,6 @@ func (r *repository) GetChildren(ctx context.Context, parentID int64) ([]*Organi
 	return orgs, nil
 }
 
-func (r *repository) GetByPath(ctx context.Context, tenantID int64, path string) ([]*Organization, error) {
-	var orgs []*Organization
-	if err := r.db.WithContext(ctx).
-		Where("tenant_id = ? AND path::text LIKE ?", tenantID, path+".%").
-		Order("path ASC").
-		Find(&orgs).Error; err != nil {
-		return nil, fmt.Errorf("get organizations by path: %w", err)
-	}
-	return orgs, nil
-}
-
 func (r *repository) Move(ctx context.Context, id int64, newParentID *int64, newPath string) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Get the current organization

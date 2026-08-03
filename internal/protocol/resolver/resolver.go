@@ -76,12 +76,6 @@ type IdentityInfo struct {
 	Detail        map[string]any
 }
 
-// ClaimMapping defines how user attributes map to protocol claims.
-type ClaimMapping struct {
-	Scope      string
-	Attributes []string
-}
-
 // SSOSession represents a protocol-level SSO session. The field tags match
 // pkg/session.Session so that records written by session.Manager (during
 // login) are directly readable by the protocol resolver.

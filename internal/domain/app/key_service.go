@@ -167,18 +167,6 @@ func (s *KeyService) RotateForApp(ctx context.Context, appID int64) (*AppCert, e
 	return newCert, nil
 }
 
-// RetireExpiredRotating sweeps signing certs that have lingered in
-// CertStatusRotating past their expires_at and marks them retired. Safe to
-// call on a cron; idempotent.
-func (s *KeyService) RetireExpiredRotating(ctx context.Context) error {
-	res := s.db.WithContext(ctx).
-		Model(&AppCert{}).
-		Where("cert_type = ? AND status = ? AND expires_at IS NOT NULL AND expires_at < NOW()",
-			CertTypeSigning, CertStatusRotating).
-		Update("status", CertStatusRetired)
-	return res.Error
-}
-
 // LoadSigningKey returns the currently active signing key for an app along
 // with its kid. Returns ErrKeyNotFound when no active signing cert exists.
 func (s *KeyService) LoadSigningKey(ctx context.Context, appID int64) (*rsa.PrivateKey, string, error) {

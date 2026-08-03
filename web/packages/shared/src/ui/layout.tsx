@@ -121,25 +121,3 @@ export function SearchInput({
   )
 }
 
-// ChartCard — library-agnostic chart wrapper. Pass the chart element as
-// children (we render recharts directly at call sites); this owns the frame.
-export function ChartCard({
-  title,
-  extra,
-  height = 260,
-  children,
-}: {
-  title: ReactNode
-  extra?: ReactNode
-  height?: number
-  children: ReactNode
-}) {
-  return (
-    <Card>
-      <CardHeader title={title} extra={extra} />
-      <div className="px-3 pb-4 pt-3" style={{ height }}>
-        {children}
-      </div>
-    </Card>
-  )
-}

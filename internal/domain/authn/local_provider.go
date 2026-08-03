@@ -219,12 +219,6 @@ func (a *userQuerierAdapter) UpdateStatus(ctx context.Context, id int64, status 
 
 var _ UserQuerier = (*userQuerierAdapter)(nil)
 
-// BuildAuthQuerier creates a UserAuthQuerier from a username-lookup function.
-// Email login stays disabled (GetByEmail returns ErrEmailLoginUnsupported).
-func BuildAuthQuerier(fn func(ctx context.Context, tenantID int64, username string) (*UserAuth, error)) UserAuthQuerier {
-	return &authQuerierAdapter{fn: fn}
-}
-
 // BuildAuthQuerierWithEmail creates a UserAuthQuerier that supports both
 // username and email identifiers on the password login path.
 func BuildAuthQuerierWithEmail(

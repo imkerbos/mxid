@@ -71,16 +71,6 @@ security:
     max_failed_attempts: 5
     lockout_duration: 15m
     captcha_after_failures: 3
-  rate_limit:
-    login: "5/m"
-    api: "100/m"
-
-# OIDC token TTLs are authoritative in DB (protocol.defaults, console settings);
-# these seed the fallback. signing_algorithm is bootstrap-static.
-jwt:
-  signing_algorithm: RS256
-  access_token_ttl: 15m
-  refresh_token_ttl: 168h # 7 days
 
 tenant:
   default_id: 1
