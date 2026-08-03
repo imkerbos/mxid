@@ -94,8 +94,8 @@ func featureStrings(fs []license.Feature, registeredCodeSep map[string]bool) []s
 		// Code-separated features (external_idp/...) ship only in the EE binary.
 		// A CE image with an EE license unlocks them in the catalog but 404s them
 		// at runtime — advertise one only when its EE package registered into this
-		// binary. Runtime-gated features (branding/multi_tenant/...) live in CE and
-		// are always present once unlocked.
+		// binary. Runtime-gated features (branding/conditional_access/...) live in
+		// CE and are always present once unlocked.
 		if license.IsCodeSeparated(f) && !registeredCodeSep[string(f)] {
 			continue
 		}

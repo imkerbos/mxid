@@ -41,12 +41,3 @@ func UserIDFromContext(c *gin.Context) (int64, bool) {
 	return id, ok
 }
 
-// UserIDPtr returns the user id as a *int64, useful for service "CreatedBy"
-// columns that are nullable.
-func UserIDPtr(c *gin.Context) *int64 {
-	id, ok := UserIDFromContext(c)
-	if !ok {
-		return nil
-	}
-	return &id
-}

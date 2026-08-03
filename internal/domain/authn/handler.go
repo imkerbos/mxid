@@ -863,11 +863,3 @@ func GetSessionID(c *gin.Context) (string, bool) {
 	return id, ok
 }
 
-// UserIDStr returns the user ID as a string for convenience.
-func UserIDStr(c *gin.Context) string {
-	id, ok := GetUserID(c)
-	if !ok {
-		return ""
-	}
-	return strconv.FormatInt(id, 10)
-}

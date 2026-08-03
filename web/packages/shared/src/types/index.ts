@@ -462,12 +462,6 @@ export const AppStatus = {
   Disabled: 2,
 } as const
 
-export const AppProtocol = {
-  OIDC: 'oidc',
-  SAML: 'saml',
-  CAS: 'cas',
-} as const
-
 // Mirror of backend domain enum consts (group/tenant/externalidp/offboarding/
 // access model.go). Keep the numbers/strings in sync with the Go source.
 export const GroupType = { Static: 1, Dynamic: 2 } as const
@@ -495,8 +489,6 @@ export const BindingSubjectType = { User: 'user', Group: 'group', Org: 'org' } a
 export const BindingScopeType = { Org: 'org', Group: 'group' } as const
 // App access-policy + app-role binding subject_type — superset that includes 'public'.
 export const AccessPolicySubjectType = { Public: 'public', User: 'user', Group: 'group', Org: 'org', Role: 'role' } as const
-// Group dynamic rule status (group/model.go RuleEnabled=1, RulePaused=2).
-export const GroupRuleStatus = { Enabled: 1, Paused: 2 } as const
 
 export interface AppTemplateField {
   key: string

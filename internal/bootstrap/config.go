@@ -17,7 +17,6 @@ type Config struct {
 	Redis     RedisConfig     `mapstructure:"redis"`
 	Session   SessionConfig   `mapstructure:"session"`
 	Security  SecurityConfig  `mapstructure:"security"`
-	JWT       JWTConfig       `mapstructure:"jwt"`
 	Tenant    TenantConfig    `mapstructure:"tenant"`
 	Crypto    CryptoConfig    `mapstructure:"crypto"`
 	GeoIP     GeoIPConfig     `mapstructure:"geoip"`
@@ -154,9 +153,8 @@ type SessionConfig struct {
 }
 
 type SecurityConfig struct {
-	Password  PasswordConfig  `mapstructure:"password"`
-	Login     LoginConfig     `mapstructure:"login"`
-	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
+	Password PasswordConfig `mapstructure:"password"`
+	Login    LoginConfig    `mapstructure:"login"`
 }
 
 type PasswordConfig struct {
@@ -174,17 +172,6 @@ type LoginConfig struct {
 	MaxFailedAttempts    int           `mapstructure:"max_failed_attempts"`
 	LockoutDuration      time.Duration `mapstructure:"lockout_duration"`
 	CaptchaAfterFailures int           `mapstructure:"captcha_after_failures"`
-}
-
-type RateLimitConfig struct {
-	Login string `mapstructure:"login"`
-	API   string `mapstructure:"api"`
-}
-
-type JWTConfig struct {
-	SigningAlgorithm string        `mapstructure:"signing_algorithm"`
-	AccessTokenTTL   time.Duration `mapstructure:"access_token_ttl"`
-	RefreshTokenTTL  time.Duration `mapstructure:"refresh_token_ttl"`
 }
 
 type TenantConfig struct {
