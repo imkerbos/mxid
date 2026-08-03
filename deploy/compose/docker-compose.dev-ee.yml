@@ -5,8 +5,7 @@
 # docker-compose.dev.yml.
 #
 # Layered ON TOP of docker-compose.dev.yml:
-#   make dev-docker-up-ee            # foreground
-#   make dev-docker-up-ee-d          # detached
+#   make dev-up EE=1
 # or manually:
 #   docker compose --env-file .env \
 #     -f deploy/compose/docker-compose.dev.yml \

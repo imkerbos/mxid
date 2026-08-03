@@ -170,9 +170,15 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full picture.
 
 ## Dev / deploy
 
-- **Dev**: `make dev-docker-up` (air + vite + nginx on :3500, hot reload). Don't
-  spin duplicate infra containers — DB/Redis use host-mapped ports from an
-  external instance.
+- **Dev**: `make dev-up` (`EE=1` for the Enterprise backend) brings up the ONE
+  dev stack — postgres, redis, backend (air), console/portal vite, nginx on
+  :3500. Postgres/Redis are compose services in project `mxid-dev` with their
+  own `mxid-dev_pgdata` / `mxid-dev_redisdata` volumes; host ports 5432/6379
+  stay published for psql/DBeaver. **Never start dev infra outside compose** —
+  that is how dev data ends up in a volume no compose file owns. `make dev-down`
+  keeps data; only `make dev-nuke` deletes it (and it prompts).
+- `make seed-demo` (re)seeds the demo org/groups/memberships/app-access so demo
+  users actually see apps in the portal. Idempotent.
 - **Prod**: released images from GHCR behind nginx on 80/443; one `.env` drives
   it (`COMPOSE_FILE` selects the mode). Tag `v*.*.*` → CI builds and publishes
   (no `latest` tag). See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).

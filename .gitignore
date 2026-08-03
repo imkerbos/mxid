@@ -71,3 +71,6 @@ TODO.local.md
 
 # TS incremental build cache
 *.tsbuildinfo
+
+# Local DB dumps from `make dev-dump`
+backups/

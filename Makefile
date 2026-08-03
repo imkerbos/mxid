@@ -32,52 +32,71 @@ dev-portal:
 dev-web:
 	cd web && pnpm dev
 
-# Development — Docker (air hot reload + external pg/redis)
+# ── Dev stack ────────────────────────────────────────────────────────────────
+# ONE stack (compose project mxid-dev): postgres + redis + backend (air hot
+# reload) + console/portal vite + nginx on :3500. Postgres/Redis live in the
+# project's own mxid-dev_pgdata / mxid-dev_redisdata volumes — never start them
+# outside compose, or the data ends up in a volume nothing owns.
+#
+#   make dev-up            # start (detached)
+#   make dev-up EE=1       # start with the Enterprise backend entrypoint
+#   make dev-down          # stop, KEEPING data
+#   make dev-logs          # tail the backend
+#   make dev-ps            # what's running
+#   make seed-demo         # (re)seed demo org/groups/policies
+#
+# EE=1 layers docker-compose.dev-ee.yml on top: the backend is built from
+# mxid-ee/cmd/server (external-IdP / Lark, SCIM, …) instead of CE cmd/server.
+# Requires the private mxid-ee repo checked out as a sibling (../mxid-ee).
+# Everything else — db, nginx, vite, ports — is inherited.
 DEV_COMPOSE := docker compose --env-file .env -f deploy/compose/docker-compose.dev.yml
+ifeq ($(EE),1)
+DEV_COMPOSE += -f deploy/compose/docker-compose.dev-ee.yml
+endif
 
-# Dev-EE: same stack, but the backend is built from the Enterprise entrypoint
-# (mxid-ee/cmd/server → external-IdP / Lark, SCIM, …). Requires the private
-# mxid-ee repo checked out as ../mxid-ee. See docker-compose.dev-ee.yml.
-DEV_COMPOSE_EE := $(DEV_COMPOSE) -f deploy/compose/docker-compose.dev-ee.yml
+.PHONY: dev-up dev-down dev-logs dev-ps dev-restart dev-nuke
 
-dev-docker-up:
-	$(DEV_COMPOSE) up
-
-dev-docker-up-d:
+dev-up:
 	$(DEV_COMPOSE) up -d
 
-dev-docker-up-ee:
-	$(DEV_COMPOSE_EE) up
-
-dev-docker-up-ee-d:
-	$(DEV_COMPOSE_EE) up -d
-
-dev-docker-down-ee:
-	$(DEV_COMPOSE_EE) down
-
-dev-docker-logs-ee:
-	$(DEV_COMPOSE_EE) logs -f mxid
-
-dev-docker-down:
+dev-down:
 	$(DEV_COMPOSE) down
 
-dev-docker-logs:
-	$(DEV_COMPOSE) logs -f
+dev-logs:
+	$(DEV_COMPOSE) logs -f $(if $(S),$(S),mxid)
 
-dev-docker-ps:
+dev-ps:
 	$(DEV_COMPOSE) ps
 
-dev-docker-restart:
-	$(DEV_COMPOSE) restart
+dev-restart:
+	$(DEV_COMPOSE) restart $(if $(S),$(S),mxid)
 
-dev-docker-reload:
-	$(DEV_COMPOSE) down && $(DEV_COMPOSE) up -d
+# DESTRUCTIVE: `down -v` removes the mxid-dev_pgdata / mxid-dev_redisdata
+# volumes — every user, app and audit record in your dev database. Take a dump
+# first (make dev-dump). Deliberately not aliased to anything shorter.
+dev-nuke:
+	@printf 'This DELETES the dev database (mxid-dev_pgdata + redisdata). Type YES to continue: ' && read ans && [ "$$ans" = YES ]
+	$(DEV_COMPOSE) down -v
 
-dev-docker-watch:
+# Dump the dev database to backups/ (timestamped). Cheap insurance before
+# anything schema-shaped.
+dev-dump:
+	@mkdir -p backups
+	@f="backups/mxid-$$(date +%Y%m%d-%H%M%S).dump"; \
+	  docker exec mxid-postgres-dev pg_dump -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-mxid} -Fc > "$$f" && \
+	  echo "wrote $$f"
+
+dev-watch:
 	./scripts/dev-watch.sh
 
-dev-docker-clean:
-	$(DEV_COMPOSE) down -v
+# Seed the demo fixture: org tree, user groups, memberships, app access and app
+# roles, so the demo users (alice … nancy) actually see apps in the portal.
+# Idempotent — every statement is ON CONFLICT DO NOTHING against a reserved id
+# range, so re-running is a no-op and your own test data is never touched.
+.PHONY: seed-demo
+seed-demo:
+	@docker exec -i mxid-postgres-dev psql -v ON_ERROR_STOP=1 \
+	  -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-mxid} < scripts/seed-demo.sql
 
 # Build
 build: build-backend

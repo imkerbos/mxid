@@ -1,6 +1,8 @@
-# Compose project name = mxid-dev. Overrides the default "compose" (parent
-# directory name) so logs/containers are grouped by env. For prod copy this
-# file and use `name: mxid-prod`.
+# The ONE dev stack. Compose project name = mxid-dev, so everything here is
+# grouped under that project and `make dev-up` / `dev-down` manage all of it —
+# including Postgres and Redis. Nothing dev-related should be started outside
+# this file; a stray `docker run` postgres is how dev data ends up in a volume
+# no compose file owns (and then gets pruned by accident).
 #
 # Single user-facing entrypoint: nginx at host port 3500. It fronts three
 # internal services (Go backend, console vite, portal vite) so dev URLs
@@ -14,9 +16,48 @@
 # Internal ports (5173 console, 5174 portal, 10050 backend) stay on the
 # docker network. Backend keeps its host-port mapping for direct curl
 # debugging — remove the `ports:` line if you want it fully internal.
+#
+# Postgres/Redis still publish their host ports (5432/6379) so DBeaver, psql
+# and redis-cli on the host keep working, but the data lives in the project's
+# own mxid-dev_pgdata / mxid-dev_redisdata volumes.
 name: mxid-dev
 
 services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: mxid-postgres-dev
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-mxid}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-12345}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-mxid}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: mxid-redis-dev
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-123456}", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-123456}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
   nginx:
     image: nginx:1.29-alpine
     # Suffixed -dev: container_name is daemon-global, and the prod stack's nginx
@@ -58,13 +99,15 @@ services:
       - GOCACHE=/root/.cache/go-build
       - MXID_SERVER_PORT=10050
       - MXID_SERVER_MODE=debug
-      - MXID_DATABASE_HOST=host.docker.internal
-      - MXID_DATABASE_PORT=${POSTGRES_PORT:-5432}
+      # Reach Postgres/Redis by compose service name — no host-gateway hop, and
+      # it keeps working if the host port mapping is changed or removed.
+      - MXID_DATABASE_HOST=postgres
+      - MXID_DATABASE_PORT=5432
       - MXID_DATABASE_NAME=${POSTGRES_DB:-mxid}
       - MXID_DATABASE_USER=${POSTGRES_USER:-postgres}
       - MXID_DATABASE_PASSWORD=${POSTGRES_PASSWORD:-12345}
-      - MXID_REDIS_HOST=host.docker.internal
-      - MXID_REDIS_PORT=${REDIS_PORT:-6379}
+      - MXID_REDIS_HOST=redis
+      - MXID_REDIS_PORT=6379
       - MXID_REDIS_PASSWORD=${REDIS_PASSWORD:-123456}
       # Browser-facing origin (nginx :3500) — the OIDC issuer / SAML EntityID /
       # external-IdP callback base. Must be this origin, not the internal backend
@@ -75,6 +118,11 @@ services:
       - MXID_ISSUER=${MXID_ISSUER:-http://localhost:3500}
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:10050/health"]
@@ -120,6 +168,10 @@ services:
     restart: unless-stopped
 
 volumes:
+  # Data — survives `dev-down`. Only `dev-nuke` (down -v) removes these.
+  pgdata:
+  redisdata:
+  # Build caches — cheap to rebuild.
   mxid-go-cache:
   mxid-go-build:
   mxid-pnpm-store:

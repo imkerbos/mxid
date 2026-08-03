@@ -102,7 +102,8 @@ Go 后端(Gin + GORM + Redis + 雪花 ID)。React 19 + Vite + TypeScript + Tailw
 git clone https://github.com/imkerbos/mxid.git
 cd mxid
 cp .env.example .env
-make dev-docker-up          # 后端 + 控制台 + 门户 + air 热重载
+make dev-up                 # postgres + redis + 后端 + 控制台 + 门户,热重载
+make seed-demo              # 可选:灌入 demo 组织、用户组、用户与应用授权
 ```
 
 开发环境跑在 dev nginx 的 **3500 端口**(热重载,**非生产**):
