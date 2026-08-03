@@ -22,6 +22,10 @@ type Repository interface {
 	// password-history row atomically in one transaction, so a partial failure
 	// can never leave an orphaned user without a detail / history record.
 	CreateWithProfile(ctx context.Context, user *User, detail *UserDetail, history *UserPasswordHistory) error
+	// CreateWithIdentity inserts the user, its empty detail row and an external
+	// identity binding atomically. Used by external-IdP login, where a partial
+	// write produces an unreachable account on every retry.
+	CreateWithIdentity(ctx context.Context, user *User, detail *UserDetail, identity *UserIdentity) error
 	GetByID(ctx context.Context, id int64) (*User, error)
 	GetByUsername(ctx context.Context, tenantID int64, username string) (*User, error)
 	GetByEmail(ctx context.Context, tenantID int64, email string) (*User, error)
