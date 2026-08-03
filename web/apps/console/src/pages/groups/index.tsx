@@ -377,7 +377,7 @@ export default function GroupsPage() {
         title={t('groups.title')}
         description={t('groups.subtitle')}
         actions={
-          <Button onClick={() => setShowCreate(true)} icon={<Plus className="h-4 w-4" />}>
+          <Button onClick={() => { setCreateErrors({}); setShowCreate(true) }} icon={<Plus className="h-4 w-4" />}>
             {t('groups.create')}
           </Button>
         }
@@ -804,7 +804,7 @@ export default function GroupsPage() {
                   <RuleEditor value={createRule} onChange={setCreateRule} />
                 )}
                 <div className="flex justify-end gap-3 pt-2">
-                  <Button type="button" variant="secondary" onClick={() => setShowCreate(false)}>
+                  <Button type="button" variant="secondary" onClick={() => { setShowCreate(false); setCreateErrors({}) }}>
                     {t('common.cancel')}
                   </Button>
                   <Button type="submit" loading={creating}>
