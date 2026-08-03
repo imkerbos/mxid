@@ -77,3 +77,4 @@ backups/
 
 # Offline install bundles from `make offline-bundle`
 mxid-offline-*.tar.gz
+mxid-offline/

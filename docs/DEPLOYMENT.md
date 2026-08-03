@@ -855,17 +855,25 @@ sits in `Init:ImagePullBackOff`.
 **At the site — first install:**
 
 ```bash
-tar xzf mxid-offline-ee-v1.8.0.tar.gz && cd mxid-offline-ee-v1.8.0
+tar xzf mxid-offline-ee-v1.8.0.tar.gz && cd mxid-offline
 mkdir -p /opt/mxid && cp values.example.yaml /opt/mxid/values.yaml
 $EDITOR /opt/mxid/values.yaml          # URLs, datastores, secrets
 ./install.sh --registry harbor.internal/mxid --values /opt/mxid/values.yaml
 ```
 
-**Every upgrade after that** — unpack the new bundle and run:
+**Every upgrade after that:**
 
 ```bash
-./install.sh
+tar xzf mxid-offline-ee-v1.9.0.tar.gz    # same mxid-offline/ directory
+cd mxid-offline && ./install.sh
 ```
+
+Every bundle unpacks to `mxid-offline/` regardless of version — the tarball
+carries the version so you can tell releases apart and keep one for rollback,
+but the path never changes, so runbooks and scripts don't hardcode a version.
+Extracting a newer bundle over the old directory is the intended flow;
+`install.sh` selects the chart from `manifest.env`, so a leftover file from a
+previous version is never picked up.
 
 No flags, no re-editing. Keep `values.yaml` **outside** the bundle directory:
 bundles are disposable and get replaced each release, your site config is not.
