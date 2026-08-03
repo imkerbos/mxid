@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -59,6 +60,10 @@ type App struct {
 	EventBus  *event.Bus
 	IDGen     *snowflake.Generator
 	MasterKey *crypto.MasterKey
+
+	// workers tracks background goroutines started via SpawnWorker so shutdown
+	// can wait for them before closing the DB and Redis.
+	workers sync.WaitGroup
 
 	// Route groups for domain module registration
 	ConsoleGroup  *gin.RouterGroup
@@ -273,7 +278,43 @@ func (a *App) Run() error {
 	return nil
 }
 
+// SpawnWorker starts a background worker and registers it so shutdown can wait
+// for it. Every long-lived goroutine that touches the DB or Redis must go
+// through this rather than a bare `go`.
+//
+// Without it the shutdown sequence closed both connections while workers were
+// still mid-tick, so a graceful stop produced "sql: database is closed" from a
+// sweeper that had done nothing wrong. The worker context is already cancelled
+// by then — they were being told to stop, just not given the chance.
+func (a *App) SpawnWorker(fn func()) {
+	a.workers.Add(1)
+	go func() {
+		defer a.workers.Done()
+		fn()
+	}()
+}
+
+// workerDrainTimeout bounds how long shutdown waits for background workers.
+// A wedged worker must not hold the process open indefinitely — Kubernetes
+// will SIGKILL well before that anyway, and an abrupt close is no worse than
+// what happened before this existed.
+const workerDrainTimeout = 5 * time.Second
+
 func (a *App) cleanup() {
+	// Wait for workers to notice the cancelled context and return, so the
+	// connections they are using are not closed underneath them.
+	drained := make(chan struct{})
+	go func() {
+		a.workers.Wait()
+		close(drained)
+	}()
+	select {
+	case <-drained:
+	case <-time.After(workerDrainTimeout):
+		a.Logger.Warn("background workers did not stop in time; closing connections anyway",
+			zap.Duration("timeout", workerDrainTimeout))
+	}
+
 	if sqlDB, err := a.DB.DB(); err == nil {
 		sqlDB.Close()
 	}

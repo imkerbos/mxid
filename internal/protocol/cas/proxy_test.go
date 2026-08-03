@@ -58,7 +58,13 @@ func (d *captureDoer) Do(req *http.Request) (*http.Response, error) {
 	}
 	return &http.Response{StatusCode: st, Body: io.NopCloser(strings.NewReader(""))}, nil
 }
-func (d *captureDoer) last() string { v := d.lastURL.Load(); if v == nil { return "" }; return v.(string) }
+func (d *captureDoer) last() string {
+	v := d.lastURL.Load()
+	if v == nil {
+		return ""
+	}
+	return v.(string)
+}
 
 func casAppConfig(id int64, proxyEnabled bool, serviceURLs ...string) *resolver.AppConfig {
 	cfg := map[string]any{"proxy_enabled": proxyEnabled, "service_urls": serviceURLs, "pgt_ticket_ttl": 3600}
