@@ -24,6 +24,7 @@ package tenantscope_test
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -42,16 +43,54 @@ var tableScannedDirs = []string{
 // appends the predicate when the request carries a tenant.
 var tableEvidenceTokens = []string{"scopeToTenant("}
 
-// allowedTableCalls lists .Table() call sites that legitimately carry no tenant
-// predicate. Key is "<module-relative-path>:<line>", value is the reason.
+// allowedTableCalls lists .Table() lookups that legitimately carry no tenant
+// predicate. Key is "<module-relative-path>:<table>", value is the reason.
+//
+// Keyed by table rather than by line: a line-numbered allowlist goes stale the
+// moment anything above it moves, and the failure mode is worse than a false
+// alarm — the stale entry can drift onto a *different* call and exempt it
+// silently. (This test caught itself doing exactly that.)
 var allowedTableCalls = map[string]string{
-	// mxid_tenant IS the tenant table — scoping it by tenant_id is circular.
-	"app/adapters_user.go:41": "mxid_tenant is the tenant registry itself; it has no tenant_id column",
+	// mxid_tenant IS the tenant registry — scoping it by tenant_id is circular.
+	"app/adapters_user.go:mxid_tenant": "the tenant registry itself; it has no tenant_id column",
 	// Junction tables with no tenant_id column. Both are keyed by ids that were
 	// resolved under the caller's tenant before the lookup runs.
-	"app/adapters_oidc.go:91":  "mxid_user_group_member junction has no tenant_id column; scoped by user_id",
-	"app/adapters_oidc.go:110": "mxid_role_binding has no tenant_id column; scoped by subject; tenant carried via the joined role",
+	"app/adapters_oidc.go:mxid_user_group_member": "junction table, no tenant_id column; scoped by user_id",
+	"app/adapters_oidc.go:mxid_role_binding":      "no tenant_id column; scoped by subject, tenant carried via the joined role",
+
+	// Tables with no tenant_id column at all. Each is a child or junction row
+	// reached through a parent id the caller cannot forge.
+	"internal/domain/app/repository_impl.go:mxid_app_group_rel": "junction, no tenant_id; subquery keyed by group_id",
+	"internal/domain/approle/repository.go:mxid_app_group_rel":  "junction, no tenant_id; keyed by group_id",
+	"app/adapters_portal.go:mxid_app_group_rel":                 "junction, no tenant_id; keyed by group_id",
+	"app/run.go:mxid_user_detail":                               "child table, no tenant_id; keyed by the session's own user_id",
+
+	// Has a tenant_id, but is reached only by the authenticated user's own id,
+	// which the request cannot choose.
+	"app/adapters_conditionalaccess.go:mxid_login_record": "scoped by the session's own user_id",
+
+	// Deliberately cross-tenant: this builds the global Casbin policy set and
+	// its whole job is to enumerate which tenants hold a super admin.
+	"app/adapters_authz.go:mxid_user": "cross-tenant by design; plucks tenant_id across all tenants for the Casbin domain list",
+
+	// id -> name lookups whose ids come from rows already loaded under the
+	// caller's tenant (access requests / eligibilities), so an arbitrary id
+	// cannot be injected the way it could through an access-policy row.
+	"internal/domain/access/repository.go:mxid_user": "ids come from tenant-scoped access requests, not from the request body",
+
+	// The subtree walk is guarded one layer up: Service.GetMembers calls
+	// requireOrg(ctx, orgID) first, and org/child_guard_test.go asserts a
+	// cross-tenant orgID returns ErrOrgNotFound before the repo is reached.
+	"internal/domain/org/repository_impl.go:mxid_organization": "guarded by Service.GetMembers -> requireOrg; see org/child_guard_test.go",
 }
+
+// tableName pulls the literal out of a .Table("name") call.
+//
+// The leading dot is optional on purpose: gofmt breaks long chains so the call
+// lands at the start of a continuation line as `Table("x").`, with the dot left
+// on the line above. Requiring the dot made this guard blind to exactly those —
+// it reported green while missing an unscoped lookup on mxid_app_group_rel.
+var tableName = regexp.MustCompile(`(?:\.|^\s*)Table\("([A-Za-z0-9_]+)"`)
 
 // maxStatementLines bounds the forward walk that reassembles a chained
 // statement, so a malformed file cannot make the guard run away.
@@ -83,11 +122,12 @@ func TestNoUnscopedTableQueries(t *testing.T) {
 				return readErr
 			}
 			for i, line := range lines {
-				if !strings.Contains(line, `.Table("`) {
+				m := tableName.FindStringSubmatch(line)
+				if m == nil {
 					continue
 				}
 				lineNo := i + 1
-				if _, ok := allowedTableCalls[rel+":"+itoa(lineNo)]; ok {
+				if _, ok := allowedTableCalls[rel+":"+m[1]]; ok {
 					continue
 				}
 				if statementHasEvidence(lines, i) {
@@ -98,7 +138,7 @@ func TestNoUnscopedTableQueries(t *testing.T) {
 					"(the plugin keys off the model type), so the statement runs unscoped across tenants. "+
 					"Add an explicit `tenant_id = ?` clause, or if the table has no tenant column add "+
 					"%q to allowedTableCalls in table_guard_test.go with a justification.",
-					rel, lineNo, rel+":"+itoa(lineNo))
+					rel, lineNo, rel+":"+m[1])
 			}
 			return nil
 		})
