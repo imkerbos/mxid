@@ -37,6 +37,14 @@ and more via a signed license.
 
 ![MXID portal — one launcher for every app, across OIDC / SAML / CAS / form-fill](docs/screenshots/portal-apps.png)
 
+<br>
+
+![Console dashboard — user, app and authentication health at a glance](docs/screenshots/console-dashboard-en.png)
+
+<br>
+
+![Application management — OIDC, SAML and CAS apps side by side, with protocol, status and environment on every card](docs/screenshots/console-apps-en.png)
+
 </div>
 
 ## Highlights
