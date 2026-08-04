@@ -771,18 +771,15 @@ export default function GroupsPage() {
                     placeholder="engineering / devops / admins ..."
                   />
                 </Field>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-ink">{t('groups.createModal.desc')}</label>
+                <Field label={t('groups.createModal.desc')} hint={t('groups.createModal.descHint')}>
                   <textarea
                     value={createForm.description}
                     onChange={(e) => setCreateForm((f) => ({ ...f, description: e.target.value }))}
                     className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                     rows={3}
                   />
-                  <p className="mt-1 text-xs text-faint">{t('groups.createModal.descHint')}</p>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-ink">{t('groups.createModal.groupType')}</label>
+                </Field>
+                <Field label={t('groups.createModal.groupType')}>
                   <div className="flex gap-3">
                     <label className={cn('flex flex-1 cursor-pointer items-start gap-2 rounded-lg border p-3', createType === GroupType.Static ? 'border-primary bg-primary/5' : 'border-border')}>
                       <input type="radio" name="group_type" checked={createType === GroupType.Static} onChange={() => setCreateType(GroupType.Static)} className="mt-0.5" />
@@ -799,7 +796,7 @@ export default function GroupsPage() {
                       </div>
                     </label>
                   </div>
-                </div>
+                </Field>
                 {createType === GroupType.Dynamic && (
                   <RuleEditor value={createRule} onChange={setCreateRule} />
                 )}
@@ -829,8 +826,10 @@ export default function GroupsPage() {
             >
               <h3 className="mb-4 text-lg font-semibold">{t('groups.editModal.title')}</h3>
               <form onSubmit={handleEdit} className="space-y-4">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-ink">{t('groups.createModal.nameRequired')}</label>
+                <Field
+                  label={t('groups.createModal.nameRequired')}
+                  required hint={t('groups.editModal.nameHintEditable')}
+                >
                   <input
                     type="text"
                     value={editForm.name}
@@ -838,38 +837,33 @@ export default function GroupsPage() {
                     className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                     required
                   />
-                  <p className="mt-1 text-xs text-faint">{t('groups.editModal.nameHintEditable')}</p>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-ink">{t('groups.editModal.code')}</label>
+                </Field>
+                <Field
+                  label={t('groups.editModal.code')}
+                  hint={<>{t('groups.editModal.codeImmutableHint')}
+                    <span className="text-amber-600">{t('groups.editModal.codeImmutableLabel')}</span>
+                    {t('groups.editModal.codeImmutableTail')}</>}
+                >
                   <input
                     type="text"
                     value={editGroup.code}
                     disabled
                     className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-muted"
                   />
-                  <p className="mt-1 text-xs text-faint">
-                    {t('groups.editModal.codeImmutableHint')}
-                    <span className="text-amber-600">{t('groups.editModal.codeImmutableLabel')}</span>
-                    {t('groups.editModal.codeImmutableTail')}
-                  </p>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-ink">{t('groups.createModal.desc')}</label>
+                </Field>
+                <Field label={t('groups.createModal.desc')} hint={t('groups.editModal.descHint')}>
                   <textarea
                     value={editForm.description}
                     onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
                     className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                     rows={3}
                   />
-                  <p className="mt-1 text-xs text-faint">{t('groups.editModal.descHint')}</p>
-                </div>
+                </Field>
                 {editGroup.type === GroupType.Dynamic && (
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-ink">
-                      <Zap className="mr-1 inline h-3.5 w-3.5 text-amber-500" />
-                      {t('groups.editModal.dynamicRule')}
-                    </label>
+                  <Field
+                    label={<><Zap
+                    className="mr-1 inline h-3.5 w-3.5 text-amber-500" /> {t('groups.editModal.dynamicRule')}</>} hint={t('groups.editModal.ruleSavedHint')}
+                  >
                     {editRule === null ? (
                       <div className="rounded-lg border border-border bg-surface-muted p-3 text-center text-xs text-faint">
                         <Loader2 className="mx-auto h-4 w-4 animate-spin" />
@@ -877,8 +871,7 @@ export default function GroupsPage() {
                     ) : (
                       <RuleEditor value={editRule} onChange={setEditRule} />
                     )}
-                    <p className="mt-1 text-xs text-faint">{t('groups.editModal.ruleSavedHint')}</p>
-                  </div>
+                  </Field>
                 )}
                 <div className="flex justify-end gap-3 pt-2">
                   <Button type="button" variant="secondary" onClick={() => setEditGroup(null)}>
@@ -919,8 +912,7 @@ export default function GroupsPage() {
               </div>
 
               <div className="space-y-3">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-ink">{t('groups.addMemberModal.searchLabel')}</label>
+                <Field label={t('groups.addMemberModal.searchLabel')}>
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
                     <input
@@ -935,7 +927,7 @@ export default function GroupsPage() {
                       <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-faint" />
                     )}
                   </div>
-                </div>
+                </Field>
 
                 {/* Search results */}
                 <div className="max-h-64 overflow-y-auto">

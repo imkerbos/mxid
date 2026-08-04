@@ -395,11 +395,10 @@ function ChangePasswordSection({ totpActive }: { totpActive: boolean }) {
           autoComplete="new-password"
         />
         {totpActive && (
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-ink">
-              {t('account.pwd.mfaCode')}
-              <span className="ml-2 text-xs text-faint">{t('account.pwd.mfaCodeHint')}</span>
-            </label>
+          <Field
+            label={<>{t('account.pwd.mfaCode')}
+            <span className="ml-2 text-xs text-faint">{t('account.pwd.mfaCodeHint')}</span></>}
+          >
             <input
               inputMode="numeric"
               pattern="[0-9]*"
@@ -409,7 +408,7 @@ function ChangePasswordSection({ totpActive }: { totpActive: boolean }) {
               placeholder="••••••"
               className="w-full rounded-lg border border-border px-3 py-2 text-center text-lg font-mono tracking-widest outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
             />
-          </div>
+          </Field>
         )}
         {error && (
           <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
@@ -454,11 +453,7 @@ function PasswordField({
   hint?: string
 }) {
   return (
-    <div>
-      <label className="mb-1.5 block text-sm font-medium text-ink">
-        {label}
-        {hint && <span className="ml-2 text-xs text-faint">{hint}</span>}
-      </label>
+    <Field label={<>{label} {hint && <span className="ml-2 text-xs text-faint">{hint}</span>}</>}>
       <div className="relative">
         <input
           type={show ? 'text' : 'password'}
@@ -475,7 +470,7 @@ function PasswordField({
           {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
         </button>
       </div>
-    </div>
+    </Field>
   )
 }
 

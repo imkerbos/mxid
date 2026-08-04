@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Console and portal forms now use one label style throughout. 57 hand-rolled
+  label/control/hint blocks moved onto the shared `Field` primitive, which draws
+  the required marker, associates the label with its control and carries
+  `aria-invalid` / `aria-describedby` — none of which the hand-rolled blocks had.
+  Labels are a step larger and darker than before, matching the forms that
+  already used the primitive. The dark sign-in screens keep their own labels:
+  they are a different surface, and `Field`'s light-surface styling would break
+  them.
 - `make seed-demo` now gives every demo app a description and enrols a second
   factor for most demo users. Without them the console and portal read
   "No description" on every card and the dashboard reported "MFA coverage 0.0%",

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Plus, RotateCcw, Trash2, Loader2, Pencil, ShieldCheck, ShieldOff } from 'lucide-react'
 import { userApi, formatDate, statusLabel, statusColor, cn, useTranslation, useUrlState, UserStatus } from '@mxid/shared'
-import { pageMotion, Button, Card, DataTable, Modal, Pagination, SearchInput, Select, FilterBar, ConfirmDialog } from '@mxid/shared/ui'
+import { Field, pageMotion, Button, Card, DataTable, Modal, Pagination, SearchInput, Select, FilterBar, ConfirmDialog } from '@mxid/shared/ui'
 import type { Column } from '@mxid/shared/ui'
 import type { User, PaginatedData, UpdateUserRequest } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
@@ -336,8 +336,10 @@ export default function UsersPage() {
       {/* Create User Modal */}
       <Modal open={showCreate} title={t('users.list.createModal.title')} onClose={() => setShowCreate(false)}>
             <form onSubmit={handleCreate} className="space-y-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">{t('users.list.createModal.username')}</label>
+              <Field
+                label={t('users.list.createModal.username')}
+                required hint={<>{t('users.list.createModal.usernameHintPrefix')}<code className="rounded bg-surface-muted px-1">zhangsan</code>{t('users.list.createModal.usernameHintMid')}<span className="text-amber-600">{t('users.list.createModal.usernameHintImmutable')}</span></>}
+              >
                 <input
                   type="text"
                   value={createForm.username}
@@ -345,12 +347,11 @@ export default function UsersPage() {
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   required
                 />
-                <p className="mt-1 text-xs text-faint">
-                  {t('users.list.createModal.usernameHintPrefix')}<code className="rounded bg-surface-muted px-1">zhangsan</code>{t('users.list.createModal.usernameHintMid')}<span className="text-amber-600">{t('users.list.createModal.usernameHintImmutable')}</span>
-                </p>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">{t('users.list.createModal.password')}</label>
+              </Field>
+              <Field
+                label={t('users.list.createModal.password')}
+                required hint={t('users.list.createModal.passwordHint')}
+              >
                 <input
                   type="password"
                   value={createForm.password}
@@ -358,28 +359,26 @@ export default function UsersPage() {
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   required
                 />
-                <p className="mt-1 text-xs text-faint">{t('users.list.createModal.passwordHint')}</p>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">{t('users.list.createModal.displayName')}</label>
+              </Field>
+              <Field
+                label={t('users.list.createModal.displayName')}
+                hint={t('users.list.createModal.displayNameHint')}
+              >
                 <input
                   type="text"
                   value={createForm.display_name}
                   onChange={(e) => setCreateForm((f) => ({ ...f, display_name: e.target.value }))}
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                 />
-                <p className="mt-1 text-xs text-faint">{t('users.list.createModal.displayNameHint')}</p>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">{t('users.list.createModal.email')}</label>
+              </Field>
+              <Field label={t('users.list.createModal.email')} hint={t('users.list.createModal.emailHint')}>
                 <input
                   type="email"
                   value={createForm.email}
                   onChange={(e) => setCreateForm((f) => ({ ...f, email: e.target.value }))}
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                 />
-                <p className="mt-1 text-xs text-faint">{t('users.list.createModal.emailHint')}</p>
-              </div>
+              </Field>
               <div className="flex justify-end gap-3 pt-2">
                 <Button type="button" variant="secondary" onClick={() => setShowCreate(false)}>
                   {t('users.list.createModal.cancel')}
@@ -400,8 +399,10 @@ export default function UsersPage() {
       >
         {resetTarget && (
             <form onSubmit={handleResetPassword} className="space-y-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">{t('users.list.resetModal.newPassword')}</label>
+              <Field
+                label={t('users.list.resetModal.newPassword')}
+                required hint={t('users.list.resetModal.newPasswordHint')}
+              >
                 <input
                   type="password"
                   value={newPassword}
@@ -410,8 +411,7 @@ export default function UsersPage() {
                   required
                   autoFocus
                 />
-                <p className="mt-1 text-xs text-faint">{t('users.list.resetModal.newPasswordHint')}</p>
-              </div>
+              </Field>
               <div className="flex justify-end gap-3 pt-2">
                 <Button
                   type="button"
@@ -439,18 +439,21 @@ export default function UsersPage() {
               </div>
             ) : editTarget ? (
               <form onSubmit={handleEdit} className="space-y-4">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-ink">{t('users.list.editModal.username')}</label>
+                <Field
+                  label={t('users.list.editModal.username')}
+                  hint={<>{t('users.list.editModal.usernameHintPrefix')}<span className="text-amber-600">{t('users.list.editModal.usernameHintImmutable')}</span></>}
+                >
                   <input
                     type="text"
                     value={editTarget.username}
                     disabled
                     className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-muted outline-none"
                   />
-                  <p className="mt-1 text-xs text-faint">{t('users.list.editModal.usernameHintPrefix')}<span className="text-amber-600">{t('users.list.editModal.usernameHintImmutable')}</span></p>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-ink">{t('users.list.editModal.displayName')}</label>
+                </Field>
+                <Field
+                  label={t('users.list.editModal.displayName')}
+                  hint={t('users.list.editModal.displayNameHint')}
+                >
                   <input
                     type="text"
                     value={editForm.display_name}
@@ -458,10 +461,8 @@ export default function UsersPage() {
                     placeholder={t('users.list.editModal.displayNamePlaceholder')}
                     className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   />
-                  <p className="mt-1 text-xs text-faint">{t('users.list.editModal.displayNameHint')}</p>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-ink">{t('users.list.editModal.email')}</label>
+                </Field>
+                <Field label={t('users.list.editModal.email')} hint={t('users.list.editModal.emailHint')}>
                   <input
                     type="email"
                     value={editForm.email}
@@ -469,10 +470,8 @@ export default function UsersPage() {
                     placeholder={t('users.list.editModal.emailPlaceholder')}
                     className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   />
-                  <p className="mt-1 text-xs text-faint">{t('users.list.editModal.emailHint')}</p>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-ink">{t('users.list.editModal.phone')}</label>
+                </Field>
+                <Field label={t('users.list.editModal.phone')} hint={t('users.list.editModal.phoneHint')}>
                   <input
                     type="tel"
                     value={editForm.phone}
@@ -480,10 +479,11 @@ export default function UsersPage() {
                     placeholder={t('users.list.editModal.phonePlaceholder')}
                     className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   />
-                  <p className="mt-1 text-xs text-faint">{t('users.list.editModal.phoneHint')}</p>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-ink">{t('users.list.editModal.status')}</label>
+                </Field>
+                <Field
+                  label={t('users.list.editModal.status')}
+                  hint={<><strong>{t('users.list.editModal.statusActive')}</strong>{t('users.list.editModal.statusHintActiveDesc')}<strong>{t('users.list.editModal.statusLocked')}</strong>{t('users.list.editModal.statusHintLockedDesc')}<strong>{t('users.list.editModal.statusDisabled')}</strong>{t('users.list.editModal.statusHintDisabledDesc')}<strong>{t('users.list.editModal.statusPending')}</strong>{t('users.list.editModal.statusHintPendingDesc')}</>}
+                >
                   <select
                     value={editForm.status}
                     onChange={(e) => setEditForm((f) => ({ ...f, status: Number(e.target.value) }))}
@@ -494,10 +494,7 @@ export default function UsersPage() {
                     <option value={3}>{t('users.list.editModal.statusDisabled')}</option>
                     <option value={4}>{t('users.list.editModal.statusPending')}</option>
                   </select>
-                  <p className="mt-1 text-xs text-faint">
-                    <strong>{t('users.list.editModal.statusActive')}</strong>{t('users.list.editModal.statusHintActiveDesc')}<strong>{t('users.list.editModal.statusLocked')}</strong>{t('users.list.editModal.statusHintLockedDesc')}<strong>{t('users.list.editModal.statusDisabled')}</strong>{t('users.list.editModal.statusHintDisabledDesc')}<strong>{t('users.list.editModal.statusPending')}</strong>{t('users.list.editModal.statusHintPendingDesc')}
-                  </p>
-                </div>
+                </Field>
                 <div className="flex justify-end gap-3 pt-2">
                   <Button type="button" variant="secondary" onClick={() => setEditTarget(null)}>
                     {t('users.list.editModal.cancel')}
