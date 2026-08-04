@@ -736,7 +736,9 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 			OIDCIDTokenTTL:      pd.OIDCIDTokenTTLSeconds,
 			SAMLAssertionTTL:    pd.SAMLAssertionTTLSeconds,
 			CASTicketTTL:        pd.CASTicketTTLSeconds,
-			DefaultSubject:      pd.DefaultSubjectStrategy,
+			OIDCSubject:         pd.DefaultSubjectStrategy,
+			SAMLSubject:         pd.SAMLSubjectStrategy,
+			CASSubject:          pd.CASSubjectStrategy,
 		}
 	})
 	auditModule := audit.Register(a)

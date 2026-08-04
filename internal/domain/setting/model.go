@@ -172,13 +172,29 @@ type LoginMethods struct {
 }
 
 // ProtocolDefaults — boilerplate values for new app creation.
+//
+// The subject strategy is per protocol because the three protocols put the
+// value in places with different audiences. An OIDC `sub` is a machine
+// identifier: it must be opaque and must not change when a user is renamed, so
+// persistent_id is right. A CAS `cas:user` and a SAML NameID are the account
+// name the downstream application creates and shows to people — JumpServer,
+// Redmine and Zabbix all key local accounts off it — so a snowflake id there
+// produces accounts literally named "800000000000000001".
+//
+// One shared default served both, and the OIDC-shaped answer won. Every other
+// field in this struct is already per protocol; the subject strategy now is too.
 type ProtocolDefaults struct {
-	OIDCAccessTokenTTLSeconds  int    `json:"oidc_access_token_ttl_seconds"`
-	OIDCRefreshTokenTTLSeconds int    `json:"oidc_refresh_token_ttl_seconds"`
-	OIDCIDTokenTTLSeconds      int    `json:"oidc_id_token_ttl_seconds"`
-	DefaultSubjectStrategy     string `json:"default_subject_strategy"`
-	SAMLAssertionTTLSeconds    int    `json:"saml_assertion_ttl_seconds"`
-	CASTicketTTLSeconds        int    `json:"cas_ticket_ttl_seconds"`
+	OIDCAccessTokenTTLSeconds  int `json:"oidc_access_token_ttl_seconds"`
+	OIDCRefreshTokenTTLSeconds int `json:"oidc_refresh_token_ttl_seconds"`
+	OIDCIDTokenTTLSeconds      int `json:"oidc_id_token_ttl_seconds"`
+	// DefaultSubjectStrategy is the OIDC default. The name is kept so stored
+	// settings rows keep unmarshalling; renaming it would silently reset every
+	// deployment that has customised it.
+	DefaultSubjectStrategy  string `json:"default_subject_strategy"`
+	SAMLSubjectStrategy     string `json:"saml_subject_strategy"`
+	CASSubjectStrategy      string `json:"cas_subject_strategy"`
+	SAMLAssertionTTLSeconds int    `json:"saml_assertion_ttl_seconds"`
+	CASTicketTTLSeconds     int    `json:"cas_ticket_ttl_seconds"`
 }
 
 // SMS — SMS provider config. Secret stored AES-encrypted.
