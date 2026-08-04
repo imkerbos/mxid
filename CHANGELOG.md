@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   second unused copy (`FormField`) has been removed as well.
 
 ### Security
+- `brace-expansion` pinned to a patched version (GHSA-mh99-v99m-4gvg). It is a
+  dev-only transitive dependency so nothing reached a user, but a lockfile
+  carrying a known-vulnerable version shows up on every scan.
 - Failed logins against a username that matches no account now count towards the
   per-IP brute-force limit. They were skipped entirely, so a scripted scan over
   invented usernames incremented nothing: no captcha was ever demanded and no IP
