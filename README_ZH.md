@@ -21,6 +21,9 @@
 
 [English](README.md) · **简体中文**
 
+<sub>规范仓库:**[imkerbos/mxid](https://github.com/imkerbos/mxid)** —— issue 与 PR 请提到这里。
+同时镜像至 [matrixplusio/mxid](https://github.com/matrixplusio/mxid),两边代码一致。</sub>
+
 </div>
 
 ---

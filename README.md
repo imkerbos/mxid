@@ -21,6 +21,9 @@ One login portal, one admin console, one protocol gateway — speak **OIDC**,
 
 **English** · [简体中文](README_ZH.md)
 
+<sub>Canonical repository: **[imkerbos/mxid](https://github.com/imkerbos/mxid)** — file issues and pull requests here.
+Also mirrored to [matrixplusio/mxid](https://github.com/matrixplusio/mxid); both hold the same code.</sub>
+
 </div>
 
 ---
