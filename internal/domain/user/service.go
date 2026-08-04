@@ -831,7 +831,15 @@ func (s *Service) LockUser(ctx context.Context, id int64, reason string, actorID
 	s.eventBus.Publish(ctx, event.Event{
 		Type: event.UserLocked,
 		Payload: map[string]any{
-			"user_id":  id,
+			"user_id": id,
+			// The account's new status, reported so subscribers can tell an
+			// administrative lock from the brute-force limiter's — the limiter
+			// publishes the same event type but never touches the column, so
+			// only the administrative paths carry `status`. Session revocation
+			// keys off exactly that (see revokeUserSessions in app/run.go);
+			// revoking on a policy lockout would let an attacker throw someone
+			// out of a live session by failing logins against their username.
+			"status":   StatusLocked,
 			"reason":   reason,
 			"source":   "admin",
 			"actor_id": actorID,

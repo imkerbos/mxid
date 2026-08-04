@@ -124,9 +124,16 @@ Dev runs behind a dev nginx on **port 3500** (hot-reload, not for production):
 | Surface | URL |
 |---------|-----|
 | Portal (end users) | <http://localhost:3500/> |
-| Console (admin) | <http://localhost:3500/admin/> — default `admin` / `admin123` |
+| Console (admin) | <http://localhost:3500/admin/> — `admin` / `admin123` **(development only)** |
 | API | <http://localhost:3500/api/v1/...> |
 | OIDC discovery | <http://localhost:3500/protocol/oidc/.well-known/openid-configuration> |
+
+> **That password does not exist in production.** It is seeded by a migration
+> whose first line writes it in plaintext, in this public repository, so a
+> release build refuses to serve with it: set `MXID_BOOTSTRAP_ADMIN_PASSWORD`
+> before the first start and the account takes that password, or leave it unset
+> and the account is locked at startup. Either way a password change is demanded
+> at first sign-in. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 **Production** is a different path: pull the released images and run behind nginx
 on **80 / 443** (TLS), via `docker compose`. Paths are identical — only the host

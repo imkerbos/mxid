@@ -31,6 +31,7 @@ export const CODE_CAPTCHA_INVALID = 40004
 export const CODE_STEP_UP_REQUIRED = 40330
 export const CODE_MFA_ENROLL_REQUIRED = 40331
 export const CODE_EE_FEATURE_REQUIRED = 40332
+export const CODE_PASSWORD_CHANGE_REQUIRED = 40333
 
 // Step-up handler: the console registers a callback (a modal) that resolves
 // once the user passes an MFA challenge. The 403/step_up_required interceptor
@@ -142,6 +143,14 @@ export function createApiClient(baseURL: string): AxiosInstance {
       // enrollment; the SPA listens for this and navigates.
       if (status === 403 && code === CODE_MFA_ENROLL_REQUIRED) {
         window.dispatchEvent(new CustomEvent('mxid:mfa-enroll-required'))
+      }
+
+      // The account owes a password change — an admin reset it, or it still
+      // carries the one it was seeded with. Every other route 403s until it is
+      // done, so the SPA renders only the change screen rather than a wall of
+      // failed requests.
+      if (status === 403 && code === CODE_PASSWORD_CHANGE_REQUIRED) {
+        window.dispatchEvent(new CustomEvent('mxid:password-change-required'))
       }
 
       // Surface the backend's structured error. On any non-2xx HTTP status the

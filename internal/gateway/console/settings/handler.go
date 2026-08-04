@@ -340,9 +340,25 @@ func (h *Handler) getAuditPolicy(c *gin.Context) {
 	v := setting.DefaultAuditPolicy()
 	h.genericGet(c, setting.KeyAuditPolicy, &v)
 }
+// putAuditPolicy is the one settings write that does not go straight through
+// genericPut: shortening audit retention destroys evidence, so the deployment
+// gets to set a floor beneath which an administrator cannot go. The refusal
+// names the floor — a bare "invalid value" would leave them guessing.
 func (h *Handler) putAuditPolicy(c *gin.Context) {
 	var v setting.AuditPolicy
-	h.genericPut(c, setting.KeyAuditPolicy, &v)
+	if err := c.ShouldBindJSON(&v); err != nil {
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
+		return
+	}
+	if err := h.service.ValidateAuditPolicy(v); err != nil {
+		response.BadRequest(c, errcode.NumInvalidInput, err.Error())
+		return
+	}
+	if err := h.service.Set(c.Request.Context(), setting.KeyAuditPolicy, h.tenantID(c), &v, h.userID(c)); err != nil {
+		response.InternalError(c, "", err)
+		return
+	}
+	response.OK(c, gin.H{"saved": true})
 }
 
 func (h *Handler) getOffboardingWebhook(c *gin.Context) {

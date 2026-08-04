@@ -83,6 +83,7 @@ nginx pod 持有 SPA 静态(烤进 `mxid-web` 镜像);后端 pod 是无状态 Go
 | `MXID_CRYPTO_AUDIT_ANCHOR_KEY` | 签名外部 Merkle 锚的 Ed25519 seed。`audit.anchorSink.enabled`(默认开)时必填。若要轮换,须把旧公钥保留在 `crypto.audit_anchor_retired_pubkeys` 里,否则旧锚验不过。 | `openssl rand -base64 32` |
 | `POSTGRES_PASSWORD`(→ `MXID_DATABASE_PASSWORD`) | PostgreSQL 密码 | 强随机 |
 | `REDIS_PASSWORD`(→ `MXID_REDIS_PASSWORD`) | Redis 密码 | 强随机 |
+| `MXID_BOOTSTRAP_ADMIN_PASSWORD` | 种子 `admin` 账户的初始口令。迁移 000009 给该账户设的口令明文写在那个迁移文件里、在公开仓库中——release 构建不会带着它对外服务。**不设不等于沿用默认口令,而是启动时锁掉该账户** | 强随机;无论哪种情况首次登录都会强制改密 |
 
 `release` 模式还要求 `session.cookie_secure: true`(HTTPS)。OIDC 令牌签名密钥由 app 生成并加密(KEK)存储 —— 无需密钥环境变量。
 
@@ -100,6 +101,14 @@ nginx pod 持有 SPA 静态(烤进 `mxid-web` 镜像);后端 pod 是无状态 Go
 | `MXID_CRYPTO_AUDIT_ANCHOR_RETIRED_PUBKEYS` | — | — | 已退役的锚签名 ed25519 公钥(base64,逗号分隔);轮换 `MXID_CRYPTO_AUDIT_ANCHOR_KEY` 时把旧公钥加进来,旧锚才验得过 |
 | `MXID_AUDIT_ANCHOR_ENABLED` | — | `true` | 开/关审计锚。设 `false` 是显式退出;否则 release 模式要求锚密钥 |
 | `MXID_AUDIT_ANCHOR_SINK_PATH` | — | *(空)* | 可选:把签名锚点额外镜像到数据库之外的文件。留空=锚点仅作数据库检查点。只有当该路径既在数据库爆炸半径之外、又被所有副本共享时才有意义——锚点由持有 leader 锁的副本写入,per-pod 卷会让锚点散落各处并使验证失败 |
+| `MXID_AUDIT_MIN_RETENTION_DAYS` | — | `180` | 审计留存的下限,管理员不能设到它以下。留存是控制台里可运行时修改的,而此前没有任何校验,任何持有 `settings.manage` 的人都能悄悄把它调到一周——这是一种不留痕迹地销毁证据的方式。`0` 表示不设下限。已存的低于下限的值会在清理任务读取策略时被抬到下限,所以设置或提高下限**只会多留、绝不会多删**。默认 180 天远低于 365 天的留存默认值,同时对齐等保 2.0 等法规要求的六个月最短留存 |
+| `MXID_BOOTSTRAP_ADMIN_PASSWORD` | **release 必填** | — | 种子 `admin` 账户的初始口令。迁移 000009 给该账户设的口令,明文就写在那个迁移文件的第一行、在公开仓库里——所以 release 部署不会带着它对外服务。设了此变量,账户就用你给的口令;**不设则启动时直接锁掉该账户**(其他管理员账户不受影响,补上变量重启即解锁)。两种情况下首次登录都仍会强制改密,因为这个值通常躺在部署清单里,能看到它的人比该知道口令的人多 |
+| `MXID_AUDIT_FORWARD_ADDR` | — | *(空)* | syslog 采集器的 `host:port`,每条审计记录写入时同步镜像过去。防篡改链能证明没人改过历史,但拿得到数据库的人可以把整张表删掉——链对此无能为力,**离机副本才是能活下来的那份**。这也正是"日志集中管控"类要求(含等保 2.0)要的东西。留空=关闭外发 |
+| `MXID_AUDIT_FORWARD_PROTO` | — | `tcp` | `udp` / `tcp` / `tcp+tls`。UDP 无法告诉你记录已经不再到达,而"静默失效"恰恰是审计镜像最不能有的失败模式。跨不可控链路请用 `tcp+tls`——记录里带用户名和 IP |
+| `MXID_AUDIT_FORWARD_FACILITY` | — | `13` | syslog facility,13 = "log audit",采集器按它分流 |
+| `MXID_AUDIT_FORWARD_QUEUE_SIZE` | — | `4096` | 外发允许落后多少条后开始丢弃。**外发绝不阻塞审计写入**——它跑在与所有写接口同步的路径上,采集器卡住若能阻塞就会拖垮整个服务。溢出即丢弃并计入 `mxid_audit_forward_total{result="dropped"}`;记录本身仍在数据库里,丢的只是镜像的完整性 |
+| `MXID_AUDIT_FORWARD_TLS_SERVER_NAME` | — | *(空)* | 用 IP 连 `tcp+tls` 时,证书里要核对的名字 |
+| `MXID_AUDIT_FORWARD_TLS_INSECURE_SKIP_VERIFY` | — | `false` | 跳过采集器证书校验。这会把加密降级成"混淆",仅限可信网络内的自签名采集器 |
 | `POSTGRES_PASSWORD` | ✅ | — | DB 密码 |
 | `REDIS_PASSWORD` | ✅ | — | Redis 密码 |
 | `MXID_SERVER_ALLOWED_ORIGINS` | ✅ | — | CORS/CSRF 白名单,逗号分隔(如 `https://id.example.com`)。启动时定 |
@@ -695,12 +704,13 @@ CIDR,应用才会从 `X-Forwarded-For` 解析真实客户端 IP —— 否则所
 - [ ] `MXID_CRYPTO_KEY_ENCRYPTION_KEY` + DB/Redis 密码强、唯一、私密(非 dev 占位)。
 - [ ] PostgreSQL `max_connections` ≥ Go `database.max_open_conns` × 副本数。
 - [ ] Redis 持久化(AOF `everysec` 或合适间隔的 RDB)。
-- [ ] 配 DB 备份(`pg_dump` / WAL 归档)。
+- [ ] 配 DB 备份,并且**至少完整还原验证过一次**(`make backup` 后 `make backup-verify`,或 `scripts/backup.sh verify <文件>`)。没还原验证过的备份不算备份。
+- [ ] KEK(`MXID_CRYPTO_KEY_ENCRYPTION_KEY`)**与数据库转储分开备份** —— 它不在转储里,没有它,所有加密字段恢复出来都是无法解读的字节。
 - [ ] **控制台 → 设置 → 外部 URL** 设为规范 https URL。
 - [ ] **控制台 → 设置 → SMTP** 配好且测试邮件成功。
 - [ ] **控制台 → 设置 → 安全策略** 复核(最小长度、历史、锁定、验证码阈值)。
 - [ ] **控制台 → 设置 → 审计策略** 有合理 `retention_days` +(可选)`alert_webhook_url`。
-- [ ] 首登管理员密码已改。MFA 已绑。
+- [ ] 首次启动前已设 `MXID_BOOTSTRAP_ADMIN_PASSWORD`(否则 `admin` 账户处于锁定状态——补上变量重启即解锁)。首次登录的强制改密已完成,MFA 已绑。
 - [ ] 应用访问策略已设(除非有意,否则没有应用是 `allow public`)。
 - [ ] 在反代后则设了 `trusted_proxies`。
 - [ ] **(Kubernetes)** 每个后端副本有唯一 `MXID_SNOWFLAKE_NODE_ID`(用 StatefulSet ordinal 或 Redis 租约)。

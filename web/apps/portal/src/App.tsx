@@ -1,6 +1,15 @@
 import { useEffect } from 'react'
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
-import { authApi, useAuthStore, useBootstrap, useTheme, currentReturnPath, safeReturnPath } from '@mxid/shared'
+import {
+  authApi,
+  useAuthStore,
+  useBootstrap,
+  useTheme,
+  currentReturnPath,
+  safeReturnPath,
+  ForcePasswordChange,
+  portalApi,
+} from '@mxid/shared'
 import { resumeSSOIfAny } from './lib/sso'
 import MainLayout from './components/layout/MainLayout'
 import LoginPage from './pages/login'
@@ -17,7 +26,16 @@ import ResetPasswordPage from './pages/password/reset'
 import ForceMfaEnroll from './components/ForceMfaEnroll'
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { user, loading, setUser, clear, mfaEnrollRequired, setMfaEnrollRequired } = useAuthStore()
+  const {
+    user,
+    loading,
+    setUser,
+    clear,
+    mfaEnrollRequired,
+    setMfaEnrollRequired,
+    passwordChangeRequired,
+    setPasswordChangeRequired,
+  } = useAuthStore()
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -59,6 +77,12 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('mxid:mfa-enroll-required', onEnroll)
   }, [setMfaEnrollRequired])
 
+  useEffect(() => {
+    const onPwd = () => setPasswordChangeRequired(true)
+    window.addEventListener('mxid:password-change-required', onPwd)
+    return () => window.removeEventListener('mxid:password-change-required', onPwd)
+  }, [setPasswordChangeRequired])
+
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -71,6 +95,18 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
   // Block everything behind mandatory MFA enrollment until a factor is bound.
   if (mfaEnrollRequired) return <ForceMfaEnroll />
+
+  // An administrator reset this account's password; every other portal call
+  // 403s until a new one is chosen.
+  if (passwordChangeRequired) {
+    return (
+      <ForcePasswordChange
+        changePassword={(oldPwd, newPwd) => portalApi.changePassword(oldPwd, newPwd)}
+        logout={() => authApi.portalLogout()}
+        toLogin={() => navigate('/login', { replace: true })}
+      />
+    )
+  }
 
   return <>{children}</>
 }

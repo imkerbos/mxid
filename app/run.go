@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"flag"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"github.com/imkerbos/mxid/internal/domain/appaccess"
 	"github.com/imkerbos/mxid/internal/domain/approle"
 	"github.com/imkerbos/mxid/internal/domain/audit"
+	"github.com/imkerbos/mxid/internal/domain/auditalert"
 	"github.com/imkerbos/mxid/internal/domain/authn"
 	"github.com/imkerbos/mxid/internal/domain/consent"
 	"github.com/imkerbos/mxid/internal/domain/dashboard"
@@ -44,6 +46,7 @@ import (
 	"github.com/imkerbos/mxid/internal/protocol/cas"
 	"github.com/imkerbos/mxid/internal/protocol/resolver"
 	"github.com/imkerbos/mxid/internal/protocol/saml"
+	"github.com/imkerbos/mxid/pkg/auditsink"
 	"github.com/imkerbos/mxid/pkg/authz"
 	"github.com/imkerbos/mxid/pkg/crypto"
 	"github.com/imkerbos/mxid/pkg/dlock"
@@ -144,6 +147,17 @@ func Run() {
 		a.Logger.Fatal("install audit capture plugin", zap.Error(err))
 	}
 
+	// Replace the seeded administrator password before anything can serve a
+	// request. Migration 000009 seeds `admin` with a password written in
+	// plaintext in that migration, in a public repository — so a release build
+	// swaps it for one nobody else knows and reports it once. A failure here is
+	// fatal: continuing would mean serving with a credential the whole internet
+	// already has.
+	if err := bootstrap.SecureSeededAdmin(context.Background(), a.DB, a.Logger,
+		a.Config.Server.IsRelease(), os.Getenv(bootstrap.BootstrapAdminPasswordEnv)); err != nil {
+		a.Logger.Fatal("secure seeded admin credential", zap.Error(err))
+	}
+
 	// Public portal group MUST be created before registerModules so the
 	// password-reset / magic-link / sms-otp routes wired inside it have a
 	// non-nil group to mount on.
@@ -211,6 +225,10 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	// branding, etc). Initialized first so other modules can read defaults.
 	settingRepo := setting.NewRepositoryWithIDGen(a.DB, a.IDGen)
 	settingService = setting.NewService(settingRepo, a.MasterKey)
+	// The floor beneath which an administrator cannot shorten audit retention.
+	// Wired before anything can read the policy so the retention cron and the
+	// console write path see the same number.
+	settingService.SetAuditRetentionFloor(a.Config.Audit.RetentionFloorDays())
 	settingService.SetEventBus(a.EventBus)
 	settingService.SetRedisInvalidation(workerCtx, a.Redis)
 	mailerSvc = mailer.New(settingService)
@@ -352,6 +370,10 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	authnModule := authn.Register(a, sessionMgr, authQuerier, userQuerier, mfaVerifier)
 	authnModule.Engine.SetLoginRecorder(newUserLoginRecorderAdapter(userModule, a.Logger))
 
+	revokeSessions := func(ctx context.Context, userID int64, why string) {
+		revokeUserSessions(ctx, sessionMgr, a.Logger, userID, why)
+	}
+
 	// SECURITY: revoke every session for a user whose password was reset (admin
 	// reset or forgot-password recovery — both flagged admin_reset). Otherwise a
 	// stolen live session survives the canonical compromise-recovery action. The
@@ -369,9 +391,34 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 		if uid == 0 {
 			return
 		}
-		_ = sessionMgr.DeleteAllByUser(ctx, session.NamespacePortal, uid)
-		_ = sessionMgr.DeleteAllByUser(ctx, session.NamespaceConsole, uid)
+		revokeSessions(ctx, uid, "password_reset")
 	})
+
+	// SECURITY: an administrator locking or disabling an account must cut the
+	// sessions it already holds. AuthMiddleware resolves a session without ever
+	// re-reading the user's status, so without this the account keeps working
+	// until it idles out — "disable this leaver now" would not actually stop
+	// them.
+	//
+	// Only ADMINISTRATIVE state changes qualify. The brute-force limiter
+	// publishes UserLocked as well, and revoking on that would hand an attacker
+	// a denial of service: fail a few logins against someone's username and they
+	// are thrown out of the session they are actively using. The two are
+	// distinguishable because only the administrative paths report the account's
+	// new `status`; the limiter reports a `reason` and leaves the column alone.
+	//
+	// Subscribed on both event types because the status write fans out that way:
+	// UpdateStatus (and BatchAction through it) emits UserLocked or UserUpdated
+	// depending on the target status, and LockUser emits UserLocked directly.
+	revokeOnAdminStatusChange := func(ctx context.Context, ev event.Event) {
+		uid, status, ok := adminStatusRevocation(ev.Payload)
+		if !ok {
+			return
+		}
+		revokeSessions(ctx, uid, fmt.Sprintf("status_%d", status))
+	}
+	a.EventBus.Subscribe(event.UserLocked, revokeOnAdminStatusChange)
+	a.EventBus.Subscribe(event.UserUpdated, revokeOnAdminStatusChange)
 
 	// A deleted user is soft-deleted, so a fresh login is blocked by GORM's
 	// soft-delete scope on GetByUsername — but any session they already hold
@@ -387,8 +434,7 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 		if uid == 0 {
 			return
 		}
-		_ = sessionMgr.DeleteAllByUser(ctx, session.NamespacePortal, uid)
-		_ = sessionMgr.DeleteAllByUser(ctx, session.NamespaceConsole, uid)
+		revokeSessions(ctx, uid, "user_deleted")
 
 		// Strip the deleted user's derived rows so they vanish from every
 		// group/org/role member listing and hold no residual access. These join
@@ -615,6 +661,30 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	a.ConsoleGroup.Use(enrollGate(session.NamespaceConsole))
 	a.PortalGroup.Use(enrollGate(session.NamespacePortal))
 
+	// 4a-bis. Forced-password-change gate. Same shape as the enrollment gate
+	// above: a session whose owner still owes a password change reaches nothing
+	// but the change-password endpoint. This is what finally makes
+	// must_change_pwd mean something — it was written by every admin reset and
+	// read by nothing, so the reset's promise that the user "must pick a new
+	// password on their next login" was not kept. It is also what contains the
+	// seeded administrator account, whose password is published in a public
+	// repository.
+	pwdGate := func(ns string) gin.HandlerFunc {
+		return authn.PwdGateMiddleware(authn.PwdGateDeps{
+			Namespace:  ns,
+			SessionMgr: authnModule.SessionMgr,
+			MustChange: func(ctx context.Context, userID int64) (bool, error) {
+				u, err := userModule.Repo.GetByID(ctx, userID)
+				if err != nil || u == nil {
+					return false, err
+				}
+				return u.MustChangePwd, nil
+			},
+		})
+	}
+	a.ConsoleGroup.Use(pwdGate(session.NamespaceConsole))
+	a.PortalGroup.Use(pwdGate(session.NamespacePortal))
+
 	// 4b. Install authz middleware lazily — domain modules below need to be
 	// constructed first to build the binding provider, but they also need
 	// the middleware to be in place when they register their routes. The
@@ -744,6 +814,32 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	auditModule := audit.Register(a)
 	// Activate the catch-all recorder installed at the top of registerModules.
 	auditRecorder = auditModule.Service.RecordAPIRequest
+	// Mirror every audit record to an external collector, when one is
+	// configured. A misconfigured collector must not stop the service from
+	// starting — the audit log itself is unaffected, so this is a warning and
+	// the process continues without the mirror.
+	if sink, err := newAuditSink(a); err != nil {
+		a.Logger.Error("audit forwarding disabled: invalid collector configuration",
+			zap.String("collector", a.Config.Audit.Forward.Addr), zap.Error(err))
+	} else if sink != nil {
+		auditModule.Service.SetForwarder(sink)
+		a.Logger.Info("audit forwarding enabled",
+			zap.String("collector", a.Config.Audit.Forward.Addr),
+			zap.String("proto", a.Config.Audit.Forward.ResolvedProto()))
+		go func() {
+			<-workerCtx.Done()
+			// Drain what was accepted before exiting, but do not let an
+			// unreachable collector hold up the shutdown.
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			sent, dropped, failed := sink.Stats()
+			if err := sink.Close(ctx); err != nil {
+				a.Logger.Warn("audit forwarding shutdown", zap.Error(err))
+			}
+			a.Logger.Info("audit forwarding stopped",
+				zap.Int64("sent", sent), zap.Int64("dropped", dropped), zap.Int64("failed", failed))
+		}()
+	}
 	// Denormalize ActorName for events that publish only a user_id (app.launched
 	// fires from the portal middleware context, which carries no username).
 	// Best-effort: a lookup miss leaves ActorName blank but keeps actor_id.
@@ -835,6 +931,25 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	outboxRepo := outbox.NewRepository(a.DB, a.IDGen)
 	outboxWorker := outbox.NewWorker(outboxRepo, a.Logger)
 	outboxWorker.Register(offboarding.WebhookKind, newOffboardingWebhookHandler(settingService))
+	outboxWorker.Register(auditalert.Kind, newAuditAlertHandler(settingService))
+	// Turn selected audit events into outbound alerts. The console has offered
+	// the webhook and event-type fields since the settings existed and nothing
+	// read them — an administrator got a "saved" toast and no alert would ever
+	// have been sent. Delivery rides the outbox so an alert about a security
+	// event survives a restart.
+	auditModule.Service.SetAlerter(auditalert.New(
+		func(ctx context.Context, tenantID int64) (auditalert.Policy, error) {
+			pol, err := settingService.AuditPolicy(ctx, tenantID)
+			if err != nil {
+				return auditalert.Policy{}, err
+			}
+			return auditalert.Policy{
+				WebhookURL: pol.AlertWebhookURL,
+				EventTypes: pol.AlertOnEventTypes,
+			}, nil
+		},
+		outboxRepo, a.Redis, auditalert.DefaultCooldown, a.Logger,
+	))
 	// Worker is STARTED after RunInit (below) so EE features (e.g. the SCIM
 	// deprovision handler) can register their kinds first — Register must not
 	// race Run.
@@ -954,6 +1069,24 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 		}
 		hasMFA, err := authnModule.Engine.HasMFA(ctx, userID)
 		return err == nil && !hasMFA
+	})
+
+	// Forced password change, decided at the same chokepoint and for the same
+	// reason: SMS OTP, magic link and external IdP all funnel through
+	// SessionMgr.Create, and a rule each login handler has to remember to apply
+	// is one that the next login path silently skips.
+	//
+	// Fails CLOSED on a lookup error. The flag exists because an administrator
+	// reset the password or the account still carries a seeded one, and letting
+	// a database blip wave that session through is the wrong way to be wrong.
+	sessionMgr.SetPwdChangeDecider(func(ctx context.Context, tenantID, userID int64) bool {
+		u, err := userModule.Repo.GetByID(ctx, userID)
+		if err != nil {
+			a.Logger.Warn("forced-password-change lookup failed, gating the session",
+				zap.Int64("user_id", userID), zap.Error(err))
+			return true
+		}
+		return u != nil && u.MustChangePwd
 	})
 
 	// External IdP is an EE feature: the implementation lives ONLY in the
@@ -1887,6 +2020,106 @@ func buildIdentityResolver(userModule *user.Module, a *bootstrap.App) resolver.I
 // checking far more often than strictly necessary. A pass runs immediately at
 // startup so a deployment that has been down past a month boundary recovers on
 // boot instead of at the next tick.
+// newAuditSink builds the off-host audit mirror from configuration. Returns
+// (nil, nil) when no collector is configured, which is the default.
+func newAuditSink(a *bootstrap.App) (*auditsink.Sink, error) {
+	fwd := a.Config.Audit.Forward
+	proto := auditsink.ParseProto(fwd.ResolvedProto())
+
+	var tlsCfg *tls.Config
+	if proto == auditsink.ProtoTCPTLS {
+		tlsCfg = &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			ServerName: fwd.TLSServerName,
+			//nolint:gosec // Opt-in, documented as turning the transport into
+			// obfuscation, and the alternative for a self-signed collector is
+			// operators disabling TLS entirely.
+			InsecureSkipVerify: fwd.TLSInsecureSkipVerify,
+		}
+	}
+
+	sink, err := auditsink.New(auditsink.Config{
+		Addr:      fwd.Addr,
+		Proto:     proto,
+		Facility:  fwd.ResolvedFacility(),
+		Hostname:  "",
+		AppName:   "",
+		QueueSize: fwd.QueueSize,
+		TLS:       tlsCfg,
+	}, a.Logger)
+	if err != nil {
+		return nil, err
+	}
+	sink.SetMetrics(
+		func() { metrics.AuditForward("sent") },
+		func() { metrics.AuditForward("dropped") },
+		func() { metrics.AuditForward("failed") },
+	)
+	return sink, nil
+}
+
+// adminStatusRevocation decides whether a user event describes an administrator
+// putting an account into a state where it must stop working, and for whom.
+//
+// The discriminator is the presence of `status`. Both administrative paths
+// report the account's new status — UpdateStatus because that is what it wrote,
+// LockUser because it says so explicitly — while the brute-force limiter
+// publishes UserLocked without ever touching the column. That asymmetry is
+// load-bearing: revoking on a policy lockout would let an attacker throw a user
+// out of a session they are actively using, just by failing logins against
+// their username.
+func adminStatusRevocation(payload any) (userID int64, status int, ok bool) {
+	p, ok := payload.(map[string]any)
+	if !ok {
+		return 0, 0, false
+	}
+	status, ok = p["status"].(int)
+	if !ok || (status != user.StatusLocked && status != user.StatusDisabled) {
+		return 0, 0, false
+	}
+	userID, _ = p["user_id"].(int64)
+	if userID == 0 {
+		return 0, 0, false
+	}
+	return userID, status, true
+}
+
+// revokeUserSessions cuts every live session a user holds. It is the single
+// implementation behind every "this account must stop working now" event —
+// delete, admin password reset, lock, disable.
+//
+// Two things it gets right that the per-call code it replaced did not:
+//
+// The PROTOCOL namespace is revoked alongside the two SPA ones. That is the
+// shared SSO session; leaving it behind lets a revoked user keep completing
+// OIDC/SAML/CAS sign-ins to downstream applications long after console and
+// portal access is gone, which is the opposite of what revocation is for.
+//
+// The context is detached first. Event handlers run in their own goroutine, so
+// by the time one of them reaches Redis the request context that published the
+// event has usually been cancelled by Gin — go-redis honours that and refuses
+// the call, and the error used to be discarded. Revocation therefore depended
+// on winning a race with the HTTP response. Values are kept (tenant, audit
+// actor); only the cancellation is dropped.
+func revokeUserSessions(ctx context.Context, mgr *session.Manager, logger *zap.Logger, userID int64, why string) {
+	ctx = context.WithoutCancel(ctx)
+	for _, ns := range []string{
+		session.NamespacePortal,
+		session.NamespaceConsole,
+		session.NamespaceProtocol,
+	} {
+		if err := mgr.DeleteAllByUser(ctx, ns, userID); err != nil && logger != nil {
+			// Worth an error, not a warning: a session that outlives its
+			// revocation is the failure this whole path exists to prevent.
+			logger.Error("session revocation failed",
+				zap.String("namespace", ns),
+				zap.String("reason", why),
+				zap.Int64("user_id", userID),
+				zap.Error(err))
+		}
+	}
+}
+
 func runAuditPartitionMaintenance(stopCtx context.Context, a *bootstrap.App, pm *pgpartition.Manager) {
 	const tickEvery = time.Hour
 	ticker := time.NewTicker(tickEvery)

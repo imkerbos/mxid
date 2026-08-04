@@ -73,6 +73,17 @@ var (
 		Help: "Audit log writes that failed. Non-zero means audit trail loss.",
 	}, []string{"reason"})
 
+	// Audit records mirrored to an external collector, by outcome: "sent",
+	// "dropped" (the forwarding queue was full) or "failed" (the collector
+	// refused or was unreachable). The database still holds every record, so
+	// this measures the completeness of the OFF-HOST copy — the one that
+	// survives someone with database access deciding history is inconvenient.
+	// Alert on dropped or failed climbing.
+	auditForward = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "mxid_audit_forward_total",
+		Help: "Audit records mirrored off-host, by outcome (sent/dropped/failed).",
+	}, []string{"result"})
+
 	// Provisioned future partitions for a time-partitioned table. When this
 	// reaches 0 the table is one month from rejecting every insert.
 	partitionsAhead = prometheus.NewGaugeVec(prometheus.GaugeOpts{
@@ -116,7 +127,7 @@ func init() {
 	reg.MustRegister(collectors.NewGoCollector())
 	reg.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	reg.MustRegister(reqTotal, reqDuration, buildInfo, workerRuns, workerLastSuccess, outboxDispatch, dlockLeader, authzCache,
-		auditWriteFailed, partitionsAhead, partitionDefaultRows, partitionsDropped,
+		auditWriteFailed, auditForward, partitionsAhead, partitionDefaultRows, partitionsDropped,
 		auditPendingDepth, auditAnchorLag)
 }
 
@@ -145,6 +156,10 @@ func AuthzCache(result string) { authzCache.WithLabelValues(result).Inc() }
 // originating request has already committed and returned 200, so nothing else
 // reports this — treat any non-zero value as an incident.
 func AuditWriteFailed(reason string) { auditWriteFailed.WithLabelValues(reason).Inc() }
+
+// AuditForward records one off-host mirror outcome: "sent", "dropped" or
+// "failed".
+func AuditForward(result string) { auditForward.WithLabelValues(result).Inc() }
 
 // PartitionsAhead / PartitionDefaultRows / PartitionsDropped expose the health
 // of a time-partitioned table's lifecycle. Alert on ahead == 0 (writes stop

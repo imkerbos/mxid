@@ -122,9 +122,14 @@ make seed-demo              # 可选:灌入 demo 组织、用户组、用户与�
 | 入口 | 地址 |
 |------|------|
 | 门户(终端用户) | <http://localhost:3500/> |
-| 控制台(管理) | <http://localhost:3500/admin/> — 默认 `admin` / `admin123` |
+| 控制台(管理) | <http://localhost:3500/admin/> — `admin` / `admin123`**(仅开发环境)** |
 | 接口 | <http://localhost:3500/api/v1/...> |
 | OIDC 发现 | <http://localhost:3500/protocol/oidc/.well-known/openid-configuration> |
+
+> **生产环境没有这个口令。** 它由一个迁移 seed 进来,而那个迁移的第一行就把明文写在
+> 这个公开仓库里,所以 release 构建拒绝带着它对外服务:首次启动前设好
+> `MXID_BOOTSTRAP_ADMIN_PASSWORD`,账户就用你给的口令;不设则启动时直接锁掉该账户。
+> 两种情况下首次登录都会强制改密。见 [docs/DEPLOYMENT_ZH.md](docs/DEPLOYMENT_ZH.md)。
 
 **生产环境**是另一套:拉发布镜像,经 nginx 跑在 **80 / 443**(TLS),用
 `docker compose` 启动。路径一致,只是 host 和端口不同:

@@ -86,6 +86,10 @@ const (
 	NumCaptchaRequired   = 40016 // was 40003, which the SPA renders as totpCodeReused
 	NumStepUpRequiredNum = 40330
 	NumMFAEnrollRequired = 40331
+	// NumPasswordChangeRequired gates a session whose owner must pick a new
+	// password before doing anything else. The SPA branches on it to route to
+	// the change-password screen, so it must not be reused.
+	NumPasswordChangeRequired = 40333
 )
 
 // Catalog is every number the API may return, with its kind and what it means.
@@ -124,11 +128,12 @@ var Catalog = map[int]struct {
 	NumUnauthenticated: {Generic, "no valid session"},
 	NumInvalidMFACode:  {Generic, "session valid, MFA answer wrong"},
 
-	NumForbidden:         {Generic, "requires a privilege the caller lacks"},
-	NumForbiddenScope:    {Generic, "refused for this specific target"},
-	NumStepUpRequiredNum: {Generic, "step-up MFA required (SPA branches on this)"},
-	NumMFAEnrollRequired: {Generic, "MFA enrollment required (SPA branches on this)"},
-	NumEEFeatureRequired: {Localized, "feature requires an Enterprise licence"},
+	NumForbidden:              {Generic, "requires a privilege the caller lacks"},
+	NumForbiddenScope:         {Generic, "refused for this specific target"},
+	NumStepUpRequiredNum:      {Generic, "step-up MFA required (SPA branches on this)"},
+	NumMFAEnrollRequired:      {Generic, "MFA enrollment required (SPA branches on this)"},
+	NumPasswordChangeRequired: {Generic, "password change required (SPA branches on this)"},
+	NumEEFeatureRequired:      {Localized, "feature requires an Enterprise licence"},
 
 	40201: {Generic, "licence user quota exhausted"},
 
