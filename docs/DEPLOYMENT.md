@@ -98,7 +98,7 @@ prod set:
 | Variable | Required | Default | Purpose |
 |----------|:--:|---------|---------|
 | `COMPOSE_FILE` | ✅ | — | Which compose files to load = deployment mode. See *Production with Docker compose*. |
-| `MXID_TAG` | ✅ | — | Image version to pin (e.g. `v0.1.0`). No `latest`. |
+| `MXID_TAG` | ✅ | — | Image version to pin (e.g. `v1.8.0`). No `latest`. |
 | `MXID_CRYPTO_KEY_ENCRYPTION_KEY` | ✅ | — | Master KEK (`openssl rand -base64 32`). |
 | `MXID_CRYPTO_AUDIT_CHAIN_KEY` | ✅ | — | Audit hash-chain HMAC key (`openssl rand -base64 32`). Generate once, never change. |
 | `MXID_CRYPTO_AUDIT_ANCHOR_KEY` | ✅* | — | Audit anchor Ed25519 seed (`openssl rand -base64 32`). Required in release mode when anchoring is enabled (the default). |
@@ -867,8 +867,9 @@ The whole upgrade is two steps: **mirror the images, then point Helm at the new
 tag.**
 
 ```bash
-docker login ghcr.io                     # once — the EE image is private
-docker login harbor.internal             # once
+docker login harbor.internal             # once — your own registry
+docker login ghcr.io                     # EE only. The CE image is public and
+                                         # pulls with no GitHub credentials.
 
 # step 1 — mirror. Either form; the make target is a two-line wrapper around
 # the script, so use the script directly if the machine has no make/checkout.
