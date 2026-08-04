@@ -759,15 +759,25 @@ function AppCard({
         )}
         <AppIcon value={iconValue} fallbackName={app.name} size={48} className="rounded-xl" />
         <div className="min-w-0 flex-1">
-          <div className="flex min-h-[2.5rem] items-start gap-2">
-            <h3 className="line-clamp-2 text-sm font-semibold text-ink" title={app.name}>{app.name}</h3>
+          {/* pr-6 keeps the protocol badge clear of the launch icon, which is
+              absolutely positioned at the card's top-right and so is not in this
+              row's flow: a long title pushes the badge right until it sits
+              underneath the icon. */}
+          <div className="flex min-h-[2.5rem] items-start gap-2 pr-6">
+            {/* min-w-0 + break-words: line-clamp only limits the number of LINES.
+                A name with no spaces has no break opportunity, so without these
+                it renders as one long line that pushes past the card instead of
+                ellipsing — the badge beside it then lands on the launch icon. */}
+            <h3 className="line-clamp-2 min-w-0 break-words text-sm font-semibold text-ink" title={app.name}>
+              {app.name}
+            </h3>
             <span
               className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${protocolBadgeClass}`}
             >
               {protoLabelLocalized(t, app.protocol)}
             </span>
           </div>
-          <p className="mt-1 line-clamp-2 text-xs text-muted">
+          <p className="mt-1 line-clamp-2 break-words text-xs text-muted">
             {app.description || t('portal.noDesc')}
           </p>
         </div>

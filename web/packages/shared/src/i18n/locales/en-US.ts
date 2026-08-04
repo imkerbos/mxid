@@ -526,7 +526,7 @@ export default {
       nameRequired: 'Department name *',
       nameHint: 'Display name, e.g. Engineering, Product, East Region',
       codeRequired: 'Code *',
-      codeHint1: 'Unique English identifier within the tenant. Lowercase + hyphens recommended (e.g. ',
+      codeHint1: 'Unique identifier within the tenant. Letters, digits and underscore only (e.g. ',
       codeHint2: '), used to compose org path ',
       codeHint3: '. ',
       codeImmutable: 'Cannot be changed after creation',
