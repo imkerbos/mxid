@@ -290,6 +290,91 @@ type AuditConfig struct {
 	// leader lock, so a per-pod volume scatters them and makes verification
 	// fail on whichever pod it runs from.
 	AnchorSinkPath string `mapstructure:"anchor_sink_path"`
+	// MinRetentionDays is the floor an administrator may not set
+	// AuditPolicy.RetentionDays below. Retention is runtime-editable in the
+	// console, and nothing stopped an operator from quietly dialling it down to
+	// a week — which is a way to destroy evidence that leaves no evidence.
+	// Regimes that mandate a retention period (China's MLPS 2.0 and its
+	// six-month rule, among others) are asserting exactly this floor.
+	//
+	// A pointer so that "not configured" and "configured as zero" are different
+	// things: unset takes DefaultAuditRetentionFloorDays, an explicit 0 means
+	// the deployment genuinely wants no floor. Read it through
+	// RetentionFloorDays, never directly.
+	MinRetentionDays *int `mapstructure:"min_retention_days"`
+	// Forward mirrors every audit record to a collector outside the database as
+	// it is written. The chain proves nobody rewrote history; it does nothing
+	// about someone with database access dropping the table, and an off-host
+	// copy is what survives that. It is also what "centralised log management"
+	// controls ask for.
+	//
+	// Deliberately boot-time configuration rather than a console setting: where
+	// the audit stream points is itself a security control, and an
+	// administrator who can silently redirect it into a black hole has undone
+	// the reason for having it.
+	Forward AuditForwardConfig `mapstructure:"forward"`
+}
+
+// AuditForwardConfig points the audit mirror at a syslog collector.
+type AuditForwardConfig struct {
+	// Addr is host:port. EMPTY (the default) disables forwarding.
+	Addr string `mapstructure:"addr"`
+	// Proto is udp, tcp or tcp+tls. Defaults to tcp: UDP cannot tell you the
+	// records stopped arriving, and silence is the one failure mode an audit
+	// mirror must not have.
+	Proto string `mapstructure:"proto"`
+	// Facility is the syslog facility number. Defaults to 13 (log audit), which
+	// is the one reserved for this and what collectors route on.
+	Facility *int `mapstructure:"facility"`
+	// QueueSize bounds how far forwarding may fall behind before it drops.
+	// Zero uses the package default.
+	QueueSize int `mapstructure:"queue_size"`
+	// TLSInsecureSkipVerify disables collector certificate verification for
+	// tcp+tls. Only for a collector using a self-signed certificate on a
+	// trusted network — it turns the transport into obfuscation.
+	TLSInsecureSkipVerify bool `mapstructure:"tls_insecure_skip_verify"`
+	// TLSServerName overrides the name checked in the collector's certificate,
+	// for the common case of dialling by IP.
+	TLSServerName string `mapstructure:"tls_server_name"`
+}
+
+// DefaultAuditFacility is the syslog facility audit records carry: 13, "log
+// audit", the one the RFC reserves for exactly this stream.
+const DefaultAuditFacility = 13
+
+// ResolvedProto is the transport, defaulting to TCP.
+func (c AuditForwardConfig) ResolvedProto() string {
+	if c.Proto == "" {
+		return "tcp"
+	}
+	return c.Proto
+}
+
+// ResolvedFacility is the syslog facility, defaulting to DefaultAuditFacility.
+func (c AuditForwardConfig) ResolvedFacility() int {
+	if c.Facility == nil {
+		return DefaultAuditFacility
+	}
+	return *c.Facility
+}
+
+// DefaultAuditRetentionFloorDays is the retention floor applied when the
+// deployment does not name one. Six months: the shortest period the common
+// audit-retention mandates settle on, and comfortably under the product's own
+// 365-day default, so it constrains nobody who has not gone looking for a
+// shorter one.
+const DefaultAuditRetentionFloorDays = 180
+
+// RetentionFloorDays is the configured floor, resolving the unset case. Zero
+// means no floor.
+func (c AuditConfig) RetentionFloorDays() int {
+	if c.MinRetentionDays == nil {
+		return DefaultAuditRetentionFloorDays
+	}
+	if *c.MinRetentionDays < 0 {
+		return 0
+	}
+	return *c.MinRetentionDays
 }
 
 // LoadConfig reads configuration from file and environment variables.

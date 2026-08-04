@@ -31,6 +31,13 @@ FROM alpine:3.22
 # CVEs), then install the runtime deps.
 RUN apk upgrade --no-cache && apk add --no-cache ca-certificates tzdata wget
 
+# Run as an unprivileged user. uid 1000 matches the securityContext the Helm
+# chart already applies, so the two deployment paths agree; the compose path had
+# no equivalent and ran the server as root. The binary is static, listens above
+# 1024 and writes nothing to disk (logs go to stdout, uploads to the database),
+# so it needs no privilege at all.
+RUN addgroup -g 1000 -S mxid && adduser -u 1000 -S mxid -G mxid
+
 WORKDIR /app
 
 COPY --from=builder /app/bin/mxid .
@@ -38,6 +45,12 @@ COPY --from=builder /app/bin/mxid .
 # config changes don't require an image rebuild (see deploy/compose/*.yml).
 COPY --from=builder /app/configs ./configs
 COPY --from=builder /app/migrations ./migrations
+
+# Owned by root and readable, not writable, by the runtime user: nothing the
+# server does should be able to rewrite its own binary, config or migrations.
+RUN chown -R root:root /app && chmod -R a-w /app
+
+USER mxid:mxid
 
 EXPOSE 8080
 

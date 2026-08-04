@@ -86,6 +86,7 @@ values (it rejects dev placeholders). Compose aborts if any is missing.
 | `MXID_CRYPTO_AUDIT_ANCHOR_KEY` | Ed25519 seed that signs the external Merkle anchors. Required when `audit.anchorSink.enabled` (the default). May be rotated only if the old public key is kept in `crypto.audit_anchor_retired_pubkeys` so old anchors still verify. | `openssl rand -base64 32` |
 | `POSTGRES_PASSWORD` (→ `MXID_DATABASE_PASSWORD`) | PostgreSQL password. | strong random |
 | `REDIS_PASSWORD` (→ `MXID_REDIS_PASSWORD`) | Redis password. | strong random |
+| `MXID_BOOTSTRAP_ADMIN_PASSWORD` | Initial password for the seeded `admin` account. Migration 000009 seeds that account with a password written in plaintext in the migration itself, in this public repository — so a release build will not serve with it. **Unset means the account is LOCKED at startup**, not that the seeded password stays. | strong random; a password change is demanded at first sign-in regardless |
 
 `release` mode also requires `session.cookie_secure: true` (HTTPS). OIDC token
 signing keys are generated + stored (KEK-encrypted) by the app — no key env var.
@@ -106,6 +107,14 @@ prod set:
 | `MXID_AUDIT_ANCHOR_ENABLED` | — | `true` | Enable/disable audit anchoring. Setting `false` is an explicit opt-out; otherwise release mode requires the anchor key. |
 | `MXID_AUDIT_LEDGER_RETENTION` | — | `false` | Prune `mxid_audit_entry` under the same retention policy as the audit log. A separate decision from the log's retention: dropping a log partition discards a view that can be rebuilt from the ledger, whereas this discards the evidence, leaving only the anchor and a signed checkpoint. **Off means the ledger keeps every payload for ever regardless of the configured retention** — including personal data. |
 | `MXID_AUDIT_ANCHOR_SINK_PATH` | — | *(empty)* | Optional external mirror of each signed anchor. Empty = anchors are database checkpoints only. Set it only to a path outside the database's blast radius **and** shared by every replica — anchors are written by whichever replica holds the leader lock, so a per-pod volume scatters them and breaks verification. |
+| `MXID_AUDIT_MIN_RETENTION_DAYS` | — | `180` | Floor beneath which an administrator cannot shorten audit retention. Retention is editable at runtime in the console and had no validation, so anyone with `settings.manage` could reduce it to a week — destroying evidence in a way that leaves no evidence. `0` allows any retention. A stored value below the floor is raised to it when the purge reads the policy, so raising the floor never deletes anything it would not have deleted before. The 180-day default sits well under the 365-day retention default, and matches the six-month minimum that mandates such as China's MLPS 2.0 assert. |
+| `MXID_BOOTSTRAP_ADMIN_PASSWORD` | **release: yes** | — | Initial password for the seeded `admin` account. Migration 000009 seeds that account with a password written in plaintext in the migration itself, in a public repository — so on a release deployment MXID will not serve with it. Set this and the account takes your password; **leave it unset and the account is LOCKED at startup** (other administrators are unaffected, and one restart with the variable set unlocks it). A password change is still required at first sign-in either way, because this value usually lives in a deployment manifest more people can read than should know it. |
+| `MXID_AUDIT_FORWARD_ADDR` | — | *(empty)* | `host:port` of a syslog collector every audit record is mirrored to as it is written. The tamper-evident chain proves nobody rewrote history; it does nothing about someone with database access dropping the table, and an off-host copy is what survives that. It is also what "centralised log management" controls (MLPS 2.0 among them) ask for. Empty disables forwarding. |
+| `MXID_AUDIT_FORWARD_PROTO` | — | `tcp` | `udp`, `tcp` or `tcp+tls`. UDP cannot tell you records stopped arriving, and silence is the one failure mode an audit mirror must not have. Use `tcp+tls` for any link you do not control — the records carry usernames and addresses. |
+| `MXID_AUDIT_FORWARD_FACILITY` | — | `13` | Syslog facility. 13 is "log audit", the one collectors route on. |
+| `MXID_AUDIT_FORWARD_QUEUE_SIZE` | — | `4096` | How far forwarding may fall behind before it drops. **Forwarding never blocks the audit write** — it runs on a path synchronous with every write API, so a stalled collector would otherwise take the service down. Overflow is dropped and counted in `mxid_audit_forward_total{result="dropped"}`; the record is still in the database, so what is lost is the mirror's completeness. |
+| `MXID_AUDIT_FORWARD_TLS_SERVER_NAME` | — | *(empty)* | Name checked in the collector's certificate, for dialling `tcp+tls` by IP. |
+| `MXID_AUDIT_FORWARD_TLS_INSECURE_SKIP_VERIFY` | — | `false` | Skip collector certificate verification. Turns the transport into obfuscation — only for a self-signed collector on a trusted network. |
 | `POSTGRES_PASSWORD` | ✅ | — | DB password. |
 | `REDIS_PASSWORD` | ✅ | — | Redis password. |
 | `MXID_SERVER_ALLOWED_ORIGINS` | ✅ | — | CORS/CSRF allow-list, comma-separated origins (e.g. `https://id.example.com`). Boot-time. |
@@ -820,12 +829,13 @@ Consequences for a network that requires an egress proxy to reach the internet:
 - [ ] `MXID_CRYPTO_KEY_ENCRYPTION_KEY` + DB / Redis passwords are strong, unique, and private (not dev placeholders).
 - [ ] PostgreSQL `max_connections` ≥ Go `database.max_open_conns` × replica count.
 - [ ] Redis persistence (AOF `everysec` or RDB at suitable interval).
-- [ ] DB backup configured (`pg_dump` / WAL archiving).
+- [ ] DB backup configured — and **restored at least once** (`make backup` then `make backup-verify`, or `scripts/backup.sh verify <file>`). A backup nobody has restored is a hope, not a backup.
+- [ ] The KEK (`MXID_CRYPTO_KEY_ENCRYPTION_KEY`) is backed up **separately from the database dump** — it is not in the dump, and without it every encrypted value restores as unreadable bytes.
 - [ ] **Console → Settings → External URLs** set to the canonical https URLs.
 - [ ] **Console → Settings → SMTP** configured AND test mail succeeds.
 - [ ] **Console → Settings → Security Policy** reviewed (min length, history, lockout, captcha thresholds).
 - [ ] **Console → Settings → Audit Policy** has a sane `retention_days` + (optional) `alert_webhook_url`.
-- [ ] First-login admin password rotated. MFA enrolled.
+- [ ] `MXID_BOOTSTRAP_ADMIN_PASSWORD` was set before the first start (otherwise the `admin` account is locked — set it and restart). The forced change at first sign-in is completed, and MFA enrolled.
 - [ ] App access policies set (no app is `allow public` unless intentional).
 - [ ] `trusted_proxies` set if behind a reverse proxy.
 - [ ] **(Kubernetes)** Each backend replica has a unique `MXID_SNOWFLAKE_NODE_ID` (use StatefulSet ordinal or Redis lease).

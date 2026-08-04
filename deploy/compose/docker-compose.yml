@@ -26,6 +26,17 @@ services:
       args:
         VERSION: ${MXID_TAG}
     container_name: mxid
+    # Hardening to match what the Helm chart already applies. The image now
+    # ships a uid-1000 user, so this is belt-and-braces for an operator who
+    # rebuilds from an older Dockerfile.
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
       - "8080:8080"
     environment:

@@ -342,9 +342,12 @@ export function AuditPolicyPage() {
       desc={t('settings.auditPolicy.desc')}
       rows={[
         { kind: 'number', key: 'retention_days', label: t('settings.auditPolicy.retentionDays'), hint: t('settings.auditPolicy.retentionDaysHint') },
-        { kind: 'text', key: 'alert_webhook_url', label: t('settings.auditPolicy.webhook'), placeholder: 'https://hook.example.com/...' },
+        { kind: 'text', key: 'alert_webhook_url', label: t('settings.auditPolicy.webhook'), hint: t('settings.auditPolicy.webhookHint'), placeholder: 'https://hook.example.com/...' },
         { kind: 'list', key: 'alert_on_event_types', label: t('settings.auditPolicy.alertEventTypes'), hint: t('settings.auditPolicy.alertEventTypesHint') },
-        { kind: 'list', key: 'high_risk_recipients', label: t('settings.auditPolicy.highRiskRecipients'), hint: t('settings.auditPolicy.highRiskRecipientsHint') },
+        // high_risk_recipients is deliberately absent: nothing delivers to an
+        // email or a phone number yet, and a field that accepts a value, says
+        // "saved" and then does nothing is worse than no field — it is relied
+        // upon. It comes back when a channel exists behind it.
       ]}
       load={() => settingsApi.getAuditPolicy()}
       save={(v) => settingsApi.putAuditPolicy(v)}

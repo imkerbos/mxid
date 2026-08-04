@@ -7,6 +7,96 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `scripts/backup.sh` (`make backup`, `make backup-verify`) — dump, verify and
+  restore. `verify` restores the file into a throwaway database and checks the
+  schema version and core tables, because a backup nobody has restored is a hope
+  rather than a backup. It also states what a dump does NOT contain: the
+  encryption key (secrets restore as unreadable bytes without it), Redis
+  sessions, and the EE licence fingerprint, which a logical restore into a new
+  cluster invalidates.
+- Audit records can be mirrored to a syslog collector as they are written
+  (`audit.forward.addr`, RFC 5424 over UDP / TCP / TCP+TLS). The tamper-evident
+  chain proves nobody rewrote history; it does nothing about someone with
+  database access dropping the table, and an off-host copy is what survives
+  that. Forwarding NEVER blocks the audit write — it runs on a path synchronous
+  with every write API, so the queue is bounded and overflow is dropped and
+  counted (`mxid_audit_forward_total`) rather than waited on. A stalled
+  collector costs you mirror completeness, never availability.
+- The audit alert webhook now actually sends. `alert_webhook_url` and
+  `alert_on_event_types` have been in the console since the settings existed and
+  nothing read them: an administrator filled the field in, got a "saved" toast,
+  and no alert would ever have been delivered. Selected events are now POSTed as
+  JSON through the transactional outbox, so an alert about a security event
+  survives a restart, and through `pkg/safehttp`, because an administrator-
+  supplied URL is otherwise an SSRF primitive. Repeats of one event type are
+  held for five minutes and the next alert reports how many it stands for —
+  ten thousand failed logins is one incident, and a channel that floods gets
+  muted.
+
+### Removed
+- The "high-risk recipients" field is gone from the audit-policy page. Nothing
+  delivered to an email address or a phone number, so it accepted a value, said
+  "saved", and did nothing. It returns when a channel exists behind it.
+
+### Security
+- **A release deployment no longer serves with the seeded administrator
+  password.** Migration 000009 seeds `admin` with a password written in
+  plaintext in the migration itself, in a public repository, and nothing changed
+  it, warned about it, or forced it to be changed — so every production install
+  started with a super-admin credential that any reader of the source already
+  had. Release builds now take the password from
+  `MXID_BOOTSTRAP_ADMIN_PASSWORD`, and **lock the account if it is unset**.
+  Locking rather than merely gating is the point: a gated session can still
+  reach the change-password endpoint, so anyone who knew the published password
+  could have taken the account over instead of being kept out. Other
+  administrators are unaffected and one restart with the variable set restores
+  it. Development builds are untouched.
+- **`must_change_pwd` is enforced.** It was written by every administrative
+  password reset and documented as forcing the user to choose a new password at
+  their next sign-in; the only thing in the codebase that read it was a badge on
+  the console user-detail page. An administrator resetting a compromised
+  account's password believed they had forced a change that never happened. A
+  session that owes one now reaches nothing but the change-password endpoint,
+  decided at session creation so every login path is covered — password, SMS,
+  magic link and external IdP alike — and self-healing once the password is
+  changed.
+- The server container runs as an unprivileged user. The Helm chart already
+  applied `runAsNonRoot`, but the image had no `USER` and the compose path — the
+  one the deployment guide leads with — ran the server as root. The image now
+  ships a uid-1000 user with a read-only `/app`, and the compose service drops
+  all capabilities and mounts the root filesystem read-only.
+- Locking or disabling an account now cuts the sessions it already holds.
+  `AuthMiddleware` resolves a session without re-reading the user's status, so
+  disabling a leaver did not actually stop them — they kept working until the
+  session idled out. Deletion and admin password reset already revoked; lock and
+  disable did not. A lockout from the brute-force limiter deliberately does NOT
+  revoke: an attacker who could trigger it would otherwise be able to throw
+  someone out of a live session by failing logins against their username.
+- Session revocation now covers the protocol namespace — the shared SSO session
+  — alongside the console and portal ones. A deleted user kept a live SSO
+  session and could go on completing OIDC/SAML/CAS sign-ins to downstream
+  applications, which is the access revocation exists to cut. The offboarding
+  flow already revoked all three; the event-driven paths revoked two.
+- Session revocation no longer depends on winning a race with the HTTP response.
+  Event handlers run on their own goroutine, so the request context that
+  published the event was usually already cancelled by the time the handler
+  reached Redis; go-redis honours cancellation and the error was discarded, so
+  the revocation silently did not happen. Confirmed by test: under a cancelled
+  context, every session in all three namespaces survived.
+- Audit retention can no longer be shortened past a floor the deployment sets
+  (`audit.min_retention_days`, default 180 days). Retention is runtime-editable
+  in the console and had no validation at all, so anyone with `settings.manage`
+  could quietly reduce it to a week — destroying evidence in a way that leaves
+  no evidence. A stored value below the floor is raised to it when the purge
+  reads the policy, so introducing or raising a floor never deletes anything it
+  would not have deleted before.
+
+### Fixed
+- Audit entries for a lock or a status change now record the account's new
+  status. The detail allow-list dropped the field, so the log said a user was
+  updated without saying what they were updated to.
+
 ## [1.8.1] — 2026-08-04
 
 ### Changed
