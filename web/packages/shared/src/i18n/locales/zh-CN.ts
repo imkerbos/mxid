@@ -529,7 +529,7 @@ export default {
       nameRequired: '部门名称 *',
       nameHint: '显示用名称，如：技术部、产品部、华东区',
       codeRequired: '编码 *',
-      codeHint1: '程序引用用的唯一英文标识，租户内唯一。建议小写字母+短横线（如 ',
+      codeHint1: '程序引用用的唯一标识，租户内唯一。只能用字母、数字和下划线（如 ',
       codeHint2: '），用于拼接组织路径 ',
       codeHint3: '，',
       codeImmutable: '创建后不可修改',

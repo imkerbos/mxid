@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/imkerbos/mxid/pkg/dberr"
@@ -77,8 +78,27 @@ func NewService(repo Repository, idGen *snowflake.Generator, eventBus *event.Bus
 	}
 }
 
+// orgCodeRe is the character set a PostgreSQL ltree label allows: letters,
+// digits and underscore. The code is concatenated straight into the org's
+// ltree path, so anything outside this set makes the INSERT fail with
+// "ltree syntax error" — a 500 with nothing in it the admin can act on.
+//
+// A hyphen is the case that actually bit: the console's own hint recommended
+// lowercase-with-hyphens and offered "tech-team" as the example, which was
+// guaranteed to fail.
+var orgCodeRe = regexp.MustCompile(`^[A-Za-z0-9_]+$`)
+
+// ErrInvalidOrgCode is returned when the code cannot be used as an ltree label.
+var ErrInvalidOrgCode = errors.New("org code must contain only letters, digits and underscore")
+
 // Create creates a new organization with a generated ID and computed path.
 func (s *Service) Create(ctx context.Context, tenantID int64, req *CreateOrgRequest) (*Organization, error) {
+	// Validated before the path is built: the code becomes an ltree label, and
+	// Postgres rejects the whole INSERT for anything outside its charset.
+	if !orgCodeRe.MatchString(req.Code) {
+		return nil, ErrInvalidOrgCode
+	}
+
 	// Build path based on parent
 	path := req.Code
 	if req.ParentID != nil {

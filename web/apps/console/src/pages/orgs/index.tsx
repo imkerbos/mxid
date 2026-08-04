@@ -736,7 +736,7 @@ export default function OrgsPage() {
                   required
                 />
                 <p className="mt-1 text-xs text-faint">
-                  {t('orgs.createModal.codeHint1')}<code className="rounded bg-surface-muted px-1">tech-team</code>{t('orgs.createModal.codeHint2')}<code className="rounded bg-surface-muted px-1">root.tech-team</code>{t('orgs.createModal.codeHint3')}<span className="text-amber-600">{t('orgs.createModal.codeImmutable')}</span>
+                  {t('orgs.createModal.codeHint1')}<code className="rounded bg-surface-muted px-1">tech_team</code>{t('orgs.createModal.codeHint2')}<code className="rounded bg-surface-muted px-1">root.tech_team</code>{t('orgs.createModal.codeHint3')}<span className="text-warning">{t('orgs.createModal.codeImmutable')}</span>
                 </p>
               </div>
               <div className="flex justify-end gap-3 pt-2">
