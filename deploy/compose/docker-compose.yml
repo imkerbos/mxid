@@ -16,10 +16,10 @@ name: mxid-prod
 
 services:
   mxid:
-    # MXID_TAG is required — pin an explicit released version (e.g. v0.1.0).
+    # MXID_TAG is required — pin an explicit released version (e.g. v1.8.0).
     # No `latest`: this service runs DB migrations on boot, so a surprise image
     # bump means a surprise migration. CI never publishes a `latest` tag.
-    image: ghcr.io/imkerbos/mxid:${MXID_TAG:?set MXID_TAG to a released version, e.g. v0.1.0}
+    image: ghcr.io/imkerbos/mxid:${MXID_TAG:?set MXID_TAG to a released version, e.g. v1.8.0}
     build:
       context: ../..
       dockerfile: deploy/dockerfile/Dockerfile
@@ -75,7 +75,7 @@ services:
     # Fully containerized edge: SPAs + nginx config baked into the image
     # (deploy/dockerfile/Dockerfile.web). Only TLS certs are mounted. The cert
     # filenames + server_name are env-substituted into the config at startup.
-    image: ghcr.io/imkerbos/mxid-web:${MXID_TAG:?set MXID_TAG to a released version, e.g. v0.1.0}
+    image: ghcr.io/imkerbos/mxid-web:${MXID_TAG:?set MXID_TAG to a released version, e.g. v1.8.0}
     build:
       context: ../..
       dockerfile: deploy/dockerfile/Dockerfile.web

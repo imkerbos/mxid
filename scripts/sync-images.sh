@@ -5,10 +5,12 @@
 # machine (your laptop, a jump box, a CI runner) can reach both ghcr.io and
 # your registry. Run it there.
 #
-#   docker login ghcr.io                    # once — the EE image is private
-#   docker login harbor.internal            # once
-#   ./scripts/sync-images.sh v1.8.0 harbor.internal/mxid
-#   ./scripts/sync-images.sh v1.8.0 harbor.internal/mxid --ce
+#   docker login harbor.internal            # once — your own registry
+#   docker login ghcr.io                    # ONLY for --ee; the EE image is
+#                                           # private. The CE image is public
+#                                           # and pulls with no credentials.
+#   ./scripts/sync-images.sh v1.8.0 harbor.internal/mxid        # EE
+#   ./scripts/sync-images.sh v1.8.0 harbor.internal/mxid --ce   # CE, no GitHub login
 #
 # Then upgrade with helm as usual:
 #   helm upgrade --install mxid deploy/helm/mxid -n mxid -f values.yaml \
