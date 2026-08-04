@@ -93,7 +93,7 @@ nginx pod 持有 SPA 静态(烤进 `mxid-web` 镜像);后端 pod 是无状态 Go
 | 变量 | 必需 | 默认 | 用途 |
 |------|:--:|------|------|
 | `COMPOSE_FILE` | ✅ | — | 加载哪些 compose 文件 = 部署模式。见下文 |
-| `MXID_TAG` | ✅ | — | 钉的镜像版本(如 `v0.1.0`)。无 `latest` |
+| `MXID_TAG` | ✅ | — | 钉的镜像版本(如 `v1.8.0`)。无 `latest` |
 | `MXID_CRYPTO_KEY_ENCRYPTION_KEY` | ✅ | — | 主 KEK(`openssl rand -base64 32`) |
 | `MXID_CRYPTO_AUDIT_CHAIN_KEY` | ✅ | — | 审计哈希链 HMAC 密钥(`openssl rand -base64 32`)。只生成一次、永不更改 |
 | `MXID_CRYPTO_AUDIT_ANCHOR_KEY` | ✅* | — | 审计锚 Ed25519 seed(`openssl rand -base64 32`)。审计锚开启(默认)时 release 模式必填 |
@@ -740,8 +740,9 @@ make migrate-create NAME=foo    # 生成新迁移对
 整个升级就两步:**同步镜像,然后让 Helm 指向新 tag。**
 
 ```bash
-docker login ghcr.io                     # 一次即可,EE 是私有包
-docker login harbor.internal             # 一次即可
+docker login harbor.internal             # 一次即可 —— 你自己的 registry
+docker login ghcr.io                     # 仅企业版需要。社区版镜像是公开的,
+                                         # 不需要任何 GitHub 凭据。
 
 # 第 1 步 —— 同步镜像。两种写法等价;make 目标只是脚本的两行包装,
 # 机器上没有 make 或没 clone 仓库时直接跑脚本即可。

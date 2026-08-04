@@ -1,6 +1,6 @@
 .PHONY: dev dev-console dev-portal dev-web dev-docker-up dev-docker-up-d dev-docker-down dev-docker-logs dev-docker-ps dev-docker-restart dev-docker-reload dev-docker-watch dev-docker-clean \
        build run test lint migrate-up migrate-down migrate-create clean deps \
-       verify verify-mod verify-vet verify-build verify-lint verify-web verify-exports verify-i18n-markers smoke install-hooks \
+       verify verify-mod verify-vet verify-build verify-lint verify-web verify-exports verify-i18n-markers verify-pinned-tag smoke install-hooks \
        docker-build prod-up prod-down prod-logs standalone-up standalone-down standalone-logs
 
 # Variables
@@ -238,7 +238,7 @@ clean:
 
 # Verify — invariant gates. Run before commit / in CI.
 # Each sub-target is independently runnable to localize failures.
-verify: verify-mod verify-vet verify-build verify-gormtags verify-lint verify-exports verify-i18n-markers verify-web
+verify: verify-mod verify-vet verify-build verify-gormtags verify-lint verify-exports verify-i18n-markers verify-pinned-tag verify-web
 	@echo "✓ verify OK"
 
 # go.mod / go.sum must match the import graph. Catches indirect-vs-direct drift.
@@ -289,6 +289,13 @@ verify-exports:
 verify-i18n-markers:
 	@echo "==> verify-i18n-markers"
 	node scripts/verify-i18n-markers.mjs
+
+# The example env files are copied verbatim when deploying, so the tag they pin
+# has to be one that still exists. Hits the network; kept out of the pre-commit
+# hook for that reason.
+verify-pinned-tag:
+	@echo "==> verify-pinned-tag"
+	node scripts/verify-pinned-tag.mjs
 
 # Frontend production build — strict mode catches what vite dev permits.
 verify-web:

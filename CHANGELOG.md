@@ -67,6 +67,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   background jobs) are unchanged, since they have no tenant to filter by.
 
 ### Fixed
+- The example env files pinned `MXID_TAG=v0.1.0`, a tag that is no longer
+  published. Since deploying starts with `cp .env.example .env`, the first thing
+  a new user hit was an image pull failure. Now pinned to the current release,
+  with a check that fails the build if it goes stale again.
 - Creating an organization with a hyphen in its code returned a bare 500. The
   code becomes a PostgreSQL ltree label, which allows only letters, digits and
   underscore — and the console's own hint recommended "lowercase + hyphens" and
