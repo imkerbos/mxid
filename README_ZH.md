@@ -35,6 +35,14 @@ AGPL 授权;企业版通过签名 license 解锁外部 IdP 登录、品牌定制
 
 ![MXID 门户 —— 一个入口聚合所有应用,覆盖 OIDC / SAML / CAS / 表单填充](docs/screenshots/portal-apps.png)
 
+<br>
+
+![控制台仪表盘 —— 用户、应用与认证健康度一屏可见](docs/screenshots/console-dashboard-zh.png)
+
+<br>
+
+![应用管理 —— OIDC / SAML / CAS 应用并列,每张卡片标注协议、状态与环境](docs/screenshots/console-apps-zh.png)
+
 </div>
 
 ## 功能亮点

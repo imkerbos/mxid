@@ -22,6 +22,7 @@ make smoke
 | `verify-build`    | `go build ./...`              | single-file `go build main.go` skew; package-level dead refs |
 | `verify-lint`     | `golangci-lint`               | `exhaustruct` on the `app/` wiring adapters; staticcheck; errcheck |
 | `verify-exports`  | `scripts/verify-exports.mjs`  | `package.json` `exports`/`main`/`bin` paths missing on disk  |
+| `verify-i18n-markers` | `scripts/verify-i18n-markers.mjs` | a `<Field required>` label that also ends in `*`, so the marker renders twice |
 | `verify-web`      | `pnpm -r build`               | Vite prod-mode strictness that dev mode tolerates             |
 | `smoke`           | `scripts/smoke-test.sh`       | runtime nil-pointer in cross-module wiring; middleware order |
 
@@ -43,6 +44,11 @@ Each gate exists because a real bug shipped past everything else:
 - **verify-exports** — `package.json` had `"./ui": "./src/ui/index.ts"` but
   the file is `.tsx`. Vite dev resolved nothing; broke the whole console.
   Gate walks every `package.json` and asserts the path exists.
+- **verify-i18n-markers** — six labels ended in `*` while also being passed to
+  `<Field required>`, which draws its own marker, so forms rendered `Name * *`.
+  Nothing about that fails to compile; it was found in a screenshot. The gate
+  reads the actual call sites rather than a hand-kept list, so migrating another
+  form onto the primitive and forgetting to strip its label fails.
 - **smoke** — captures the case where everything above passes but the wired
   graph crashes on first request. Logs in as the seeded admin, hits one
   endpoint per console module, fails on any non-2xx.
@@ -50,8 +56,8 @@ Each gate exists because a real bug shipped past everything else:
 ## Pre-commit hook
 
 A hook is installed by `make install-hooks`. It runs the fast subset
-(`verify-mod`, `verify-vet`, `verify-build`, and `verify-exports` if web/
-files changed). CI runs the full `make verify` plus `make smoke`.
+(`verify-mod`, `verify-vet`, `verify-build`, and `verify-exports` +
+`verify-i18n-markers` if web/ files changed). CI runs the full `make verify` plus `make smoke`.
 
 Bypass for trivial commits with `SKIP_VERIFY=1 git commit ...`. CI does not
 honor the bypass.

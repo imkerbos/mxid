@@ -16,6 +16,7 @@ behaviour. Read the whole file before the first edit.
 | 7 | **Never commit secrets.** Env / `.env` only. |
 | 8 | Every frontend write gives **toast feedback** — never silent. |
 | 9 | User-visible change → **`CHANGELOG.md` bullet in the same commit**. |
+| 10 | Every API business code must be declared in **`pkg/errcode/catalog.go`** and passed by name. Never a numeric literal — a subset of the codes are *localized*, meaning the SPA replaces the server message with a fixed sentence, so reusing one shows the user the wrong text. |
 
 ## Project
 
@@ -96,6 +97,12 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full picture.
   dev placeholders in release mode. Maintain the leaked-dev-KEK blacklist.
 - **Step-up MFA** on high-risk ops (deletes, security-critical writes); the sudo
   window stays consistent across portal and console.
+- **Rules that tests enforce, not review.** Unscoped raw SQL / `.Table()` lookups, uncatalogued
+  or reused error codes, wiring structs missing from `exhaustruct`, and `<Field required>` labels
+  carrying their own asterisk all fail a guard. Each guard was built by reintroducing the defect
+  it catches — if you add one, do the same, because two of the originals passed against the
+  broken code on the first attempt. See *Invariants enforced by tests* in
+  [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - **GORM scan structs need explicit `gorm:"column:..."` tags.** EE release
   builds run `garble -tiny`, which renames fields; an untagged field silently
   scans empty. Enforced by `make verify-gormtags`.
@@ -182,7 +189,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full picture.
 - **Prod**: released images from GHCR behind nginx on 80/443; one `.env` drives
   it (`COMPOSE_FILE` selects the mode). Tag `v*.*.*` → CI builds and publishes
   (no `latest` tag). See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
-- **Pre-commit hook** runs `verify-mod / vet / build / gormtags / exports`. Keep
+- **Pre-commit hook** runs `verify-mod / vet / build / gormtags / exports / i18n-markers`. Keep
   it green; don't `--no-verify` without saying so.
 - Start dev with `make dev-up`, never a bare `docker compose up`. The Makefile
   passes `--env-file .env`; without it Compose substitutes its defaults and the

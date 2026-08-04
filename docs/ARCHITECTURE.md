@@ -408,6 +408,53 @@ unwraps to the registered sentinel; unregistered errors become a 500 via
 `response.InternalError`, which logs the real cause server-side and never leaks it to the
 client. The frontend localizes known numeric codes in `extractMessage` — one toast per error.
 
+Every numeric code is declared once in `pkg/errcode/catalog.go`, classified as **Generic** or
+**Localized**. The distinction is load-bearing: for a Localized code the SPA *discards* the
+server message and renders a fixed translated sentence keyed on the number
+(`toast.tsx` `LOCALIZED_CODES`), so reusing one for an unrelated error shows the user the wrong
+sentence. Generic codes are meant to be shared — the number says "rejected", the message says
+why. Call sites pass named constants, never literals.
+
+Guards in `pkg/errcode` enforce this: no bare numeric literal at a `response.*` call, every
+referenced constant catalogued, no Localized code carrying two different messages, and the
+Localized set identical on both sides of the wire. That last one is why the frontend's
+`LOCALIZED_CODES` cannot drift from the Go catalog without failing a test.
+
+## Invariants enforced by tests
+
+Several rules here cannot be expressed in the type system and had already been broken once each,
+so they are asserted by tests rather than documented and hoped for:
+
+| Rule | Enforced by |
+|---|---|
+| No unscoped raw SQL against a tenant-scoped table | `pkg/tenantscope/raw_guard_test.go` |
+| No unscoped `.Table()` lookup (the plugin keys off the model type, so an anonymous scan struct escapes it) | `pkg/tenantscope/table_guard_test.go` |
+| Every business code catalogued; Localized codes unique and in step with the SPA | `pkg/errcode/catalog_guard_test.go` |
+| Every dependency-wiring struct in `app` covered by `exhaustruct` | `app/wiring_test.go` |
+| A `<Field required>` label carries no asterisk of its own (the primitive draws it) | `scripts/verify-i18n-markers.mjs` |
+| Package `app`'s exhaustruct list has no stale entries | `app/wiring_test.go` |
+
+Each guard was verified by reintroducing the defect it exists to catch. Two of them were wrong on
+the first attempt and passed against the broken code — a line-window scan that found a neighbour's
+tenant predicate, and a message-bucketing check that collapsed two distinct `err.Error()` sites
+into one. Both are now statement-scoped and site-keyed respectively.
+
+## Subject strategy — one setting per protocol
+
+Each app decides what identifier MXID writes into the protocol response
+(`mxid_app.subject_strategy`: `username`, `username_suffixed`, `email`, `persistent_id`, or
+`pairwise` for OIDC only). The default for a *new* app comes from the tenant's protocol defaults,
+and that default is per protocol because the value lands somewhere with a different audience:
+
+| Protocol | Lands in | Default | Why |
+|---|---|---|---|
+| OIDC | `sub` | `persistent_id` | A machine identifier. Must be opaque and must survive a rename, or every RP loses track of a renamed user. |
+| SAML | NameID | `username` | The account name the SP creates. |
+| CAS | `cas:user` | `username` | Same — JumpServer, Redmine and Zabbix key local accounts off it, so an opaque id produces accounts named after a snowflake. |
+
+A shared app (`tenant_id IS NULL`) may not use bare `username`: two tenants' `kerbos` would
+collide downstream, so `Create` upgrades it to `username_suffixed`.
+
 ## Form-fill SSO (SWA) seam
 
 CE ships the `form` application protocol type and its descriptor schema (login URL + field

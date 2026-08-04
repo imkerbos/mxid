@@ -127,6 +127,61 @@ ON CONFLICT DO NOTHING;
 
 COMMIT;
 
+-- ── App descriptions ─────────────────────────────────────────────────────────
+-- Without these every card in the console and the portal reads "No description",
+-- which makes a populated demo look like an empty one. Only fills blanks, so a
+-- description someone wrote by hand survives a re-seed.
+UPDATE mxid_app SET description = v.d FROM (VALUES
+ ('airflow',     '数据管道调度与编排'),
+ ('argocd',      'Kubernetes GitOps 持续部署'),
+ ('confluence',  '团队知识库与文档协作'),
+ ('gitlab',      '代码托管与 CI/CD 流水线'),
+ ('grafana',     '指标看板与告警'),
+ ('harbor',      '容器镜像仓库与漏洞扫描'),
+ ('jenkins',     '构建与发布流水线'),
+ ('jira',        '需求与缺陷跟踪'),
+ ('kibana',      '日志检索与分析'),
+ ('legacycrm',   '老旧 CRM,无 SSO 能力,走表单填充接入'),
+ ('mattermost',  '团队即时通讯'),
+ ('metabase',    '自助式数据查询与报表'),
+ ('minio',       '对象存储控制台'),
+ ('nextcloud',   '企业网盘与文件协作'),
+ ('nexus',       '制品仓库(Maven / npm / Docker)'),
+ ('oldwiki',     '内网老 Wiki,无 SSO 能力,走表单填充接入'),
+ ('portainer',   '容器与集群运维面板'),
+ ('prometheus',  '指标采集与告警规则'),
+ ('rancher',     'Kubernetes 集群管理'),
+ ('redmine',     '项目管理,社区版仅支持 CAS'),
+ ('sonarqube',   '代码质量与安全扫描'),
+ ('superset',    'BI 可视化与探索'),
+ ('testsandbox', '联调沙箱,用于验证接入配置'),
+ ('vault',       '密钥与凭据管理'),
+ ('zabbix',      '基础设施监控'),
+ ('zulip',       '话题式团队沟通')
+) AS v(c, d)
+WHERE mxid_app.code = v.c
+  AND (mxid_app.description IS NULL OR mxid_app.description = '');
+
+-- ── MFA enrolment ────────────────────────────────────────────────────────────
+-- An identity platform whose demo shows "MFA coverage 0.0%" undersells itself,
+-- and a tenant where nobody holds a second factor is not a realistic starting
+-- point either. Enrol roughly two thirds of the demo users.
+--
+-- The secret is a placeholder, NOT a working TOTP seed: the real one is
+-- master-key encrypted, and a valid shared secret checked into the repo would
+-- be a credential anyone could use. These rows exist so the coverage metric and
+-- the MFA badges have something true to report; enrolling for real still goes
+-- through the portal.
+INSERT INTO mxid_user_mfa (id, user_id, type, secret, is_default, verified, created_at, updated_at)
+SELECT 800000000000009000 + row_number() OVER (ORDER BY u.id),
+       u.id, 'totp', NULL, true, true, now(), now()
+  FROM mxid_user u
+ WHERE u.id BETWEEN 800000000000000001 AND 800000000000000099
+   AND u.deleted_at IS NULL
+   AND (u.id % 3) <> 0
+   AND NOT EXISTS (SELECT 1 FROM mxid_user_mfa m WHERE m.user_id = u.id)
+ ON CONFLICT DO NOTHING;
+
 -- ── Summary ──────────────────────────────────────────────────────────────────
 \echo ''
 \echo 'seed-demo: current state'
