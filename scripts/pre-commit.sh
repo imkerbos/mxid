@@ -19,9 +19,9 @@ if echo "$staged" | grep -qE '\.go$|^go\.(mod|sum)$'; then
   make verify-mod verify-vet verify-build verify-gormtags
 fi
 
-# verify-exports is dirt cheap; run if any web/ file changed.
+# Both are dirt cheap; run if any web/ file changed.
 if echo "$staged" | grep -qE '^web/'; then
-  make verify-exports
+  make verify-exports verify-i18n-markers
 fi
 
 echo "✓ pre-commit OK"

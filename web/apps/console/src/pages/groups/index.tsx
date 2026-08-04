@@ -755,8 +755,8 @@ export default function GroupsPage() {
                   error={createErrors.code}
                   hint={
                     <>
-                      {t('groups.createModal.harborHint')}
-                      <span className="text-amber-600">{t('groups.createModal.codeImmutable')}</span>
+                      {t('groups.createModal.harborHint')}{' '}
+                      <span className="text-warning">{t('groups.createModal.codeImmutable')}</span>
                     </>
                   }
                 >
