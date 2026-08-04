@@ -247,7 +247,7 @@ mxid/
 
 ## Star 趋势
 
-[![Star History Chart](https://api.star-history.com/svg?repos=imkerbos/mxid&type=Date)](https://star-history.com/#imkerbos/mxid&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=imkerbos/mxid,matrixplusio/mxid&type=Date)](https://star-history.com/#imkerbos/mxid&matrixplusio/mxid&Date)
 
 ## 参与贡献
 

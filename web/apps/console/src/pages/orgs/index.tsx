@@ -15,7 +15,7 @@ import {
   UserMinus,
 } from 'lucide-react'
 import { orgApi, userApi, cn, statusLabel, statusColor, useTranslation, useTabParam } from '@mxid/shared'
-import { pageMotion, Button, ConfirmDialog, Modal } from '@mxid/shared/ui'
+import { Field, pageMotion, Button, ConfirmDialog, Modal } from '@mxid/shared/ui'
 import type { OrgNode, User, PaginatedData } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
 import { toast, extractMessage } from '../../components/ui/toast'
@@ -715,8 +715,10 @@ export default function OrgsPage() {
         onClose={() => setShowCreate(false)}
       >
             <form onSubmit={handleCreate} className="space-y-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">{t('orgs.createModal.nameRequired')}</label>
+              <Field
+                label={t('orgs.createModal.nameRequired')}
+                required hint={t('orgs.createModal.nameHint')}
+              >
                 <input
                   type="text"
                   value={createForm.name}
@@ -724,10 +726,11 @@ export default function OrgsPage() {
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   required
                 />
-                <p className="mt-1 text-xs text-faint">{t('orgs.createModal.nameHint')}</p>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">{t('orgs.createModal.codeRequired')}</label>
+              </Field>
+              <Field
+                label={t('orgs.createModal.codeRequired')}
+                required hint={<>{t('orgs.createModal.codeHint1')}<code className="rounded bg-surface-muted px-1">tech_team</code>{t('orgs.createModal.codeHint2')}<code className="rounded bg-surface-muted px-1">root.tech_team</code>{t('orgs.createModal.codeHint3')}<span className="text-warning">{t('orgs.createModal.codeImmutable')}</span></>}
+              >
                 <input
                   type="text"
                   value={createForm.code}
@@ -735,10 +738,7 @@ export default function OrgsPage() {
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   required
                 />
-                <p className="mt-1 text-xs text-faint">
-                  {t('orgs.createModal.codeHint1')}<code className="rounded bg-surface-muted px-1">tech_team</code>{t('orgs.createModal.codeHint2')}<code className="rounded bg-surface-muted px-1">root.tech_team</code>{t('orgs.createModal.codeHint3')}<span className="text-warning">{t('orgs.createModal.codeImmutable')}</span>
-                </p>
-              </div>
+              </Field>
               <div className="flex justify-end gap-3 pt-2">
                 <Button type="button" variant="secondary" onClick={() => setShowCreate(false)}>
                   {t('common.cancel')}
@@ -753,8 +753,7 @@ export default function OrgsPage() {
       {/* ───── Edit Modal ───── */}
       <Modal open={showEdit} title={t('orgs.editModal.title')} onClose={() => setShowEdit(false)} size="sm">
             <form onSubmit={handleEdit} className="space-y-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">{t('orgs.editModal.nameLabel')}</label>
+              <Field label={t('orgs.editModal.nameLabel')} required hint={t('orgs.editModal.nameHint')}>
                 <input
                   type="text"
                   value={editName}
@@ -763,8 +762,7 @@ export default function OrgsPage() {
                   required
                   autoFocus
                 />
-                <p className="mt-1 text-xs text-faint">{t('orgs.editModal.nameHint')}</p>
-              </div>
+              </Field>
               <div className="flex justify-end gap-3 pt-2">
                 <Button type="button" variant="secondary" onClick={() => setShowEdit(false)}>
                   {t('common.cancel')}

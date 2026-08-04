@@ -46,7 +46,10 @@ export function Field({
   error,
   children,
 }: {
-  label: string
+  // ReactNode, not string: a label is often more than text — an icon beside the
+  // name, a secondary <span> carrying a hint that belongs on the same line. The
+  // string-only type forced those callers to keep hand-rolling the whole block.
+  label: ReactNode
   hint?: ReactNode
   required?: boolean
   error?: string

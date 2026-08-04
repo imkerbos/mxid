@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { motion } from 'framer-motion'
 import QRCode from 'qrcode'
 import { portalApi, formatDate, cn, parseUserAgent, useTranslation } from '@mxid/shared'
-import { Button, ConfirmDialog } from '@mxid/shared/ui'
+import { Field, Button, ConfirmDialog } from '@mxid/shared/ui'
 import { toast, extractMessage } from '@mxid/shared/ui/toast'
 import type { MFAInfo, SessionInfo, FormFillExtToken } from '@mxid/shared'
 import {
@@ -141,10 +141,7 @@ function ChangePasswordSection() {
 
         {/* Old password — only when a local password already exists. */}
         {hasPassword && (
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-ink">
-              {t('account.pwd.old')}
-            </label>
+          <Field label={t('account.pwd.old')}>
             <div className="relative">
               <input
                 type={showOld ? 'text' : 'password'}
@@ -162,14 +159,11 @@ function ChangePasswordSection() {
                 {showOld ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
-          </div>
+          </Field>
         )}
 
         {/* New password */}
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-ink">
-            {t('account.pwd.new')}
-          </label>
+        <Field label={t('account.pwd.new')}>
           <div className="relative">
             <input
               type={showNew ? 'text' : 'password'}
@@ -187,13 +181,10 @@ function ChangePasswordSection() {
               {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
-        </div>
+        </Field>
 
         {/* Confirm */}
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-ink">
-            {t('account.pwd.confirm')}
-          </label>
+        <Field label={t('account.pwd.confirm')}>
           <input
             type="password"
             value={confirmPwd}
@@ -202,14 +193,11 @@ function ChangePasswordSection() {
             autoComplete="new-password"
             className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-ink outline-none transition-colors placeholder:text-faint focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
-        </div>
+        </Field>
 
         {/* TOTP step-up: only when rotating an existing password. */}
         {hasPassword && totpActive && (
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-ink">
-              {t('account.pwd.mfaCode')}
-            </label>
+          <Field label={t('account.pwd.mfaCode')}>
             <input
               type="text"
               inputMode="numeric"
@@ -220,7 +208,7 @@ function ChangePasswordSection() {
               className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm tracking-widest text-ink outline-none transition-colors placeholder:text-faint placeholder:tracking-normal focus:border-primary focus:ring-2 focus:ring-primary/20"
             />
             <p className="mt-1 text-xs text-muted">{t('account.pwd.mfaCodeHint')}</p>
-          </div>
+          </Field>
         )}
 
         {msg && (

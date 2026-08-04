@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { Plus, Shield, Check, Loader2, Trash2, Users, UserPlus } from 'lucide-react'
 import { permissionApi, formatDate, cn, useTranslation, useTabParam } from '@mxid/shared'
-import { pageMotion, Button, Modal, ConfirmDialog } from '@mxid/shared/ui'
+import { Field, pageMotion, Button, Modal, ConfirmDialog } from '@mxid/shared/ui'
 import type { Role, Permission, PaginatedData, RoleBinding } from '@mxid/shared'
 import { RoleType, BindingSubjectType, BindingScopeType } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
@@ -590,8 +590,7 @@ export default function PermissionsPage() {
       {showCreate && (
         <Modal open title={t('permissions.createRoleModal.title')} onClose={() => setShowCreate(false)} size="md">
             <form onSubmit={handleCreate} className="space-y-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">{t('permissions.createRoleModal.nameRequired')}</label>
+              <Field label={t('permissions.createRoleModal.nameRequired')} required>
                 <input
                   type="text"
                   value={createForm.name}
@@ -599,9 +598,8 @@ export default function PermissionsPage() {
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   required
                 />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">{t('permissions.createRoleModal.codeRequired')}</label>
+              </Field>
+              <Field label={t('permissions.createRoleModal.codeRequired')} required>
                 <input
                   type="text"
                   value={createForm.code}
@@ -609,16 +607,15 @@ export default function PermissionsPage() {
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   required
                 />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">{t('permissions.createRoleModal.description')}</label>
+              </Field>
+              <Field label={t('permissions.createRoleModal.description')}>
                 <textarea
                   value={createForm.description}
                   onChange={(e) => setCreateForm((f) => ({ ...f, description: e.target.value }))}
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   rows={3}
                 />
-              </div>
+              </Field>
               <div className="flex justify-end gap-3 pt-2">
                 <Button type="button" variant="secondary" onClick={() => setShowCreate(false)}>
                   {t('common.cancel')}
@@ -643,8 +640,7 @@ export default function PermissionsPage() {
               </div>
             )}
             <form onSubmit={handleAddMember} className="space-y-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">{t('permissions.addMemberModal.subjectTypeRequired')}</label>
+              <Field label={t('permissions.addMemberModal.subjectTypeRequired')}>
                 <div className="flex gap-2">
                   {(isSuperAdminRole ? (['user'] as SubjectType[]) : SUBJECT_TYPES).map((st) => (
                     <button
@@ -662,11 +658,11 @@ export default function PermissionsPage() {
                     </button>
                   ))}
                 </div>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">
-                  {t('permissions.addMemberModal.subjectIdLabel', { type: subjectTypeLabels[addMemberForm.subject_type] })}
-                </label>
+              </Field>
+              <Field
+                label={t('permissions.addMemberModal.subjectIdLabel',
+                { type: subjectTypeLabels[addMemberForm.subject_type] })}
+              >
                 <SubjectPicker
                   subjectType={addMemberForm.subject_type}
                   value={addMemberForm.subject_id}
@@ -674,11 +670,13 @@ export default function PermissionsPage() {
                   onChange={(id, label) => setAddMemberForm((f) => ({ ...f, subject_id: id, subject_label: label }))}
                   placeholder={t('permissions.addMemberModal.subjectIdPlaceholder', { type: subjectTypeLabels[addMemberForm.subject_type] })}
                 />
-              </div>
+              </Field>
 
               {!isSuperAdminRole && (
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">{t('permissions.addMemberModal.scope')}</label>
+              <Field
+                label={t('permissions.addMemberModal.scope')}
+                hint={t('permissions.addMemberModal.scopeHint')}
+              >
                 <div className="flex gap-2">
                   {([
                     { v: '', label: t('permissions.addMemberModal.scopeGlobal') },
@@ -700,17 +698,14 @@ export default function PermissionsPage() {
                     </button>
                   ))}
                 </div>
-                <p className="mt-1 text-xs text-faint">
-                  {t('permissions.addMemberModal.scopeHint')}
-                </p>
-              </div>
+              </Field>
               )}
 
               {!isSuperAdminRole && addMemberForm.scope_type !== '' && (
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-ink">
-                    {addMemberForm.scope_type === BindingScopeType.Org ? t('permissions.addMemberModal.scopeIdOrgLabel') : t('permissions.addMemberModal.scopeIdGroupLabel')}
-                  </label>
+                <Field
+                  label={addMemberForm.scope_type
+                  === BindingScopeType.Org ? t('permissions.addMemberModal.scopeIdOrgLabel') : t('permissions.addMemberModal.scopeIdGroupLabel')} required
+                >
                   <input
                     type="number"
                     min="1"
@@ -720,7 +715,7 @@ export default function PermissionsPage() {
                     className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                     required
                   />
-                </div>
+                </Field>
               )}
               <div className="flex justify-end gap-3 pt-2">
                 <Button type="button" variant="secondary" onClick={() => setShowAddMember(false)}>
