@@ -350,7 +350,9 @@ func DefaultProtocolDefaults() ProtocolDefaults {
 		OIDCAccessTokenTTLSeconds:  900,
 		OIDCRefreshTokenTTLSeconds: 604800,
 		OIDCIDTokenTTLSeconds:      900,
-		DefaultSubjectStrategy:     "persistent_id",
+		DefaultSubjectStrategy:     "persistent_id", // OIDC sub: opaque, rename-stable
+		SAMLSubjectStrategy:        "username",      // NameID: the downstream account name
+		CASSubjectStrategy:         "username",      // cas:user: the downstream account name
 		SAMLAssertionTTLSeconds:    28800,
 		CASTicketTTLSeconds:        60,
 	}

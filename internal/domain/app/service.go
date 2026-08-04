@@ -73,7 +73,27 @@ type ProtocolDefaults struct {
 	OIDCIDTokenTTL      int
 	SAMLAssertionTTL    int
 	CASTicketTTL        int
-	DefaultSubject      string
+	// OIDCSubject / SAMLSubject / CASSubject are the per-protocol subject
+	// strategies. They differ because the value lands somewhere different in
+	// each protocol: an OIDC `sub` is an opaque machine identifier, while a
+	// SAML NameID and a CAS `cas:user` are the account name the downstream
+	// application creates. See setting.ProtocolDefaults.
+	OIDCSubject string
+	SAMLSubject string
+	CASSubject  string
+}
+
+// subjectFor returns the configured default subject strategy for a protocol,
+// or "" when none is configured (the caller then keeps its own fallback).
+func (d ProtocolDefaults) subjectFor(protocol string) string {
+	switch protocol {
+	case ProtocolSAML:
+		return d.SAMLSubject
+	case ProtocolCAS:
+		return d.CASSubject
+	default:
+		return d.OIDCSubject
+	}
 }
 
 // ProtocolDefaultsProvider returns the runtime defaults for new apps.
@@ -269,8 +289,8 @@ func (s *Service) Create(ctx context.Context, tenantID int64, req *CreateAppRequ
 		scope = *req.Scope
 	}
 	subjectStrategy := SubjectStrategyUsername
-	if defaults.DefaultSubject != "" {
-		subjectStrategy = defaults.DefaultSubject
+	if d := defaults.subjectFor(req.Protocol); d != "" {
+		subjectStrategy = d
 	}
 	if req.SubjectStrategy != nil && *req.SubjectStrategy != "" {
 		subjectStrategy = *req.SubjectStrategy

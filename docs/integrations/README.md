@@ -38,7 +38,9 @@ OIDC 引擎基于 [`zitadel/oidc`](https://github.com/zitadel/oidc) v3，是标�
 
 - **scope**：`openid profile email groups`（`offline_access` 换 refresh token）
 - **id_token / userinfo 里的 claim**：
-  - `sub`：主体标识（默认策略 = 用户名；可在应用里改 subject 策略为 pairwise/persistent_id/email）
+  - `sub`：主体标识（OIDC 默认 = `persistent_id`，不透明且改名后不变；可在应用里改为
+    username/username_suffixed/pairwise/email）。SAML NameID 与 CAS `cas:user` 默认 = 用户名，
+    因为下游应用拿它当账号名建号。
   - `groups`：用户所属组的 code 列表 —— **需要应用配置里加 `groups` claim mapper**
   - `app_roles`：用户在**本应用**的角色 code 列表（给 RP 直接做角色映射，比解析 groups 省事）
   - `tenant_code`、`preferred_username`、`email` / `email_verified`、`name`、`amr`、`sid`

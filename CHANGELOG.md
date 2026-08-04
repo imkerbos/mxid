@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- The default subject strategy is now chosen per protocol: OIDC keeps
+  `persistent_id`, while SAML and CAS default to the username. One shared
+  default served all three and the OIDC-shaped answer won, so a CAS app created
+  through the console emitted a snowflake id as `cas:user` — and JumpServer,
+  Redmine and Zabbix key local accounts off that value. Existing apps are
+  untouched; this only changes what a newly created app starts with.
 - The account page's form labels now match the rest of the console. It declared
   a private copy of the shared `Field` primitive that shadowed the import, so its
   labels were styled differently and it had no slot for a validation message. A
