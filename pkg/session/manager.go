@@ -40,6 +40,11 @@ type Session struct {
 	// MFA enrollment until they bind one. Cleared automatically once a factor
 	// is detected.
 	MFAEnrollPending bool `json:"mfa_enroll_pending,omitempty"`
+	// PwdChangePending is true when the user must choose a new password before
+	// the session may do anything else — an administrator reset it, or the
+	// account still carries the password it was seeded with. Cleared once the
+	// password is changed.
+	PwdChangePending bool `json:"pwd_change_pending,omitempty"`
 }
 
 // StepUpFresh reports whether this session passed MFA within `window` of now —
@@ -66,6 +71,14 @@ type PolicyProvider func(ctx context.Context) (idle, absolute time.Duration)
 // uniformly, instead of each handler having to remember to set the flag.
 type EnrollDecider func(ctx context.Context, tenantID, userID int64) bool
 
+// PwdChangeDecider reports whether a NEWLY created session belongs to a user
+// who must pick a new password before doing anything else. Evaluated inside
+// Create for the same reason as EnrollDecider: every login path (local
+// password, SMS OTP, magic link, external IdP) has to enforce it, and a rule
+// each handler must remember to apply is a rule that gets bypassed the next
+// time a login path is added.
+type PwdChangeDecider func(ctx context.Context, tenantID, userID int64) bool
+
 // Manager handles session lifecycle operations.
 type Manager struct {
 	redis           *redis.Client
@@ -73,6 +86,7 @@ type Manager struct {
 	absoluteTimeout time.Duration
 	policy          PolicyProvider
 	enrollDecider   EnrollDecider
+	pwdDecider      PwdChangeDecider
 }
 
 // NewManager creates a session manager.
@@ -92,6 +106,11 @@ func (m *Manager) SetPolicyProvider(p PolicyProvider) { m.policy = p }
 // every newly created session. Nil disables mandatory enrollment. Wired once
 // after construction.
 func (m *Manager) SetEnrollDecider(d EnrollDecider) { m.enrollDecider = d }
+
+// SetPwdChangeDecider installs the forced-password-change predicate applied to
+// every newly created session. Nil disables the gate. Wired once after
+// construction.
+func (m *Manager) SetPwdChangeDecider(d PwdChangeDecider) { m.pwdDecider = d }
 
 // CountActive returns the number of live session value keys in the given
 // namespace. Session values live at `namespace:<id>`; the per-user index sets
@@ -157,6 +176,14 @@ func (m *Manager) Create(ctx context.Context, namespace string, userID, tenantID
 	// everything but the MFA-enrollment surface until a factor is bound.
 	if m.enrollDecider != nil && m.enrollDecider(ctx, tenantID, userID) {
 		sess.MFAEnrollPending = true
+	}
+
+	// Forced password change, applied at the same chokepoint and for the same
+	// reason. Until this existed, must_change_pwd was written by every admin
+	// reset and read by nothing but a badge in the console — the reset promised
+	// the user would have to choose a new password, and they did not.
+	if m.pwdDecider != nil && m.pwdDecider(ctx, tenantID, userID) {
+		sess.PwdChangePending = true
 	}
 
 	if err := m.save(ctx, sess); err != nil {
@@ -292,6 +319,25 @@ func (m *Manager) SetEnrollPending(ctx context.Context, namespace, sessionID str
 		return fmt.Errorf("set enroll pending unmarshal: %w", err)
 	}
 	sess.MFAEnrollPending = pending
+	return m.save(ctx, &sess)
+}
+
+// SetPwdChangePending flips the forced-password-change flag on a live session.
+// Used to clear it once the user has chosen a new password.
+func (m *Manager) SetPwdChangePending(ctx context.Context, namespace, sessionID string, pending bool) error {
+	key := fmt.Sprintf("%s:%s", namespace, sessionID)
+	data, err := m.redis.Get(ctx, key).Bytes()
+	if err != nil {
+		if err == redis.Nil {
+			return nil
+		}
+		return fmt.Errorf("set pwd change pending get: %w", err)
+	}
+	var sess Session
+	if err := json.Unmarshal(data, &sess); err != nil {
+		return fmt.Errorf("set pwd change pending unmarshal: %w", err)
+	}
+	sess.PwdChangePending = pending
 	return m.save(ctx, &sess)
 }
 

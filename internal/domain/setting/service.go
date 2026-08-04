@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"sync"
 	"time"
 
@@ -36,6 +37,10 @@ type Service struct {
 
 	mu    sync.RWMutex
 	cache map[string]cacheEntry
+	// auditRetentionFloor is the deployment's minimum audit retention in days
+	// (0 = none). Guarded by mu alongside the cache: it is written once at
+	// startup but read by the retention cron on another goroutine.
+	auditRetentionFloor int
 }
 
 // SetEventBus wires the event bus so settings changes emit a settings.updated
@@ -431,13 +436,106 @@ func (s *Service) ExternalURLs(ctx context.Context, tenantID int64) (ExternalURL
 	return v, err
 }
 
+// AuditPolicy returns the EFFECTIVE audit policy: the stored one with its
+// retention raised to the configured floor if it sits below it.
+//
+// Clamping on read rather than trusting the stored number is deliberate. The
+// write path refuses a sub-floor value, so a stored one can only come from a
+// deployment that predates the floor, a floor raised after the fact, or someone
+// editing the row directly — and in every one of those the safe reading is that
+// the floor wins. It only ever retains MORE than was asked for: no call to this
+// can cause a deletion that the stored value would not already have caused.
 func (s *Service) AuditPolicy(ctx context.Context, tenantID int64) (AuditPolicy, error) {
 	v := DefaultAuditPolicy()
 	err := s.Get(ctx, KeyAuditPolicy, tenantID, &v)
 	if errors.Is(err, ErrNotFound) {
-		return v, nil
+		err = nil
+	}
+	if floor := s.AuditRetentionFloor(); floor > 0 && v.RetentionDays > 0 && v.RetentionDays < floor {
+		v.RetentionDays = floor
 	}
 	return v, err
+}
+
+// AuditRetentionFloor is the minimum retention this deployment will honour, in
+// days. Zero means no floor.
+func (s *Service) AuditRetentionFloor() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.auditRetentionFloor
+}
+
+// SetAuditRetentionFloor wires the deployment's retention floor. Called once at
+// startup from the audit config; a zero disables the floor entirely.
+func (s *Service) SetAuditRetentionFloor(days int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if days < 0 {
+		days = 0
+	}
+	s.auditRetentionFloor = days
+}
+
+// ErrRetentionBelowFloor rejects an audit retention shorter than the deployment
+// permits. Carries the floor because the message has to name it — telling an
+// administrator only that the value is "too low" leaves them guessing.
+type ErrRetentionBelowFloor struct {
+	Requested int
+	Floor     int
+}
+
+func (e ErrRetentionBelowFloor) Error() string {
+	return fmt.Sprintf("audit retention of %d days is below this deployment's minimum of %d days",
+		e.Requested, e.Floor)
+}
+
+// ValidateAuditPolicy rejects a policy that would weaken audit retention past
+// what the deployment allows, or that is not a sensible period at all.
+//
+// RetentionDays <= 0 is NOT an error: it is how retention is switched off
+// entirely, and the purge loop already reads it that way. Turning retention off
+// keeps every record for ever, so it can never be the thing a floor guards
+// against.
+func (s *Service) ValidateAuditPolicy(p AuditPolicy) error {
+	floor := s.AuditRetentionFloor()
+	if floor > 0 && p.RetentionDays > 0 && p.RetentionDays < floor {
+		return ErrRetentionBelowFloor{Requested: p.RetentionDays, Floor: floor}
+	}
+	return validateAlertWebhookURL(p.AlertWebhookURL)
+}
+
+// ErrBadAlertWebhookURL rejects a webhook URL that delivery would refuse.
+type ErrBadAlertWebhookURL struct{ Reason string }
+
+func (e ErrBadAlertWebhookURL) Error() string {
+	return "alert webhook URL " + e.Reason
+}
+
+// validateAlertWebhookURL refuses at SAVE time what delivery would refuse
+// later.
+//
+// Alerts go out through pkg/safehttp, which permits https only. Accepting an
+// http:// URL here would store it, report "saved", and then dead-letter every
+// alert against it — reproducing exactly the silent-failure the alert webhook
+// was fixed to stop being. An administrator gets told now instead.
+func validateAlertWebhookURL(raw string) error {
+	if raw == "" {
+		return nil // alerting off
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ErrBadAlertWebhookURL{Reason: "is not a valid URL"}
+	}
+	if u.Scheme != "https" {
+		return ErrBadAlertWebhookURL{
+			Reason: "must start with https:// — alerts are delivered over TLS only, " +
+				"and a plain http:// endpoint would silently receive nothing",
+		}
+	}
+	if u.Host == "" {
+		return ErrBadAlertWebhookURL{Reason: "is missing a host"}
+	}
+	return nil
 }
 
 // OffboardingWebhook returns the configured offboarding webhook (decrypted

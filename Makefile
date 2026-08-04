@@ -133,6 +133,20 @@ offline-bundle:
 # roles, so the demo users (alice … nancy) actually see apps in the portal.
 # Idempotent — every statement is ON CONFLICT DO NOTHING against a reserved id
 # range, so re-running is a no-op and your own test data is never touched.
+.PHONY: backup backup-verify
+# Back up the dev database, and prove the file restores. A backup nobody has
+# restored is a hope, not a backup — `backup-verify` restores into a throwaway
+# database and checks the result rather than trusting the file's size.
+backup:
+	@docker exec -e PGPASSWORD="$${POSTGRES_PASSWORD}" -e PGUSER=$${POSTGRES_USER:-postgres} \
+	  -e PGDATABASE=$${POSTGRES_DB:-mxid} -e MXID_BACKUP_DIR=/tmp \
+	  -i mxid-postgres-dev bash -s dump < scripts/backup.sh
+
+backup-verify:
+	@test -n "$(FILE)" || { echo "usage: make backup-verify FILE=/tmp/mxid-....dump"; exit 2; }
+	@docker exec -e PGPASSWORD="$${POSTGRES_PASSWORD}" -e PGUSER=$${POSTGRES_USER:-postgres} \
+	  -i mxid-postgres-dev bash -s verify "$(FILE)" < scripts/backup.sh
+
 .PHONY: seed-demo
 seed-demo:
 	@docker exec -i mxid-postgres-dev psql -v ON_ERROR_STOP=1 \

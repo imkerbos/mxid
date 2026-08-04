@@ -28,6 +28,7 @@ protocol overview plus the Jenkins guide.
 |---|---|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Package layout, auth and SSO flows, single-logout, the EE seam, HA, error contract |
 | [AUDIT-CHAIN-DESIGN.md](AUDIT-CHAIN-DESIGN.md) | Tamper-proof audit: hash chain, Merkle roots, Ed25519 anchors, offline third-party verification |
+| [COMPLIANCE-MLPS_ZH.md](COMPLIANCE-MLPS_ZH.md) | 等保 2.0 三级 — control-point mapping for Chinese MLPS assessors (Chinese). States plainly which parts an application can answer for and which belong to the hosting environment. |
 | [design-system.md](design-system.md) | Frontend tokens, dark mode, shared component kit |
 | [ROADMAP-EIAM.md](ROADMAP-EIAM.md) | Capability gaps against commercial EIAM suites, and their current status |
 

@@ -76,9 +76,9 @@ var detailSchemas = map[string]detailSchema{
 	event.Logout:       {allow: []string{"user_id", "tenant_id", "session_id", "ip", "user_agent"}},
 
 	event.UserCreated:          {allow: []string{"user_id", "tenant_id", "username", "email", "display_name", "actor_id"}},
-	event.UserUpdated:          {allow: []string{"user_id", "tenant_id", "actor_id", "fields"}},
+	event.UserUpdated:          {allow: []string{"user_id", "tenant_id", "actor_id", "fields", "status"}},
 	event.UserDeleted:          {allow: []string{"user_id", "tenant_id", "username", "actor_id"}},
-	event.UserLocked:           {allow: []string{"user_id", "tenant_id", "actor_id", "reason"}},
+	event.UserLocked:           {allow: []string{"user_id", "tenant_id", "actor_id", "reason", "status", "source"}},
 	event.UserUnlocked:         {allow: []string{"user_id", "tenant_id", "actor_id"}},
 	event.UserPasswordChanged:  {allow: []string{"user_id", "tenant_id", "actor_id", "method"}},
 	event.UserPIIView:          {allow: []string{"user_id", "target_id", "tenant_id", "fields"}},

@@ -21,8 +21,18 @@ PORTAL_BASE="${MXID_PORTAL_BASE:-http://localhost:10050/api/v1/portal}"
 HEALTH="${MXID_HEALTH:-http://localhost:10050/health}"
 ADMIN_USER="${MXID_ADMIN_USER:-admin}"
 ADMIN_PASS="${MXID_ADMIN_PASS:-admin123}"
-REDIS_CTR="${MXID_REDIS_CTR:-redis}"
-REDIS_PASS="${MXID_REDIS_PASS:-123456}"
+# Defaults describe the stack `make dev-up` actually creates. They previously
+# named a container `redis` with the password `123456`, which belongs to some
+# other setup — so the script only worked if an unrelated container happened to
+# be running under that name, and reported a redis failure when it was not.
+REDIS_CTR="${MXID_REDIS_CTR:-mxid-redis-dev}"
+# The dev stack's redis password lives in .env (REDIS_PASSWORD), the same file
+# `make dev-up` passes to compose. Sourcing one value beats hard-coding one that
+# is wrong everywhere but one machine.
+if [[ -z "${MXID_REDIS_PASS:-}" && -f "$(dirname "$0")/../.env" ]]; then
+  MXID_REDIS_PASS="$(grep -E '^REDIS_PASSWORD=' "$(dirname "$0")/../.env" | head -1 | cut -d= -f2-)"
+fi
+REDIS_PASS="${MXID_REDIS_PASS:-}"
 WAIT_S="${MXID_SMOKE_WAIT:-30}"
 # The portal probe needs an account with apps assigned to it. admin has none —
 # it administers apps rather than being granted them — so the last probe

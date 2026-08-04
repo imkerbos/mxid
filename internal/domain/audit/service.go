@@ -6,7 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/imkerbos/mxid/internal/domain/auditalert"
 	"github.com/imkerbos/mxid/pkg/auditctx"
+	"github.com/imkerbos/mxid/pkg/auditsink"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/geoip"
 	"github.com/imkerbos/mxid/pkg/metrics"
@@ -17,12 +19,14 @@ import (
 
 // Service provides business logic for audit logging.
 type Service struct {
-	repo     Repository
-	idGen    *snowflake.Generator
-	eventBus *event.Bus
-	logger   *zap.Logger
-	tenantID int64
-	geo      geoip.Resolver
+	repo      Repository
+	idGen     *snowflake.Generator
+	eventBus  *event.Bus
+	logger    *zap.Logger
+	forwarder Forwarder
+	alerter   Alerter
+	tenantID  int64
+	geo       geoip.Resolver
 	// nameResolver denormalizes an actor's username at write time for events
 	// whose publisher only carries a user_id (e.g. app.launched fired from the
 	// portal middleware context, which holds no username). nil falls back to a
@@ -660,8 +664,93 @@ func (s *Service) createLog(ctx context.Context, log *AuditLog) {
 			fields = append(fields, zap.ByteString("detail", log.Detail))
 		}
 		s.logger.Error("audit write failed — row dropped, this log line is the fallback record", fields...)
+		// Nothing to mirror: forwarding a record that is not in the database
+		// would put a claim on the collector that the system cannot corroborate.
+		return
 	}
+	s.forward(log)
+	s.alert(log)
 	s.bridgeToChain(ctx, log)
+}
+
+// SetAlerter wires outbound alerting for selected audit events. Optional: a nil
+// alerter sends nothing.
+func (s *Service) SetAlerter(a Alerter) { s.alerter = a }
+
+// Alerter decides which persisted audit records warrant notifying somebody, and
+// arranges it. Implementations MUST NOT block — this runs on the audit write
+// path — and MUST NOT fail the caller: the audited action already happened.
+type Alerter interface {
+	Dispatch(ctx context.Context, a auditalert.Alert)
+}
+
+func (s *Service) alert(log *AuditLog) {
+	if s.alerter == nil {
+		return
+	}
+	// A detached context, for the same reason repo.Create uses one: this runs
+	// in an event-handler goroutine whose originating request has usually
+	// already returned, and a cancelled context would silently drop the alert.
+	s.alerter.Dispatch(context.Background(), auditalert.Alert{
+		AuditID:      log.ID,
+		TenantID:     log.TenantID,
+		Time:         log.CreatedAt,
+		EventType:    log.EventType,
+		Success:      log.EventStatus == EventStatusSuccess,
+		ActorID:      log.ActorID,
+		ActorName:    derefString(log.ActorName),
+		ResourceType: derefString(log.ResourceType),
+		ResourceID:   log.ResourceID,
+		ResourceName: derefString(log.ResourceName),
+		IP:           derefString(log.IP),
+		UserAgent:    derefString(log.UserAgent),
+		Detail:       log.Detail,
+	})
+}
+
+// SetForwarder wires the off-host audit mirror. Optional: a nil forwarder (the
+// default, and what a deployment with no collector configured gets) forwards
+// nothing.
+func (s *Service) SetForwarder(f Forwarder) { s.forwarder = f }
+
+// Forwarder mirrors a persisted audit record to a collector outside the
+// database. Implementations MUST NOT block: this runs on the audit write path,
+// which is synchronous with every write API in the product.
+type Forwarder interface {
+	Forward(auditsink.Record)
+}
+
+// forward mirrors a record that has just been persisted. Called after the write
+// succeeds and before the chain bridge — the chain proves nobody edited
+// history, the mirror is what survives someone deleting it.
+func (s *Service) forward(log *AuditLog) {
+	if s.forwarder == nil {
+		return
+	}
+	s.forwarder.Forward(auditsink.Record{
+		ID:           log.ID,
+		TenantID:     log.TenantID,
+		Time:         log.CreatedAt,
+		EventType:    log.EventType,
+		Success:      log.EventStatus == EventStatusSuccess,
+		ActorID:      log.ActorID,
+		ActorName:    derefString(log.ActorName),
+		ActorType:    log.ActorType,
+		ResourceType: derefString(log.ResourceType),
+		ResourceID:   log.ResourceID,
+		ResourceName: derefString(log.ResourceName),
+		IP:           derefString(log.IP),
+		UserAgent:    derefString(log.UserAgent),
+		SessionID:    derefString(log.SessionID),
+		Detail:       log.Detail,
+	})
+}
+
+func derefString(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
 }
 
 // --- helpers ---

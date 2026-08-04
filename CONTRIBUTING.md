@@ -15,6 +15,14 @@ Run the boot-level smoke separately (needs compose up):
 make smoke
 ```
 
+Backup and restore have their own pair, also against a live dev stack. `backup-verify`
+restores the file into a throwaway database and checks it rather than trusting its size:
+
+```
+make backup                                  # → /tmp/mxid-<timestamp>.dump
+make backup-verify FILE=/tmp/mxid-....dump
+```
+
 | Gate              | Tool                          | Catches                                                      |
 | ----------------- | ----------------------------- | ------------------------------------------------------------ |
 | `verify-mod`      | `go mod tidy` diff            | `// indirect` drift, missing `go.sum` rows                   |

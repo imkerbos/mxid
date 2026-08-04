@@ -115,6 +115,35 @@ audit:
   # it contained. Leaving it off means the ledger keeps every payload for ever,
   # regardless of the configured retention.
   ledger_retention: false
+  # Floor beneath which an administrator cannot shorten audit retention (days).
+  # Retention is editable at runtime in the console, so without a floor anyone
+  # with settings.manage can dial it down to a week — a way to destroy evidence
+  # that leaves no evidence behind. Regimes that mandate a retention period
+  # (China's MLPS 2.0 six-month rule among them) are asserting this floor.
+  #
+  # Commented out = 180 days, which is well under the 365-day retention default
+  # and so constrains nobody who has not gone looking for something shorter.
+  # Set it to 0 to allow any retention; a lower number to permit a shorter one.
+  # A stored value below the floor is raised to it when the purge reads the
+  # policy, so raising the floor never deletes anything it did not before.
+  # min_retention_days: 180
+  # Mirror every audit record to a collector outside the database as it is
+  # written. The tamper-evident chain proves nobody rewrote history; it does
+  # nothing about someone with database access dropping the table, and an
+  # off-host copy is what survives that. It is also what "centralised log
+  # management" controls ask for.
+  #
+  # Empty addr (the default) disables forwarding. Forwarding NEVER blocks the
+  # audit write: the queue is bounded and overflow is dropped and counted
+  # (mxid_audit_forward_total{result="dropped"}), because a collector that stops
+  # reading must not be able to stall every write API in the product.
+  forward:
+    addr: "" # host:port of the syslog collector
+    proto: tcp # udp | tcp | tcp+tls — udp cannot tell you records stopped arriving
+    # facility: 13    # syslog facility; 13 = "log audit", what collectors route on
+    # queue_size: 4096
+    # tls_server_name: ""            # when dialling tcp+tls by IP
+    # tls_insecure_skip_verify: false # turns the transport into obfuscation; last resort
 
 log:
   level: info # debug/info/warn/error

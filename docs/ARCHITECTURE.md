@@ -33,6 +33,7 @@ internal/
 │   ├── approle/             per-app role bindings
 │   ├── access/              JIT privileged access (eligibility → request → approval → binding)
 │   ├── conditionalaccess/   conditional-access policies (EE runtime-gated)
+│   ├── auditalert/          turns selected audit events into outbound alerts (outbox-backed, cooled down)
 │   ├── offboarding/         leaver workflow: L1 SSO cut / L3 review checklist / L2 deprovision seam
 │   ├── provisioning/        per-app outbound-provisioning config (SCIM connector config; connector is EE)
 │   ├── oidckey/             provider-level OIDC signing keyset with active/passive rotation
@@ -71,6 +72,7 @@ pkg/                         ~30 reusable libs; the load-bearing ones:
 ├── dberr/                   persistence error sentinels (not-found etc.) without gorm imports
 ├── response/                API envelope + MapError / InternalError conventions
 ├── auditctx/                request-scoped actor identity carried via context for audit writes
+├── auditsink/               off-host audit mirror (RFC 5424 syslog); NEVER blocks the audit write
 ├── mask/                    PII redaction helpers for API responses
 ├── ssoflow/                 one-time SSO login-confirmation tokens
 ├── metrics/                 Prometheus RED metrics + /metrics handler
@@ -347,6 +349,80 @@ past its ranges, which is structural rather than transient),
 `mxid_partitions_ahead`, `mxid_partition_default_rows`,
 `mxid_partitions_dropped_total`.
 
+### Retention floor
+
+Retention is editable at runtime in the console, which means anyone with
+`settings.manage` could shorten it — a way to destroy evidence that leaves no
+evidence. `audit.min_retention_days` (default 180) is a floor the console cannot
+write below, and `Service.AuditPolicy` clamps a stored value up to it when the
+purge reads the policy. Clamping on read rather than trusting the stored number
+matters because a sub-floor value can only come from a deployment that predates
+the floor, a floor raised after the fact, or a hand-edited row — and in all three
+the floor is the safer reading. It can only ever retain MORE than was asked for.
+
+### Off-host mirror and alerting
+
+The chain proves nobody rewrote history. It says nothing about someone with
+database access dropping the table, and that is what an off-host copy survives.
+
+`pkg/auditsink` mirrors every persisted record to a syslog collector (RFC 5424
+over UDP / TCP / TCP+TLS), hooked into `createLog` after the write succeeds. The
+load-bearing property is that **it never blocks**: forwarding runs on a path
+synchronous with every write API in the product, so a collector that stops
+reading must not be able to stall the service. The queue is bounded and overflow
+is dropped and counted (`mxid_audit_forward_total{result="dropped"}`), never
+waited on — the record is still in the database, so what a stalled collector
+costs is the mirror's completeness, not availability.
+
+`internal/domain/auditalert` is the other half: events named in
+`alert_on_event_types` are POSTed to the configured webhook. Delivery rides the
+transactional **outbox**, not a goroutine, because an alert about a security
+event is exactly what must not be lost to a restart; and it goes through
+`pkg/safehttp`, because an administrator-supplied URL is otherwise an SSRF
+primitive. A Redis cooldown collapses repeats of one event type for five minutes
+and reports the suppressed count on the next alert — ten thousand failed logins
+is one incident, and a channel that floods gets muted, which is the same as not
+having one.
+
+Configuration is split deliberately: the collector address is boot-time config
+(where the audit stream points is itself a security control, and an
+administrator who can silently redirect it into a black hole has undone the
+reason for having it), while the alert webhook is a runtime setting.
+
+## Credential bootstrap and forced password change
+
+Migration 000009 seeds an `admin` account with a password written in plaintext
+in that migration's first line, in this public repository. Nothing changed it,
+warned about it, or forced it to be changed, so every production install started
+with a super-admin credential any reader of the source already had.
+
+`bootstrap.SecureSeededAdmin` runs before the router accepts a request. In
+release mode, an account still carrying that exact bcrypt hash either takes the
+password from `MXID_BOOTSTRAP_ADMIN_PASSWORD` or is **locked**. Locking rather
+than merely gating is the point: a gated session can still reach the
+change-password endpoint, so anyone who knew the published password could have
+signed in and set a new one — an account takeover, not a blocked login. The hash
+equality test is what keeps this safe to run repeatedly and against an existing
+install: bcrypt salts, so it matches the seeded row and nothing else, including
+another account that happens to use the same weak password. Debug builds are
+untouched, because the seeded password is what the README, the demo seed and the
+smoke tests are built around.
+
+Deliberately **not** generated-and-logged: the logger redacts any field whose key
+looks like a credential (`internal/bootstrap/logger.go`), so a generated password
+would reach the operator as `***`, and defeating that filter to ship a secret
+into the log pipeline is the wrong trade.
+
+`must_change_pwd` is the second half. It was written by every administrative
+password reset and documented as forcing a change at next sign-in; the only thing
+that read it was a badge on the console user-detail page, so the reset's promise
+was never kept. The flag is now decided in `session.Manager.Create` — the single
+session-creation chokepoint, mirroring `EnrollDecider` — so password, SMS,
+magic-link and external-IdP logins are all covered rather than each handler
+having to remember. `authn.PwdGateMiddleware` then blocks the session from
+everything except `/security/password`, and self-heals once the database says
+nothing is owed.
+
 ## JIT privileged access
 
 `internal/domain/access` implements request-based temporary elevation (rule-based, no vaulted
@@ -433,6 +509,13 @@ so they are asserted by tests rather than documented and hoped for:
 | Every dependency-wiring struct in `app` covered by `exhaustruct` | `app/wiring_test.go` |
 | A `<Field required>` label carries no asterisk of its own (the primitive draws it) | `scripts/verify-i18n-markers.mjs` |
 | Package `app`'s exhaustruct list has no stale entries | `app/wiring_test.go` |
+| Session revocation covers every namespace and survives a cancelled publisher context | `app/session_revocation_test.go` |
+| A brute-force lockout does NOT revoke sessions (revoking would be a denial of service) | `app/session_revocation_test.go` |
+| Audit retention cannot be shortened past the deployment's floor | `internal/domain/setting/audit_retention_floor_test.go` |
+| Audit forwarding never blocks the audit write | `pkg/auditsink/sink_test.go` |
+| An alert storm is collapsed rather than delivered once per event | `internal/domain/auditalert/dispatcher_test.go` |
+| A release deployment never serves with the seeded administrator password | `internal/bootstrap/admin_credential_test.go` |
+| A session owing a password change reaches nothing but the change-password route | `internal/domain/authn/password_gate_test.go` |
 
 Each guard was verified by reintroducing the defect it exists to catch. Two of them were wrong on
 the first attempt and passed against the broken code — a line-window scan that found a neighbour's

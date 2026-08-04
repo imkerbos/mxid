@@ -9,9 +9,12 @@ interface AuthState {
   // enrollment screen while true — every other route/API would 403 until a
   // factor is bound, so partial pages must not render.
   mfaEnrollRequired: boolean
+  // passwordChangeRequired is set when the backend password gate returns 40333.
+  passwordChangeRequired: boolean
   setUser: (user: CurrentUser | null) => void
   setLoading: (loading: boolean) => void
   setMfaEnrollRequired: (required: boolean) => void
+  setPasswordChangeRequired: (required: boolean) => void
   clear: () => void
 }
 
@@ -19,8 +22,10 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   loading: true,
   mfaEnrollRequired: false,
+  passwordChangeRequired: false,
   setUser: (user) => set({ user, loading: false }),
   setLoading: (loading) => set({ loading }),
   setMfaEnrollRequired: (mfaEnrollRequired) => set({ mfaEnrollRequired }),
-  clear: () => set({ user: null, loading: false, mfaEnrollRequired: false }),
+  setPasswordChangeRequired: (passwordChangeRequired) => set({ passwordChangeRequired }),
+  clear: () => set({ user: null, loading: false, mfaEnrollRequired: false, passwordChangeRequired: false }),
 }))

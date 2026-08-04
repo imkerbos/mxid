@@ -1,6 +1,14 @@
 import { useEffect } from 'react'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
-import { useAuthStore, authApi, useBootstrap, useTheme, currentReturnPath } from '@mxid/shared'
+import {
+  useAuthStore,
+  authApi,
+  useBootstrap,
+  useTheme,
+  currentReturnPath,
+  ForcePasswordChange,
+  consoleSecurityApi,
+} from '@mxid/shared'
 import MainLayout from './components/layout/MainLayout'
 import StepUpModal from './components/StepUpModal'
 import LoginPage from './pages/login'
@@ -41,7 +49,8 @@ import {
 import { Navigate as RRNavigate } from 'react-router-dom'
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { user, loading, setUser, clear } = useAuthStore()
+  const { user, loading, setUser, clear, passwordChangeRequired, setPasswordChangeRequired } =
+    useAuthStore()
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -72,6 +81,15 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('mxid:unauthorized', handler)
   }, [])
 
+  // The account owes a password change: an admin reset it, or it is the seeded
+  // administrator, whose password is published in a public repository. Every
+  // other console call 403s until it is done.
+  useEffect(() => {
+    const onPwd = () => setPasswordChangeRequired(true)
+    window.addEventListener('mxid:password-change-required', onPwd)
+    return () => window.removeEventListener('mxid:password-change-required', onPwd)
+  }, [setPasswordChangeRequired])
+
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -81,6 +99,16 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) return null
+
+  if (passwordChangeRequired) {
+    return (
+      <ForcePasswordChange
+        changePassword={(oldPwd, newPwd) => consoleSecurityApi.changePassword(oldPwd, newPwd)}
+        logout={() => authApi.logout()}
+        toLogin={() => navigate('/login', { replace: true })}
+      />
+    )
+  }
 
   return <>{children}</>
 }

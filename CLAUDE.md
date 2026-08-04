@@ -211,6 +211,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full picture.
 | What's CE vs EE? | [docs/EDITIONS.md](docs/EDITIONS.md) |
 | How do I deploy it? | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) |
 | How does the audit chain work? | [docs/AUDIT-CHAIN-DESIGN.md](docs/AUDIT-CHAIN-DESIGN.md) |
+| What can we answer for in an MLPS (等保) assessment? | [docs/COMPLIANCE-MLPS_ZH.md](docs/COMPLIANCE-MLPS_ZH.md) |
 | How do I wire app X to SSO? | [docs/integrations/](docs/integrations/) |
 | What are the local dev gates? | [CONTRIBUTING.md](CONTRIBUTING.md) |
 | Why was it built this way? | [docs/archive/](docs/archive/) (frozen; code wins) |
