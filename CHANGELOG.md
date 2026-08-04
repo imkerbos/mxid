@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- `make seed-demo` now gives every demo app a description and enrols a second
+  factor for most demo users. Without them the console and portal read
+  "No description" on every card and the dashboard reported "MFA coverage 0.0%",
+  which made a populated demo look like an empty one.
 - The default subject strategy is now chosen per protocol: OIDC keeps
   `persistent_id`, while SAML and CAS default to the username. One shared
   default served all three and the OIDC-shaped answer won, so a CAS app created
