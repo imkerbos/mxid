@@ -319,7 +319,7 @@ export default {
         setButton: '设置密码',
         title: '重置密码',
         setTitle: '设置初始密码',
-        newPassword: '新密码 *',
+        newPassword: '新密码',
         placeholder: '至少 6 位',
         forceChange: '要求用户下次登录时强制修改密码',
         submit: '重置',
@@ -600,9 +600,9 @@ export default {
     nextPage: '下一页',
     createModal: {
       title: '新建用户组',
-      nameRequired: '名称 *',
+      nameRequired: '名称',
       nameHint: '用户可见的中文名称，例如：研发团队、人事部',
-      codeRequired: '编码 *',
+      codeRequired: '编码',
       codeImmutable: '创建后不可修改',
       desc: '描述',
       descHint: '可选，说明该用户组的用途，便于其他管理员理解',
@@ -822,7 +822,7 @@ export default {
     createModal: {
       title: '新建应用',
       nameLabel: '应用名称 *',
-      codeLabel: '应用编码 *',
+      codeLabel: '应用编码',
       codeHint: 'SAML / CAS 协议 URL 包含此编码（如 {{example}}），建议可读；OIDC 仅内部使用，可随机',
       protocolLabel: '协议',
       protocols: {
@@ -982,7 +982,7 @@ export default {
       editGroup: '编辑应用组',
       createGroup: '新建应用组',
       codeUneditable: '编码（不可改）',
-      codeRequired: '编码 *',
+      codeRequired: '编码',
       codeHint: '租户内唯一英文标识。仅前端引用，可随机生成',
       selectGroupHint: '从左侧选择一个应用组查看成员',
       sortLabel: '排序 {{order}}',
