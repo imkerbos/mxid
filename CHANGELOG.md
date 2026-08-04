@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.1] — 2026-08-04
+
 ### Changed
 - Console and portal forms now use one label style throughout. 57 hand-rolled
   label/control/hint blocks moved onto the shared `Field` primitive, which draws
@@ -67,6 +69,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   background jobs) are unchanged, since they have no tenant to filter by.
 
 ### Fixed
+- `make smoke` has not worked since v1.0.0. It sends no `Origin` header, which
+  the CSRF middleware requires, so it died at the first login with a bare 403 —
+  unnoticed because CI never ran it. Its portal probe also signed in as `admin`,
+  who administers apps rather than being granted any, so the last check failed
+  against a healthy system. Both fixed.
 - The example env files pinned `MXID_TAG=v0.1.0`, a tag that is no longer
   published. Since deploying starts with `cp .env.example .env`, the first thing
   a new user hit was an image pull failure. Now pinned to the current release,
@@ -535,6 +542,7 @@ Initial public preview. Two integrations verified end-to-end: **Grafana (OIDC)**
 - Tailwind v4 monorepo `@source` directive so shared package UI compiles into both SPAs.
 
 [Unreleased]: https://github.com/imkerbos/mxid/compare/v1.8.0...HEAD
+[1.8.1]: https://github.com/imkerbos/mxid/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/imkerbos/mxid/compare/v1.7.4...v1.8.0
 [1.7.4]: https://github.com/imkerbos/mxid/compare/v1.7.3...v1.7.4
 [1.7.3]: https://github.com/imkerbos/mxid/compare/v1.7.2...v1.7.3

@@ -24,6 +24,17 @@ ADMIN_PASS="${MXID_ADMIN_PASS:-admin123}"
 REDIS_CTR="${MXID_REDIS_CTR:-redis}"
 REDIS_PASS="${MXID_REDIS_PASS:-123456}"
 WAIT_S="${MXID_SMOKE_WAIT:-30}"
+# The portal probe needs an account with apps assigned to it. admin has none —
+# it administers apps rather than being granted them — so the last probe
+# ("portal /apps returned 0 apps") failed against a perfectly healthy system.
+# seed-demo's alice is granted every app group.
+PORTAL_USER="${MXID_PORTAL_USER:-alice}"
+PORTAL_PASS="${MXID_PORTAL_PASS:-Demo@1234}"
+# The CSRF middleware refuses a state-changing request that carries neither
+# Origin nor Referer, so every POST here needs one. Without it the script died
+# at the first login with a bare 403 — which is why it went unnoticed: nothing
+# in CI runs it.
+ORIGIN="${MXID_ORIGIN:-$(printf "%s" "$BASE" | sed -E 's#(https?://[^/]+).*#\1#')}"
 
 red()   { printf "\033[1;31m%s\033[0m\n" "$*" >&2; }
 green() { printf "\033[1;32m%s\033[0m\n" "$*" >&2; }
@@ -59,6 +70,7 @@ LOGIN_BODY="$(jq -nc \
 
 LOGIN_RESP="$(curl -fsS -c "$JAR" -b "$JAR" \
   -H 'Content-Type: application/json' \
+  -H "Origin: $ORIGIN" \
   -d "$LOGIN_BODY" \
   "$BASE/auth/login")" \
   || die "login failed for $ADMIN_USER"
@@ -106,15 +118,16 @@ docker exec "$REDIS_CTR" redis-cli -a "$REDIS_PASS" --no-auth-warning \
 PORTAL_JAR="$(mktemp)"
 trap 'rm -f "$JAR" "$PORTAL_JAR"' EXIT
 LOGIN_BODY2="$(jq -nc \
-  --arg u "$ADMIN_USER" --arg p "$ADMIN_PASS" \
+  --arg u "$PORTAL_USER" --arg p "$PORTAL_PASS" \
   --arg cid "$CAPTCHA_ID2" --arg ccd "$CAPTCHA_CODE2" \
   '{username:$u, password:$p, captcha_id:$cid, captcha_code:$ccd}')"
 
 curl -fsS -c "$PORTAL_JAR" -b "$PORTAL_JAR" \
   -H 'Content-Type: application/json' \
+  -H "Origin: $ORIGIN" \
   -d "$LOGIN_BODY2" \
   "$PORTAL_BASE/auth/login" >/dev/null \
-  || die "portal login failed for $ADMIN_USER"
+  || die "portal login failed for $PORTAL_USER (run: make seed-demo)"
 
 green "✓ portal login OK"
 
