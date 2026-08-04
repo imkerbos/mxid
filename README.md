@@ -257,7 +257,7 @@ mxid/
 
 ## Star history
 
-[![Star History Chart](https://api.star-history.com/svg?repos=imkerbos/mxid&type=Date)](https://star-history.com/#imkerbos/mxid&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=imkerbos/mxid,matrixplusio/mxid&type=Date)](https://star-history.com/#imkerbos/mxid&matrixplusio/mxid&Date)
 
 ## Contributing
 

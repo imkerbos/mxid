@@ -237,8 +237,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
   }
 
   return (
-    <div>
-      <label className="mb-1 block text-sm font-medium text-ink">{label}</label>
+    <Field label={label}>
       <div className="flex items-center gap-2">
         <input
           type="text"
@@ -255,7 +254,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
           {copied ? t('common.copied') : t('common.copy')}
         </button>
       </div>
-    </div>
+    </Field>
   )
 }
 
@@ -275,8 +274,7 @@ function SecretField({ label, value }: { label: string; value: string }) {
   }
 
   return (
-    <div>
-      <label className="mb-1 block text-sm font-medium text-ink">{label}</label>
+    <Field label={label}>
       <div className="flex items-center gap-2">
         <input
           type={visible ? 'text' : 'password'}
@@ -300,7 +298,7 @@ function SecretField({ label, value }: { label: string; value: string }) {
           {copied ? t('common.copied') : t('common.copy')}
         </button>
       </div>
-    </div>
+    </Field>
   )
 }
 
@@ -1129,8 +1127,7 @@ export default function AppsPage() {
                     <pre className="whitespace-pre-wrap rounded-lg bg-surface-muted px-3 py-2 text-xs text-muted">{activeTemplate.doc_md}</pre>
                   )}
                   {(activeTemplate.fields ?? []).map((fld) => (
-                    <div key={fld.key}>
-                      <label className="mb-1 block text-sm font-medium text-ink">{fld.label}</label>
+                    <Field key={fld.key} label={fld.label}>
                       {fld.type === 'textarea' ? (
                         <textarea className={inputCls} placeholder={fld.placeholder} value={tplFieldValues[fld.key] ?? ''}
                           onChange={(e) => setTplFieldValues((v) => ({ ...v, [fld.key]: e.target.value }))} />
@@ -1138,14 +1135,13 @@ export default function AppsPage() {
                         <input className={inputCls} placeholder={fld.placeholder} value={tplFieldValues[fld.key] ?? ''}
                           onChange={(e) => setTplFieldValues((v) => ({ ...v, [fld.key]: e.target.value }))} />
                       )}
-                    </div>
+                    </Field>
                   ))}
                 </div>
               )}
 
               {/* Name + Code always visible */}
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">{t('apps.createModal.nameLabel')}</label>
+              <Field label={t('apps.createModal.nameLabel')} required>
                 <input
                   type="text"
                   value={createForm.name}
@@ -1153,7 +1149,7 @@ export default function AppsPage() {
                   className={inputCls}
                   required
                 />
-              </div>
+              </Field>
               <Field
                 label={t('apps.createModal.codeLabel')}
                 required
@@ -1175,8 +1171,7 @@ export default function AppsPage() {
               {/* Manual Protocol/ClientType/home_url/redirect_uris — hidden when a real template is active */}
               {!activeTemplate?.key && (
                 <>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-ink">{t('apps.createModal.protocolLabel')}</label>
+                  <Field label={t('apps.createModal.protocolLabel')}>
                     <select
                       value={createForm.protocol}
                       onChange={(e) => setCreateForm((f) => ({ ...f, protocol: e.target.value }))}
@@ -1187,14 +1182,11 @@ export default function AppsPage() {
                       <option value="cas">CAS 3.0</option>
                       <option value="form">{t('apps.createModal.protocols.form')}</option>
                     </select>
-                  </div>
+                  </Field>
 
                   {createForm.protocol === 'oidc' && (
                     <>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-ink">
-                          {t('apps.createModal.clientTypeLabel')}
-                        </label>
+                      <Field label={t('apps.createModal.clientTypeLabel')}>
                         <select
                           value={createForm.client_type}
                           onChange={(e) => setCreateForm((f) => ({ ...f, client_type: e.target.value }))}
@@ -1205,12 +1197,9 @@ export default function AppsPage() {
                           <option value="native">{t('apps.createModal.clientTypes.native')}</option>
                           <option value="m2m">{t('apps.createModal.clientTypes.m2m')}</option>
                         </select>
-                      </div>
+                      </Field>
 
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-ink">
-                          {t('apps.createModal.homeUrlLabel')}
-                        </label>
+                      <Field label={t('apps.createModal.homeUrlLabel')}>
                         <input
                           type="text"
                           value={createForm.home_url}
@@ -1218,12 +1207,12 @@ export default function AppsPage() {
                           className={inputCls}
                           placeholder="https://app.example.com"
                         />
-                      </div>
+                      </Field>
 
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-ink">
-                          {t('apps.createModal.redirectUrisLabel')} {createForm.client_type !== 'm2m' && '*'}
-                        </label>
+                      <Field
+                        label={<>{t('apps.createModal.redirectUrisLabel')}
+                        {createForm.client_type !== 'm2m' && '*'}</>}
+                      >
                         <textarea
                           value={createForm.redirect_uris}
                           onChange={(e) =>
@@ -1234,7 +1223,7 @@ export default function AppsPage() {
                           placeholder={'http://localhost:8090/callback\nhttps://app.example.com/auth/callback'}
                           required={createForm.client_type !== 'm2m'}
                         />
-                      </div>
+                      </Field>
                     </>
                   )}
                 </>
@@ -1342,10 +1331,7 @@ export default function AppsPage() {
                     {/* ---- Basic Info tab ---- */}
                     {detailTab === 'basic' && (
                       <form onSubmit={handleSaveBasic} className="space-y-5">
-                        <div>
-                          <label className="mb-1 block text-sm font-medium text-ink">
-                            {t('apps.detail.basic.nameLabel')}
-                          </label>
+                        <Field label={t('apps.detail.basic.nameLabel')} required>
                           <input
                             type="text"
                             value={editForm.name}
@@ -1355,12 +1341,9 @@ export default function AppsPage() {
                             className={inputCls}
                             required
                           />
-                        </div>
+                        </Field>
 
-                        <div>
-                          <label className="mb-1 block text-sm font-medium text-ink">
-                            {t('apps.detail.basic.descLabel')}
-                          </label>
+                        <Field label={t('apps.detail.basic.descLabel')}>
                           <textarea
                             value={editForm.description}
                             onChange={(e) =>
@@ -1369,22 +1352,16 @@ export default function AppsPage() {
                             rows={3}
                             className={inputCls}
                           />
-                        </div>
+                        </Field>
 
-                        <div>
-                          <label className="mb-1 block text-sm font-medium text-ink">
-                            {t('apps.detail.basic.iconLabel')}
-                          </label>
+                        <Field label={t('apps.detail.basic.iconLabel')}>
                           <IconPicker
                             value={editForm.icon}
                             onChange={(v) => setEditForm((f) => ({ ...f, icon: v }))}
                           />
-                        </div>
+                        </Field>
 
-                        <div>
-                          <label className="mb-1 block text-sm font-medium text-ink">
-                            {t('apps.detail.basic.envLabel')}
-                          </label>
+                        <Field label={t('apps.detail.basic.envLabel')}>
                           <select
                             value={envCustom ? '__custom' : editForm.env}
                             onChange={(e) => {
@@ -1420,12 +1397,9 @@ export default function AppsPage() {
                           <p className="mt-1 text-xs text-muted">
                             {t('apps.detail.basic.envHint')}
                           </p>
-                        </div>
+                        </Field>
 
-                        <div>
-                          <label className="mb-1 block text-sm font-medium text-ink">
-                            {t('apps.detail.basic.homeUrlLabel')}
-                          </label>
+                        <Field label={t('apps.detail.basic.homeUrlLabel')}>
                           <input
                             type="text"
                             value={editForm.home_url}
@@ -1438,12 +1412,9 @@ export default function AppsPage() {
                           <p className="mt-1 text-xs text-muted">
                             {t('apps.detail.basic.homeUrlHint')}
                           </p>
-                        </div>
+                        </Field>
 
-                        <div>
-                          <label className="mb-1 block text-sm font-medium text-ink">
-                            {t('apps.detail.basic.loginUrlLabel')}
-                          </label>
+                        <Field label={t('apps.detail.basic.loginUrlLabel')}>
                           <input
                             type="text"
                             value={editForm.login_url}
@@ -1453,12 +1424,9 @@ export default function AppsPage() {
                             className={inputCls}
                             placeholder="https://app.example.com/login"
                           />
-                        </div>
+                        </Field>
 
-                        <div>
-                          <label className="mb-1 block text-sm font-medium text-ink">
-                            {t('apps.detail.basic.logoutUrlLabel')}
-                          </label>
+                        <Field label={t('apps.detail.basic.logoutUrlLabel')}>
                           <input
                             type="text"
                             value={editForm.logout_url}
@@ -1468,17 +1436,14 @@ export default function AppsPage() {
                             className={inputCls}
                             placeholder="https://app.example.com/logout"
                           />
-                        </div>
+                        </Field>
 
                         {/* Redirect URIs are an OIDC concept (redirect_uri spec). SAML
                             uses ACS URL configured under 协议配置; CAS uses the service
                             URL allow-list there. Hide for non-OIDC apps to keep the
                             basic tab protocol-clean. */}
                         {detailApp.protocol === 'oidc' && (
-                          <div>
-                            <label className="mb-1 block text-sm font-medium text-ink">
-                              {t('apps.detail.basic.redirectUrisLabel')}
-                            </label>
+                          <Field label={t('apps.detail.basic.redirectUrisLabel')}>
                             <textarea
                               value={editForm.redirect_uris}
                               onChange={(e) =>
@@ -1488,7 +1453,7 @@ export default function AppsPage() {
                               className={inputCls}
                               placeholder={'https://app.example.com/callback\nhttps://app.example.com/auth/callback'}
                             />
-                          </div>
+                          </Field>
                         )}
 
                         <div className="flex justify-end pt-2">
@@ -1548,10 +1513,7 @@ export default function AppsPage() {
                             )}
 
                             {(protocolConfigFields[detailApp.protocol] || []).map((field) => (
-                              <div key={field.key}>
-                                <label className="mb-1 block text-sm font-medium text-ink">
-                                  {field.label}
-                                </label>
+                              <Field key={field.key} label={field.label}>
                                 {field.type === 'textarea' ? (
                                   <textarea
                                     value={protocolConfig[field.key] || ''}
@@ -1603,7 +1565,7 @@ export default function AppsPage() {
                                 {field.hint && (
                                   <p className="mt-1 text-xs text-muted">{field.hint}</p>
                                 )}
-                              </div>
+                              </Field>
                             ))}
 
                             {(protocolConfigFields[detailApp.protocol] || []).length === 0 && (
@@ -1740,8 +1702,7 @@ function CredentialsTab({
           <p className="text-sm text-amber-700">{t('apps.detail.credentials.warning')}</p>
         </div>
         <CopyField label={t('apps.detail.credentials.clientId')} value={app.client_id || '—'} />
-        <div>
-          <label className="mb-1 block text-sm font-medium text-ink">{t('apps.detail.credentials.clientSecret')}</label>
+        <Field label={t('apps.detail.credentials.clientSecret')}>
           <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-muted">
             <span className="flex-1 font-mono">{t('apps.detail.credentials.masked')}</span>
             {(app.client_type === 'web_app' || app.client_type === 'm2m') && (
@@ -1759,7 +1720,7 @@ function CredentialsTab({
               {t('apps.detail.credentials.publicClientHint', { clientType: app.client_type })}
             </p>
           )}
-        </div>
+        </Field>
         <CopyField label={t('apps.detail.credentials.discovery')} value={`${origin}/protocol/oidc/.well-known/openid-configuration`} />
         <CopyField label={t('apps.detail.credentials.jwks')} value={`${origin}/protocol/oidc/jwks`} />
       </div>
@@ -1773,10 +1734,7 @@ function CredentialsTab({
     return (
       <div className="space-y-6">
         <CopyField label={t('apps.detail.credentials.saml.entityID')} value={origin} />
-        <div>
-          <label className="mb-1 block text-sm font-medium text-ink">
-            {t('apps.detail.credentials.saml.metadataURL')}
-          </label>
+        <Field label={t('apps.detail.credentials.saml.metadataURL')}>
           <div className="flex items-center gap-2">
             <input
               type="text"
@@ -1811,7 +1769,7 @@ function CredentialsTab({
           <p className="mt-1 text-xs text-muted">
             {t('apps.detail.credentials.saml.metadataHint')}
           </p>
-        </div>
+        </Field>
         <CopyField label={t('apps.detail.credentials.saml.ssoURL')} value={ssoURL} />
         <CopyField label={t('apps.detail.credentials.saml.sloURL')} value={sloURL} />
         <SAMLCertView appId={app.id} />
@@ -1891,10 +1849,7 @@ function SAMLCertView({ appId }: { appId: string }) {
   }
 
   return (
-    <div>
-      <label className="mb-1 block text-sm font-medium text-ink">
-        {t('apps.detail.credentials.saml.signingCert')}
-      </label>
+    <Field label={t('apps.detail.credentials.saml.signingCert')}>
       {loading && <p className="text-xs text-faint">{t('common.loading')}</p>}
       {error && <p className="text-xs text-red-500">{error}</p>}
       {!loading && !error && pem && (
@@ -1935,7 +1890,7 @@ function SAMLCertView({ appId }: { appId: string }) {
           </p>
         </>
       )}
-    </div>
+    </Field>
   )
 }
 

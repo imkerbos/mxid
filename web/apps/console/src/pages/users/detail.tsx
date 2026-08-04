@@ -806,8 +806,7 @@ function LockButton({ userID, onDone }: { userID: string; onDone: () => void }) 
           <div className="w-full max-w-md rounded-xl bg-surface p-6 shadow-xl">
             <h3 className="mb-4 text-lg font-semibold">{t('users.detail.lock.title')}</h3>
             <div className="space-y-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">{t('users.detail.lock.reason')}</label>
+              <Field label={t('users.detail.lock.reason')}>
                 <textarea
                   rows={3}
                   value={reason}
@@ -815,7 +814,7 @@ function LockButton({ userID, onDone }: { userID: string; onDone: () => void }) 
                   placeholder={t('users.detail.lock.reasonPlaceholder')}
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                 />
-              </div>
+              </Field>
               <div className="flex justify-end gap-3 pt-2">
                 <button onClick={() => setOpen(false)} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-surface-muted">{t('users.detail.common.cancel')}</button>
                 <button

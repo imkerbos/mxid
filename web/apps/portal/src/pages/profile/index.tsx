@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { motion } from 'framer-motion'
 import { portalApi, useAuthStore, formatDate, useTranslation } from '@mxid/shared'
-import { Button, AvatarUpload, avatarTexts } from '@mxid/shared/ui'
+import { Field, Button, AvatarUpload, avatarTexts } from '@mxid/shared/ui'
 import { toast, extractMessage } from '@mxid/shared/ui/toast'
 import { UserCircle, Save, Loader2, AlertCircle, CheckCircle } from 'lucide-react'
 
@@ -189,17 +189,18 @@ export default function ProfilePage() {
 {t('common.edit')}
           </h3>
           <form onSubmit={handleSave} className="space-y-4">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-ink">
-{t('users.columns.username')}
-              </label>
+            <Field label={t('users.columns.username')}>
               <input
                 type="text"
                 value={profile.username}
                 disabled
                 className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2.5 text-sm text-muted"
               />
-            </div>
+            </Field>
+            {/* Not a <Field>: the label row and the hint row each carry a
+                right-aligned control (a verification badge, a resend button).
+                Field lays out label / control / hint in a single column, so
+                folding this in would drop the alignment rather than preserve it. */}
             <div>
               <div className="mb-1.5 flex items-center justify-between">
                 <label className="block text-sm font-medium text-ink">{t('account.fields.email')}</label>
@@ -207,8 +208,8 @@ export default function ProfilePage() {
                   <span
                     className={
                       profile.email_verified
-                        ? 'rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700'
-                        : 'rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700'
+                        ? 'rounded-full bg-success/10 px-2 py-0.5 text-[11px] font-medium text-success'
+                        : 'rounded-full bg-warning/10 px-2 py-0.5 text-[11px] font-medium text-warning'
                     }
                   >
                     {profile.email_verified ? t('account.fields.verified') : t('account.fields.unverified')}
@@ -251,10 +252,7 @@ export default function ProfilePage() {
                 </div>
               )}
             </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-ink">
-{t('account.fields.displayName')}
-              </label>
+            <Field label={t('account.fields.displayName')}>
               <input
                 type="text"
                 value={displayName}
@@ -262,11 +260,8 @@ export default function ProfilePage() {
                 placeholder={t('account.fields.displayName')}
                 className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-ink outline-none transition-colors placeholder:text-faint focus:border-primary focus:ring-2 focus:ring-primary/20"
               />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-ink">
-{t('users.columns.phone')}
-              </label>
+            </Field>
+            <Field label={t('users.columns.phone')}>
               <input
                 type="tel"
                 value={phone}
@@ -274,7 +269,7 @@ export default function ProfilePage() {
                 placeholder={t('users.columns.phone')}
                 className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-ink outline-none transition-colors placeholder:text-faint focus:border-primary focus:ring-2 focus:ring-primary/20"
               />
-            </div>
+            </Field>
 
             {/* Save message */}
             {saveMsg && (
