@@ -170,8 +170,13 @@ func TestCache_PubSubInvalidatesPeerL1(t *testing.T) {
 		t.Fatalf("Invalidate: %v", err)
 	}
 
-	// Allow the subscriber goroutine to consume the message.
-	deadline := time.Now().Add(time.Second)
+	// Allow the subscriber goroutine to consume the message. The budget is
+	// generous on purpose: what is under test is that invalidation propagates
+	// at all, not how quickly. Delivery crosses two goroutine hops (go-redis'
+	// channel pump, then our subscriber), and a one-second budget failed once
+	// on a loaded CI runner even though the path was healthy. A passing run
+	// still returns in milliseconds — only a genuinely broken path waits.
+	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
 		peerB.mu.RLock()
 		_, present := peerB.l1[cacheKey(1, 100)]
