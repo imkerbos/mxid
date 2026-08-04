@@ -52,6 +52,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   background jobs) are unchanged, since they have no tenant to filter by.
 
 ### Fixed
+- Creating an organization with a hyphen in its code returned a bare 500. The
+  code becomes a PostgreSQL ltree label, which allows only letters, digits and
+  underscore — and the console's own hint recommended "lowercase + hyphens" and
+  used `tech-team` as the worked example, so an admin following the interface was
+  guaranteed to hit it. The code is now validated with a message naming the rule,
+  and the hint recommends what actually works.
+- A portal app card with an unbreakable name (no spaces) rendered it as one long
+  line that escaped the card instead of ellipsing, pushing the protocol badge
+  underneath the launch icon. Names and descriptions now break, and the badge
+  keeps clear of the icon.
 - The login captcha could not appear, on either screen, for two separate
   reasons. Both branched on the old numeric code for "captcha required", and
   both read that code off the wrong property of the rejected request: the API
