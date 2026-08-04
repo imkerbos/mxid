@@ -78,9 +78,15 @@ for (const rel of FILES) {
   }
 
   const live = await existsOnGhcr(tag);
-  if (live === false) {
+  if (live === false && cmp(tag, latest) > 0) {
     console.error(`✗ ${rel}: MXID_TAG=${tag} is not published at ${IMAGE}`);
     failed++;
+  } else if (live === false) {
+    // The tag matches the newest CHANGELOG entry but the image is not up yet.
+    // That is the normal state between cutting a release and its build
+    // finishing, so it is a note rather than a failure — the check that
+    // matters (the pin is not stale) already passed.
+    console.log(`  ${rel}: ${tag} — not on the registry yet; release build pending`);
   } else {
     console.log(`  ${rel}: ${tag}${live === null ? " (registry unreachable, CHANGELOG check only)" : ""}`);
   }
