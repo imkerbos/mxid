@@ -191,7 +191,7 @@ export default function AppGroupsTab() {
                 </button>
               </div>
               <form onSubmit={submit} className="space-y-4">
-                <Field label={`${t('apps.appGroups.name')} *`} hint={t('apps.appGroups.nameHint')}>
+                <Field label={t('apps.appGroups.name')} required hint={t('apps.appGroups.nameHint')}>
                   <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
                 </Field>
                 <Field

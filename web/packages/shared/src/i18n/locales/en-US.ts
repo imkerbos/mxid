@@ -316,7 +316,7 @@ export default {
         setButton: 'Set password',
         title: 'Reset password',
         setTitle: 'Set initial password',
-        newPassword: 'New password *',
+        newPassword: 'New password',
         placeholder: 'At least 6 characters',
         forceChange: 'Force user to change password on next sign-in',
         submit: 'Reset',
@@ -597,9 +597,9 @@ export default {
     nextPage: 'Next',
     createModal: {
       title: 'New group',
-      nameRequired: 'Name *',
+      nameRequired: 'Name',
       nameHint: 'Display name visible to users, e.g. R&D team / HR',
-      codeRequired: 'Code *',
+      codeRequired: 'Code',
       codeImmutable: 'Cannot be changed after creation',
       desc: 'Description',
       descHint: 'Optional, explain the group purpose for other admins',
@@ -819,7 +819,7 @@ export default {
     createModal: {
       title: 'Create application',
       nameLabel: 'App name *',
-      codeLabel: 'App code *',
+      codeLabel: 'App code',
       codeHint: 'SAML / CAS URLs embed this code (e.g. {{example}}); pick something readable. OIDC uses it internally only — random is fine.',
       protocolLabel: 'Protocol',
       protocols: {
@@ -979,7 +979,7 @@ export default {
       editGroup: 'Edit app group',
       createGroup: 'Create app group',
       codeUneditable: 'Code (read-only)',
-      codeRequired: 'Code *',
+      codeRequired: 'Code',
       codeHint: 'Tenant-unique English identifier. Used in the front end only — random is fine.',
       selectGroupHint: 'Pick a group on the left to see its members',
       sortLabel: 'order {{order}}',
