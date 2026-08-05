@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **A fresh release install is no longer locked out of itself.** v1.8.2 locked
+  the seeded `admin` account when `MXID_BOOTSTRAP_ADMIN_PASSWORD` was unset. On a
+  first deployment `admin` is the only account, so that left nobody able to sign
+  in — and the documented way back in, setting the variable and restarting, did
+  not exist under Helm, whose chart never exposed it. The account now stays
+  usable and owes a password change instead: a session opened with the published
+  password reaches nothing but the change-password endpoint, because
+  `PwdGateMiddleware` blocks every other route while `must_change_pwd` stands.
+  **Upgrading is enough to recover an install v1.8.2 locked out** — the same
+  startup pass releases the account, with no operator action.
+- The Helm chart now exposes `secrets.bootstrapAdminPassword`
+  (`MXID_BOOTSTRAP_ADMIN_PASSWORD`), so the supported way to set the initial
+  administrator password exists for Helm deployments and not only for Compose.
 - The web image builds reproducibly. `corepack enable` had no version to
   resolve, so every build downloaded whatever pnpm was newest at that moment and
   the same tag built differently from one week to the next. `web/package.json`

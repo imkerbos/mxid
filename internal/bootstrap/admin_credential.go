@@ -26,12 +26,10 @@ const seededAdminHash = "$2a$10$L/vj.Fxj8KyX93.ANmRrMONzQBRtWwTgd/X8ZGH.XW4Nv5AT
 // initial administrator password on a release deployment.
 const BootstrapAdminPasswordEnv = "MXID_BOOTSTRAP_ADMIN_PASSWORD"
 
-// statusLocked mirrors user.StatusLocked. Duplicated rather than imported
+// statusActive mirrors user.StatusActive. Duplicated rather than imported
 // because internal/domain/user imports this package's App, and depending back
-// on it would be a cycle.
-const statusLocked = 2
-
-// statusActive mirrors user.StatusActive, for the same reason.
+// on it would be a cycle. (statusLocked lives in the test file — nothing in the
+// production path writes a lock any more.)
 const statusActive = 1
 
 // SecureSeededAdmin makes sure no release deployment serves with the seeded
@@ -45,14 +43,19 @@ const statusActive = 1
 // In release mode, an account still carrying that hash is dealt with before the
 // server accepts a request:
 //
-//   - MXID_BOOTSTRAP_ADMIN_PASSWORD set — the account takes that password, stays
-//     usable, and keeps must_change_pwd so whoever signs in must still choose
-//     their own (see authn.PwdGateMiddleware).
-//   - not set — the account is LOCKED. Leaving it merely gated would not be
-//     enough: anyone who knows the published password could sign in and set a
-//     new one, which is an account takeover rather than a blocked login. Other
-//     administrators are unaffected, the server starts normally, and one restart
-//     with the variable set restores the account.
+//   - MXID_BOOTSTRAP_ADMIN_PASSWORD set — the account takes that password and
+//     keeps must_change_pwd so whoever signs in must still choose their own
+//     (see authn.PwdGateMiddleware).
+//   - not set — the account stays usable and is flagged must_change_pwd, with a
+//     loud warning in the log. It is NOT locked: a first deployment has no other
+//     administrator, so locking the only account leaves nobody able to sign in
+//     and no supported way to recover — the Helm chart does not even expose the
+//     variable. An operator who cannot log in cannot fix anything, which is a
+//     worse outcome than a first login that is forced straight into a password
+//     change.
+//
+// An account locked by the previous behaviour is released here, so upgrading is
+// enough to recover an install that was locked out by it.
 //
 // Deliberately NOT generating a password and printing it: the logger redacts
 // any field whose key looks like a credential (internal/bootstrap/logger.go), so
@@ -93,7 +96,7 @@ func SecureSeededAdmin(ctx context.Context, db *gorm.DB, logger *zap.Logger, rel
 
 	password := strings.TrimSpace(envPassword)
 	if password == "" {
-		return lockSeededAdmin(ctx, db, logger)
+		return flagSeededAdmin(ctx, db, logger)
 	}
 
 	hash, err := crypto.HashPassword(password)
@@ -128,28 +131,50 @@ func SecureSeededAdmin(ctx context.Context, db *gorm.DB, logger *zap.Logger, rel
 	return nil
 }
 
-// lockSeededAdmin disables an account still holding the published password.
-func lockSeededAdmin(ctx context.Context, db *gorm.DB, logger *zap.Logger) error {
+// flagSeededAdmin leaves an account still holding the published password usable,
+// but owing a password change, and releases it if a previous release locked it.
+//
+// An earlier version locked the account instead. That was wrong in the case that
+// matters most — a first deployment, where `admin` is the ONLY account. Locking
+// it left nobody able to sign in, and the documented way out (set
+// BootstrapAdminPasswordEnv and restart) did not exist under Helm, whose chart
+// never exposed the variable. An operator who cannot sign in cannot fix
+// anything, including the password this was protecting.
+//
+// What is given up: someone who knows the published password can now reach a
+// session. What they can reach WITH it is only the change-password endpoint —
+// PwdGateMiddleware blocks every other route while must_change_pwd stands — so
+// they can lock the real operator out of a fresh install, but not read or change
+// anything in it. That requires them to reach the console before the operator
+// completes the first sign-in, on a deployment the operator just created.
+//
+// The status write is unconditional on the current value so that upgrading is
+// enough to recover an install locked by the previous behaviour. It is scoped to
+// the seeded hash, so an administrator who already chose their own password is
+// never touched. One case is knowingly imprecise: an `admin` that still holds
+// the seeded password AND is locked by the brute-force limiter is released here
+// too. Telling the two locks apart would need a provenance column and a
+// migration; the account is gated to the change-password endpoint either way.
+func flagSeededAdmin(ctx context.Context, db *gorm.DB, logger *zap.Logger) error {
 	res := db.WithContext(ctx).
 		Table("mxid_user").
-		Where("username = ? AND password_hash = ? AND status <> ?", "admin", seededAdminHash, statusLocked).
+		Where("username = ? AND password_hash = ?", "admin", seededAdminHash).
 		Updates(map[string]any{
-			"status":          statusLocked,
+			"status":          statusActive,
 			"must_change_pwd": true,
 			"updated_at":      time.Now(),
 		})
 	if res.Error != nil {
-		return fmt.Errorf("lock seeded admin account: %w", res.Error)
+		return fmt.Errorf("flag seeded admin account: %w", res.Error)
 	}
-	if logger != nil {
-		logger.Error("SEEDED ADMIN ACCOUNT LOCKED — it still holds the password published in the "+
-			"public repository, and this is a release deployment",
+	if res.RowsAffected > 0 && logger != nil {
+		logger.Error("THE SEEDED ADMIN PASSWORD IS STILL IN PLACE on a release deployment — it is "+
+			"published in a public repository, so anyone who has read the source has it",
 			zap.String("username", "admin"),
-			zap.String("risk", "anyone who has read the source could otherwise have signed in and "+
-				"taken the account over by setting a new password"),
-			zap.String("to_recover", "set "+BootstrapAdminPasswordEnv+" to a password of your "+
-				"choosing and restart; the account unlocks and you will be asked to change it at "+
-				"first sign-in"),
+			zap.String("mitigation", "the account owes a password change, so a session opened with "+
+				"that password can reach nothing but the change-password endpoint"),
+			zap.String("to_fix", "sign in as admin and change the password now, or set "+
+				BootstrapAdminPasswordEnv+" and restart"),
 			zap.String("note", "other administrator accounts are unaffected"))
 	}
 	return nil
