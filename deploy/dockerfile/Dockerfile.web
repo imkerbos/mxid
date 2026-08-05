@@ -16,9 +16,7 @@ ARG BUILD_TIME=unknown
 
 # corepack resolves the pnpm version from web/package.json's `packageManager`
 # field, copied in below. Without that field it downloads whatever is latest at
-# build time, so the same tag builds differently week to week — and pnpm >= 11.7
-# keeps its store index in SQLite, which fails to open with
-# "[ERR_SQLITE_ERROR] disk I/O error" on some container storage drivers.
+# build time, so the same tag builds differently from one week to the next.
 RUN corepack enable
 
 # Non-interactive: pnpm must never prompt to purge/reinstall in a build.
@@ -32,7 +30,19 @@ COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
 COPY web/packages/shared/package.json ./packages/shared/
 COPY web/apps/console/package.json ./apps/console/
 COPY web/apps/portal/package.json ./apps/portal/
-RUN pnpm install --frozen-lockfile
+
+# The store lives on a tmpfs, NOT in the image layer. pnpm keeps its store index
+# in a SQLite database, and SQLite needs POSIX file locking, which some storage
+# drivers and network-backed /var/lib/docker setups do not provide — there the
+# install dies with "[ERR_SQLITE_ERROR] disk I/O error" before it ever reads the
+# lockfile. A tmpfs is plain memory-backed tmpfs regardless of what the daemon's
+# graph driver sits on, so the index always opens.
+#
+# The trade-off is deliberate: the store is discarded with the tmpfs, so every
+# build re-downloads packages. This layer is cached on the manifests anyway, so
+# it only re-runs when a package.json or the lockfile changes.
+RUN --mount=type=tmpfs,target=/pnpm-store \
+    pnpm install --frozen-lockfile --store-dir /pnpm-store
 
 # Build all workspace packages → apps/{console,portal}/dist.
 COPY web/ .
