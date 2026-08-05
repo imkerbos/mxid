@@ -119,6 +119,17 @@ spec:
                 secretKeyRef:
                   name: {{ include "mxid.secretName" . }}
                   key: MXID_CRYPTO_AUDIT_ANCHOR_KEY
+            # Replaces the seeded `admin` password, which is published in a
+            # public repository. Optional, and optional: true on the ref as well
+            # — a user-supplied existingSecret predating this key must not stop
+            # the pod from starting, and an install that leaves it empty is
+            # valid: the account then owes a password change instead.
+            - name: MXID_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "mxid.secretName" . }}
+                  key: MXID_BOOTSTRAP_ADMIN_PASSWORD
+                  optional: true
             # Anchoring itself is independent of the external sink: the anchor
             # rows in mxid_audit_anchor are checkpoints that make a range
             # verifiable without replaying the chain from genesis, and they cost

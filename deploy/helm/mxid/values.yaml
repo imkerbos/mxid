@@ -275,6 +275,18 @@ secrets:
   # that signs the external Merkle anchors. Generate with: openssl rand -base64 32
   auditAnchorKey: ""
 
+  # Optional — the initial password for the built-in `admin` account.
+  #
+  # Migration 000009 seeds `admin` with a password written in plaintext in a
+  # public repository. Setting this replaces it before the server accepts a
+  # request. Leave empty and the account still works, but owes a password change
+  # at first sign-in and logs a loud warning until it is done — so on a fresh
+  # install, either set this or sign in and change the password immediately.
+  #
+  # A change is required at first sign-in either way: this value likely sits in a
+  # manifest more people can read than should know the password.
+  bootstrapAdminPassword: ""
+
 # ---------------------------------------------------------------------------
 # Audit anchoring
 #
