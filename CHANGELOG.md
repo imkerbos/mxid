@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Building the web image no longer breaks when a new pnpm is published.
+  `corepack enable` had no version to resolve, so every build downloaded
+  whatever pnpm was latest at that moment — the same tag built differently from
+  one week to the next. Since pnpm 11.7 the store index lives in SQLite, and
+  opening it fails with `[ERR_SQLITE_ERROR] disk I/O error` on some container
+  storage drivers, which broke `make build-images` against an unchanged v1.8.2
+  checkout. `web/package.json` now pins `packageManager`, which corepack honours
+  everywhere it runs: the release image, the dev image, and the dev compose vite
+  containers.
+
 ## [1.8.2] — 2026-08-04
 
 **Security release. Upgrade if you run v1.8.1 or earlier.** Every install before
