@@ -14,6 +14,11 @@ ARG VERSION=dev
 ARG COMMIT=none
 ARG BUILD_TIME=unknown
 
+# corepack resolves the pnpm version from web/package.json's `packageManager`
+# field, copied in below. Without that field it downloads whatever is latest at
+# build time, so the same tag builds differently week to week — and pnpm >= 11.7
+# keeps its store index in SQLite, which fails to open with
+# "[ERR_SQLITE_ERROR] disk I/O error" on some container storage drivers.
 RUN corepack enable
 
 # Non-interactive: pnpm must never prompt to purge/reinstall in a build.
