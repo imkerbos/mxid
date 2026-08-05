@@ -46,7 +46,7 @@ MXID 当前使用 bcrypt / AES-GCM / Ed25519 / SHA-256,**未使用 SM2/SM3/SM4 �
 | 要求 | 实现 | 取证位置 |
 |---|---|---|
 | 应对登录的用户分配账户和权限 | RBAC:角色 → 权限 → 主体绑定;支持组织/用户组/角色三类主体 | 控制台 → 权限管理 |
-| 应重命名或删除默认账户,修改默认口令 | **release 部署不接受默认口令**:种子 `admin` 账户的口令明文写在公开仓库的迁移文件里,启动时若仍是该口令,则从 `MXID_BOOTSTRAP_ADMIN_PASSWORD` 取新口令,**未配置则直接锁定该账户**;两种情况下首次登录均强制改密 | `internal/bootstrap/admin_credential.go`;启动日志 |
+| 应重命名或删除默认账户,修改默认口令 | **release 部署不接受默认口令**:种子 `admin` 账户的口令明文写在公开仓库的迁移文件里,启动时若仍是该口令,则从 `MXID_BOOTSTRAP_ADMIN_PASSWORD` 取新口令,**未配置则账户仍可登录但欠一次改密**(`PwdGateMiddleware` 只放行改密接口,其余路由一律拦截),启动日志持续告警;两种情况下首次登录均强制改密 | `internal/bootstrap/admin_credential.go`;启动日志 |
 | 应及时删除或停用多余的、过期的账户 | 禁用/锁定账户**立即切断其已有会话**(含 SSO 共享会话),不等待超时;删除用户同样立即撤销 | `app/run.go` 事件订阅;`app/session_revocation_test.go` |
 | 授权主体配置访问控制策略,规定主体对客体的访问规则 | 控制台网关**硬性默认拒绝**:未在 `consoleProtectedRoutes` 登记的路由运行时 403,启动时告警 | `app/authz_console.go` |
 | 访问控制的粒度应达到主体为用户级、客体为文件/数据库表级 | 权限点到操作级(如 `user.reset_password`);数据层 `tenantscope` GORM 插件强制行级作用域,失败即拒 | `pkg/tenantscope/` |

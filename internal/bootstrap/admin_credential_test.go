@@ -10,6 +10,11 @@ import (
 	"github.com/imkerbos/mxid/pkg/crypto"
 )
 
+// statusLocked mirrors user.StatusLocked. Only the tests need it — the
+// production path stopped writing locks when locking a first deployment's only
+// account turned out to leave nobody able to sign in.
+const statusLocked = 2
+
 // seededAdminDB builds a one-table stand-in holding the account exactly as
 // migration 000009 seeds it.
 func seededAdminDB(t *testing.T, hash string, status int) *gorm.DB {
@@ -48,12 +53,12 @@ func readAdmin(t *testing.T, db *gorm.DB) adminRow {
 	return r
 }
 
-// Without a chosen password there is nothing safe to do but take the account
-// out of service. Leaving it merely gated would not be enough: anyone who has
-// read the repository knows the password, and a gated session can still reach
-// the change-password endpoint — which is an account takeover, not a blocked
-// login.
-func TestSecureSeededAdmin_LocksWhenNoPasswordChosen(t *testing.T) {
+// Without a chosen password the account stays usable and owes a password
+// change. It must NOT be locked: on a first deployment `admin` is the only
+// account, so locking it leaves nobody able to sign in — and the documented way
+// back in (set the variable, restart) did not exist under Helm, whose chart
+// never exposed it.
+func TestSecureSeededAdmin_StaysUsableWhenNoPasswordChosen(t *testing.T) {
 	db := seededAdminDB(t, seededAdminHash, statusActive)
 
 	if err := SecureSeededAdmin(context.Background(), db, nil, true, ""); err != nil {
@@ -61,14 +66,35 @@ func TestSecureSeededAdmin_LocksWhenNoPasswordChosen(t *testing.T) {
 	}
 
 	got := readAdmin(t, db)
-	if got.Status != statusLocked {
-		t.Errorf("status = %d, want %d (locked)", got.Status, statusLocked)
+	if got.Status != statusActive {
+		t.Errorf("status = %d, want %d (active) — the operator was locked out of their own install",
+			got.Status, statusActive)
 	}
 	if !got.MustChangePwd {
-		t.Error("must_change_pwd was not set")
+		t.Error("must_change_pwd was not set — the published password would become the standing one")
 	}
 	if got.PasswordHash != seededAdminHash {
 		t.Error("the password was changed even though none was chosen")
+	}
+}
+
+// Upgrading past the locking behaviour must recover an install it locked out,
+// with no operator action: the deployment that hit it has, by definition, no
+// administrator able to sign in and fix it.
+func TestSecureSeededAdmin_ReleasesAnAccountLockedByThePreviousBehaviour(t *testing.T) {
+	db := seededAdminDB(t, seededAdminHash, statusLocked)
+
+	if err := SecureSeededAdmin(context.Background(), db, nil, true, ""); err != nil {
+		t.Fatalf("SecureSeededAdmin: %v", err)
+	}
+
+	got := readAdmin(t, db)
+	if got.Status != statusActive {
+		t.Errorf("status = %d, want %d — a locked install did not self-heal on upgrade",
+			got.Status, statusActive)
+	}
+	if !got.MustChangePwd {
+		t.Error("must_change_pwd was not set")
 	}
 }
 
