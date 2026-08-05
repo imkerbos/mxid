@@ -8,19 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
-- `make build-images` no longer dies in `pnpm install` with
-  `[ERR_SQLITE_ERROR] disk I/O error`. pnpm keeps its store index in a SQLite
-  database, which needs POSIX file locking; on some hosts the store directory
-  sits on a filesystem that does not provide it, and the install fails before it
-  ever reads the lockfile. The web image now puts the store on a tmpfs mount for
-  the duration of the install, so the index always opens regardless of what the
-  daemon's graph driver sits on. Packages are re-downloaded on every uncached
-  build in exchange.
-- `web/package.json` now pins `packageManager`. `corepack enable` alone had no
-  version to resolve, so each build downloaded whatever pnpm was newest at that
-  moment and the same tag built differently from one week to the next. Corepack
-  honours the field everywhere it runs: the release image, the dev image and the
-  dev-compose vite containers.
+- The web image builds reproducibly. `corepack enable` had no version to
+  resolve, so every build downloaded whatever pnpm was newest at that moment and
+  the same tag built differently from one week to the next. `web/package.json`
+  now pins `packageManager`, which corepack honours everywhere it runs: the
+  release image, the dev image and the dev-compose vite containers.
 
 ## [1.8.2] — 2026-08-04
 
