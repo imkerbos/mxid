@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.3] — 2026-08-05
+
 ### Fixed
 - **A fresh release install is no longer locked out of itself.** v1.8.2 locked
   the seeded `admin` account when `MXID_BOOTSTRAP_ADMIN_PASSWORD` was unset. On a
@@ -658,7 +660,8 @@ Initial public preview. Two integrations verified end-to-end: **Grafana (OIDC)**
 - pnpm workspaces (`console` / `portal` / `shared`).
 - Tailwind v4 monorepo `@source` directive so shared package UI compiles into both SPAs.
 
-[Unreleased]: https://github.com/imkerbos/mxid/compare/v1.8.2...HEAD
+[Unreleased]: https://github.com/imkerbos/mxid/compare/v1.8.3...HEAD
+[1.8.3]: https://github.com/imkerbos/mxid/compare/v1.8.2...v1.8.3
 [1.8.2]: https://github.com/imkerbos/mxid/compare/v1.8.1...v1.8.2
 [1.8.1]: https://github.com/imkerbos/mxid/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/imkerbos/mxid/compare/v1.7.4...v1.8.0
