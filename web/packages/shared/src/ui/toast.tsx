@@ -71,6 +71,14 @@ const LOCALIZED_CODES: Record<number, string> = {
   40013: 'errors.approverNotEligible', // JIT approve: not in the eligibility's approver_subject
   [CODE_EE_FEATURE_REQUIRED]: 'errors.eeFeatureRequired',
   40906: 'errors.codeExists', // an operator-chosen `code` is already taken
+  // Password policy — one code per rule. The server used to assemble the
+  // sentence itself and it came out half English half Chinese ("password does
+  // not meet complexity policy: 密码至少需要 8 位"), wrong for either reader.
+  40025: 'errors.pwdTooShort', // {{detail}} = the minimum the policy demands
+  40026: 'errors.pwdNeedUpper',
+  40027: 'errors.pwdNeedLower',
+  40028: 'errors.pwdNeedDigit',
+  40029: 'errors.pwdNeedSpecial',
 }
 
 // extractMessage pulls a human-readable error message from an axios / ApiError
@@ -80,14 +88,19 @@ export function extractMessage(err: unknown, fallback?: string): string {
   const e = err as {
     code?: number | string
     traceId?: string
-    response?: { data?: { code?: number; message?: string; traceId?: string } }
+    detail?: string
+    response?: { data?: { code?: number; message?: string; traceId?: string; detail?: string } }
     message?: string
   }
   // ApiError carries a numeric `.code`; a raw axios error's `.code` is a string
   // (e.g. "ERR_BAD_REQUEST") and the backend code lives in response.data.code.
   const code = (typeof e?.code === 'number' ? e.code : undefined) ?? e?.response?.data?.code
   if (code && LOCALIZED_CODES[code]) {
-    return i18next.t(LOCALIZED_CODES[code])
+    // `detail` is the one piece a localized sentence sometimes cannot supply
+    // itself — a policy minimum, a limit — so it is offered for interpolation.
+    // Keys that take no parameter simply ignore it.
+    const detail = e?.detail ?? e?.response?.data?.detail
+    return i18next.t(LOCALIZED_CODES[code], { detail })
   }
   // A 500 says nothing useful on purpose — the cause is only in the server log.
   // What the user CAN do is quote the request id, so say that instead of

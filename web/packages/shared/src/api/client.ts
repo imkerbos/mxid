@@ -29,8 +29,19 @@ export const CODE_INVALID_MFA_CODE = 40102
 // Step-up refusal on the change-password route: the account has TOTP enrolled
 // and no code was supplied. errcode.NumTOTPRequired.
 export const CODE_TOTP_REQUIRED = 40007
+// A captcha is now DEMANDED (first time, after repeated failures) — distinct
+// from one being typed WRONG. The sign-in screen said "incorrect captcha" for
+// both, so the first demand accused the user of mistyping a box they had not
+// been shown yet.
 export const CODE_CAPTCHA_REQUIRED = 40016
 export const CODE_CAPTCHA_INVALID = 40004
+// Account-state refusals at sign-in. Each needs its own sentence: "locked"
+// resolves itself or needs an administrator, "disabled" always needs one, and
+// "expired" is the user's own to fix.
+export const CODE_ACCESS_DENIED = 40302
+export const CODE_ACCOUNT_DISABLED = 40303
+export const CODE_ACCOUNT_LOCKED = 40304
+export const CODE_TOO_MANY_ATTEMPTS = 42901
 export const CODE_STEP_UP_REQUIRED = 40330
 export const CODE_MFA_ENROLL_REQUIRED = 40331
 export const CODE_EE_FEATURE_REQUIRED = 40332

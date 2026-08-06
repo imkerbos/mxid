@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/imkerbos/mxid/internal/bootstrap"
 	"github.com/imkerbos/mxid/pkg/crypto"
 	"github.com/imkerbos/mxid/pkg/dberr"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/snowflake"
 	"github.com/redis/go-redis/v9"
@@ -31,6 +33,15 @@ var (
 	// license MaxUsers limit. Maps to HTTP 402 / 403 at the handler.
 	ErrLicenseQuotaExceeded = errors.New("license user quota exceeded")
 	ErrWeakPassword         = errors.New("password does not meet complexity policy")
+	// One sentinel per policy rule. ErrWeakPassword stays as the umbrella —
+	// existing handlers match it with errors.Is and keep working — but each of
+	// these carries its own catalogued code, so the SPA writes the sentence in
+	// the reader's own language instead of printing whatever Go assembled.
+	ErrPasswordTooShort    = fmt.Errorf("%w: too short", ErrWeakPassword)
+	ErrPasswordNeedUpper   = fmt.Errorf("%w: needs an uppercase letter", ErrWeakPassword)
+	ErrPasswordNeedLower   = fmt.Errorf("%w: needs a lowercase letter", ErrWeakPassword)
+	ErrPasswordNeedDigit   = fmt.Errorf("%w: needs a digit", ErrWeakPassword)
+	ErrPasswordNeedSpecial = fmt.Errorf("%w: needs a special character", ErrWeakPassword)
 	ErrDetailNotFound       = errors.New("user detail not found")
 	ErrIdentityNotFound     = errors.New("user identity not found")
 	// ErrLastSuperAdmin blocks revoking the only remaining super_admin
@@ -103,12 +114,18 @@ func (s *Service) activePasswordPolicy(ctx context.Context, tenantID int64) Pass
 }
 
 // validatePassword enforces the runtime password complexity policy.
-// Returns ErrWeakPassword with the specific reason so the UI can be
-// helpful ("缺少大写字母" vs generic "weak password").
+//
+// Returns the sentinel for the rule that was broken, so the SPA can say which
+// one in the reader's language. The English text on each sentinel is for logs
+// and API clients; it is never what a browser user sees.
+//
+// The minimum length is a number the user needs ("至少 8 位", not "太短"), and a
+// sentinel cannot carry it. It rides in Detail — see PasswordMinLength below,
+// which the handlers pass to response.Error.
 func (s *Service) validatePassword(ctx context.Context, tenantID int64, pwd string) error {
 	p := s.activePasswordPolicy(ctx, tenantID)
 	if p.MinLength > 0 && len(pwd) < p.MinLength {
-		return fmt.Errorf("%w: 密码至少需要 %d 位", ErrWeakPassword, p.MinLength)
+		return errcode.WithDetail(ErrPasswordTooShort, strconv.Itoa(p.MinLength))
 	}
 	hasUpper, hasLower, hasDigit, hasSpecial := false, false, false, false
 	for _, r := range pwd {
@@ -124,18 +141,26 @@ func (s *Service) validatePassword(ctx context.Context, tenantID int64, pwd stri
 		}
 	}
 	if p.RequireUppercase && !hasUpper {
-		return fmt.Errorf("%w: 需要至少一个大写字母", ErrWeakPassword)
+		return ErrPasswordNeedUpper
 	}
 	if p.RequireLowercase && !hasLower {
-		return fmt.Errorf("%w: 需要至少一个小写字母", ErrWeakPassword)
+		return ErrPasswordNeedLower
 	}
 	if p.RequireNumber && !hasDigit {
-		return fmt.Errorf("%w: 需要至少一个数字", ErrWeakPassword)
+		return ErrPasswordNeedDigit
 	}
 	if p.RequireSpecial && !hasSpecial {
-		return fmt.Errorf("%w: 需要至少一个特殊字符", ErrWeakPassword)
+		return ErrPasswordNeedSpecial
 	}
 	return nil
+}
+
+// PasswordMinLength reports the minimum length the active policy demands, so a
+// handler answering ErrPasswordTooShort can put the number in the response
+// Detail. Without it the SPA can only say "too short" and leave the user
+// guessing how much longer.
+func (s *Service) PasswordMinLength(ctx context.Context, tenantID int64) int {
+	return s.activePasswordPolicy(ctx, tenantID).MinLength
 }
 
 // SetBackupCodeRepository injects the backup-code storage post-construct

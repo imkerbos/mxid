@@ -47,20 +47,67 @@ func Bind(sentinel error, c Code) {
 }
 
 // Lookup returns the Code bound to any sentinel that err wraps (errors.Is), and
-// whether one was found. Sentinels are mutually exclusive in practice, so the
-// map iteration order is irrelevant.
+// whether one was found.
+//
+// When several bound sentinels match, the MOST SPECIFIC one wins — the one that
+// itself wraps the others. Sentinels used to be mutually exclusive, so the map
+// iteration order did not matter; password policy broke that. Its five rules
+// each need their own code (the SPA writes the sentence, so "needs a digit" and
+// "too short" cannot share a number) while every existing handler still matches
+// the ErrWeakPassword umbrella with errors.Is. Both are bound, both match, and
+// picking whichever the map yielded first would return a different code from
+// one process start to the next.
 func Lookup(err error) (Code, bool) {
 	if err == nil {
 		return Code{}, false
 	}
 	mu.RLock()
 	defer mu.RUnlock()
+	var best error
+	var bestCode Code
 	for sentinel, c := range registry {
-		if errors.Is(err, sentinel) {
-			return c, true
+		if !errors.Is(err, sentinel) {
+			continue
+		}
+		// sentinel wraps best ⇒ sentinel is the narrower of the two.
+		if best == nil || errors.Is(sentinel, best) {
+			best, bestCode = sentinel, c
 		}
 	}
-	return Code{}, false
+	return bestCode, best != nil
+}
+
+// detailed carries a localization parameter alongside a coded error.
+//
+// A localized code stands for a fixed sentence, which is the point — the SPA
+// owns the wording. But some of those sentences need one number from the
+// server: "at least 8 characters" is useful, "too short" is not, and the 8
+// comes from a policy the frontend cannot see. Detail carries exactly that one
+// value; it is interpolated into the translated string, never displayed alone.
+type detailed struct {
+	error
+	detail string
+}
+
+func (d detailed) Unwrap() error { return d.error }
+
+// WithDetail attaches a localization parameter to err. response.MapError puts
+// it in the response Detail field, where extractMessage feeds it to i18next.
+func WithDetail(err error, detail string) error {
+	if err == nil {
+		return nil
+	}
+	return detailed{error: err, detail: detail}
+}
+
+// DetailOf returns the parameter attached by WithDetail anywhere in err's
+// chain, or "" when there is none.
+func DetailOf(err error) string {
+	var d detailed
+	if errors.As(err, &d) {
+		return d.detail
+	}
+	return ""
 }
 
 // Shared, cross-cutting codes. The step-up / MFA-enroll / EE-feature codes are a

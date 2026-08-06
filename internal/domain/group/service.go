@@ -103,6 +103,10 @@ func (s *Service) requireUsersInTenant(ctx context.Context, userIDs ...int64) er
 
 // Create creates a new user group with a generated ID.
 func (s *Service) Create(ctx context.Context, tenantID int64, req *CreateGroupRequest) (*UserGroup, error) {
+	if err := ValidateGroupCode(req.Code); err != nil {
+		return nil, err
+	}
+
 	var desc *string
 	if req.Description != "" {
 		desc = &req.Description
@@ -289,23 +293,27 @@ func (s *Service) AddMember(ctx context.Context, groupID int64, req *AddMemberRe
 	if err := s.repo.AddMember(ctx, m); err != nil {
 		return fmt.Errorf("add member: %w", err)
 	}
-	s.publishMember(ctx, event.GroupMemberAdded, g.TenantID, groupID, req.UserID)
+	s.publishMember(ctx, event.GroupMemberAdded, g.TenantID, groupID, req.UserID, g.Name)
 	return nil
 }
 
 // publishMember emits a group-member event with the standard payload
 // shape (tenant_id, group_id, user_id). Subscribers — chief among them
 // the authz cache — drop the affected user's binding entry.
-func (s *Service) publishMember(ctx context.Context, eventType string, tenantID, groupID, userID int64) {
+func (s *Service) publishMember(ctx context.Context, eventType string, tenantID, groupID, userID int64, groupName string) {
 	if s.eventBus == nil {
 		return
 	}
+	// name is carried so the audit row can render the group as "研发" rather
+	// than as a snowflake id. An entry a reviewer has to run a second query to
+	// understand is one they will skip.
 	s.eventBus.Publish(ctx, event.Event{
 		Type: eventType,
 		Payload: map[string]any{
 			"tenant_id": tenantID,
 			"group_id":  groupID,
 			"user_id":   userID,
+			"name":      groupName,
 		},
 	})
 }
@@ -351,7 +359,7 @@ func (s *Service) AddMembers(ctx context.Context, groupID int64, userIDs []int64
 		if _, skip := skippedSet[uid]; skip {
 			continue
 		}
-		s.publishMember(ctx, event.GroupMemberAdded, g.TenantID, groupID, uid)
+		s.publishMember(ctx, event.GroupMemberAdded, g.TenantID, groupID, uid, g.Name)
 	}
 	return &BatchMembersResponse{
 		Affected: len(userIDs) - len(skipped),
@@ -372,7 +380,7 @@ func (s *Service) RemoveMember(ctx context.Context, groupID, userID int64) error
 	if err := s.repo.RemoveMember(ctx, groupID, userID); err != nil {
 		return fmt.Errorf("remove member: %w", err)
 	}
-	s.publishMember(ctx, event.GroupMemberRemoved, g.TenantID, groupID, userID)
+	s.publishMember(ctx, event.GroupMemberRemoved, g.TenantID, groupID, userID, g.Name)
 	return nil
 }
 
@@ -396,7 +404,7 @@ func (s *Service) RemoveMembers(ctx context.Context, groupID int64, userIDs []in
 		if _, skip := skippedSet[uid]; skip {
 			continue
 		}
-		s.publishMember(ctx, event.GroupMemberRemoved, g.TenantID, groupID, uid)
+		s.publishMember(ctx, event.GroupMemberRemoved, g.TenantID, groupID, uid, g.Name)
 	}
 	if skipped == nil {
 		skipped = []int64{}

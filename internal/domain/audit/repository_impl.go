@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/imkerbos/mxid/pkg/dberr"
+
 	"gorm.io/gorm"
 )
 
@@ -164,10 +166,15 @@ func keywordScope(keyword string) func(db *gorm.DB) *gorm.DB {
 		if keyword == "" {
 			return db
 		}
-		like := "%" + keyword + "%"
+		// Escaped: an audit search is often a forensic one, and a filter that
+		// silently matched more than it was asked to is the last thing that
+		// should happen while someone is reconstructing an incident.
+		like := "%" + dberr.EscapeLike(keyword) + "%"
 		return db.Where(
-			"actor_name ILIKE ? OR resource_name ILIKE ? OR event_type ILIKE ? OR CAST(resource_id AS TEXT) ILIKE ? OR CAST(detail AS TEXT) ILIKE ?",
-			like, like, like, like, like,
+			`actor_name ILIKE @kw ESCAPE '\' OR resource_name ILIKE @kw ESCAPE '\' `+
+				`OR event_type ILIKE @kw ESCAPE '\' OR CAST(resource_id AS TEXT) ILIKE @kw ESCAPE '\' `+
+				`OR CAST(detail AS TEXT) ILIKE @kw ESCAPE '\'`,
+			map[string]any{"kw": like},
 		)
 	}
 }

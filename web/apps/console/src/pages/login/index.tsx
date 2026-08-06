@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { authApi, externalIdpApi, ExternalIdpButtons, useAuthStore, useBootstrap, useTranslation, safeReturnPath, apiErrorCode, CODE_CAPTCHA_REQUIRED, CODE_CAPTCHA_INVALID, CODE_UNAUTHENTICATED, CODE_INVALID_MFA_CODE } from '@mxid/shared'
+import { authApi, externalIdpApi, ExternalIdpButtons, useAuthStore, useBootstrap, useTranslation, safeReturnPath, apiErrorCode, CODE_CAPTCHA_REQUIRED, CODE_CAPTCHA_INVALID, CODE_UNAUTHENTICATED, CODE_INVALID_MFA_CODE, CODE_ACCOUNT_LOCKED, CODE_ACCOUNT_DISABLED, CODE_ACCESS_DENIED, CODE_TOO_MANY_ATTEMPTS } from '@mxid/shared'
 import { extractMessage } from '@mxid/shared/ui/toast'
 import type { PublicIDP } from '@mxid/shared'
 import { Eye, EyeOff, Loader2, RefreshCw } from 'lucide-react'
@@ -10,17 +10,33 @@ import logo from '../../assets/logo.png'
 // loginErrorMessage maps the backend error code to a specific, localized
 // message so the user knows whether it was the captcha or the credentials —
 // not a bare "Request failed with status code 400".
+//
+// Every refusal the sign-in endpoint can return needs a case here. The default
+// branch prints the server's message verbatim, which is English: a Chinese user
+// whose account was locked read "account is locked", and one who was asked for
+// a captcha for the first time was told they had typed it wrong.
 function loginErrorMessage(err: unknown, t: (k: string) => string): string {
   const e = err as { message?: string; response?: { data?: { message?: string } } }
   const code = apiErrorCode(err)
   switch (code) {
+    // Demanded vs mistyped are different sentences: the first time a captcha is
+    // asked for, the box has only just appeared and holds nothing to be wrong.
     case CODE_CAPTCHA_REQUIRED:
+      return t('login.captchaRequired')
     case CODE_CAPTCHA_INVALID:
       return t('login.invalidCaptcha')
     case CODE_UNAUTHENTICATED:
       return t('login.invalidCredentials')
     case CODE_INVALID_MFA_CODE:
       return t('login.invalidMfaCode')
+    case CODE_ACCOUNT_LOCKED:
+      return t('login.accountLocked')
+    case CODE_ACCOUNT_DISABLED:
+      return t('login.accountDisabled')
+    case CODE_ACCESS_DENIED:
+      return t('login.passwordExpired')
+    case CODE_TOO_MANY_ATTEMPTS:
+      return t('login.tooManyAttempts')
     default:
       return extractMessage(e, t('login.failedRetry'))
   }
@@ -63,6 +79,15 @@ export default function LoginPage() {
   // isn't authorized for the console, or is the built-in admin). Map the known
   // backend reason strings to friendly localized copy; fall back to the raw
   // reason (still informative) then a generic message.
+  // Bounced here by an expired session rather than by signing out. Say so —
+  // the page otherwise appears for no reason, with whatever was being typed
+  // gone and nothing to explain it.
+  useEffect(() => {
+    if ((location.state as { reason?: string })?.reason === 'session-expired') {
+      setError(t('login.sessionExpired'))
+    }
+  }, [location.state, t])
+
   useEffect(() => {
     const p = new URLSearchParams(window.location.search)
     if (p.get('err') === 'external') {

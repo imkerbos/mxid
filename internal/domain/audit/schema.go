@@ -2,7 +2,9 @@ package audit
 
 import (
 	"encoding/json"
+	"math"
 	"sort"
+	"strconv"
 
 	"github.com/imkerbos/mxid/pkg/event"
 )
@@ -45,7 +47,23 @@ var sensitiveKeys = map[string]struct{}{
 	"password_hash": {},
 	"secret":        {},
 	"client_secret": {},
-	"code":          {}, // OTP / magic-link tokens
+	// Named precisely rather than as a bare "code".
+	//
+	// "code" used to be here, meaning OTPs and magic-link tokens — but no event
+	// publisher ever put one in a field called that, while twelve allow-lists
+	// DID name "code" for what an operator calls the code: the app code, the
+	// org code, the group code. All twelve were silently dropped, so the audit
+	// log recorded that a group was created without recording which code it was
+	// created with — and the group code is precisely the string downstream
+	// systems match on to grant access.
+	//
+	// An allow-list that names a field the filter then removes is worse than an
+	// incomplete allow-list, because it reads as coverage.
+	"otp_code":      {},
+	"verify_code":   {},
+	"magic_code":    {},
+	"backup_code":   {},
+	"reset_code":    {},
 	"otp":           {},
 	"token":         {},
 	"refresh_token": {},
@@ -104,16 +122,26 @@ var detailSchemas = map[string]detailSchema{
 	event.AppAccessPolicyCreated: {allow: []string{"app_id", "app_group_id", "tenant_id", "policy_id", "subject_type", "subject_id", "effect", "actor_id"}},
 	event.AppAccessPolicyDeleted: {allow: []string{"app_id", "app_group_id", "tenant_id", "policy_id", "subject_type", "subject_id", "effect", "actor_id"}},
 
-	event.OrgCreated:     {allow: []string{"org_id", "tenant_id", "name", "code", "parent_id", "actor_id"}},
-	event.OrgUpdated:     {allow: []string{"org_id", "tenant_id", "fields", "actor_id"}},
-	event.OrgDeleted:     {allow: []string{"org_id", "tenant_id", "name", "code", "actor_id"}},
-	event.OrgMemberMoved: {allow: []string{"user_id", "tenant_id", "from", "to", "actor_id"}},
+	event.OrgCreated: {allow: []string{"org_id", "tenant_id", "name", "code", "parent_id", "actor_id"}},
+	event.OrgUpdated: {allow: []string{"org_id", "tenant_id", "fields", "actor_id"}},
+	event.OrgDeleted: {allow: []string{"org_id", "tenant_id", "name", "code", "actor_id"}},
+	// event.OrgMemberMoved deliberately has no entry: the event is reserved and
+	// never published (see internal/domain/group/org_sync.go and
+	// app/adapters_authz.go — org membership moves are covered by
+	// Added/Removed). An allow-list for an event nobody emits reads as coverage
+	// that exists; add it back alongside the first Publish call, not before.
 
 	event.GroupCreated:       {allow: []string{"group_id", "tenant_id", "name", "code", "actor_id"}},
 	event.GroupUpdated:       {allow: []string{"group_id", "tenant_id", "fields", "actor_id"}},
 	event.GroupDeleted:       {allow: []string{"group_id", "tenant_id", "name", "actor_id"}},
-	event.GroupMemberAdded:   {allow: []string{"group_id", "tenant_id", "user_id"}},
-	event.GroupMemberRemoved: {allow: []string{"group_id", "tenant_id", "user_id"}},
+	event.GroupMemberAdded:   {allow: []string{"group_id", "tenant_id", "user_id", "name"}},
+	event.GroupMemberRemoved: {allow: []string{"group_id", "tenant_id", "user_id", "name"}},
+	// added/removed are the point of these entries: a rule edit moves people in
+	// bulk, and the counts are what tell a reviewer whether the change was the
+	// small correction it was described as.
+	event.GroupRuleUpdated: {allow: []string{"group_id", "tenant_id", "name", "added", "removed", "actor_id"}},
+	event.GroupRuleDeleted: {allow: []string{"group_id", "tenant_id", "name", "actor_id"}},
+	event.GroupRuleSynced:  {allow: []string{"group_id", "tenant_id", "name", "added", "removed", "actor_id"}},
 
 	event.TenantCreated: {allow: []string{"id", "tenant_id", "name", "code", "actor_id"}},
 	event.TenantUpdated: {allow: []string{"id", "tenant_id", "name", "fields", "actor_id"}},
@@ -180,12 +208,65 @@ func projectDetail(eventType string, payload map[string]any) json.RawMessage {
 	if !ok {
 		schema = fallbackSchema
 	}
-	picked := schema.project(payload)
+	picked := stringifyBigIDs(schema.project(payload))
 	data, err := json.Marshal(picked)
 	if err != nil {
 		return json.RawMessage("{}")
 	}
 	return data
+}
+
+// maxExactJSNumber is 2^53-1 — the largest integer a JSON number survives a
+// round trip through, in Go's map[string]any as much as in a browser.
+const maxExactJSNumber = 1<<53 - 1
+
+// stringifyBigIDs rewrites integers too large to survive as JSON numbers into
+// strings, so an id in the audit detail still identifies the row it names.
+//
+// Snowflake ids are 18-19 digits, past the 53 bits a float64 holds exactly, and
+// every hop between the event and the operator's screen re-parses the JSON:
+// Go's encoding/json decodes numbers into float64, and so does the browser. The
+// id was silently rounded at the last two digits — an audit entry that says
+// group 360787997051850750 when the group is 360787997051850752. It looks
+// right, it is off by two, and looking it up finds nothing. This is what audit
+// exists to prevent, so an id that cannot be trusted is worse than no id.
+//
+// The same reason the wire DTOs carry `,string` on snowflake fields. Detail is
+// a free-form map and cannot use a struct tag, so it is done here.
+func stringifyBigIDs(in map[string]any) map[string]any {
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		switch n := v.(type) {
+		case int64:
+			out[k] = clampID(n)
+		case int:
+			out[k] = clampID(int64(n))
+		case uint64:
+			if n > maxExactJSNumber {
+				out[k] = strconv.FormatUint(n, 10)
+				continue
+			}
+			out[k] = n
+		case float64:
+			// Already through one decode; preserve whatever precision is left
+			// rather than pretending to recover it.
+			if n == math.Trunc(n) && math.Abs(n) > maxExactJSNumber {
+				out[k] = strconv.FormatFloat(n, 'f', -1, 64)
+				continue
+			}
+			out[k] = n
+		default:
+			out[k] = v
+		}
+	}
+	return out
+}
+
+func clampID(n int64) any {
+	if n > maxExactJSNumber || n < -maxExactJSNumber {
+		return strconv.FormatInt(n, 10)
+	}
+	return n
 }
 
 // RegisteredEventTypes returns the sorted list of event_types this
