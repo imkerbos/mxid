@@ -135,6 +135,22 @@ func Run() {
 		return
 	}
 
+	// Operator subcommand: `admin reset-password` is the break-glass path for
+	// "nobody can sign in" — a forgotten administrator password with no second
+	// super-admin to reset it. Same constraints as the audit subcommands: it
+	// needs the DB and Redis (session revocation follows the reset) but must
+	// not serve traffic. Before this the only recovery was hand-writing a
+	// bcrypt hash into mxid_user, which bypassed the password policy, the reuse
+	// history, the session revocation and the audit trail alike:
+	// `mxid-server -config=configs admin reset-password -username=admin -generate`.
+	if flag.Arg(0) == "admin" && flag.Arg(1) == "reset-password" {
+		if err := runResetPassword(a, flag.Args()[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "reset-password failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	// Install the audit capture plugin: every write to an Audited model now
 	// emits a before/after event into the tamper-proof chain, inside the
 	// caller's transaction (a capture failure aborts the write). Wired here in

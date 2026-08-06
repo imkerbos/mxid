@@ -99,11 +99,23 @@ func (r *repo) Revoke(ctx context.Context, id int64, when time.Time) error {
 // ErrRevoked); this is pure housekeeping so mxid_api_token doesn't grow without
 // bound. Cross-tenant by design (background GC) — callers run it under a system
 // context. Returns the number of rows removed.
+// Two statements rather than one OR: each matches a partial index
+// (idx_api_token_expires / idx_api_token_revoked, migration 000066), whereas
+// the OR could not use either and scanned the table. A token that is both
+// expired and revoked is removed by the first, so the second simply matches
+// fewer rows — the total is still the number of tokens deleted.
 func (r *repo) PurgeExpired(ctx context.Context, cutoff time.Time) (int64, error) {
-	res := r.db.WithContext(ctx).
-		Where("(expires_at IS NOT NULL AND expires_at < ?) OR (revoked_at IS NOT NULL AND revoked_at < ?)", cutoff, cutoff).
-		Delete(&Token{})
-	return res.RowsAffected, res.Error
+	var removed int64
+	for _, col := range []string{"expires_at", "revoked_at"} {
+		res := r.db.WithContext(ctx).
+			Where(col+" IS NOT NULL AND "+col+" < ?", cutoff).
+			Delete(&Token{})
+		if res.Error != nil {
+			return removed, res.Error
+		}
+		removed += res.RowsAffected
+	}
+	return removed, nil
 }
 
 func (r *repo) TouchLastUsed(ctx context.Context, id int64, when time.Time) error {

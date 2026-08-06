@@ -7,7 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `mxid-server admin reset-password` — the break-glass path for a forgotten
+  administrator password when no second super-admin can reset it. Until now the
+  only recovery was hand-writing a bcrypt hash into `mxid_user`, which bypassed
+  the password policy, the reuse history, the session revocation and the audit
+  trail alike, and required handing out database access. The subcommand goes
+  through the same service method the console uses, forces a password change at
+  first sign-in, optionally unlocks the account (`-unlock`), and records the
+  actor as `cli` so the change is distinguishable from a console reset. There
+  is no `-password` flag by design — the password is prompted for, piped in, or
+  generated. See *Administrator password recovery* in the deployment guide.
+
 ### Fixed
+- The API-token garbage collector no longer scans the whole table. It deleted on
+  `expires_at` OR `revoked_at`, and neither column was indexed, so the periodic
+  purge was a sequential scan that grew with every token ever issued. The query
+  is now two statements, each matching a partial index (migration 000066).
 - A duplicate user-group or organization code is reported as a conflict instead
   of a server error. The uniqueness violation reached the console as a bare 500
   `failed to create user group`, which reads as a server fault rather than

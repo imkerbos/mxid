@@ -1038,6 +1038,49 @@ pin is the version you get.
 > once — have users hard-refresh (Ctrl/Cmd+Shift+R) a single time after the
 > upgrade; from then on it is automatic.
 
+## Administrator password recovery (out of band)
+
+The break-glass path for a forgotten super-admin password with no second
+super-admin able to reset it. The command lives on the server binary, so it is
+already in the image:
+
+```bash
+# Interactive, no echo, nothing in shell history — needs -it
+kubectl -n <ns> exec -it <backend-pod> -- ./mxid -config=configs \
+  admin reset-password -username=admin
+
+# Generate a strong password and print it
+kubectl -n <ns> exec <backend-pod> -- ./mxid -config=configs \
+  admin reset-password -username=admin -generate
+
+# Also return a locked or disabled account to active
+kubectl -n <ns> exec <backend-pod> -- ./mxid -config=configs \
+  admin reset-password -username=admin -generate -unlock
+
+# Piped, for scripts
+echo '<new password>' | kubectl -n <ns> exec -i <backend-pod> -- ./mxid -config=configs \
+  admin reset-password -username=admin -stdin
+```
+
+There is deliberately **no `-password <plaintext>` flag**: it would land in shell
+history and the process list, which is the exposure this command exists to avoid.
+
+It goes through the same service method the console's reset uses, so:
+
+- the runtime complexity policy and reuse history still apply — a recovery path
+  is not a way around the policy
+- the hash, the `must_change_pwd` flag and the history row are written in one
+  transaction
+- **a password change at first sign-in is forced and cannot be turned off** —
+  the password has passed through a terminal, a scrollback and possibly a ticket
+- the account's existing sessions are revoked (a forgotten password often comes
+  with "the credential may be compromised")
+- **it is audited**, with the actor recorded as `cli`, so an investigator can
+  tell the change came from out of band rather than from a console session
+
+Hand-writing a bcrypt hash into `mxid_user` bypasses every one of those and
+leaves no trace at all. Don't.
+
 ## Troubleshooting
 
 | Symptom | Probable cause | Fix |
