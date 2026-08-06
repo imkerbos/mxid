@@ -265,8 +265,13 @@ func constNameFor(num int) string {
 		errcode.NumNotFound:               "NumNotFound", errcode.NumTemplateNotFound: "NumTemplateNotFound",
 		errcode.NumConflict: "NumConflict", errcode.NumRouteNotFound: "NumRouteNotFound",
 		errcode.NumAccessDenied: "NumAccessDenied", errcode.NumAccountDisabled: "NumAccountDisabled",
-		errcode.NumTooManyAttempts: "NumTooManyAttempts",
-		errcode.NumCodeExists:      "NumCodeExists",
+		errcode.NumTooManyAttempts:   "NumTooManyAttempts",
+		errcode.NumCodeExists:        "NumCodeExists",
+		errcode.NumInternalError:     "NumInternalError",
+		errcode.NumNotConfigured:     "NumNotConfigured",
+		errcode.NumDependencyDown:    "NumDependencyDown",
+		errcode.NumCSRFOriginMissing: "NumCSRFOriginMissing",
+		errcode.NumCSRFOriginDenied:  "NumCSRFOriginDenied",
 	}
 	return names[num]
 }

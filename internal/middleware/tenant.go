@@ -7,6 +7,8 @@
 package middleware
 
 import (
+	"github.com/imkerbos/mxid/pkg/errcode"
+	"github.com/imkerbos/mxid/pkg/response"
 	"net/http"
 	"strconv"
 
@@ -40,10 +42,8 @@ func TenantContext() gin.HandlerFunc {
 		}
 		tid, err := strconv.ParseInt(override, 10, 64)
 		if err != nil || tid <= 0 {
-			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
-				"code":    40001,
-				"message": "invalid X-Tenant-ID",
-			})
+			response.BadRequest(c, errcode.NumBadRequest, "invalid X-Tenant-ID")
+			c.Abort()
 			return
 		}
 
@@ -55,10 +55,9 @@ func TenantContext() gin.HandlerFunc {
 		// same-tenant ops; it is just not enough to authorize the escape.
 		svc := authz.FromContext(c)
 		if svc == nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-				"code":    50000,
-				"message": "authz not installed",
-			})
+			response.Error(c, http.StatusInternalServerError, errcode.NumNotConfigured,
+				"authz not installed", "")
+			c.Abort()
 			return
 		}
 		uidV, _ := c.Get("user_id")
@@ -67,10 +66,8 @@ func TenantContext() gin.HandlerFunc {
 		stid, _ := stidV.(int64)
 		ok, err := svc.Check(c.Request.Context(), stid, uid, "*", nil)
 		if err != nil || !ok {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"code":    40300,
-				"message": "tenant override requires super_admin",
-			})
+			response.Forbidden(c, errcode.NumForbidden, "tenant override requires super_admin")
+			c.Abort()
 			return
 		}
 		c.Set("tenant_id", tid)

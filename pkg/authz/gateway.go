@@ -1,7 +1,8 @@
 package authz
 
 import (
-	"net/http"
+	"github.com/imkerbos/mxid/pkg/errcode"
+	"github.com/imkerbos/mxid/pkg/response"
 	"strings"
 	"sync"
 
@@ -212,9 +213,8 @@ func Gateway(cfg GatewayConfig) gin.HandlerFunc {
 				zap.String("route", fp),
 			)
 		}
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-			"code":    40301,
-			"message": "route is not authorized (deny-by-default): no permission declared for " + method + " " + fp,
-		})
+		response.Forbidden(c, errcode.NumForbiddenScope,
+			"route is not authorized (deny-by-default): no permission declared for "+method+" "+fp)
+		c.Abort()
 	}
 }
