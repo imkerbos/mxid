@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"sync"
 	"syscall"
 	"time"
@@ -286,10 +287,30 @@ func (a *App) Run() error {
 // still mid-tick, so a graceful stop produced "sql: database is closed" from a
 // sweeper that had done nothing wrong. The worker context is already cancelled
 // by then — they were being told to stop, just not given the chance.
+// A panic inside a worker is contained here rather than allowed to reach the
+// runtime. An unrecovered panic in ANY goroutine kills the whole process, so a
+// single bad row — one dynamic group whose rule trips a nil dereference, say —
+// takes the identity provider down for everyone. Worse, it is not transient:
+// the row is still there on restart, the reconcile worker runs again on the
+// first tick, and the pod sits in CrashLoopBackOff until somebody finds and
+// deletes the data. Every login in the deployment is down for the duration.
+//
+// Losing one worker degrades one background job; taking the process down
+// degrades everything. The ERROR carries the stack so the underlying defect is
+// still findable — it must be fixed, this only stops it from being an outage.
+// (pkg/event's Bus already recovers around handlers for the same reason.)
 func (a *App) SpawnWorker(fn func()) {
 	a.workers.Add(1)
 	go func() {
 		defer a.workers.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				a.Logger.Error("background worker panicked and will not run again "+
+					"— the job it performs has stopped; the process stays up deliberately",
+					zap.Any("recover", r),
+					zap.ByteString("stack", debug.Stack()))
+			}
+		}()
 		fn()
 	}()
 }
