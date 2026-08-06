@@ -41,7 +41,7 @@ func TestSpawnWorkerContainsAPanic(t *testing.T) {
 	// the underlying defect.
 	a.workers.Wait()
 
-	entries := logs.FilterMessageSnippet("background worker panicked").All()
+	entries := logs.FilterMessageSnippet("goroutine panicked").All()
 	if len(entries) != 1 {
 		t.Fatalf("want exactly one panic log, got %d", len(entries))
 	}
@@ -51,6 +51,9 @@ func TestSpawnWorkerContainsAPanic(t *testing.T) {
 	}
 	if stack, ok := fields["stack"].(string); !ok || stack == "" {
 		t.Error("no stack was logged — the defect stays unfindable, and it still has to be fixed")
+	}
+	if fields["job"] == nil {
+		t.Error("no job name was logged — the operator cannot tell which job stopped")
 	}
 }
 

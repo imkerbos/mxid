@@ -1,6 +1,8 @@
 package setting
 
 import (
+	"go.uber.org/zap"
+
 	"context"
 	"sync"
 	"testing"
@@ -100,10 +102,10 @@ func TestCrossPodInvalidation(t *testing.T) {
 	rdb := newTestRedis(t)
 
 	svcA := NewService(repo, nil)
-	svcA.SetRedisInvalidation(ctx, rdb)
+	svcA.SetRedisInvalidation(ctx, rdb, zap.NewNop())
 
 	svcB := NewService(repo, nil)
-	svcB.SetRedisInvalidation(ctx, rdb)
+	svcB.SetRedisInvalidation(ctx, rdb, zap.NewNop())
 
 	// Warm pod B's cache with the old value.
 	var warm cachePayload
@@ -146,7 +148,7 @@ func TestNilRedisInvalidationIsLocalOnly(t *testing.T) {
 	const tenantID = int64(1)
 
 	svc := NewService(repo, nil)
-	svc.SetRedisInvalidation(ctx, nil) // nil rdb — must be a no-op, no panic
+	svc.SetRedisInvalidation(ctx, nil, zap.NewNop()) // nil rdb — must be a no-op, no panic
 
 	if err := svc.Set(ctx, testKey, tenantID, cachePayload{V: "first"}, nil); err != nil {
 		t.Fatalf("set: %v", err)

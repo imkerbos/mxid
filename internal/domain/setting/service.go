@@ -12,8 +12,10 @@ import (
 	"github.com/imkerbos/mxid/pkg/crypto"
 	"github.com/imkerbos/mxid/pkg/dberr"
 	"github.com/imkerbos/mxid/pkg/event"
+	"github.com/imkerbos/mxid/pkg/safego"
 	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
 
 // settingsInvalidateChannel is the Redis pub/sub channel used to broadcast
@@ -52,7 +54,7 @@ func (s *Service) SetEventBus(bus *event.Bus) { s.eventBus = bus }
 // cache entry when a peer broadcasts one. Optional — nil rdb keeps
 // in-process-only behavior (60s TTL staleness across pods). ctx bounds the
 // subscriber goroutine (pass the app worker context).
-func (s *Service) SetRedisInvalidation(ctx context.Context, rdb *redis.Client) {
+func (s *Service) SetRedisInvalidation(ctx context.Context, rdb *redis.Client, logger *zap.Logger) {
 	s.rdb = rdb
 	if rdb == nil {
 		return
@@ -70,7 +72,7 @@ func (s *Service) SetRedisInvalidation(ctx context.Context, rdb *redis.Client) {
 	recvCtx, cancelRecv := context.WithTimeout(ctx, 5*time.Second)
 	_, _ = sub.Receive(recvCtx)
 	cancelRecv()
-	go func() {
+	safego.Go(logger, "setting cache invalidation subscriber", func() {
 		defer sub.Close()
 		ch := sub.Channel()
 		for {
@@ -84,7 +86,7 @@ func (s *Service) SetRedisInvalidation(ctx context.Context, rdb *redis.Client) {
 				s.deleteLocal(msg.Payload) // payload IS the cache key
 			}
 		}
-	}()
+	})
 }
 
 func (s *Service) deleteLocal(cacheKey string) {

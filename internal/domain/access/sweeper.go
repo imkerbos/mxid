@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/imkerbos/mxid/pkg/safego"
 	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"go.uber.org/zap"
 )
@@ -13,7 +14,7 @@ import (
 // cleanup + audit + cache eviction for grants that crossed their TTL.
 func StartSweeper(ctx context.Context, svc *Service, repo Repository, interval time.Duration, logger *zap.Logger) {
 	t := time.NewTicker(interval)
-	go func() {
+	safego.Go(logger, "jit access sweeper", func() {
 		defer t.Stop()
 		for {
 			select {
@@ -23,7 +24,7 @@ func StartSweeper(ctx context.Context, svc *Service, repo Repository, interval t
 				sweepOnce(ctx, svc, repo, logger)
 			}
 		}
-	}()
+	})
 }
 
 // sweepOnce queries for all approved grants whose expires_at has passed and

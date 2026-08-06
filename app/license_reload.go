@@ -19,6 +19,7 @@ import (
 	"github.com/imkerbos/mxid/internal/domain/platformconfig"
 	"github.com/imkerbos/mxid/internal/domain/setting"
 	"github.com/imkerbos/mxid/pkg/ee/license"
+	"github.com/imkerbos/mxid/pkg/safego"
 )
 
 // licenseReloadChannel is the Redis pub/sub channel used to fan a license
@@ -57,7 +58,7 @@ func startLicenseReloadSubscriber(ctx context.Context, rdb *redis.Client, platfo
 	}
 	sub := rdb.Subscribe(ctx, licenseReloadChannel)
 	ch := sub.Channel()
-	go func() {
+	safego.Go(logger, "license reload subscriber", func() {
 		defer sub.Close()
 		for {
 			select {
@@ -74,5 +75,5 @@ func startLicenseReloadSubscriber(ctx context.Context, rdb *redis.Client, platfo
 				}
 			}
 		}
-	}()
+	})
 }

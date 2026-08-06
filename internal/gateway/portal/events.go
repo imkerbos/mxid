@@ -12,6 +12,7 @@ import (
 	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/response"
+	"github.com/imkerbos/mxid/pkg/safego"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
@@ -165,7 +166,7 @@ func startBrokerRedisSubscriber(rdb *redis.Client, logger *zap.Logger) {
 		logger = zap.NewNop()
 	}
 	sub := rdb.Subscribe(context.Background(), portalEventsChannel)
-	go func() {
+	safego.Go(logger, "portal SSE broker subscriber", func() {
 		defer sub.Close()
 		ch := sub.Channel()
 		for msg := range ch {
@@ -176,7 +177,7 @@ func startBrokerRedisSubscriber(rdb *redis.Client, logger *zap.Logger) {
 			}
 			sseBroker.pub <- ev
 		}
-	}()
+	})
 }
 
 func registerEventsRoutes(rg *gin.RouterGroup, h *eventsHandler) {

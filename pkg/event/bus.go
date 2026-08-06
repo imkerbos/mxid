@@ -1,6 +1,8 @@
 package event
 
 import (
+	"github.com/imkerbos/mxid/pkg/safego"
+
 	"context"
 	"sync"
 
@@ -50,17 +52,10 @@ func (b *Bus) Publish(ctx context.Context, evt Event) {
 	b.mu.RUnlock()
 
 	for _, h := range handlers {
-		go func(handler Handler) {
-			defer func() {
-				if r := recover(); r != nil {
-					b.logger.Error("event handler panic",
-						zap.String("event_type", evt.Type),
-						zap.Any("recover", r),
-					)
-				}
-			}()
+		handler := h
+		safego.Go(b.logger, "event handler: "+evt.Type, func() {
 			handler(ctx, evt)
-		}(h)
+		})
 	}
 }
 

@@ -16,6 +16,7 @@ import (
 	"github.com/imkerbos/mxid/internal/domain/permission"
 	"github.com/imkerbos/mxid/pkg/authz"
 	"github.com/imkerbos/mxid/pkg/event"
+	"github.com/imkerbos/mxid/pkg/safego"
 )
 
 // casbinResyncChannel is the Redis pub/sub channel used to fan a Casbin
@@ -290,7 +291,7 @@ func startCasbinResyncSubscriber(ctx context.Context, rdb *redis.Client, engine 
 	}
 	sub := rdb.Subscribe(ctx, casbinResyncChannel)
 	ch := sub.Channel()
-	go func() {
+	safego.Go(logger, "casbin policy resync subscriber", func() {
 		defer sub.Close()
 		for {
 			select {
@@ -305,7 +306,7 @@ func startCasbinResyncSubscriber(ctx context.Context, rdb *redis.Client, engine 
 				}
 			}
 		}
-	}()
+	})
 }
 
 type authzOrgAncestry struct{ orgModule *org.Module }
