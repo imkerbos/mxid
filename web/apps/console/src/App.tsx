@@ -103,7 +103,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   if (passwordChangeRequired) {
     return (
       <ForcePasswordChange
-        changePassword={(oldPwd, newPwd) => consoleSecurityApi.changePassword(oldPwd, newPwd)}
+        changePassword={(oldPwd, newPwd, totp) => consoleSecurityApi.changePassword(oldPwd, newPwd, totp)}
         logout={() => authApi.logout()}
         toLogin={() => navigate('/login', { replace: true })}
       />

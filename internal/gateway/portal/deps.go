@@ -165,6 +165,14 @@ type SessionQuerier interface {
 	// possession, so demanding a second code seconds later (which would reuse the
 	// same TOTP window and be rejected as a replay) is both hostile and pointless.
 	MarkStepUpFresh(ctx context.Context, namespace, sessionID string) error
+	// StepUpFreshWithin reports whether this session passed MFA within window.
+	// The counterpart to MarkStepUpFresh: without a way to READ the stamp,
+	// change-password demanded a TOTP code even when the caller had verified
+	// one seconds earlier during sign-in — and because that reuses the same
+	// 30-second TOTP window, entering the same code is rejected as a replay.
+	// The account is then unable to change its password at all, which is the
+	// state a forced change leaves the user in.
+	StepUpFreshWithin(ctx context.Context, namespace, sessionID string, window time.Duration) bool
 }
 
 // MFAQuerier provides MFA data access for portal handlers.
