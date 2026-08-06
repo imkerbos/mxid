@@ -266,6 +266,7 @@ func constNameFor(num int) string {
 		errcode.NumConflict: "NumConflict", errcode.NumRouteNotFound: "NumRouteNotFound",
 		errcode.NumAccessDenied: "NumAccessDenied", errcode.NumAccountDisabled: "NumAccountDisabled",
 		errcode.NumTooManyAttempts: "NumTooManyAttempts",
+		errcode.NumCodeExists:      "NumCodeExists",
 	}
 	return names[num]
 }

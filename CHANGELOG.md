@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- A duplicate user-group or organization code is reported as a conflict instead
+  of a server error. The uniqueness violation reached the console as a bare 500
+  `failed to create user group`, which reads as a server fault rather than
+  `pick another code` — so an administrator retried, every retry collided with
+  the row the first attempt had already created, and the log filled with 500s
+  for a group that existed all along. Both domains now return 40906 and the SPA
+  renders one translated sentence for it.
+
 ## [1.8.3] — 2026-08-05
 
 ### Fixed
