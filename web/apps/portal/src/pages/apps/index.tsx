@@ -106,7 +106,7 @@ export default function AppsPage() {
       setRecent(recentRes)
       setError('')
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : t('common.loading'))
+      setError(extractMessage(err, t('common.loading')))
     } finally {
       setLoading(false)
     }
@@ -268,7 +268,7 @@ export default function AppsPage() {
       setFavoriteOrder(prev =>
         wasFav ? [...prev, app.id] : prev.filter(id => id !== app.id),
       )
-      const msg = err instanceof Error ? err.message : t('common.failed')
+      const msg = extractMessage(err, t('common.failed'))
       toast.error(t('portal.favoriteFailed'), msg)
     }
   }
@@ -295,7 +295,7 @@ export default function AppsPage() {
     try {
       await portalApi.reorderFavorites(finalOrder)
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : t('portal.favoriteSaveOrderFailed')
+      const msg = extractMessage(err, t('portal.favoriteSaveOrderFailed'))
       toast.error(t('portal.favoriteSaveFailed'), msg)
       // Re-fetch authoritative order to undo any optimistic drift.
       portalApi

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { authApi, externalIdpApi, ExternalIdpButtons, useAuthStore, useBootstrap, useTranslation, safeReturnPath, apiErrorCode, CODE_CAPTCHA_REQUIRED, CODE_CAPTCHA_INVALID, CODE_UNAUTHENTICATED, CODE_INVALID_MFA_CODE } from '@mxid/shared'
+import { extractMessage } from '@mxid/shared/ui/toast'
 import type { PublicIDP } from '@mxid/shared'
 import { Eye, EyeOff, Loader2, RefreshCw } from 'lucide-react'
 import logo from '../../assets/logo.png'
@@ -21,7 +22,7 @@ function loginErrorMessage(err: unknown, t: (k: string) => string): string {
     case CODE_INVALID_MFA_CODE:
       return t('login.invalidMfaCode')
     default:
-      return e?.response?.data?.message || t('login.failedRetry')
+      return extractMessage(e, t('login.failedRetry'))
   }
 }
 

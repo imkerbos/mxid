@@ -1,6 +1,6 @@
 .PHONY: dev dev-console dev-portal dev-web dev-docker-up dev-docker-up-d dev-docker-down dev-docker-logs dev-docker-ps dev-docker-restart dev-docker-reload dev-docker-watch dev-docker-clean \
        build run test lint migrate-up migrate-down migrate-create clean deps \
-       verify verify-mod verify-vet verify-build verify-lint verify-web verify-exports verify-i18n-keys verify-i18n-markers verify-pinned-tag smoke install-hooks \
+       verify verify-mod verify-vet verify-build verify-lint verify-web verify-exports verify-i18n-keys verify-i18n-markers verify-error-extraction verify-pinned-tag smoke install-hooks \
        docker-build prod-up prod-down prod-logs standalone-up standalone-down standalone-logs
 
 # Variables
@@ -252,7 +252,7 @@ clean:
 
 # Verify — invariant gates. Run before commit / in CI.
 # Each sub-target is independently runnable to localize failures.
-verify: verify-mod verify-vet verify-build verify-gormtags verify-lint verify-exports verify-i18n-keys verify-i18n-markers verify-pinned-tag verify-web
+verify: verify-mod verify-vet verify-build verify-gormtags verify-lint verify-exports verify-i18n-keys verify-i18n-markers verify-error-extraction verify-pinned-tag verify-web
 	@echo "✓ verify OK"
 
 # go.mod / go.sum must match the import graph. Catches indirect-vs-direct drift.
@@ -306,6 +306,14 @@ verify-exports:
 verify-i18n-keys:
 	@echo "==> verify-i18n-keys"
 	node scripts/verify-i18n-keys.mjs
+
+# Frontend error text must come from extractMessage — it is the one place that
+# knows both error shapes, localizes the fixed-sentence codes, and carries the
+# traceId. Reading response.data.message by hand loses all three, which is how a
+# 500 became "Request failed with status code 500" with nothing to quote.
+verify-error-extraction:
+	@echo "==> verify-error-extraction"
+	node scripts/verify-error-extraction.mjs
 
 # Labels rendered through <Field required> must not carry their own "*" — the
 # primitive draws the marker, so a label ending in one renders "Name * *".

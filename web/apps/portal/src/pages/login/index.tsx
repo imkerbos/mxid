@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, type FormEvent } from 'react
 import { useNavigate, useLocation, useSearchParams, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { authApi, externalIdpApi, ExternalIdpButtons, useAuthStore, useBootstrap, useTranslation, safeReturnPath, apiErrorCode, CODE_CAPTCHA_REQUIRED, CODE_CAPTCHA_INVALID, CODE_UNAUTHENTICATED, CODE_INVALID_MFA_CODE } from '@mxid/shared'
+import { extractMessage } from '@mxid/shared/ui/toast'
 import type { PublicIDP } from '@mxid/shared'
 import { Eye, EyeOff, Loader2, RefreshCw } from 'lucide-react'
 import { resumeSSOIfAny } from '../../lib/sso'
@@ -28,7 +29,7 @@ function loginErrorMessage(err: unknown, t: (k: string) => string): string {
     case 40303:
       return t('login.accountDisabled')
     default:
-      return e?.response?.data?.message || t('login.failedRetry')
+      return extractMessage(e, t('login.failedRetry'))
   }
 }
 

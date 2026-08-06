@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { CheckCircle2, Loader2, XCircle } from 'lucide-react'
 import { portalApi, useTranslation, AppIcon } from '@mxid/shared'
 import { Button } from '@mxid/shared/ui'
+import { extractMessage } from '@mxid/shared/ui/toast'
 
 interface ConsentApp {
   id: string
@@ -106,7 +107,7 @@ export default function ConsentPage() {
       const { redirect } = await portalApi.grantConsent(appId, scopes, returnTo)
       window.location.href = redirect || returnTo
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : t('common.failed')
+      const msg = extractMessage(err, t('common.failed'))
       setError(msg)
       setSubmitting(null)
     }

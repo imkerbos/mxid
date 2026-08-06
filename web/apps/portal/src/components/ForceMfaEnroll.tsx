@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import QRCode from 'qrcode'
 import { ShieldCheck, Loader2, Copy, LogOut } from 'lucide-react'
 import { portalApi, authApi, useAuthStore, useTranslation } from '@mxid/shared'
-import { toast } from '@mxid/shared/ui/toast'
+import { toast, extractMessage } from '@mxid/shared/ui/toast'
 
 /**
  * ForceMfaEnroll — full-screen blocking gate shown when the backend enroll gate
@@ -61,7 +61,7 @@ export default function ForceMfaEnroll() {
       setMfaEnrollRequired(false)
       navigate('/apps', { replace: true })
     } catch (e) {
-      const msg = e instanceof Error ? e.message : t('common.failed')
+      const msg = extractMessage(e, t('common.failed'))
       toast.error(t('account.mfa.verifyFailed'), msg)
     } finally {
       setVerifying(false)
