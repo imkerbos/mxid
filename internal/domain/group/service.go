@@ -19,12 +19,27 @@ import (
 var (
 	ErrGroupNotFound   = errors.New("user group not found")
 	ErrGroupHasMembers = errors.New("user group still has members; remove all members or pass force=true")
+	// ErrGroupCodeExists reports the (tenant_id, code) uniqueness conflict as a
+	// 409 the console can act on. Without it the constraint violation reached
+	// the client as a bare 500 "failed to create user group", which reads as a
+	// server fault — so an administrator retried, every retry conflicted with
+	// the row the FIRST attempt had already created, and the log filled with
+	// 500s for a group that existed all along.
+	ErrGroupCodeExists = errors.New("user group code already exists")
 	// ErrUserNotInTenant is returned when AddMember(s) is asked to add a user
 	// that does not exist in the caller's tenant — including a cross-tenant id,
 	// which the injected validator (tenant-scoped user repo) reports as absent.
 	// Blocks the residual referenced-entity IDOR where an admin plants a
 	// foreign-tenant user into their own group.
 	ErrUserNotInTenant = errors.New("user not found in tenant")
+)
+
+// The unique constraint behind ErrGroupCodeExists. Postgres names it from the
+// table and columns; the second value is what sqlite reports instead, so the
+// same check works under the in-memory test database.
+const (
+	groupCodeConstraint = "mxid_user_group_tenant_id_code_key"
+	groupCodeColumns    = "mxid_user_group.tenant_id, mxid_user_group.code"
 )
 
 // EntityValidator reports whether a referenced entity id exists within the
@@ -102,6 +117,13 @@ func (s *Service) Create(ctx context.Context, tenantID int64, req *CreateGroupRe
 	}
 
 	if err := s.repo.Create(ctx, g); err != nil {
+		// Detected on the constraint rather than by a SELECT first: a pre-check
+		// leaves a TOCTOU window that two concurrent creates walk straight
+		// through, and the table has exactly one unique constraint, so the
+		// violation cannot mean anything else.
+		if dberr.IsUniqueViolationOn(err, groupCodeConstraint, groupCodeColumns) {
+			return nil, ErrGroupCodeExists
+		}
 		return nil, fmt.Errorf("create user group: %w", err)
 	}
 

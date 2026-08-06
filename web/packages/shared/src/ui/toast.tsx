@@ -70,6 +70,7 @@ const LOCALIZED_CODES: Record<number, string> = {
   40012: 'errors.selfApproval', // JIT approve: separation of duties — can't approve own request
   40013: 'errors.approverNotEligible', // JIT approve: not in the eligibility's approver_subject
   [CODE_EE_FEATURE_REQUIRED]: 'errors.eeFeatureRequired',
+  40906: 'errors.codeExists', // an operator-chosen `code` is already taken
 }
 
 // extractMessage pulls a human-readable error message from an axios / ApiError

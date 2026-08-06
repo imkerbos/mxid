@@ -54,6 +54,10 @@ const (
 
 	NumConflict = 40901 // uniqueness or state conflict
 
+	// NumCodeExists is LOCALIZED — see the Localized block below. It is the one
+	// number that means "the code you typed is taken", product-wide.
+	NumCodeExists = 40906
+
 	// Emitted via response.Error, whose SECOND argument is the business code
 	// (the first is the HTTP status).
 	NumRouteNotFound   = 40400 // no such route
@@ -158,6 +162,14 @@ var Catalog = map[int]struct {
 	40903:       {Generic, "tertiary uniqueness conflict"},
 	40904:       {Generic, "user: last super admin cannot be demoted"},
 	40905:       {Generic, "user: password already set"},
+	// Localized: every domain whose resource is keyed by an operator-chosen
+	// `code` reports a duplicate with THIS number, so the SPA can say "that
+	// code is taken, pick another" once instead of surfacing an English
+	// sentence from the server. Sharing it is safe precisely because the
+	// sentence is identical for every one of them — unlike the generic 409xx
+	// numbers, which mean different things per domain (40903 is a duplicate
+	// phone in the user domain) and must never be localized.
+	NumCodeExists: {Localized, "resource code already exists"},
 
 	NumRouteNotFound:   {Generic, "no such route"},
 	NumAccessDenied:    {Generic, "policy refused this subject"},
