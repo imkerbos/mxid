@@ -113,8 +113,10 @@ services:
       # external-IdP callback base. Must be this origin, not the internal backend
       # port, so the redirect_uri sent to Lark/Teams matches what you register
       # there AND lands same-origin as the SPA (clean session cookies). Prod: the
-      # public https domain. This is the REAL knob (ResolveBootIssuer); the old
-      # MXID_EXTERNAL_BACKEND_URL was never read by any code.
+      # public https domain. This is the REAL knob (ResolveBootIssuer) — the EE
+      # external-IdP callback base now defaults to the same value, so setting
+      # this one is enough. MXID_EXTERNAL_BACKEND_URL still overrides it for the
+      # rare split-host deployment; it is read only by mxid-ee.
       - MXID_ISSUER=${MXID_ISSUER:-http://localhost:3500}
     extra_hosts:
       - "host.docker.internal:host-gateway"
