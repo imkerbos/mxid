@@ -70,7 +70,7 @@ func (h *Handler) Create(c *gin.Context) {
 
 	g, err := h.service.Create(c.Request.Context(), tenantctx.FromContext(c, h.tenantID), &req)
 	if err != nil {
-		response.InternalError(c, "failed to create user group", err)
+		response.MapError(c, err)
 		return
 	}
 

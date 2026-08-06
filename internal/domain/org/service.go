@@ -91,6 +91,19 @@ var orgCodeRe = regexp.MustCompile(`^[A-Za-z0-9_]+$`)
 // ErrInvalidOrgCode is returned when the code cannot be used as an ltree label.
 var ErrInvalidOrgCode = errors.New("org code must contain only letters, digits and underscore")
 
+// ErrOrgCodeExists reports the (tenant_id, code) uniqueness conflict as a 409.
+// Without it the constraint violation reached the client as a bare 500, which
+// reads as a server fault rather than "pick another code".
+var ErrOrgCodeExists = errors.New("organization code already exists")
+
+// The unique constraint behind ErrOrgCodeExists. Postgres names it from the
+// table and columns; the second value is what sqlite reports instead, so the
+// same check works under the in-memory test database.
+const (
+	orgCodeConstraint = "mxid_organization_tenant_id_code_key"
+	orgCodeColumns    = "mxid_organization.tenant_id, mxid_organization.code"
+)
+
 // Create creates a new organization with a generated ID and computed path.
 func (s *Service) Create(ctx context.Context, tenantID int64, req *CreateOrgRequest) (*Organization, error) {
 	// Validated before the path is built: the code becomes an ltree label, and
@@ -122,6 +135,12 @@ func (s *Service) Create(ctx context.Context, tenantID int64, req *CreateOrgRequ
 	}
 
 	if err := s.repo.Create(ctx, org); err != nil {
+		// Detected on the constraint rather than by a SELECT first: a pre-check
+		// leaves a TOCTOU window that two concurrent creates walk through, and
+		// the table has exactly one unique constraint.
+		if dberr.IsUniqueViolationOn(err, orgCodeConstraint, orgCodeColumns) {
+			return nil, ErrOrgCodeExists
+		}
 		return nil, fmt.Errorf("create organization: %w", err)
 	}
 

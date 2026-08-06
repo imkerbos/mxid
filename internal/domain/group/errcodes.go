@@ -17,6 +17,7 @@ var (
 	codeGroupNotDynamic = errcode.Code{HTTP: 400, Num: 40002}
 	codeGroupHasMembers = errcode.Code{HTTP: 409, Num: 40901}
 	codeGroupIsDynamic  = errcode.Code{HTTP: 409, Num: 40902}
+	codeGroupCodeExists = errcode.Code{HTTP: 409, Num: errcode.NumCodeExists}
 )
 
 func init() {
@@ -24,6 +25,7 @@ func init() {
 	errcode.Bind(ErrGroupNotFound, codeGroupNotFound)
 	errcode.Bind(ErrUserNotInTenant, codeUserNotInTenant)
 	errcode.Bind(ErrGroupHasMembers, codeGroupHasMembers)
+	errcode.Bind(ErrGroupCodeExists, codeGroupCodeExists)
 	// rule_sync.go
 	errcode.Bind(ErrRuleNotFound, codeGroupNotFound) // "group has no rule" — a 404
 	errcode.Bind(ErrGroupNotDynamic, codeGroupNotDynamic)

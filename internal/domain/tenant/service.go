@@ -13,8 +13,10 @@ import (
 )
 
 var (
-	ErrTenantNotFound   = errors.New("tenant not found")
-	ErrTenantCodeExists = errors.New("tenant code already exists")
+	// The service has no Create — the product is single-tenant, so the tenant
+	// row is seeded by migration. A code-uniqueness sentinel lived here and was
+	// never returned by anything.
+	ErrTenantNotFound = errors.New("tenant not found")
 )
 
 // Service handles tenant CRUD.
