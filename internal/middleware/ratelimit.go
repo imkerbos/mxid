@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/imkerbos/mxid/pkg/errcode"
+	"github.com/imkerbos/mxid/pkg/response"
 	"net/http"
 	"strconv"
 	"time"
@@ -107,10 +109,9 @@ func RateLimiter(rdb *redis.Client, rule RateLimitRule) gin.HandlerFunc {
 			if rule.FailClosed {
 				// Fail closed: an outage must not lift a security-sensitive cap.
 				c.Header("Retry-After", "1")
-				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
-					"code":    50301,
-					"message": fmt.Sprintf("rate limiter unavailable: %s", rule.Name),
-				})
+				response.Error(c, http.StatusServiceUnavailable, errcode.NumDependencyDown,
+					fmt.Sprintf("rate limiter unavailable: %s", rule.Name), "")
+				c.Abort()
 				return
 			}
 			// Fail open (default): availability over strict enforcement.
@@ -127,10 +128,9 @@ func RateLimiter(rdb *redis.Client, rule RateLimitRule) gin.HandlerFunc {
 			c.Header("Retry-After", strconv.Itoa(int(expiresIn.Seconds())))
 			c.Header("X-RateLimit-Limit", strconv.Itoa(limit))
 			c.Header("X-RateLimit-Remaining", "0")
-			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
-				"code":    42901,
-				"message": fmt.Sprintf("rate limit exceeded: %s", rule.Name),
-			})
+			response.Error(c, http.StatusTooManyRequests, errcode.NumTooManyAttempts,
+				fmt.Sprintf("rate limit exceeded: %s", rule.Name), "")
+			c.Abort()
 			return
 		}
 		c.Header("X-RateLimit-Limit", strconv.Itoa(limit))

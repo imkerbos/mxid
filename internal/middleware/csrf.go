@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"github.com/imkerbos/mxid/pkg/errcode"
+	"github.com/imkerbos/mxid/pkg/response"
 	"net/http"
 	"strings"
 
@@ -93,18 +95,14 @@ func CSRF(cfg CSRFConfig) gin.HandlerFunc {
 			origin = refererOrigin(c.GetHeader("Referer"))
 		}
 		if origin == "" {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"code":    40310,
-				"message": "csrf: missing Origin or Referer",
-			})
+			response.Forbidden(c, errcode.NumCSRFOriginMissing, "csrf: missing Origin or Referer")
+			c.Abort()
 			return
 		}
 
 		if _, ok := allowed[strings.TrimRight(origin, "/")]; !ok {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"code":    40311,
-				"message": "csrf: origin not allowed",
-			})
+			response.Forbidden(c, errcode.NumCSRFOriginDenied, "csrf: origin not allowed")
+			c.Abort()
 			return
 		}
 

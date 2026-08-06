@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Every error response now carries its request id.** The envelope has always
+  been {code, message, data, traceId}, but seventeen call sites wrote their own
+  body instead — the authz, tenant, rate-limit and CSRF middleware, and the
+  panic recovery. Those errors reached the client with no traceId, so the log
+  line for them could not be found; the panic recovery was worse, answering with
+  a bare status and NO body at all, which is why a panic showed up in the console
+  as nothing but 'Request failed with status code 500'. A guard test now fails
+  the build on a hand-written error response.
+- Four error codes were numeric literals catalogued nowhere (50000, 50301, 40310,
+  40311), and one 500 leaked the underlying error text to the client. All are
+  named constants now, and the cause goes to the log instead of the response.
+
+### Fixed
 - **Creating a dynamic user group no longer fails, and no longer takes the pod
   down.** The audit capture plugin read the primary key straight off the
   statement value; on a batch insert that value is a slice, and reflect panics

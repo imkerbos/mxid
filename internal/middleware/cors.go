@@ -35,6 +35,7 @@ func CORS(cfg CORSConfig) gin.HandlerFunc {
 		}
 
 		if c.Request.Method == http.MethodOptions {
+			//response:ok a CORS preflight answer is a 204 with no body by definition
 			c.AbortWithStatus(http.StatusNoContent)
 			return
 		}

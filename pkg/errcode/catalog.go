@@ -54,6 +54,24 @@ const (
 
 	NumConflict = 40901 // uniqueness or state conflict
 
+	// NumInternalError is the general 5xx business code. The message is
+	// deliberately generic — the cause belongs in the server log, not in a
+	// response — so the traceId travelling with it is what makes the log entry
+	// findable. It was a bare 50001 in three files and catalogued in none.
+	NumInternalError = 50001
+	// NumNotConfigured is a 5xx too, but a distinguishable one: the request was
+	// refused because a dependency was never wired, not because it failed.
+	NumNotConfigured = 50000
+	// NumDependencyDown — a dependency the request needs is unreachable
+	// (the rate limiter's Redis). 503, not 500: it is expected to recover.
+	NumDependencyDown = 50301
+
+	// CSRF refusals. Two codes because the two cases need different advice:
+	// a missing Origin usually means a non-browser client, a rejected one means
+	// the deployment's allowed-origins list does not cover where the SPA is served.
+	NumCSRFOriginMissing = 40310
+	NumCSRFOriginDenied  = 40311
+
 	// NumCodeExists is LOCALIZED — see the Localized block below. It is the one
 	// number that means "the code you typed is taken", product-wide.
 	NumCodeExists = 40906
@@ -170,6 +188,13 @@ var Catalog = map[int]struct {
 	// numbers, which mean different things per domain (40903 is a duplicate
 	// phone in the user domain) and must never be localized.
 	NumCodeExists: {Localized, "resource code already exists"},
+
+	NumInternalError:  {Generic, "server-side failure; the cause is in the log under this traceId"},
+	NumNotConfigured:  {Generic, "a required dependency was never wired at startup"},
+	NumDependencyDown: {Generic, "a dependency the request needs is unreachable"},
+
+	NumCSRFOriginMissing: {Generic, "csrf: request carried no Origin or Referer"},
+	NumCSRFOriginDenied:  {Generic, "csrf: Origin is not in the allow-list"},
 
 	NumRouteNotFound:   {Generic, "no such route"},
 	NumAccessDenied:    {Generic, "policy refused this subject"},

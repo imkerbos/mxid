@@ -1,6 +1,8 @@
 package authz
 
 import (
+	"github.com/imkerbos/mxid/pkg/errcode"
+	"github.com/imkerbos/mxid/pkg/response"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -94,18 +96,15 @@ func Require(perm string, scopeFn ScopeFn) gin.HandlerFunc {
 		c.Set(declaredKey, true)
 		svc := FromContext(c)
 		if svc == nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-				"code":    50000,
-				"message": "authz not installed",
-			})
+			response.Error(c, http.StatusInternalServerError, errcode.NumNotConfigured,
+				"authz not installed", "")
+			c.Abort()
 			return
 		}
 		uid := userIDFromCtx(c)
 		if uid == 0 {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"code":    40101,
-				"message": "not authenticated",
-			})
+			response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
+			c.Abort()
 			return
 		}
 		tid := tenantIDFromCtx(c)
@@ -115,17 +114,15 @@ func Require(perm string, scopeFn ScopeFn) gin.HandlerFunc {
 		}
 		ok, err := svc.Check(c.Request.Context(), tid, uid, perm, target)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-				"code":    50001,
-				"message": "authz check failed: " + err.Error(),
-			})
+			// The cause goes to the log, never to the client: an authz failure can
+			// carry the policy shape and the subject it was evaluated for.
+			response.InternalError(c, "authz check failed", err)
+			c.Abort()
 			return
 		}
 		if !ok {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"code":    40300,
-				"message": "permission denied: " + perm,
-			})
+			response.Forbidden(c, errcode.NumForbidden, "permission denied: "+perm)
+			c.Abort()
 			return
 		}
 		c.Next()
@@ -143,16 +140,15 @@ func RequireAny(perms []string, scopeFn ScopeFn) gin.HandlerFunc {
 		c.Set(declaredKey, true)
 		svc := FromContext(c)
 		if svc == nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-				"code": 50000, "message": "authz not installed",
-			})
+			response.Error(c, http.StatusInternalServerError, errcode.NumNotConfigured,
+				"authz not installed", "")
+			c.Abort()
 			return
 		}
 		uid := userIDFromCtx(c)
 		if uid == 0 {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"code": 40101, "message": "not authenticated",
-			})
+			response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
+			c.Abort()
 			return
 		}
 		tid := tenantIDFromCtx(c)
@@ -163,9 +159,8 @@ func RequireAny(perms []string, scopeFn ScopeFn) gin.HandlerFunc {
 		for _, p := range perms {
 			ok, err := svc.Check(c.Request.Context(), tid, uid, p, target)
 			if err != nil {
-				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-					"code": 50001, "message": "authz check failed",
-				})
+				response.InternalError(c, "authz check failed", err)
+				c.Abort()
 				return
 			}
 			if ok {
@@ -173,8 +168,7 @@ func RequireAny(perms []string, scopeFn ScopeFn) gin.HandlerFunc {
 				return
 			}
 		}
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-			"code": 40300, "message": "permission denied",
-		})
+		response.Forbidden(c, errcode.NumForbidden, "permission denied")
+		c.Abort()
 	}
 }

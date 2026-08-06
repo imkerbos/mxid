@@ -115,6 +115,18 @@ func RegisterRouteGroups(r *gin.Engine) (*gin.RouterGroup, *gin.RouterGroup, *gi
 	return console, portal, openapi, protocol
 }
 
+
+// requestIDOf reads the id middleware.RequestID stamped on the context, so the
+// panic log line and the response the client gets carry the same value.
+func requestIDOf(c *gin.Context) string {
+	if v, ok := c.Get("request_id"); ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
 // zapRecovery returns a Gin recovery middleware that logs panics via zap.
 func zapRecovery(logger *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -124,9 +136,23 @@ func zapRecovery(logger *zap.Logger) gin.HandlerFunc {
 					zap.Any("error", r),
 					zap.String("path", c.Request.URL.Path),
 					zap.String("method", c.Request.Method),
+					zap.String("request_id", requestIDOf(c)),
 					zap.ByteString("stack", debug.Stack()),
 				)
-				c.AbortWithStatus(http.StatusInternalServerError)
+				// A body, not a bare status. AbortWithStatus writes NOTHING, so a
+				// panic reached the browser as a 500 with an empty response: no
+				// code, no message, no request id. The SPA has nothing to read and
+				// falls back to axios' "Request failed with status code 500",
+				// which tells the user neither what broke nor what to say to
+				// whoever can fix it — and leaves support with no handle into the
+				// log, where the panic and its stack actually are.
+				//
+				// The message stays generic on purpose (a panic string can carry
+				// internals); the traceId is what connects it to the log line
+				// above.
+				response.Error(c, http.StatusInternalServerError,
+					errcode.NumInternalError, "internal server error", "")
+				c.Abort()
 			}
 		}()
 		c.Next()
