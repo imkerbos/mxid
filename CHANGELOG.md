@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Two error sentinels that nothing ever returned are gone (`app.ErrAccountNotFound`,
+  `group.ErrGroupNotDynamic`). Both were declared and bound to a business code,
+  so they held a number and implied an error path that did not exist.
 - **No goroutine can take the process down any more.** Fixing `SpawnWorker`
   covered its twelve callers; a sweep found **nine more** started with a bare
   `go func` — the OIDC and CAS logout fan-outs, four Redis pub/sub loops, the

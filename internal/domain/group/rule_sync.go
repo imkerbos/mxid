@@ -13,9 +13,8 @@ import (
 
 // Rule-related service errors.
 var (
-	ErrRuleNotFound    = errors.New("group has no rule")
-	ErrGroupNotDynamic = errors.New("group is not dynamic (set type=2 before attaching a rule)")
-	ErrGroupIsDynamic  = errors.New("dynamic groups manage members via rule; manual member ops are disabled")
+	ErrRuleNotFound   = errors.New("group has no rule")
+	ErrGroupIsDynamic = errors.New("dynamic groups manage members via rule; manual member ops are disabled")
 )
 
 // RuleQueryer abstracts the DB calls the sync engine needs. Implemented by
