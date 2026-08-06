@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- One more i18n key on the forced password-change screen pointed at a namespace
+  that does not exist, so the toast asking for a TOTP code rendered as a raw
+  key. `make verify-i18n-keys` now checks that every literal `t()` key resolves
+  in both locales — a missing key does not throw, i18next just renders the key
+  itself, which is why the whole screen shipped showing `account.password.*`
+  before anyone noticed.
+
+### Fixed
 - **Every error response now carries its request id.** The envelope has always
   been {code, message, data, traceId}, but seventeen call sites wrote their own
   body instead — the authz, tenant, rate-limit and CSRF middleware, and the
