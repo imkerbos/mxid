@@ -1673,14 +1673,29 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	apiTokenModule := apitoken.Register(a)
 	portalAPITokenQ := buildPortalAPITokenQuerier(apiTokenModule.Service)
 	tenantDefault := a.Config.Tenant.DefaultID
-	portal.RegisterSecurityRoutes(a.PortalGroup, portal.NewSecurityHandler(
+	// The sudo window, read from the same setting StepUpMiddleware reads, so
+	// change-password and every other high-risk operation agree on how recent
+	// "recently verified" is.
+	stepUpWindow := func() time.Duration {
+		p, err := settingService.MFAPolicy(context.Background(), tenantDefault)
+		if err != nil {
+			p = setting.DefaultMFAPolicy()
+		}
+		return time.Duration(p.StepUpWindowSeconds) * time.Second
+	}
+	portalSecurity := portal.NewSecurityHandler(
 		session.NamespacePortal, portalUserQ, portalSessQ, portalMFAQ, portalIDQ,
 		portalLoginHistoryQ, portalAPITokenQ, tenantDefault, mfaLimiter, a.EventBus,
-	))
-	portal.RegisterSecurityRoutes(a.ConsoleGroup, portal.NewSecurityHandler(
+	)
+	portalSecurity.SetStepUpWindowProvider(stepUpWindow)
+	portal.RegisterSecurityRoutes(a.PortalGroup, portalSecurity)
+
+	consoleSecurity := portal.NewSecurityHandler(
 		session.NamespaceConsole, portalUserQ, portalSessQ, portalMFAQ, portalIDQ,
 		portalLoginHistoryQ, portalAPITokenQ, tenantDefault, mfaLimiter, a.EventBus,
-	))
+	)
+	consoleSecurity.SetStepUpWindowProvider(stepUpWindow)
+	portal.RegisterSecurityRoutes(a.ConsoleGroup, consoleSecurity)
 
 	// Mount the bearer middleware on /openapi/v1 so every script-facing
 	// route requires a valid PAT. Per-route scope guards (apitoken.RequireScope)

@@ -3,6 +3,7 @@ import { KeyRound, Loader2, LogOut } from 'lucide-react'
 import { useAuthStore } from '../hooks/use-auth-store'
 import { useTranslation } from '../i18n'
 import { toast } from '../ui/toast'
+import { apiErrorCode, CODE_TOTP_REQUIRED } from '../api/client'
 
 /**
  * ForcePasswordChange — full-screen blocking gate shown when the backend
@@ -25,7 +26,7 @@ export default function ForcePasswordChange({
   toLogin,
 }: {
   /** Namespace-specific change-password call — the one route the gate allows. */
-  changePassword: (oldPassword: string, newPassword: string) => Promise<unknown>
+  changePassword: (oldPassword: string, newPassword: string, totpCode?: string) => Promise<unknown>
   /** Best-effort server-side logout. */
   logout: () => Promise<unknown>
   /** Send the browser to the sign-in screen. */
@@ -38,23 +39,43 @@ export default function ForcePasswordChange({
   const [oldPwd, setOldPwd] = useState('')
   const [newPwd, setNewPwd] = useState('')
   const [confirm, setConfirm] = useState('')
+  const [totp, setTotp] = useState('')
   const [saving, setSaving] = useState(false)
+  // Revealed only after the server asks for it (40007). An account without TOTP
+  // never sees the field, and we cannot know which this is before trying: the
+  // gate blocks the endpoint that would report the user's enrolled factors.
+  const [totpRequired, setTotpRequired] = useState(false)
 
   const mismatch = confirm.length > 0 && newPwd !== confirm
-  const ready = oldPwd.length > 0 && newPwd.length > 0 && newPwd === confirm && !saving
+  const ready =
+    oldPwd.length > 0 &&
+    newPwd.length > 0 &&
+    newPwd === confirm &&
+    (!totpRequired || totp.length === 6) &&
+    !saving
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     if (!ready) return
     setSaving(true)
     try {
-      await changePassword(oldPwd, newPwd)
-      toast.success(t('account.password.changed'))
+      await changePassword(oldPwd, newPwd, totp || undefined)
+      toast.success(t('account.pwd.changed'))
       // The server-side flag self-heals — the gate clears it on the next
       // request once the database says nothing is owed — so dropping the client
       // flag is enough to let the app render.
       setPasswordChangeRequired(false)
     } catch (err) {
+      // The account has TOTP enrolled and the code was missing or wrong. Reveal
+      // the field rather than reporting a generic failure: before this the page
+      // had nowhere to type one, so an administrator with TOTP could never
+      // satisfy the gate and never reach anything else either.
+      if (apiErrorCode(err) === CODE_TOTP_REQUIRED) {
+        setTotpRequired(true)
+        setTotp('')
+        toast.error(t('account.pwd.totpRequired'))
+        return
+      }
       const msg = err instanceof Error ? err.message : t('common.failed')
       toast.error(t('common.failed'), msg)
     } finally {
@@ -80,15 +101,15 @@ export default function ForcePasswordChange({
             <KeyRound className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="text-lg font-semibold text-ink">{t('account.password.forceTitle')}</h1>
-            <p className="text-sm text-muted">{t('account.password.forceSubtitle')}</p>
+            <h1 className="text-lg font-semibold text-ink">{t('account.pwd.forceTitle')}</h1>
+            <p className="text-sm text-muted">{t('account.pwd.forceSubtitle')}</p>
           </div>
         </div>
 
         <form onSubmit={submit} className="space-y-4">
           <div>
             <label className="mb-1 block text-xs font-medium text-muted">
-              {t('account.password.old')}
+              {t('account.pwd.old')}
             </label>
             <input
               autoFocus
@@ -101,7 +122,7 @@ export default function ForcePasswordChange({
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-muted">
-              {t('account.password.new')}
+              {t('account.pwd.new')}
             </label>
             <input
               type="password"
@@ -113,7 +134,7 @@ export default function ForcePasswordChange({
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-muted">
-              {t('account.password.confirm')}
+              {t('account.pwd.confirm')}
             </label>
             <input
               type="password"
@@ -123,16 +144,33 @@ export default function ForcePasswordChange({
               className={field}
             />
             {mismatch && (
-              <p className="mt-1 text-xs text-red-600">{t('account.password.mismatch')}</p>
+              <p className="mt-1 text-xs text-red-600">{t('account.pwd.mismatch')}</p>
             )}
           </div>
+          {totpRequired && (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted">
+                {t('account.pwd.totpLabel')}
+              </label>
+              <input
+                autoFocus
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={totp}
+                onChange={(e) => setTotp(e.target.value.replace(/\D/g, ''))}
+                className={field}
+              />
+              <p className="mt-1 text-xs text-muted">{t('account.pwd.totpHint')}</p>
+            </div>
+          )}
           <button
             type="submit"
             disabled={!ready}
             className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-60"
           >
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-            {t('account.password.forceSubmit')}
+            {t('account.pwd.forceSubmit')}
           </button>
         </form>
 

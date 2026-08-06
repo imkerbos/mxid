@@ -1292,6 +1292,8 @@ export default {
       forceTitle: 'Choose a new password',
       forceSubtitle: 'This is required before you can continue',
       forceSubmit: 'Set new password',
+      totpLabel: 'Authenticator code',
+      totpHint: 'Open your authenticator app and enter the 6 digits it shows now.',
       tooShort: 'New password must be at least 8 chars',
       needMfa: 'Please enter a 6-digit TOTP code',
       changed: 'Password updated — all other sessions (including Portal) have been signed out',
