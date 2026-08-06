@@ -218,12 +218,32 @@ func modelToMap(cb *gorm.DB) map[string]any {
 }
 
 // primaryKeyOf reads the schema's primary key value from the statement.
+//
+// The slice case is not optional. On a batch Create the statement's
+// ReflectValue is the slice itself, and schema.Field.ValueOf reaches straight
+// for a struct field on it — reflect then panics with "call of
+// reflect.Value.Field on slice Value", which takes down whatever goroutine is
+// running. That is not hypothetical: adding members to a dynamic user group
+// does exactly one batch insert, so every rule sync panicked. In a request it
+// surfaced as a 500 with no usable message; on the startup reconcile worker it
+// killed the process, and since the group was still there on restart, the pod
+// stayed in CrashLoopBackOff until somebody deleted the data.
+//
+// Index(0) mirrors modelToMap immediately above, which already handled this —
+// the two read the same statement and must agree on what "the row" means.
 func primaryKeyOf(cb *gorm.DB) int64 {
 	if cb.Statement.Schema == nil || cb.Statement.Schema.PrioritizedPrimaryField == nil {
 		return 0
 	}
+	rv := cb.Statement.ReflectValue
+	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
+		if rv.Len() == 0 {
+			return 0
+		}
+		rv = rv.Index(0)
+	}
 	f := cb.Statement.Schema.PrioritizedPrimaryField
-	v, zero := f.ValueOf(cb.Statement.Context, cb.Statement.ReflectValue)
+	v, zero := f.ValueOf(cb.Statement.Context, rv)
 	if zero {
 		return 0
 	}

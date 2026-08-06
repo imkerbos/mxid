@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Creating a dynamic user group no longer fails, and no longer takes the pod
+  down.** The audit capture plugin read the primary key straight off the
+  statement value; on a batch insert that value is a slice, and reflect panics
+  reaching for a struct field on it. Adding members to a dynamic group is
+  exactly one batch insert, so every rule sync panicked — as a 500 with no
+  usable message inside a request, and as a dead process on the startup
+  reconcile worker, which put the pod in CrashLoopBackOff until the group was
+  deleted by hand, because the data was still there on each restart. The
+  sibling function three lines above already handled the slice; this one did
+  not.
+
+### Fixed
 - A server error now tells the user something they can act on. A 500 surfaced as
   axios' own 'Request failed with status code 500' — neither what failed nor
   what to do — because the request id the server stamps on every response was
