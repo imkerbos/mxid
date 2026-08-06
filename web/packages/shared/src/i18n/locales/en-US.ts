@@ -9,6 +9,8 @@ export default {
   },
   errors: {
     eeFeatureRequired: 'This is an Enterprise Edition feature and requires a valid enterprise license. Activate one under Settings → License.',
+    serverError: 'The server hit an internal error. Try again, or contact your administrator.',
+    serverErrorWithTrace: 'The server hit an internal error. Give your administrator this request id so they can find it in the log: {{traceId}}',
     codeExists: 'That code is already taken. Choose a different one.',
     totpCodeReused: 'That code was just used. Wait for your authenticator to show the next 6-digit code and try again.',
     appNoLoginURL: 'This app has no login URL configured yet, so it cannot be launched. Record a login on its sign-in page with the browser extension to set it up first.',

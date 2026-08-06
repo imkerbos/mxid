@@ -4,6 +4,9 @@ export interface ApiResponse<T = unknown> {
   message: string
   data: T
   detail?: string
+  // Stamped on every response by pkg/response. The only handle an operator has
+  // for finding a 500 in the server log, where the real cause lives.
+  traceId?: string
 }
 
 // Paginated response data

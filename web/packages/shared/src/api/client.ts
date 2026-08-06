@@ -112,7 +112,7 @@ export function createApiClient(baseURL: string): AxiosInstance {
     (response: AxiosResponse<ApiResponse>) => {
       const data = response.data
       if (data.code !== 0) {
-        return Promise.reject(new ApiError(data.code, data.message, data.detail))
+        return Promise.reject(new ApiError(data.code, data.message, data.detail, data.traceId))
       }
       return response
     },
@@ -163,7 +163,16 @@ export function createApiClient(baseURL: string): AxiosInstance {
       // body is absent (network error, non-JSON gateway page).
       const data = error.response?.data
       if (data && typeof data.code === 'number' && data.code !== 0) {
-        return Promise.reject(new ApiError(data.code, data.message, data.detail))
+        return Promise.reject(new ApiError(data.code, data.message, data.detail, data.traceId))
+      }
+
+      // No parseable body — a gateway error page, a dropped connection, or a
+      // response that never reached the handler. Axios' own message ("Request
+      // failed with status code 500") is what the user saw before this, and it
+      // says nothing about what to do. Carry the status so the toast can at
+      // least name it as a server-side failure.
+      if (status) {
+        return Promise.reject(new ApiError(-status, `HTTP ${status}`, undefined, undefined))
       }
 
       return Promise.reject(error)
@@ -195,12 +204,18 @@ export function apiErrorCode(err: unknown): number | undefined {
 export class ApiError extends Error {
   code: number
   detail?: string
+  // The server stamps every response with a request id. On a 500 the message is
+  // deliberately generic — the real cause is only in the server log — so this is
+  // the one thing that lets an operator find it. Dropping it left the user with
+  // "Request failed with status code 500" and nothing to quote.
+  traceId?: string
 
-  constructor(code: number, message: string, detail?: string) {
+  constructor(code: number, message: string, detail?: string, traceId?: string) {
     super(message)
     this.name = 'ApiError'
     this.code = code
     this.detail = detail
+    this.traceId = traceId
   }
 }
 
