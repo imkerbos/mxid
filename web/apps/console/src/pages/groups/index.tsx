@@ -103,9 +103,16 @@ export default function GroupsPage() {
   // ─── Create ────────────────────────────────────────────────────
 
   const [createErrors, setCreateErrors] = useState<{ name?: string; code?: string }>({})
+  // A ref, not the `creating` state, because state updates are asynchronous:
+  // between setCreating(true) and the re-render that disables the button there
+  // is a window a fast second click goes straight through, and each duplicate
+  // then conflicts with the row the first one is creating. A ref is written
+  // synchronously, so the second submit sees it immediately.
+  const creatingRef = useRef(false)
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (creatingRef.current) return
     // The name input carries `required`, so the browser stops an empty one. The
     // code field does not — CodeField renders a bare input — so submitting with
     // an empty code used to return here in silence: the dialog stayed open, no
@@ -123,6 +130,7 @@ export default function GroupsPage() {
       toast.error(t("groups.needAtLeastOneRule"))
       return
     }
+    creatingRef.current = true
     setCreating(true)
     try {
       const created = await groupApi.create({
@@ -146,6 +154,7 @@ export default function GroupsPage() {
     } catch (e) {
       toast.error(t("common.failed"), extractMessage(e))
     } finally {
+      creatingRef.current = false
       setCreating(false)
     }
   }

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **A panicking background worker no longer takes the whole process down.**
+  `SpawnWorker` ran the job without a recover, and an unrecovered panic in any
+  goroutine kills the program — so one bad row could stop every login in the
+  deployment. It was not transient either: the row survives the restart, the
+  reconcile worker runs again, and the pod sits in CrashLoopBackOff until
+  someone finds and deletes the data. A panic is now contained, logged with its
+  stack, and costs one background job instead of the service.
+- The dynamic-group reconcile no longer scans the whole group table. It filters
+  on `(tenant_id, type)` while the only index was `UNIQUE (tenant_id, code)`
+  (migration 000067).
+- Creating a user group cannot fire twice from one submit. The in-flight guard
+  was React state, so a second click in the window before the re-render went
+  through and conflicted with the row the first was still creating; it is a ref
+  now, which is written synchronously.
+
 ### Added
 - `mxid-server admin reset-password` — the break-glass path for a forgotten
   administrator password when no second super-admin can reset it. Until now the
