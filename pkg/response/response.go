@@ -166,5 +166,5 @@ func InternalError(c *gin.Context, message string, cause ...error) {
 		}
 		logger.Error("internal server error", fields...)
 	}
-	Error(c, http.StatusInternalServerError, 50001, message, "")
+	Error(c, http.StatusInternalServerError, errcode.NumInternalError, message, "")
 }
