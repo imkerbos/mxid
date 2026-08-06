@@ -10,7 +10,6 @@ var (
 	codeAppGroupNotFound   = errcode.Code{HTTP: 404, Num: 40402}
 	codeAccessNotFound     = errcode.Code{HTTP: 404, Num: 40403}
 	codeCertNotFound       = errcode.Code{HTTP: 404, Num: 40404}
-	codeAccountNotFound    = errcode.Code{HTTP: 404, Num: 40405}
 	codeSubjectNotInTenant = errcode.Code{HTTP: 404, Num: 40406}
 	codeTemplateNotFound   = errcode.Code{HTTP: 404, Num: 40407}
 	codeAppCodeExists      = errcode.Code{HTTP: 409, Num: 40901}
@@ -25,7 +24,6 @@ func init() {
 	errcode.Bind(ErrAppGroupNotFound, codeAppGroupNotFound)
 	errcode.Bind(ErrAccessNotFound, codeAccessNotFound)
 	errcode.Bind(ErrCertNotFound, codeCertNotFound)
-	errcode.Bind(ErrAccountNotFound, codeAccountNotFound)
 	errcode.Bind(ErrSubjectNotInTenant, codeSubjectNotInTenant)
 	errcode.Bind(ErrTemplateNotFound, codeTemplateNotFound)
 	errcode.Bind(ErrAppCodeExists, codeAppCodeExists)

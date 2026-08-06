@@ -25,7 +25,6 @@ var (
 	ErrGroupCodeExists   = errors.New("app group code already exists")
 	ErrAccessNotFound    = errors.New("access authorization not found")
 	ErrCertNotFound      = errors.New("certificate not found")
-	ErrAccountNotFound   = errors.New("app account not found")
 	ErrInvalidClientType = errors.New("invalid client_type for protocol")
 	// ErrFormFillNotLicensed is returned when a form-fill (SWA) app is created
 	// without the EE form_fill license feature.
