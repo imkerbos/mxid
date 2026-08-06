@@ -1,6 +1,6 @@
 .PHONY: dev dev-console dev-portal dev-web dev-docker-up dev-docker-up-d dev-docker-down dev-docker-logs dev-docker-ps dev-docker-restart dev-docker-reload dev-docker-watch dev-docker-clean \
        build run test lint migrate-up migrate-down migrate-create clean deps \
-       verify verify-mod verify-vet verify-build verify-lint verify-web verify-exports verify-i18n-markers verify-pinned-tag smoke install-hooks \
+       verify verify-mod verify-vet verify-build verify-lint verify-web verify-exports verify-i18n-keys verify-i18n-markers verify-pinned-tag smoke install-hooks \
        docker-build prod-up prod-down prod-logs standalone-up standalone-down standalone-logs
 
 # Variables
@@ -252,7 +252,7 @@ clean:
 
 # Verify — invariant gates. Run before commit / in CI.
 # Each sub-target is independently runnable to localize failures.
-verify: verify-mod verify-vet verify-build verify-gormtags verify-lint verify-exports verify-i18n-markers verify-pinned-tag verify-web
+verify: verify-mod verify-vet verify-build verify-gormtags verify-lint verify-exports verify-i18n-keys verify-i18n-markers verify-pinned-tag verify-web
 	@echo "✓ verify OK"
 
 # go.mod / go.sum must match the import graph. Catches indirect-vs-direct drift.
@@ -297,6 +297,15 @@ verify-lint:
 verify-exports:
 	@echo "==> verify-exports"
 	node scripts/verify-exports.mjs
+
+# Every literal t('...') key must resolve in BOTH locales. A missing key does not
+# throw — i18next renders the key itself, so the screen fills with
+# "account.password.forceTitle" instead of text. That shipped: the forced
+# password-change screen, the one screen a locked-out administrator has to use,
+# rendered every label as a raw key because the namespace is `account.pwd`.
+verify-i18n-keys:
+	@echo "==> verify-i18n-keys"
+	node scripts/verify-i18n-keys.mjs
 
 # Labels rendered through <Field required> must not carry their own "*" — the
 # primitive draws the marker, so a label ending in one renders "Name * *".

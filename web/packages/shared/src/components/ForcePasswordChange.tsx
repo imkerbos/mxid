@@ -73,7 +73,7 @@ export default function ForcePasswordChange({
       if (apiErrorCode(err) === CODE_TOTP_REQUIRED) {
         setTotpRequired(true)
         setTotp('')
-        toast.error(t('account.pwd.totpRequired'))
+        toast.error(t('errors.totpRequired'))
         return
       }
       const msg = err instanceof Error ? err.message : t('common.failed')
