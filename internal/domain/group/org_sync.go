@@ -101,7 +101,14 @@ func (s *Service) ResyncTenantDynamicGroups(ctx context.Context, tenantID int64)
 		return
 	}
 	for _, gid := range ids {
-		if _, err := s.SyncRule(ctx, gid); err != nil {
+		// syncRule, not SyncRule: this is the background sweeper, and it must
+		// not write audit entries. The sweeper runs every 30 minutes over every
+		// dynamic group, so publishing here would file a "rule synced" row per
+		// group per tick — almost all of them reporting that nothing moved,
+		// none of them attributable to a person. The audit log answers "who did
+		// what"; burying that under a periodic no-op is how it stops being
+		// read. Operator-triggered syncs still publish, from SyncRule.
+		if _, err := s.syncRule(ctx, gid); err != nil {
 			s.logger.Warn("resync dynamic group failed",
 				zap.Int64("tenant_id", tenantID), zap.Int64("group_id", gid), zap.Error(err))
 		}

@@ -796,7 +796,7 @@ func (h *Handler) handleAuthError(c *gin.Context, err error) {
 			response.Error(c, http.StatusTooManyRequests, errcode.NumTooManyAttempts, "too many failed attempts, temporarily locked", "")
 			return
 		}
-		response.Error(c, http.StatusForbidden, errcode.NumForbiddenScope, "account is locked", "")
+		response.Error(c, http.StatusForbidden, errcode.NumAccountLocked, "account is locked", "")
 	case errors.Is(err, ErrAccountDisabled):
 		response.Error(c, http.StatusForbidden, errcode.NumAccountDisabled, "account is disabled", "")
 	case errors.Is(err, ErrPasswordExpired):

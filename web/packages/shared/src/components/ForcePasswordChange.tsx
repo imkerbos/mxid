@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { KeyRound, Loader2, LogOut } from 'lucide-react'
 import { useAuthStore } from '../hooks/use-auth-store'
 import { useTranslation } from '../i18n'
-import { toast, extractMessage } from '../ui/toast'
+import { toast, extractMessage, Toaster } from '../ui/toast'
 import { apiErrorCode, CODE_TOTP_REQUIRED } from '../api/client'
 
 /**
@@ -95,6 +95,17 @@ export default function ForcePasswordChange({
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-canvas p-4">
+      {/*
+        This screen renders INSTEAD of the app, so the <Toaster /> in MainLayout
+        never mounts with it. toast() is a pub-sub with no subscriber then: the
+        three calls above published into nothing, and a rejected password — the
+        server names the exact rule broken, "密码至少需要 8 位" — produced a
+        screen that did not change at all. Success was equally silent.
+
+        Mounting a second Toaster is safe because the two are mutually
+        exclusive: AuthGuard returns this or the app, never both.
+      */}
+      <Toaster />
       <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-xl">
         <div className="mb-4 flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">

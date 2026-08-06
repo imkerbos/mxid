@@ -8,6 +8,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- User-group writes now leave a domain audit entry. Ten operations — create,
+  update, add / remove member (singular and batch), attach / delete / sync rule,
+  delete group — published their events and had their field allow-lists, but
+  nothing subscribed, so they reached the log only as the `api.*` catch-all rows
+  the audit page hides by default. An operator asking who added someone to a
+  group found an empty page, and group membership is what grants application
+  access. Rule changes carry the added / removed counts, because "the rule
+  changed" does not describe the blast radius and "the rule changed and 13
+  people joined" does. A test now fails the build when an event has an audit
+  allow-list but no subscription.
+- Audit detail no longer rounds snowflake ids. The handler decoded the stored
+  JSON into `map[string]any` and re-encoded it, and `encoding/json` makes every
+  number a float64 — 53 bits against 18-19 digits — so the server read
+  ...850752 from the database and wrote ...850750 to the client. A well-formed
+  id that matches no row, in the one record whose job is to say what happened to
+  what. Ids past 2^53 are now stored as strings and the detail column is passed
+  through unaltered.
+- Twelve audit allow-lists named `code` and the sensitive-key filter dropped
+  every one, so the log recorded that an app / org / group / tenant was created
+  without recording its code — the string downstream systems match on. No
+  publisher ever used `code` for a one-time password, which is what the filter
+  entry meant; it now names `otp_code`, `verify_code` and friends precisely. A
+  test fails the build when an allow-list claims a field the filter removes.
+- Removing someone who is already not a member answered 500. The repository
+  returned a bare `fmt.Errorf`, which `response.MapError` cannot classify, so a
+  second click on Remove — or a first click after a colleague had already
+  removed them — produced a server error with a stack trace in the log. Now
+  idempotent, matching the batch endpoint and group deletion next door.
+- `%` and `_` in a dynamic-group rule value were read as SQL wildcards, so a
+  rule written for `dept_eng` also matched `deptXeng` and enrolled people it was
+  meant to exclude. Group membership grants application access, which makes this
+  an authorization question rather than a search-quality one. The same escaping
+  bug affected group, user and audit search; all three now go through
+  `dberr.EscapeLike` with an explicit `ESCAPE` clause.
+- A dynamic-group rule with an empty comparison value was accepted and matched
+  nearly everyone (`email contains ""` is true for anyone who has an email), and
+  reported it as a normal successful sync. Rejected now, in both the console and
+  the API.
+- Group codes were unvalidated: spaces, Chinese characters, capitals and
+  `<script>alert(1)</script>` all created successfully. The code travels in the
+  OIDC `groups` claim and the SAML group attribute, and it is immutable after
+  creation — so a bad one can only be repaired by deleting the group and
+  re-granting everything that referenced it. Validated on create only; existing
+  groups keep working.
+- The forced password-change screen showed no feedback at all. It renders
+  instead of the app, so the `<Toaster />` in MainLayout never mounts with it and
+  all three of its toasts published into nothing — including a rejected password
+  whose exact rule the server had named, and the confirmation that the change
+  succeeded.
+- Password-policy refusals were half English and half Chinese ("password does
+  not meet complexity policy: 密码至少需要 8 位"), wrong for either reader. Each
+  of the five rules now has its own catalogued code and the sentence is written
+  in the locale files; the minimum length travels in `detail`.
+- The sign-in screen printed the server's English for a locked or disabled
+  account, an expired password and too many attempts — the localized copy for
+  all four already existed in the locale files, unused. Account-locked also
+  moved off the generic 40301 onto its own 40304 so the SPA can tell it apart.
+- A first captcha challenge was reported as "incorrect captcha" — the box had
+  only just appeared and held nothing to be wrong. Demanded and mistyped are now
+  two different sentences.
+- An expired session dropped the user back at sign-in with the form they were
+  filling gone and no explanation, which from their side is indistinguishable
+  from the product crashing. The login screen now says the session expired.
+- `errcode.Lookup` returns the most specific bound sentinel rather than whichever
+  the map iteration reached first. Password policy is the first place a narrow
+  sentinel wraps a broad one, and picking either at random would have answered a
+  different code — and shown a different sentence — from one process start to
+  the next.
+
+### Fixed
 - Every error message in the console and portal now goes through
   `extractMessage`. Forty-eight call sites across twenty-four files read
   `response.data.message` or `err.message` directly, which loses the

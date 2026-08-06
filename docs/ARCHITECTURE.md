@@ -533,6 +533,15 @@ so they are asserted by tests rather than documented and hoped for:
 | A release deployment never serves with the seeded administrator password | `internal/bootstrap/admin_credential_test.go` |
 | A session owing a password change reaches nothing but the change-password route | `internal/domain/authn/password_gate_test.go` |
 | No goroutine is started without a recover (an unrecovered panic terminates the process) | `pkg/safego/no_bare_goroutines_test.go` |
+| Every error response carries a traceId (no hand-written body) | `pkg/response/no_bypass_test.go` |
+| Every event with an audit allow-list is actually subscribed to | `internal/domain/audit/subscription_coverage_test.go` |
+| No allow-listed audit field is silently removed by the sensitive-key filter | `internal/domain/audit/schema_honesty_test.go` |
+| A snowflake id survives the trip to the client with every digit intact | `internal/domain/audit/id_precision_test.go` |
+| The dynamic-group sweeper writes no audit entries (an operator-triggered sync does) | `internal/domain/group/sweeper_audit_test.go` |
+| A LIKE value typed by a user is matched literally, not as a wildcard | `pkg/dberr/like_test.go`, `internal/domain/group/rule_like_escape_test.go` |
+| A dynamic-group rule value cannot be empty (a blank one matches nearly everyone) | `internal/domain/group/rule_empty_value_test.go` |
+| A group code is usable by the systems that receive it in a claim | `internal/domain/group/code_test.go` |
+| `errcode.Lookup` returns the most specific bound sentinel, not a random match | `pkg/errcode/lookup_specificity_test.go` |
 
 Each guard was verified by reintroducing the defect it exists to catch. Two of them were wrong on
 the first attempt and passed against the broken code — a line-window scan that found a neighbour's

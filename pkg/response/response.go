@@ -134,7 +134,7 @@ func NoContent(c *gin.Context) {
 // never leaked. This replaces the per-handler errors.Is switches.
 func MapError(c *gin.Context, err error) {
 	if code, ok := errcode.Lookup(err); ok {
-		Error(c, code.HTTP, code.Num, err.Error(), "")
+		Error(c, code.HTTP, code.Num, err.Error(), errcode.DetailOf(err))
 		return
 	}
 	InternalError(c, "internal server error", err)

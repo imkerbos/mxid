@@ -17,6 +17,9 @@ var (
 	codeGroupHasMembers = errcode.Code{HTTP: 409, Num: 40901}
 	codeGroupIsDynamic  = errcode.Code{HTTP: 409, Num: 40902}
 	codeGroupCodeExists = errcode.Code{HTTP: 409, Num: errcode.NumCodeExists}
+	// Generic 400: the message names the rule and echoes what was typed, and
+	// the SPA shows it verbatim.
+	codeInvalidGroupCode = errcode.Code{HTTP: 400, Num: errcode.NumInvalidInput}
 )
 
 func init() {
@@ -25,6 +28,8 @@ func init() {
 	errcode.Bind(ErrUserNotInTenant, codeUserNotInTenant)
 	errcode.Bind(ErrGroupHasMembers, codeGroupHasMembers)
 	errcode.Bind(ErrGroupCodeExists, codeGroupCodeExists)
+	// code.go
+	errcode.Bind(ErrInvalidGroupCode, codeInvalidGroupCode)
 	// rule_sync.go
 	errcode.Bind(ErrRuleNotFound, codeGroupNotFound) // "group has no rule" — a 404
 	errcode.Bind(ErrGroupIsDynamic, codeGroupIsDynamic)

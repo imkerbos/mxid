@@ -24,6 +24,24 @@ import { toast, extractMessage } from '../../components/ui/toast'
 
 const EMPTY_RULE: RuleExpr = { op: 'and', conditions: [] }
 
+// Mirrors groupCodePattern in internal/domain/group/code.go. Keep the two in
+// step: this one exists to say no in the operator's language before the round
+// trip, not to be the authority — the server still rejects anything that gets
+// past it.
+const GROUP_CODE_RE = /^[a-z0-9][a-z0-9_-]*$/
+
+// A condition whose value box is blank is not a narrower rule — it is a wider
+// one. `email contains ""` is true for everyone who has an email, so the blank
+// box quietly produces an everyone-group and reports a successful sync. The
+// server refuses it; this catches it first, in the operator's language, next to
+// the field they left empty.
+function firstBlankRuleValue(rule: RuleExpr): number {
+  return rule.conditions.findIndex(
+    (c) => typeof c.value === 'string' && c.value.trim() === '',
+  )
+}
+
+
 export default function GroupsPage() {
   const { t } = useTranslation()
   const [data, setData] = useState<PaginatedData<Group>>({ items: [], total: 0, page: 1, page_size: 20 })
@@ -117,18 +135,33 @@ export default function GroupsPage() {
     // code field does not — CodeField renders a bare input — so submitting with
     // an empty code used to return here in silence: the dialog stayed open, no
     // message, nothing sent.
+    // The code shape is checked here as well as on the server. Not duplication
+    // for its own sake: the code is immutable once created and travels in the
+    // OIDC `groups` claim, so a rejection that only arrives after submit is a
+    // rejection the operator reads in the server's English. Say it here, in
+    // their language, before the round trip.
+    const codeShapeError = createForm.code.trim() && !GROUP_CODE_RE.test(createForm.code.trim())
+      ? t('groups.createModal.codeFormat')
+      : undefined
     const errs = {
       name: createForm.name.trim() ? undefined : t('common.validation.required'),
-      code: createForm.code.trim() ? undefined : t('common.validation.required'),
+      code: createForm.code.trim() ? codeShapeError : t('common.validation.required'),
     }
     if (errs.name || errs.code) {
       setCreateErrors(errs)
       return
     }
     setCreateErrors({})
-    if (createType === GroupType.Dynamic && createRule.conditions.length === 0) {
-      toast.error(t("groups.needAtLeastOneRule"))
-      return
+    if (createType === GroupType.Dynamic) {
+      if (createRule.conditions.length === 0) {
+        toast.error(t("groups.needAtLeastOneRule"))
+        return
+      }
+      const blank = firstBlankRuleValue(createRule)
+      if (blank >= 0) {
+        toast.error(t('groupRules.valueRequired', { index: blank + 1 }))
+        return
+      }
     }
     creatingRef.current = true
     setCreating(true)
@@ -189,6 +222,12 @@ export default function GroupsPage() {
       if (editGroup.type === GroupType.Dynamic && editRule) {
         if (editRule.conditions.length === 0) {
           toast.error(t("groups.needAtLeastOneRule"))
+          setEditing(false)
+          return
+        }
+        const blank = firstBlankRuleValue(editRule)
+        if (blank >= 0) {
+          toast.error(t('groupRules.valueRequired', { index: blank + 1 }))
           setEditing(false)
           return
         }

@@ -158,6 +158,29 @@ func (s *Service) SubscribeEvents() {
 	s.eventBus.Subscribe(event.IDPUpdated, s.handleResourceEvent(event.IDPUpdated, "idp"))
 	s.eventBus.Subscribe(event.IDPDeleted, s.handleResourceEvent(event.IDPDeleted, "idp"))
 
+	// User group events.
+	//
+	// These were the one resource whose domain events nobody subscribed to. The
+	// events were published, and schema.go already carried their field
+	// allow-lists — the subscription line was simply never written, so every
+	// user-group write landed in the audit log only as the api.* catch-all. The
+	// audit page hides those by default, which meant an operator looking for
+	// "who put this person in the admins group" found nothing at all, and group
+	// membership is what grants application access.
+	// resourceType is "group", not "user_group", because handleResourceEvent
+	// falls back to payload[resourceType+"_id"] for the primary key and the
+	// member events carry "group_id". Named "user_group" here, every member
+	// row would have landed with resource_id 0 — an audit entry that cannot say
+	// which group it is about.
+	s.eventBus.Subscribe(event.GroupCreated, s.handleResourceEvent(event.GroupCreated, "group"))
+	s.eventBus.Subscribe(event.GroupUpdated, s.handleResourceEvent(event.GroupUpdated, "group"))
+	s.eventBus.Subscribe(event.GroupDeleted, s.handleResourceEvent(event.GroupDeleted, "group"))
+	s.eventBus.Subscribe(event.GroupMemberAdded, s.handleResourceEvent(event.GroupMemberAdded, "group"))
+	s.eventBus.Subscribe(event.GroupMemberRemoved, s.handleResourceEvent(event.GroupMemberRemoved, "group"))
+	s.eventBus.Subscribe(event.GroupRuleUpdated, s.handleResourceEvent(event.GroupRuleUpdated, "group"))
+	s.eventBus.Subscribe(event.GroupRuleDeleted, s.handleResourceEvent(event.GroupRuleDeleted, "group"))
+	s.eventBus.Subscribe(event.GroupRuleSynced, s.handleResourceEvent(event.GroupRuleSynced, "group"))
+
 	// Application group events
 	s.eventBus.Subscribe(event.AppGroupCreated, s.handleResourceEvent(event.AppGroupCreated, "app_group"))
 	s.eventBus.Subscribe(event.AppGroupUpdated, s.handleResourceEvent(event.AppGroupUpdated, "app_group"))

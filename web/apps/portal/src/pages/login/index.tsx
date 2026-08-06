@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, type FormEvent } from 'react'
 import { useNavigate, useLocation, useSearchParams, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { authApi, externalIdpApi, ExternalIdpButtons, useAuthStore, useBootstrap, useTranslation, safeReturnPath, apiErrorCode, CODE_CAPTCHA_REQUIRED, CODE_CAPTCHA_INVALID, CODE_UNAUTHENTICATED, CODE_INVALID_MFA_CODE } from '@mxid/shared'
+import { authApi, externalIdpApi, ExternalIdpButtons, useAuthStore, useBootstrap, useTranslation, safeReturnPath, apiErrorCode, CODE_CAPTCHA_REQUIRED, CODE_CAPTCHA_INVALID, CODE_UNAUTHENTICATED, CODE_INVALID_MFA_CODE, CODE_ACCOUNT_LOCKED, CODE_ACCOUNT_DISABLED, CODE_ACCESS_DENIED, CODE_TOO_MANY_ATTEMPTS } from '@mxid/shared'
 import { extractMessage } from '@mxid/shared/ui/toast'
 import type { PublicIDP } from '@mxid/shared'
 import { Eye, EyeOff, Loader2, RefreshCw } from 'lucide-react'
@@ -11,23 +11,33 @@ import logo from '../../assets/logo.png'
 // loginErrorMessage maps the backend error code to a specific, localized
 // message so the user sees whether the captcha or the credentials were wrong,
 // not a bare "Request failed with status code 400".
+//
+// The account-state branches were bare numbers here, which is exactly how a
+// backend renumber goes unnoticed: "locked" moved off the generic 40301 onto
+// its own 40304, and a literal would have silently started falling through to
+// the server's English sentence.
 function loginErrorMessage(err: unknown, t: (k: string) => string): string {
   const e = err as { message?: string; response?: { data?: { message?: string } } }
   const code = apiErrorCode(err)
   switch (code) {
+    // Demanded vs mistyped are different sentences: the first time a captcha is
+    // asked for, the box has only just appeared and holds nothing to be wrong.
     case CODE_CAPTCHA_REQUIRED:
+      return t('login.captchaRequired')
     case CODE_CAPTCHA_INVALID:
       return t('login.invalidCaptcha')
     case CODE_UNAUTHENTICATED:
       return t('login.invalidCredentials')
     case CODE_INVALID_MFA_CODE:
       return t('login.invalidMfaCode')
-    case 40301:
+    case CODE_ACCOUNT_LOCKED:
       return t('login.accountLocked')
-    case 40302:
+    case CODE_ACCESS_DENIED:
       return t('login.passwordExpired')
-    case 40303:
+    case CODE_ACCOUNT_DISABLED:
       return t('login.accountDisabled')
+    case CODE_TOO_MANY_ATTEMPTS:
+      return t('login.tooManyAttempts')
     default:
       return extractMessage(e, t('login.failedRetry'))
   }
@@ -81,6 +91,15 @@ export default function LoginPage() {
   useEffect(() => {
     externalIdpApi.listPublic(tenantCode || undefined).then(setIdps).catch(() => {})
   }, [tenantCode])
+
+  // Bounced here by an expired session rather than by signing out. Say so —
+  // the page otherwise appears for no reason, with whatever was being typed
+  // gone and nothing to explain it.
+  useEffect(() => {
+    if ((location.state as { reason?: string })?.reason === 'session-expired') {
+      setError(t('login.sessionExpired'))
+    }
+  }, [location.state, t])
 
   const loadCaptcha = useCallback(async () => {
     setCaptchaFailed(false)

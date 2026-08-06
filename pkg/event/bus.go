@@ -147,6 +147,15 @@ const (
 	GroupMemberAdded   = "group.member_added"
 	GroupMemberRemoved = "group.member_removed"
 
+	// Dynamic-group rule changes. Editing a rule rewrites the entire roster in
+	// one step, and the roster is what grants application access — so a rule
+	// edit is a bulk permission change, not a settings tweak. Carry
+	// {tenant_id, group_id, added, removed} so the entry says how many people
+	// moved rather than merely that something was saved.
+	GroupRuleUpdated = "group.rule_updated"
+	GroupRuleDeleted = "group.rule_deleted"
+	GroupRuleSynced  = "group.rule_synced"
+
 	SessionKicked = "session.kicked"
 	MFAEnabled    = "mfa.enabled"
 	MFADisabled   = "mfa.disabled"
