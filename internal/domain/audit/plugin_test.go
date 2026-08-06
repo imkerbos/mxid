@@ -317,3 +317,55 @@ func containsStr(h, n string) bool {
 		return false
 	})()
 }
+
+// A batch insert must not panic.
+//
+// On a batch Create the statement's ReflectValue is the slice, and
+// schema.Field.ValueOf reaches for a struct field on it — reflect panics with
+// "call of reflect.Value.Field on slice Value". modelToMap handled the slice;
+// primaryKeyOf, three lines below it, did not.
+//
+// It reached production. Adding members to a dynamic user group is exactly one
+// batch insert, so every rule sync panicked: as a 500 with no usable message
+// inside a request, and as a dead process on the startup reconcile worker,
+// which left the pod in CrashLoopBackOff until somebody deleted the group by
+// hand — the data was still there on every restart.
+func TestPlugin_BatchCreateDoesNotPanic(t *testing.T) {
+	db := newPluginDB(t)
+
+	rows := []*widget{
+		{ID: 11, Name: "a"},
+		{ID: 12, Name: "b"},
+		{ID: 13, Name: "c"},
+	}
+	if err := db.WithContext(actorCtx()).Create(&rows).Error; err != nil {
+		t.Fatalf("batch create: %v", err)
+	}
+
+	var n int64
+	if err := db.Model(&widget{}).Count(&n).Error; err != nil {
+		t.Fatal(err)
+	}
+	if n != 3 {
+		t.Fatalf("inserted %d rows, want 3", n)
+	}
+
+	// The capture still has to happen, and to name a real row rather than 0.
+	var p AuditPending
+	if err := db.First(&p).Error; err != nil {
+		t.Fatalf("no pending row captured for the batch: %v", err)
+	}
+	if p.ResourceID != 11 {
+		t.Errorf("resource_id = %d, want 11 (the first row of the batch)", p.ResourceID)
+	}
+}
+
+// An empty batch is a no-op that must not panic on the Len()==0 path either.
+func TestPlugin_EmptyBatchCreateIsSafe(t *testing.T) {
+	db := newPluginDB(t)
+	var rows []*widget
+	err := db.WithContext(actorCtx()).Create(&rows).Error
+	if err != nil && err != gorm.ErrEmptySlice {
+		t.Fatalf("empty batch: %v", err)
+	}
+}
