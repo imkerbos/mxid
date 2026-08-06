@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.4] — 2026-08-06
+
 ### Fixed
 - Two error sentinels that nothing ever returned are gone (`app.ErrAccountNotFound`,
   `group.ErrGroupNotDynamic`). Both were declared and bound to a business code,
@@ -712,7 +714,8 @@ Initial public preview. Two integrations verified end-to-end: **Grafana (OIDC)**
 - pnpm workspaces (`console` / `portal` / `shared`).
 - Tailwind v4 monorepo `@source` directive so shared package UI compiles into both SPAs.
 
-[Unreleased]: https://github.com/imkerbos/mxid/compare/v1.8.3...HEAD
+[Unreleased]: https://github.com/imkerbos/mxid/compare/v1.8.4...HEAD
+[1.8.4]: https://github.com/imkerbos/mxid/compare/v1.8.3...v1.8.4
 [1.8.3]: https://github.com/imkerbos/mxid/compare/v1.8.2...v1.8.3
 [1.8.2]: https://github.com/imkerbos/mxid/compare/v1.8.1...v1.8.2
 [1.8.1]: https://github.com/imkerbos/mxid/compare/v1.8.0...v1.8.1
