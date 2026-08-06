@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.5] — 2026-08-06
+
 ### Fixed
 - User-group writes now leave a domain audit entry. Ten operations — create,
   update, add / remove member (singular and batch), attach / delete / sync rule,
@@ -851,7 +853,8 @@ Initial public preview. Two integrations verified end-to-end: **Grafana (OIDC)**
 - pnpm workspaces (`console` / `portal` / `shared`).
 - Tailwind v4 monorepo `@source` directive so shared package UI compiles into both SPAs.
 
-[Unreleased]: https://github.com/imkerbos/mxid/compare/v1.8.4...HEAD
+[Unreleased]: https://github.com/imkerbos/mxid/compare/v1.8.5...HEAD
+[1.8.5]: https://github.com/imkerbos/mxid/compare/v1.8.4...v1.8.5
 [1.8.4]: https://github.com/imkerbos/mxid/compare/v1.8.3...v1.8.4
 [1.8.3]: https://github.com/imkerbos/mxid/compare/v1.8.2...v1.8.3
 [1.8.2]: https://github.com/imkerbos/mxid/compare/v1.8.1...v1.8.2
