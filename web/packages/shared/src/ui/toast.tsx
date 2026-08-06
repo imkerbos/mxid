@@ -77,12 +77,27 @@ const LOCALIZED_CODES: Record<number, string> = {
 // failure. Known codes are localized; otherwise the backend message is used.
 export function extractMessage(err: unknown, fallback?: string): string {
   const fb = fallback ?? i18next.t('common.operationFailed')
-  const e = err as { code?: number | string; response?: { data?: { code?: number; message?: string } }; message?: string }
+  const e = err as {
+    code?: number | string
+    traceId?: string
+    response?: { data?: { code?: number; message?: string; traceId?: string } }
+    message?: string
+  }
   // ApiError carries a numeric `.code`; a raw axios error's `.code` is a string
   // (e.g. "ERR_BAD_REQUEST") and the backend code lives in response.data.code.
   const code = (typeof e?.code === 'number' ? e.code : undefined) ?? e?.response?.data?.code
   if (code && LOCALIZED_CODES[code]) {
     return i18next.t(LOCALIZED_CODES[code])
+  }
+  // A 500 says nothing useful on purpose — the cause is only in the server log.
+  // What the user CAN do is quote the request id, so say that instead of
+  // repeating axios' "Request failed with status code 500", which told them
+  // neither what went wrong nor what to do about it.
+  const traceId = e?.traceId ?? e?.response?.data?.traceId
+  if (code === 50001 || (typeof code === 'number' && code <= -500)) {
+    return traceId
+      ? i18next.t('errors.serverErrorWithTrace', { traceId })
+      : i18next.t('errors.serverError')
   }
   return e?.response?.data?.message ?? e?.message ?? fb
 }

@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- A server error now tells the user something they can act on. A 500 surfaced as
+  axios' own 'Request failed with status code 500' — neither what failed nor
+  what to do — because the request id the server stamps on every response was
+  dropped on the way to the toast. The message now carries it, so an operator can
+  find the actual cause in the server log. A response with no parseable body at
+  all (gateway page, dropped connection) is reported as a server-side failure
+  rather than as an axios string.
+
+### Fixed
 - **An account forced to change its password could not change it.** With TOTP
   enrolled, the change-password route demanded a code unconditionally — ignoring
   that the session had just passed MFA at sign-in. Both fall inside the same
