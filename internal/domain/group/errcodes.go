@@ -14,7 +14,6 @@ var (
 	// rendered as "app has no login URL". It now uses a catalogued number; see
 	// pkg/errcode/catalog.go for why picking one by hand kept going wrong.
 	codeBadRule         = errcode.Code{HTTP: 400, Num: errcode.NumBadGroupRule}
-	codeGroupNotDynamic = errcode.Code{HTTP: 400, Num: 40002}
 	codeGroupHasMembers = errcode.Code{HTTP: 409, Num: 40901}
 	codeGroupIsDynamic  = errcode.Code{HTTP: 409, Num: 40902}
 	codeGroupCodeExists = errcode.Code{HTTP: 409, Num: errcode.NumCodeExists}
@@ -28,7 +27,6 @@ func init() {
 	errcode.Bind(ErrGroupCodeExists, codeGroupCodeExists)
 	// rule_sync.go
 	errcode.Bind(ErrRuleNotFound, codeGroupNotFound) // "group has no rule" — a 404
-	errcode.Bind(ErrGroupNotDynamic, codeGroupNotDynamic)
 	errcode.Bind(ErrGroupIsDynamic, codeGroupIsDynamic)
 	// rule.go (validation)
 	errcode.Bind(ErrRuleEmpty, codeBadRule)
