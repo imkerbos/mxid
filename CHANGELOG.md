@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **No goroutine can take the process down any more.** Fixing `SpawnWorker`
+  covered its twelve callers; a sweep found **nine more** started with a bare
+  `go func` — the OIDC and CAS logout fan-outs, four Redis pub/sub loops, the
+  JIT sweeper, the dlock campaign and the HTTP server itself. Every one of them
+  had the same failure mode. They now go through `pkg/safego`, and a guard test
+  fails the build on a new bare goroutine, because the rule is only worth as
+  much as its weakest call site: the outage came from the one goroutine written
+  before the rule existed, and nine more were found in code by people who knew it.
 - **A panicking background worker no longer takes the whole process down.**
   `SpawnWorker` ran the job without a recover, and an unrecovered panic in any
   goroutine kills the program — so one bad row could stop every login in the

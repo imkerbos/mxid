@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/imkerbos/mxid/pkg/safego"
 	"github.com/imkerbos/mxid/pkg/safehttp"
 	"go.uber.org/zap"
 )
@@ -95,7 +96,7 @@ func (h *Handler) SingleLogout(ctx context.Context, userID, appID int64) {
 	}
 
 	if len(targets) > 0 {
-		go func() {
+		safego.Go(h.logger, "cas single-logout fan-out", func() {
 			for _, t := range targets {
 				// Per-request timeout, so one unresponsive SP delays the rest by at
 				// most its own timeout instead of stalling the batch indefinitely.
@@ -103,7 +104,7 @@ func (h *Handler) SingleLogout(ctx context.Context, userID, appID int64) {
 				h.sendCASLogout(sloCtx, doer, t.url, t.body, appID)
 				cancel()
 			}
-		}()
+		})
 	}
 
 	// Clear the registry after dispatching goroutines. A failure here is

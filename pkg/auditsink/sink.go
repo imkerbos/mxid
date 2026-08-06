@@ -192,6 +192,7 @@ func (s *Sink) Close(ctx context.Context) error {
 	s.once.Do(func() { close(s.stop) })
 
 	done := make(chan struct{})
+	//safego:ok waits on a WaitGroup and closes a channel; neither can panic
 	go func() { s.wg.Wait(); close(done) }()
 	select {
 	case <-done:

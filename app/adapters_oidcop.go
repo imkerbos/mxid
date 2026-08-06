@@ -140,6 +140,9 @@ func wireOIDCOP(
 		tenantResolver,
 		issuerResolver,
 	)
+	// The back-channel fan-out runs detached from the request; without this its
+	// panic report would go nowhere.
+	logoutSvc.SetLogger(a.Logger)
 
 	// SSO login-confirmation store (Google-style, product requirement). SAME
 	// Redis-backed keyspace (ssoconfirm:) the portal confirm page mints into
