@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/authn"
@@ -53,7 +54,14 @@ type SecurityHandler struct {
 	tenantID        int64
 	mfaRateLimiter  *authn.MFARateLimiter
 	bus             *event.Bus
+	// stepUpWindowFn resolves the tenant's configured sudo window. Optional:
+	// unset falls back to defaultStepUpWindow.
+	stepUpWindowFn func() time.Duration
 }
+
+// SetStepUpWindowProvider injects the runtime sudo window so this handler and
+// authn.StepUpMiddleware agree on how recent "recent" is.
+func (h *SecurityHandler) SetStepUpWindowProvider(fn func() time.Duration) { h.stepUpWindowFn = fn }
 
 // NewSecurityHandler is exported so cmd/server can build a second copy
 // for the console route group without copying the per-endpoint code.
@@ -218,6 +226,35 @@ func (h *SecurityHandler) countBackupCodes(c *gin.Context) {
 }
 
 // hasVerifiedTOTP checks the MFA list for an active TOTP factor.
+// stepUpAlreadyFresh reports whether this session passed MFA recently enough
+// that a further challenge would be noise. Falls closed: no session id, no
+// querier or an unreadable session all mean "not fresh", so the TOTP path below
+// still runs.
+func (h *SecurityHandler) stepUpAlreadyFresh(c *gin.Context) bool {
+	if h.sessionQuerier == nil {
+		return false
+	}
+	sid := c.GetString(authn.CtxSessionID)
+	if sid == "" {
+		return false
+	}
+	return h.sessionQuerier.StepUpFreshWithin(c.Request.Context(), h.namespace, sid, h.stepUpWindow())
+}
+
+// stepUpWindow is the sudo window. Read from the injected provider when one is
+// wired; the fallback matches the product default so a deployment that has not
+// overridden it behaves identically either way.
+func (h *SecurityHandler) stepUpWindow() time.Duration {
+	if h.stepUpWindowFn != nil {
+		if w := h.stepUpWindowFn(); w > 0 {
+			return w
+		}
+	}
+	return defaultStepUpWindow
+}
+
+const defaultStepUpWindow = 10 * time.Minute
+
 func hasVerifiedTOTP(items []*MFAInfo) bool {
 	for _, m := range items {
 		if m.Type == "totp" && m.Verified {
@@ -341,7 +378,16 @@ func (h *SecurityHandler) changePassword(c *gin.Context) {
 	// alone is not enough because session-hijack attackers may already
 	// have it (keylogger). TOTP code shares the rate limiter to prevent
 	// brute force.
-	if h.mfaQuerier != nil {
+	//
+	// A session that passed MFA within the step-up window already satisfies
+	// that, and demanding a second code is worse than redundant: sign-in and
+	// this request fall inside the same 30-second TOTP window, so the only code
+	// the user has is the one they just spent, and it comes back rejected as a
+	// replay. An account forced to change its password at first sign-in — the
+	// seeded administrator, or anyone an admin just reset — could not change it
+	// at all, and every other route is closed until they do. Same sudo-window
+	// rule the rest of the high-risk operations run under (authn.StepUpMiddleware).
+	if h.mfaQuerier != nil && !h.stepUpAlreadyFresh(c) {
 		mfas, err := h.mfaQuerier.ListMFA(c.Request.Context(), userID)
 		if err == nil && hasVerifiedTOTP(mfas) {
 			ip := c.ClientIP()

@@ -602,6 +602,17 @@ func (a *portalSessionQuerierAdapter) MarkStepUpFresh(ctx context.Context, names
 	return a.sessionMgr.MarkMFAVerified(ctx, namespace, sessionID)
 }
 
+func (a *portalSessionQuerierAdapter) StepUpFreshWithin(ctx context.Context, namespace, sessionID string, window time.Duration) bool {
+	if sessionID == "" {
+		return false
+	}
+	sess, err := a.sessionMgr.Get(ctx, namespace, sessionID)
+	if err != nil || sess == nil {
+		return false
+	}
+	return sess.StepUpFresh(time.Now(), window)
+}
+
 /* ─────────── MFA ─────────── */
 
 type portalMFAQuerierAdapter struct{ userModule *user.Module }

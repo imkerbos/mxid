@@ -26,6 +26,9 @@ declare module 'axios' {
 // was just used", so a login that needed a captcha said the wrong thing.
 export const CODE_UNAUTHENTICATED = 40101
 export const CODE_INVALID_MFA_CODE = 40102
+// Step-up refusal on the change-password route: the account has TOTP enrolled
+// and no code was supplied. errcode.NumTOTPRequired.
+export const CODE_TOTP_REQUIRED = 40007
 export const CODE_CAPTCHA_REQUIRED = 40016
 export const CODE_CAPTCHA_INVALID = 40004
 export const CODE_STEP_UP_REQUIRED = 40330

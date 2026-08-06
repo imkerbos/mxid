@@ -1295,6 +1295,8 @@ export default {
       forceTitle: '请设置新密码',
       forceSubtitle: '继续使用前必须先修改密码',
       forceSubmit: '设置新密码',
+      totpLabel: '动态验证码',
+      totpHint: '打开验证器应用,输入当前显示的 6 位数字。',
       tooShort: '新密码至少 8 位',
       needMfa: '请输入 6 位 TOTP 验证码',
       changed: '密码已修改 — 你的其他会话（含 Portal）已被强制登出',

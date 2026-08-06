@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **An account forced to change its password could not change it.** With TOTP
+  enrolled, the change-password route demanded a code unconditionally — ignoring
+  that the session had just passed MFA at sign-in. Both fall inside the same
+  30-second TOTP window, so the only code the user has is the one they just
+  spent, and it comes back rejected as a replay. Every other route stays closed
+  until the change succeeds, so the seeded administrator (and anyone an admin had
+  just reset) was locked out of the installation by following the product own
+  instructions. The route now honours the same sudo window as every other
+  high-risk operation.
+- The forced-change screen showed raw i18n keys (`account.password.forceTitle`
+  and seven others). The locale namespace is `account.pwd`; the component asked
+  for `account.password`.
+- The forced-change screen had nowhere to enter a TOTP code, so once the sudo
+  window did expire there was no way to satisfy the demand. It now reveals a code
+  field when the server asks for one.
+
 ## [1.8.4] — 2026-08-06
 
 ### Fixed
