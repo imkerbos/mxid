@@ -7,6 +7,8 @@ import (
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	"github.com/imkerbos/mxid/pkg/dberr"
 )
 
 // liveGroupMember restricts a mxid_user_group_member query to members whose user
@@ -62,9 +64,18 @@ func (r *repository) List(ctx context.Context, tenantID int64, keyword string, p
 	q := r.db.WithContext(ctx).Model(&UserGroup{}).Where("tenant_id = ?", tenantID)
 	if keyword != "" {
 		// ILIKE is Postgres-specific; the project pins Postgres so this is safe.
-		// % wrapping is done with a placeholder so user input is escaped.
-		like := "%" + keyword + "%"
-		q = q.Where("name ILIKE ? OR code ILIKE ? OR description ILIKE ?", like, like, like)
+		//
+		// The placeholder stops SQL injection but does NOT neuter LIKE's own
+		// metacharacters, which the previous comment here claimed it did. A
+		// search for "%" therefore matched every row and "_" matched any single
+		// character — so an operator looking for a group whose code contains a
+		// literal underscore got the whole table back. Escape them, and declare
+		// the escape character explicitly rather than relying on the default.
+		like := "%" + dberr.EscapeLike(keyword) + "%"
+		q = q.Where(
+			`name ILIKE @kw ESCAPE '\' OR code ILIKE @kw ESCAPE '\' OR description ILIKE @kw ESCAPE '\'`,
+			map[string]any{"kw": like},
+		)
 	}
 
 	var total int64
@@ -173,9 +184,16 @@ func (r *repository) RemoveMember(ctx context.Context, groupID, userID int64) er
 	if result.Error != nil {
 		return fmt.Errorf("remove member from group: %w", result.Error)
 	}
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("member not found in group")
-	}
+	// Already not a member → success. The row being absent is the state the
+	// caller asked for.
+	//
+	// This used to return a bare fmt.Errorf, which is not a registered sentinel,
+	// so response.MapError could not classify it and answered 500 "internal
+	// server error" with a stack trace in the log — for a user simply clicking
+	// remove twice, or clicking it after someone else had already removed that
+	// person. The batch endpoint next door was already idempotent (it reports
+	// the no-ops in `skipped`), as is Delete on a missing group; this is the odd
+	// one out.
 	return nil
 }
 

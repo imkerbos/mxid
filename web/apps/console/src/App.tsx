@@ -72,10 +72,17 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
       )
   }, [])
 
+  // The session died mid-session. Carry a reason to the login screen: without
+  // it, submitting a filled-in form threw the user back to sign-in with the
+  // typed content gone and no word about why — indistinguishable, from where
+  // they sit, from the product crashing.
   useEffect(() => {
     const handler = () => {
       clear()
-      navigate('/login', { replace: true, state: { from: currentReturnPath() } })
+      navigate('/login', {
+        replace: true,
+        state: { from: currentReturnPath(), reason: 'session-expired' },
+      })
     }
     window.addEventListener('mxid:unauthorized', handler)
     return () => window.removeEventListener('mxid:unauthorized', handler)

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/imkerbos/mxid/pkg/dberr"
 )
 
 // Rule errors.
@@ -169,8 +171,16 @@ func validateValue(def ruleField, cmp string, v any) error {
 func validateScalar(def ruleField, v any) error {
 	switch def.ValueKind {
 	case "string":
-		if _, ok := v.(string); !ok {
+		s, ok := v.(string)
+		if !ok {
 			return fmt.Errorf("expected string")
+		}
+		// An empty comparison value is almost never what the operator meant, and
+		// it fails open: `email contains ""` matches every user who has an email
+		// at all, so leaving the box blank silently produces an everyone-group
+		// and reports it as a normal successful sync. Refuse it and say so.
+		if strings.TrimSpace(s) == "" {
+			return fmt.Errorf("value cannot be empty")
 		}
 	case "int":
 		// JSON numbers decode as float64; accept anything numerically integral.
@@ -261,12 +271,18 @@ func compileCondition(def ruleField, c RuleCondition) (string, []any, error) {
 			vals[i] = toScalar(v, def)
 		}
 		return def.SQL + " IN ?", []any{vals}, nil
+	// The three ILIKE comparisons escape the operator's value, because here a
+	// stray wildcard is an authorization question rather than a search-quality
+	// one: group membership grants app access, and an unescaped "%" in a rule
+	// value widens the match set, quietly enrolling people the rule was written
+	// to exclude. `_` is worse than `%` because it looks like an ordinary
+	// character in a username or a department code.
 	case "contains":
-		return def.SQL + " ILIKE ?", []any{"%" + toString(c.Value) + "%"}, nil
+		return def.SQL + ` ILIKE ? ESCAPE '\'`, []any{"%" + dberr.EscapeLike(toString(c.Value)) + "%"}, nil
 	case "startswith":
-		return def.SQL + " ILIKE ?", []any{toString(c.Value) + "%"}, nil
+		return def.SQL + ` ILIKE ? ESCAPE '\'`, []any{dberr.EscapeLike(toString(c.Value)) + "%"}, nil
 	case "endswith":
-		return def.SQL + " ILIKE ?", []any{"%" + toString(c.Value)}, nil
+		return def.SQL + ` ILIKE ? ESCAPE '\'`, []any{"%" + dberr.EscapeLike(toString(c.Value))}, nil
 	case "in_subtree":
 		// org_id ∈ subtree(rootOrgID). Uses ltree GIST: o.path <@ root.path.
 		// Implemented by a sub-select to avoid yet another join.

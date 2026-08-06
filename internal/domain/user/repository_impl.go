@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/imkerbos/mxid/pkg/dberr"
+
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -296,10 +298,14 @@ func searchScope(search string) func(db *gorm.DB) *gorm.DB {
 		if search == "" {
 			return db
 		}
-		like := "%" + search + "%"
+		// Escaped: without it, searching "_" matches any single character, and
+		// underscores are common in usernames — so the one search most likely to
+		// be typed here returned the whole directory.
+		like := "%" + dberr.EscapeLike(search) + "%"
 		return db.Where(
-			"username ILIKE ? OR email ILIKE ? OR phone ILIKE ? OR display_name ILIKE ?",
-			like, like, like, like,
+			`username ILIKE @kw ESCAPE '\' OR email ILIKE @kw ESCAPE '\' `+
+				`OR phone ILIKE @kw ESCAPE '\' OR display_name ILIKE @kw ESCAPE '\'`,
+			map[string]any{"kw": like},
 		)
 	}
 }

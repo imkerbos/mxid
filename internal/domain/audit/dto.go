@@ -1,29 +1,40 @@
 package audit
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // AuditLogResponse is the API representation of an audit log entry.
 //
 // All int64 ID fields are JSON-serialized as strings (Twitter/Discord
 // snowflake convention) to preserve precision past 2^53.
 type AuditLogResponse struct {
-	ID           int64          `json:"id,string"`
-	TenantID     int64          `json:"tenant_id,string"`
-	ActorID      *int64         `json:"actor_id,string,omitempty"`
-	ActorName    *string        `json:"actor_name"`
-	ActorType    string         `json:"actor_type"`
-	EventType    string         `json:"event_type"`
-	EventStatus  int            `json:"event_status"`
-	ResourceType *string        `json:"resource_type"`
-	ResourceID   *int64         `json:"resource_id,string,omitempty"`
-	ResourceName *string        `json:"resource_name"`
-	Detail       map[string]any `json:"detail"`
-	IP           *string        `json:"ip"`
-	UserAgent    *string        `json:"user_agent"`
-	GeoCity      *string        `json:"geo_city"`
-	GeoCountry   *string        `json:"geo_country"`
-	SessionID    *string        `json:"session_id"`
-	CreatedAt    time.Time      `json:"created_at"`
+	ID           int64   `json:"id,string"`
+	TenantID     int64   `json:"tenant_id,string"`
+	ActorID      *int64  `json:"actor_id,string,omitempty"`
+	ActorName    *string `json:"actor_name"`
+	ActorType    string  `json:"actor_type"`
+	EventType    string  `json:"event_type"`
+	EventStatus  int     `json:"event_status"`
+	ResourceType *string `json:"resource_type"`
+	ResourceID   *int64  `json:"resource_id,string,omitempty"`
+	ResourceName *string `json:"resource_name"`
+	// Passed through as stored rather than decoded into map[string]any.
+	//
+	// The decode was not free: encoding/json turns every JSON number into a
+	// float64, which holds 53 bits exactly, and snowflake ids are 18-19 digits.
+	// So the server read 360787997051850752 from the database and wrote
+	// 360787997051850750 to the client — an id that names nothing, in the one
+	// record whose job is to say what happened to what. RawMessage emits the
+	// bytes unchanged, and the JSON shape the SPA sees is identical.
+	Detail     json.RawMessage `json:"detail,omitempty"`
+	IP         *string         `json:"ip"`
+	UserAgent  *string         `json:"user_agent"`
+	GeoCity    *string         `json:"geo_city"`
+	GeoCountry *string         `json:"geo_country"`
+	SessionID  *string         `json:"session_id"`
+	CreatedAt  time.Time       `json:"created_at"`
 }
 
 // ListAuditRequest holds query parameters for listing audit logs.

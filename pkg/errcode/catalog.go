@@ -81,6 +81,11 @@ const (
 	NumRouteNotFound   = 40400 // no such route
 	NumAccessDenied    = 40302 // policy refused this subject
 	NumAccountDisabled = 40303 // account disabled
+	// NumAccountLocked is the login-time sibling of NumAccountDisabled. It was
+	// NumForbiddenScope — a generic "refused for this target" — which the SPA
+	// cannot tell apart from any other scope refusal, so the sign-in screen fell
+	// through to printing the server's English sentence at a Chinese-locale user.
+	NumAccountLocked   = 40304 // account locked (admin lock, or lockout threshold)
 	NumTooManyAttempts = 42901 // rate limited / temporarily locked
 )
 
@@ -98,6 +103,20 @@ const (
 	NumSelfApproval        = 40012 // errors.selfApproval
 	NumApproverNotEligible = 40013 // errors.approverNotEligible
 	NumEEFeatureRequired   = 40332 // errors.eeFeatureRequired
+
+	// Password-policy refusals. One number per rule, because each is a
+	// different sentence to the person retyping the box.
+	//
+	// These were all NumInputRejected carrying a server-built sentence, and the
+	// sentence was half English half Chinese — the sentinel read "password does
+	// not meet complexity policy" and the reason was hard-coded Chinese, so a
+	// Chinese user got English boilerplate and an English user got Chinese
+	// rules. Wording belongs in the locale files, not in Go.
+	NumPasswordTooShort    = 40025 // errors.pwdTooShort — detail carries the minimum
+	NumPasswordNeedUpper   = 40026 // errors.pwdNeedUpper
+	NumPasswordNeedLower   = 40027 // errors.pwdNeedLower
+	NumPasswordNeedDigit   = 40028 // errors.pwdNeedDigit
+	NumPasswordNeedSpecial = 40029 // errors.pwdNeedSpecial
 )
 
 // Numbers that replaced a collided use of a localized code. Kept as named
@@ -134,6 +153,11 @@ var Catalog = map[int]struct {
 
 	NumSelfApproval:        {Localized, "JIT approval refused: separation of duties"},
 	NumApproverNotEligible: {Localized, "JIT approval refused: approver not in eligibility"},
+	NumPasswordTooShort:    {Localized, "new password is shorter than the policy minimum"},
+	NumPasswordNeedUpper:   {Localized, "new password needs an uppercase letter"},
+	NumPasswordNeedLower:   {Localized, "new password needs a lowercase letter"},
+	NumPasswordNeedDigit:   {Localized, "new password needs a digit"},
+	NumPasswordNeedSpecial: {Localized, "new password needs a special character"},
 	NumBadGroupRule:        {Generic, "dynamic-group rule expression is invalid"},
 	NumInvalidClientType:   {Generic, "app client type is not valid for this operation"},
 	NumCaptchaRequired:     {Generic, "captcha required before this attempt"},
@@ -199,6 +223,7 @@ var Catalog = map[int]struct {
 	NumRouteNotFound:   {Generic, "no such route"},
 	NumAccessDenied:    {Generic, "policy refused this subject"},
 	NumAccountDisabled: {Generic, "account disabled"},
+	NumAccountLocked:   {Generic, "account locked"},
 	NumTooManyAttempts: {Generic, "rate limited or temporarily locked"},
 }
 

@@ -20,6 +20,13 @@ var (
 	codeLastSuperAdmin     = errcode.Code{HTTP: 409, Num: 40904}
 	codeMFAAlreadyExists   = errcode.Code{HTTP: 409, Num: 40901}
 	codePasswordAlreadySet = errcode.Code{HTTP: 409, Num: 40905}
+	// One per policy rule. All still wrap ErrWeakPassword, so handlers matching
+	// the umbrella keep working; errcode.Lookup returns the narrower binding.
+	codePasswordTooShort    = errcode.Code{HTTP: 400, Num: errcode.NumPasswordTooShort}
+	codePasswordNeedUpper   = errcode.Code{HTTP: 400, Num: errcode.NumPasswordNeedUpper}
+	codePasswordNeedLower   = errcode.Code{HTTP: 400, Num: errcode.NumPasswordNeedLower}
+	codePasswordNeedDigit   = errcode.Code{HTTP: 400, Num: errcode.NumPasswordNeedDigit}
+	codePasswordNeedSpecial = errcode.Code{HTTP: 400, Num: errcode.NumPasswordNeedSpecial}
 )
 
 func init() {
@@ -29,6 +36,11 @@ func init() {
 	errcode.Bind(ErrInvalidPassword, codeInvalidPassword)
 	errcode.Bind(ErrPasswordReused, codePasswordReused)
 	errcode.Bind(ErrWeakPassword, codeWeakPassword)
+	errcode.Bind(ErrPasswordTooShort, codePasswordTooShort)
+	errcode.Bind(ErrPasswordNeedUpper, codePasswordNeedUpper)
+	errcode.Bind(ErrPasswordNeedLower, codePasswordNeedLower)
+	errcode.Bind(ErrPasswordNeedDigit, codePasswordNeedDigit)
+	errcode.Bind(ErrPasswordNeedSpecial, codePasswordNeedSpecial)
 	errcode.Bind(ErrLicenseQuotaExceeded, codeLicenseQuota)
 	errcode.Bind(ErrUsernameExists, codeUsernameExists)
 	errcode.Bind(ErrEmailExists, codeEmailExists)

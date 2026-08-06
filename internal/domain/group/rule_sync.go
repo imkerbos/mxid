@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/imkerbos/mxid/pkg/dberr"
+	"github.com/imkerbos/mxid/pkg/event"
 	"gorm.io/datatypes"
 )
 
@@ -76,13 +77,40 @@ func (s *Service) UpsertRule(ctx context.Context, groupID int64, expr *RuleExpr)
 		}
 	}
 
-	// First sync inline so the UI sees populated members immediately.
-	if _, err := s.SyncRule(ctx, groupID); err != nil {
+	// First sync inline so the UI sees populated members immediately. Uses the
+	// non-publishing variant: the operator performed ONE action, and it is
+	// reported as one audit entry (rule_updated, carrying the counts) rather
+	// than as a rule change plus a separate sync they did not ask for.
+	report, err := s.syncRule(ctx, groupID)
+	if err != nil {
 		// Sync failure does not roll back the rule — operator can fix the
 		// rule and retry. Surface the error to the caller.
 		return rule, fmt.Errorf("initial sync: %w", err)
 	}
+	s.publishRule(ctx, event.GroupRuleUpdated, g, report)
 	return s.repo.GetRule(ctx, groupID)
+}
+
+// publishRule emits a rule-lifecycle event. added/removed are included because
+// they are what makes the entry reviewable: "the rule changed" says nothing
+// about blast radius, "the rule changed and 240 people joined" does. report may
+// be nil for events that move nobody (rule deleted).
+func (s *Service) publishRule(ctx context.Context, eventType string, g *UserGroup, report *SyncReport) {
+	if s.eventBus == nil || g == nil {
+		return
+	}
+	payload := map[string]any{
+		"tenant_id": g.TenantID,
+		"group_id":  g.ID,
+		// Rendered as the audit row's resource name, so a reviewer reads the
+		// group they know rather than a snowflake id.
+		"name": g.Name,
+	}
+	if report != nil {
+		payload["added"] = report.Added
+		payload["removed"] = report.Removed
+	}
+	s.eventBus.Publish(ctx, event.Event{Type: eventType, Payload: payload})
 }
 
 // DeleteRule removes a group's rule and flips it back to type=static.
@@ -101,6 +129,7 @@ func (s *Service) DeleteRule(ctx context.Context, groupID int64) error {
 			return fmt.Errorf("flip group to static: %w", err)
 		}
 	}
+	s.publishRule(ctx, event.GroupRuleDeleted, g, nil)
 	return nil
 }
 
@@ -122,6 +151,21 @@ type SyncReport struct {
 // Errors during compile/evaluate are persisted to last_sync_error so the UI
 // can show the operator what's wrong without re-running.
 func (s *Service) SyncRule(ctx context.Context, groupID int64) (*SyncReport, error) {
+	report, err := s.syncRule(ctx, groupID)
+	if err != nil {
+		return nil, err
+	}
+	// Tenant id is re-read rather than threaded through: syncRule has already
+	// proved the group belongs to this tenant, so this cannot widen scope.
+	if g, gerr := s.requireGroup(ctx, groupID); gerr == nil {
+		s.publishRule(ctx, event.GroupRuleSynced, g, report)
+	}
+	return report, nil
+}
+
+// syncRule is SyncRule without the audit event, for callers that are already
+// reporting the operator's action as something else.
+func (s *Service) syncRule(ctx context.Context, groupID int64) (*SyncReport, error) {
 	// Tenant-ownership guard at the very top — before the rule row is read, so a
 	// cross-tenant groupID cannot disclose another tenant's rule expression.
 	g, err := s.requireGroup(ctx, groupID)

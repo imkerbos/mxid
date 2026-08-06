@@ -127,12 +127,13 @@ func toResponse(l *AuditLog) *AuditLogResponse {
 		CreatedAt:    l.CreatedAt,
 	}
 
-	// Unmarshal detail JSON into map
-	if len(l.Detail) > 0 {
-		var detail map[string]any
-		if err := json.Unmarshal(l.Detail, &detail); err == nil {
-			resp.Detail = detail
-		}
+	// Passed through, not decoded. Decoding to map[string]any and re-encoding
+	// looks like a no-op and is not: every JSON number becomes a float64 on the
+	// way in, so an 18-digit snowflake comes out rounded at the last two digits.
+	// Validity is still checked, so a corrupt row cannot make the response
+	// unparseable for the client.
+	if len(l.Detail) > 0 && json.Valid(l.Detail) {
+		resp.Detail = l.Detail
 	}
 
 	return resp
