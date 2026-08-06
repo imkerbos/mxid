@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { KeyRound, Loader2, LogOut } from 'lucide-react'
 import { useAuthStore } from '../hooks/use-auth-store'
 import { useTranslation } from '../i18n'
-import { toast } from '../ui/toast'
+import { toast, extractMessage } from '../ui/toast'
 import { apiErrorCode, CODE_TOTP_REQUIRED } from '../api/client'
 
 /**
@@ -76,7 +76,7 @@ export default function ForcePasswordChange({
         toast.error(t('errors.totpRequired'))
         return
       }
-      const msg = err instanceof Error ? err.message : t('common.failed')
+      const msg = extractMessage(err, t('common.failed'))
       toast.error(t('common.failed'), msg)
     } finally {
       setSaving(false)

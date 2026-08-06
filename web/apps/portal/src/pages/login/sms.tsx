@@ -12,6 +12,7 @@ import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useTranslation, smsOTPApi, useBootstrap } from '@mxid/shared'
+import { extractMessage } from '@mxid/shared/ui/toast'
 import logo from '../../assets/logo.png'
 
 export default function SMSLoginPage() {
@@ -52,7 +53,7 @@ export default function SMSLoginPage() {
       setDevCode(r.dev_code || '')
       setCooldown(60)
     } catch (err) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      const msg = extractMessage(err)
       setError(msg || t('login.failedRetry'))
     } finally {
       setSending(false)
@@ -76,7 +77,7 @@ export default function SMSLoginPage() {
       // the new session cookie cleanly.
       window.location.href = '/apps'
     } catch (err) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      const msg = extractMessage(err)
       setError(msg || t('login.failedRetry'))
     } finally {
       setSubmitting(false)

@@ -7,6 +7,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Eye, EyeOff } from 'lucide-react'
 import { useTranslation, passwordResetApi } from '@mxid/shared'
+import { extractMessage } from '@mxid/shared/ui/toast'
 import logo from '../../assets/logo.png'
 
 export default function ResetPasswordPage() {
@@ -41,7 +42,7 @@ export default function ResetPasswordPage() {
       await passwordResetApi.reset(token, pwd)
       setDone(true)
     } catch (err) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      const msg = extractMessage(err)
       setError(msg || t('login.failedRetry'))
     } finally {
       setSubmitting(false)

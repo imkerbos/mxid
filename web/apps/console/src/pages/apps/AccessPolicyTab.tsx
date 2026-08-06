@@ -11,7 +11,7 @@ import { Plus, Trash2, Loader2, ShieldCheck, ShieldOff, Globe2, UsersRound, User
 import { appAccessApi, cn, useTranslation, AccessPolicySubjectType } from '@mxid/shared'
 import type { AccessPolicy, AccessSubjectType, AccessEffect, AccessOwner } from '@mxid/shared'
 import { Field, Select, Button, Tag, ConfirmDialog } from '../../components/ui'
-import { toast } from '../../components/ui/toast'
+import { toast, extractMessage } from '../../components/ui/toast'
 import MultiSubjectPicker, { type MultiSubjectType, type SubjectOption } from '../../components/MultiSubjectPicker'
 
 export default function AccessPolicyTab({
@@ -54,7 +54,7 @@ export default function AccessPolicyTab({
       toast.success(t("common.success"))
       reload()
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+      const msg = extractMessage(e)
       toast.error(t("common.failed"), msg)
     } finally {
       setDeleting(false)
@@ -236,7 +236,7 @@ function AddPolicyModal({
       toast.success(t('apps.access.batchAdded', { created: res.created, skipped: res.skipped }))
       onSaved()
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+      const msg = extractMessage(e)
       toast.error(t('apps.access.addFailed'), msg)
     } finally {
       setSaving(false)

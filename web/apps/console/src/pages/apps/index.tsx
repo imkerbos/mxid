@@ -588,7 +588,7 @@ export default function AppsPage() {
       loadEnvOptions() // a newly-typed env should be remembered for the next app
       toast.success(t('common.success'))
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+      const msg = extractMessage(e)
       toast.error(t('common.failed'), msg)
     } finally {
       setSaving(false)
@@ -616,7 +616,7 @@ export default function AppsPage() {
       await appApi.updateProtocolConfig(detailApp.id, payload)
       toast.success(t('common.success'))
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+      const msg = extractMessage(e)
       toast.error(t('common.failed'), msg)
     } finally {
       setSavingProtocol(false)
@@ -1820,7 +1820,7 @@ function SAMLCertView({ appId }: { appId: string }) {
       })
       .catch((e: unknown) => {
         if (cancelled) return
-        const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+        const msg = extractMessage(e)
         setError(msg || String(e))
       })
       .finally(() => {
@@ -1921,7 +1921,7 @@ function SamlMetadataImport({
       onImported(cfg)
       toast.success(t('apps.detail.protocol.samlImport.success'))
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+      const msg = extractMessage(e)
       toast.error(t('apps.detail.protocol.samlImport.failed'), msg)
     } finally {
       setBusy(false)
@@ -1951,7 +1951,7 @@ function SamlMetadataImport({
       const txt = await resp.text()
       await submit(txt)
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
+      const msg = extractMessage(e)
       toast.error(t('apps.detail.protocol.samlImport.failed'), msg)
     }
   }

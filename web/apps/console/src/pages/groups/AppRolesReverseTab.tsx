@@ -11,7 +11,7 @@ import type {
   ReverseAppRoleBinding, AppRole, App as AppT, AppGroup,
 } from '@mxid/shared'
 import { Field, Select, Button, Tag, ConfirmDialog } from '../../components/ui'
-import { toast } from '../../components/ui/toast'
+import { toast, extractMessage } from '../../components/ui/toast'
 
 export default function AppRolesReverseTab({ groupId }: { groupId: string }) {
   const { t } = useTranslation()
@@ -45,7 +45,7 @@ export default function AppRolesReverseTab({ groupId }: { groupId: string }) {
       toast.success(t("common.success"))
       reload()
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+      const msg = extractMessage(e)
       toast.error(t("common.failed"), msg)
     } finally {
       setDeleting(false)
@@ -191,7 +191,7 @@ function AddModal({
       toast.success(t('groupAppRoles.bound'))
       onSaved()
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+      const msg = extractMessage(e)
       toast.error(t('groupAppRoles.bindFailed'), msg)
     } finally {
       setSaving(false)

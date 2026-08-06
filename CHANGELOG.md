@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Every error message in the console and portal now goes through
+  `extractMessage`. Forty-eight call sites across twenty-four files read
+  `response.data.message` or `err.message` directly, which loses the
+  code-specific translation and the request id alike — so a 500 anywhere in
+  those screens still degraded to axios' own string with nothing to quote.
+  `make verify-error-extraction` fails the build on a hand-rolled extraction.
+
+### Fixed
 - One more i18n key on the forced password-change screen pointed at a namespace
   that does not exist, so the toast asking for a TOTP code rendered as a raw
   key. `make verify-i18n-keys` now checks that every literal `t()` key resolves
