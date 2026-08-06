@@ -258,6 +258,14 @@ user is signed into** — not only when logout arrives through a protocol endpoi
    chain head in place), `audit-export` (build a third-party-verifiable bundle), and
    `verify-export` (offline verification needing only the bundle + trusted public key).
 
+   The binary carries one more, unrelated to audit: `admin reset-password`, the break-glass
+   path for a forgotten administrator password with no second super-admin to reset it. It
+   goes through the same service method the console uses — so the password policy, the reuse
+   history and the session revocation all still apply — forces a change at first sign-in, and
+   records the actor as `cli` so an out-of-band reset is distinguishable from a console one.
+   Subcommands live on the server binary rather than a separate tool because the situations
+   they exist for are the ones where nothing can be built or copied in first.
+
 ### Retention on an append-only ledger
 
 `mxid_audit_entry` is append-only and was, by construction, unprunable: with
@@ -475,6 +483,14 @@ The binary is replica-safe; nothing assumes a single instance:
 - **Outbox** claims with `FOR UPDATE SKIP LOCKED`, so any replica may host the worker.
 - **`/readyz`** for readiness probes; SIGTERM triggers graceful HTTP shutdown and stops the
   background workers via a shared context.
+- **Every goroutine is started through `pkg/safego`** (or `App.SpawnWorker`, which wraps it and
+  registers with the shutdown WaitGroup). An unrecovered panic in ANY goroutine terminates the
+  process, so a defect whose blast radius should be one background job takes every login down
+  instead — and when the trigger is persisted data it survives the restart, which is
+  CrashLoopBackOff rather than an incident. A panic now costs the one job and is logged with its
+  stack; recovering is not a substitute for fixing it, it decides whether the fix happens during
+  an outage. A guard test rejects a new bare `go func`, because nine of these were written by
+  people who knew the rule.
 
 ## Error contract
 
@@ -516,6 +532,7 @@ so they are asserted by tests rather than documented and hoped for:
 | An alert storm is collapsed rather than delivered once per event | `internal/domain/auditalert/dispatcher_test.go` |
 | A release deployment never serves with the seeded administrator password | `internal/bootstrap/admin_credential_test.go` |
 | A session owing a password change reaches nothing but the change-password route | `internal/domain/authn/password_gate_test.go` |
+| No goroutine is started without a recover (an unrecovered panic terminates the process) | `pkg/safego/no_bare_goroutines_test.go` |
 
 Each guard was verified by reintroducing the defect it exists to catch. Two of them were wrong on
 the first attempt and passed against the broken code — a line-window scan that found a neighbour's
