@@ -29,7 +29,7 @@ import {
 // Its labels were styled differently too, so the account page's forms did not
 // look like any other form in the console.
 import { Button, ConfirmDialog, AvatarUpload, avatarTexts, Modal, Field } from '../../components/ui'
-import { toast } from '@mxid/shared/ui/toast'
+import { toast, extractMessage } from '@mxid/shared/ui/toast'
 import type { MFAInfo, SessionInfo } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
 import {
@@ -154,7 +154,7 @@ function ProfileSection() {
       setDevLink('')
       load()
     } catch (e) {
-      toast.error(t('account.saveFailed'), e instanceof Error ? e.message : '')
+      toast.error(t('account.saveFailed'), extractMessage(e))
     } finally {
       setSaving(false)
     }
@@ -172,7 +172,7 @@ function ProfileSection() {
         setDevLink(r.dev_link)
       }
     } catch (e) {
-      toast.error(t('account.verifyFailed'), e instanceof Error ? e.message : '')
+      toast.error(t('account.verifyFailed'), extractMessage(e))
     } finally {
       setSending(false)
     }
@@ -188,7 +188,7 @@ function ProfileSection() {
       toast.success(t('account.avatarUpdated'))
       load()
     } catch (e) {
-      toast.error(t('account.fields.uploadFailed'), e instanceof Error ? e.message : '')
+      toast.error(t('account.fields.uploadFailed'), extractMessage(e))
     } finally {
       setUploading(false)
     }
@@ -359,7 +359,7 @@ function ChangePasswordSection({ totpActive }: { totpActive: boolean }) {
       setConfirmPwd('')
       setTotpCode('')
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : t('account.pwd.changeFailed')
+      const msg = extractMessage(err, t('account.pwd.changeFailed'))
       setError(msg)
     } finally {
       setSaving(false)
@@ -522,7 +522,7 @@ function MFASection({
       setBackupRemaining(n)
       toast.success(t('account.mfa.backupGenerated'), t('account.mfa.backupGenerateHint'))
     } catch (e) {
-      toast.error(t('account.mfa.backupGenerateFailed'), e instanceof Error ? e.message : '')
+      toast.error(t('account.mfa.backupGenerateFailed'), extractMessage(e))
     } finally {
       setRegenerating(false)
     }
@@ -535,7 +535,7 @@ function MFASection({
       toast.success(t('account.mfa.disabled'))
       refresh()
     } catch (err) {
-      toast.error(t('account.mfa.disableFailed'), err instanceof Error ? err.message : '')
+      toast.error(t('account.mfa.disableFailed'), extractMessage(err))
     }
   }
 
@@ -762,7 +762,7 @@ function EnrollTOTPModal({ onClose, onSuccess }: { onClose: () => void; onSucces
       toast.success(t('account.mfa.enabled'), t('account.mfa.enabledHint'))
       onSuccess()
     } catch (e) {
-      toast.error(t('login.invalidCaptcha'), e instanceof Error ? e.message : '')
+      toast.error(t('login.invalidCaptcha'), extractMessage(e))
     } finally {
       setVerifying(false)
     }
@@ -892,7 +892,7 @@ function SessionsSection() {
       toast.success(t('account.sessions.kicked'))
       fetchAll()
     } catch (e) {
-      toast.error(t('account.sessions.kickFailed'), e instanceof Error ? e.message : '')
+      toast.error(t('account.sessions.kickFailed'), extractMessage(e))
     } finally {
       setRevoking(null)
     }
@@ -1073,7 +1073,7 @@ function APITokensSection() {
       setCreateOpen(false)
       load()
     } catch (e) {
-      toast.error(t('account.apiTokens.createFailed'), e instanceof Error ? e.message : '')
+      toast.error(t('account.apiTokens.createFailed'), extractMessage(e))
     } finally {
       setCreating(false)
     }
@@ -1089,7 +1089,7 @@ function APITokensSection() {
       toast.success(t('account.apiTokens.revokeOk'))
       load()
     } catch (e) {
-      toast.error(t('account.apiTokens.revokeFailed'), e instanceof Error ? e.message : '')
+      toast.error(t('account.apiTokens.revokeFailed'), extractMessage(e))
     } finally {
       setRevokingTok(false)
     }

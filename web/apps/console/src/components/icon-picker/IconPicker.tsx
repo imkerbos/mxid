@@ -9,6 +9,7 @@
 //   "https://..."      for manual URL
 import { useRef, useState } from 'react'
 import { Upload, Globe, Library, X, Loader2 } from 'lucide-react'
+import { extractMessage } from '@mxid/shared/ui/toast'
 import {
   client,
   cn,
@@ -68,7 +69,7 @@ export function IconPicker({
       setMode('url')
       setUrlInput(url)
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message
+      const msg = extractMessage(e)
       setUploadError(msg ?? t('iconPicker.uploadFailed'))
     } finally {
       setUploading(false)

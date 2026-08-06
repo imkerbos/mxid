@@ -285,7 +285,7 @@ export default function GroupsPage() {
       setGroupRule(fresh)
       loadData()
     } catch (err) {
-      const msg = axios.isAxiosError(err) ? err.response?.data?.message || err.message : t("groups.syncFailed")
+            const msg = extractMessage(err)
       toast.error(t("groups.syncFailedDetail", { msg }))
     } finally {
       setSyncing(false)

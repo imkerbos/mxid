@@ -14,7 +14,7 @@ import { Save, Send, Loader2 } from 'lucide-react'
 import { settingsApi, useTranslation } from '@mxid/shared'
 import type { MailSMTP } from '@mxid/shared'
 import { Field, Input, Select, Button } from '../../components/ui'
-import { toast } from '../../components/ui/toast'
+import { toast, extractMessage } from '../../components/ui/toast'
 
 const TLS_OPTION_KEYS = [
   { v: 'starttls', k: 'settings.smtp.tlsStartTLS' },
@@ -68,7 +68,7 @@ export default function MailSMTPPage() {
       if (cfg.password) setPasswordSet(true)
       setCfg((c) => ({ ...c, password: '' })) // clear after save
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+      const msg = extractMessage(e)
       toast.error(t("common.failed"), msg)
     } finally {
       setSaving(false)
@@ -85,7 +85,7 @@ export default function MailSMTPPage() {
       await settingsApi.testMailSMTP(testTo)
       toast.success(t('settings.smtp.testSent'), t('settings.smtp.testSentHint', { to: testTo }))
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+      const msg = extractMessage(e)
       toast.error(t('settings.smtp.testFailed'), msg)
     } finally {
       setTesting(false)

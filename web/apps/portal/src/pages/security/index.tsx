@@ -283,7 +283,7 @@ function MFASection() {
       toast.success(t('account.mfa.disabled'))
       fetchMFA()
     } catch (err) {
-      const msg = err instanceof Error ? err.message : t('common.failed')
+      const msg = extractMessage(err, t('common.failed'))
       toast.error(t('account.mfa.disableFailed'), msg)
     }
   }
@@ -434,7 +434,7 @@ function EnrollTOTPModal({
       toast.success(t('account.mfa.enabled'), t('account.mfa.enabledHint'))
       onSuccess()
     } catch (e) {
-      const msg = e instanceof Error ? e.message : t('common.failed')
+      const msg = extractMessage(e, t('common.failed'))
       toast.error(t('login.invalidCaptcha'), msg)
     } finally {
       setVerifying(false)
@@ -586,7 +586,7 @@ function SessionsSection() {
       await portalApi.deleteSession(sid)
       setSessions((prev) => prev.filter((s) => s.id !== sid))
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : t('account.sessions.kickFailed')
+      const msg = extractMessage(err, t('account.sessions.kickFailed'))
       toast.error(t('account.sessions.kickFailed'), msg)
     } finally {
       setRevoking(null)
@@ -684,7 +684,7 @@ function ConnectedExtensionsSection() {
       setTokens((prev) => prev.filter((x) => x.id !== id))
       toast.success(t('account.extensions.revoked'))
     } catch (err: unknown) {
-      toast.error(t('account.extensions.revokeFailed'), err instanceof Error ? err.message : '')
+      toast.error(t('account.extensions.revokeFailed'), extractMessage(err))
     } finally {
       setRevoking(null)
     }

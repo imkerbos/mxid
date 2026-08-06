@@ -78,7 +78,7 @@ export default function ProfilePage() {
       setSaveMsg({ type: 'ok', text: `${t('account.verifySent')}: ${resp.email}` })
       setDevLink(resp.dev_link)
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : t('account.verifyFailed')
+      const msg = extractMessage(err, t('account.verifyFailed'))
       setSaveMsg({ type: 'err', text: msg })
     } finally {
       setSendingVerify(false)
@@ -117,7 +117,7 @@ export default function ProfilePage() {
         display_name: displayName.trim(),
       })
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : t('account.saveFailed')
+      const msg = extractMessage(err, t('account.saveFailed'))
       setSaveMsg({ type: 'err', text: msg })
     } finally {
       setSaving(false)

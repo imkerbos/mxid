@@ -384,7 +384,7 @@ function BindingForm({
       toast.success(t('apps.roles.bound'))
       onSaved()
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+      const msg = extractMessage(e)
       toast.error(t('apps.roles.bindFailed'), msg)
     } finally { setSaving(false) }
   }

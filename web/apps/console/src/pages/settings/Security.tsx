@@ -8,7 +8,7 @@ import { Loader2, Save } from 'lucide-react'
 import { settingsApi, useTranslation } from '@mxid/shared'
 import type { SecurityPolicy } from '@mxid/shared'
 import { Field, Input, Button } from '../../components/ui'
-import { toast } from '../../components/ui/toast'
+import { toast, extractMessage } from '../../components/ui/toast'
 
 export default function SecurityPage() {
   const { t } = useTranslation()
@@ -31,7 +31,7 @@ export default function SecurityPage() {
       await settingsApi.putSecurity(v)
       toast.success(t('settings.security.saved'))
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+      const msg = extractMessage(e)
       toast.error(t("common.failed"), msg)
     } finally {
       setSaving(false)

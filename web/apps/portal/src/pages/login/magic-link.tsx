@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useTranslation, magicLinkApi, useBootstrap } from '@mxid/shared'
+import { extractMessage } from '@mxid/shared/ui/toast'
 import logo from '../../assets/logo.png'
 
 export default function MagicLinkLoginPage() {
@@ -32,7 +33,7 @@ export default function MagicLinkLoginPage() {
       setSent(true)
       setDevLink(r.dev_link || '')
     } catch (err) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      const msg = extractMessage(err)
       setError(msg || t('login.failedRetry'))
     } finally {
       setSubmitting(false)

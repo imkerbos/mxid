@@ -7,7 +7,7 @@ import { Loader2, RefreshCw, CheckCircle2, AlertTriangle, ArrowUpCircle, Externa
 import { systemApi, useTranslation } from '@mxid/shared'
 import type { VersionStatus } from '@mxid/shared'
 import { Button } from '../../components/ui'
-import { toast } from '../../components/ui/toast'
+import { toast, extractMessage } from '../../components/ui/toast'
 
 function fmt(ts?: string): string {
   if (!ts) return ''
@@ -42,7 +42,7 @@ export default function SystemVersionPage() {
         toast.success(t('settings.systemVersion.upToDate'))
       }
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+      const msg = extractMessage(e)
       toast.error(t('settings.systemVersion.checkFailed'), msg)
     } finally {
       setChecking(false)

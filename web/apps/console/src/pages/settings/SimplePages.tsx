@@ -27,7 +27,7 @@ import {
   type ExternalURLs,
 } from '@mxid/shared'
 import { Field, Input, Select, Textarea, Button } from '../../components/ui'
-import { toast } from '../../components/ui/toast'
+import { toast, extractMessage } from '../../components/ui/toast'
 import { ImageUpload } from '../../components/ImageUpload'
 
 type Row =
@@ -113,7 +113,7 @@ function GenericForm<T>({
       toast.success(t('settings.savedToast', { title }))
       onSaved?.()
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+      const msg = extractMessage(e)
       toast.error(t("common.failed"), msg)
     } finally {
       setSaving(false)

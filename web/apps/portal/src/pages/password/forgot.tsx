@@ -9,6 +9,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useTranslation, passwordResetApi } from '@mxid/shared'
+import { extractMessage } from '@mxid/shared/ui/toast'
 import logo from '../../assets/logo.png'
 
 export default function ForgotPasswordPage() {
@@ -35,7 +36,7 @@ export default function ForgotPasswordPage() {
       setSent(true)
       setDevLink(resp.dev_link || '')
     } catch (err) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      const msg = extractMessage(err)
       setError(msg || t('login.failedRetry'))
     } finally {
       setSubmitting(false)
