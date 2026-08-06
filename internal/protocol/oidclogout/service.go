@@ -16,7 +16,10 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/imkerbos/mxid/internal/protocol/resolver"
+	"github.com/imkerbos/mxid/pkg/safego"
 	"github.com/imkerbos/mxid/pkg/session"
 )
 
@@ -64,7 +67,14 @@ type Service struct {
 	// issuer so the logout_token `iss` can never disagree with the id_token `iss`
 	// under an admin external-URL override. Optional (nil → always static).
 	resolveIssuer func(context.Context) string
+	// logger receives the panic report from the back-channel fan-out. Optional
+	// and set separately from NewService, whose signature is already long; a nil
+	// logger degrades to silence, which is why SetLogger is wired at startup.
+	logger *zap.Logger
 }
+
+// SetLogger wires the logger used to report a panic in the background fan-out.
+func (s *Service) SetLogger(l *zap.Logger) { s.logger = l }
 
 // NewService wires a Service. issuer must be the same value emitted as the
 // id_token `iss` (i.e. the zitadel engine's opIssuer, host + /protocol/oidc)
@@ -135,7 +145,7 @@ func (s *Service) LogoutUser(ctx context.Context, userID int64) {
 		return
 	}
 
-	go func() {
+	safego.Go(s.logger, "oidc back-channel logout fan-out", func() {
 		bgCtx, cancel := context.WithTimeout(context.Background(), fanOutTimeout)
 		defer cancel()
 		for _, t := range targets {
@@ -143,7 +153,7 @@ func (s *Service) LogoutUser(ctx context.Context, userID int64) {
 				s.sendLogout(bgCtx, appID, userID, t.sid)
 			}
 		}
-	}()
+	})
 }
 
 // LogoutUserApp sends a back-channel logout_token only to the RP identified
@@ -176,13 +186,13 @@ func (s *Service) LogoutUserApp(ctx context.Context, userID, appID int64) {
 		return
 	}
 
-	go func() {
+	safego.Go(s.logger, "oidc back-channel logout (single app)", func() {
 		bgCtx, cancel := context.WithTimeout(context.Background(), fanOutTimeout)
 		defer cancel()
 		for _, sid := range sids {
 			s.sendLogout(bgCtx, appID, userID, sid)
 		}
-	}()
+	})
 }
 
 // resolveSubject computes the logout_token `sub` for this app + user via the

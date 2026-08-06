@@ -1,6 +1,10 @@
 package authz
 
 import (
+	"github.com/imkerbos/mxid/pkg/safego"
+
+	"go.uber.org/zap"
+
 	"context"
 	"encoding/json"
 	"errors"
@@ -48,7 +52,15 @@ type CachedBindingProvider struct {
 	l1 map[string]l1Entry
 
 	subOnce sync.Once
+
+	// logger reports a panic in the invalidation subscriber. Optional: a nil
+	// logger degrades to silence, so SetLogger is wired at startup.
+	logger *zap.Logger
 }
+
+// SetLogger wires the logger used to report a panic in the invalidation
+// subscriber goroutine.
+func (c *CachedBindingProvider) SetLogger(l *zap.Logger) { c.logger = l }
 
 type l1Entry struct {
 	bindings []EffectiveBinding
@@ -297,7 +309,7 @@ func (c *CachedBindingProvider) startSubscriber(ctx context.Context) {
 	c.subOnce.Do(func() {
 		sub := c.rdb.Subscribe(ctx, invalidateChannel)
 		ch := sub.Channel()
-		go func() {
+		safego.Go(c.logger, "authz cache invalidation subscriber", func() {
 			defer sub.Close()
 			for {
 				select {
@@ -314,7 +326,7 @@ func (c *CachedBindingProvider) startSubscriber(ctx context.Context) {
 					c.l1Delete(msg.Payload)
 				}
 			}
-		}()
+		})
 	})
 }
 

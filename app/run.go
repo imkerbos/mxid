@@ -64,6 +64,7 @@ import (
 	"github.com/imkerbos/mxid/pkg/updatecheck"
 	"github.com/imkerbos/mxid/pkg/urlswap"
 	"github.com/imkerbos/mxid/pkg/version"
+	"github.com/imkerbos/mxid/pkg/safego"
 )
 
 // Run starts the MXID server: parse flags, build the app, register modules,
@@ -246,7 +247,7 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	// console write path see the same number.
 	settingService.SetAuditRetentionFloor(a.Config.Audit.RetentionFloorDays())
 	settingService.SetEventBus(a.EventBus)
-	settingService.SetRedisInvalidation(workerCtx, a.Redis)
+	settingService.SetRedisInvalidation(workerCtx, a.Redis, a.Logger)
 	mailerSvc = mailer.New(settingService)
 
 	// Platform-level config (license + install fingerprint) lives in a dedicated
@@ -842,7 +843,7 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 		a.Logger.Info("audit forwarding enabled",
 			zap.String("collector", a.Config.Audit.Forward.Addr),
 			zap.String("proto", a.Config.Audit.Forward.ResolvedProto()))
-		go func() {
+		safego.Go(a.Logger, "audit forwarder drain-on-shutdown", func() {
 			<-workerCtx.Done()
 			// Drain what was accepted before exiting, but do not let an
 			// unreachable collector hold up the shutdown.
@@ -854,7 +855,7 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 			}
 			a.Logger.Info("audit forwarding stopped",
 				zap.Int64("sent", sent), zap.Int64("dropped", dropped), zap.Int64("failed", failed))
-		}()
+		})
 	}
 	// Denormalize ActorName for events that publish only a user_id (app.launched
 	// fires from the portal middleware context, which carries no username).

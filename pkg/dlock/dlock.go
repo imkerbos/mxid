@@ -5,6 +5,8 @@
 package dlock
 
 import (
+	"github.com/imkerbos/mxid/pkg/safego"
+
 	"context"
 	"database/sql"
 	"strconv"
@@ -101,7 +103,7 @@ func leadOnce(ctx context.Context, sqlDB *sql.DB, key int64, logger *zap.Logger,
 	leaderCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	go func() {
+	safego.Go(logger, "dlock leadership campaign", func() {
 		t := time.NewTicker(retryInterval)
 		defer t.Stop()
 		for {
@@ -123,7 +125,7 @@ func leadOnce(ctx context.Context, sqlDB *sql.DB, key int64, logger *zap.Logger,
 				}
 			}
 		}
-	}()
+	})
 
 	run(leaderCtx)
 	return nil

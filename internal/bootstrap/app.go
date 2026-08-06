@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	"runtime/debug"
 	"sync"
 	"syscall"
 	"time"
@@ -18,6 +17,7 @@ import (
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/metrics"
 	"github.com/imkerbos/mxid/pkg/response"
+	"github.com/imkerbos/mxid/pkg/safego"
 	"github.com/imkerbos/mxid/pkg/snowflake"
 	"github.com/imkerbos/mxid/pkg/version"
 	"github.com/redis/go-redis/v9"
@@ -243,7 +243,7 @@ func (a *App) Run() error {
 
 	// Start server in goroutine
 	errCh := make(chan error, 1)
-	go func() {
+	safego.Go(a.Logger, "http server", func() {
 		a.Logger.Info("server starting",
 			zap.Int("port", a.Config.Server.Port),
 			zap.String("mode", a.Config.Server.Mode),
@@ -251,7 +251,7 @@ func (a *App) Run() error {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			errCh <- err
 		}
-	}()
+	})
 
 	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
@@ -301,17 +301,10 @@ func (a *App) Run() error {
 // (pkg/event's Bus already recovers around handlers for the same reason.)
 func (a *App) SpawnWorker(fn func()) {
 	a.workers.Add(1)
+	//safego:ok the body is safego.Run; this literal only tracks the WaitGroup
 	go func() {
 		defer a.workers.Done()
-		defer func() {
-			if r := recover(); r != nil {
-				a.Logger.Error("background worker panicked and will not run again "+
-					"— the job it performs has stopped; the process stays up deliberately",
-					zap.Any("recover", r),
-					zap.ByteString("stack", debug.Stack()))
-			}
-		}()
-		fn()
+		safego.Run(a.Logger, "background worker", fn)
 	}()
 }
 
@@ -325,6 +318,7 @@ func (a *App) cleanup() {
 	// Wait for workers to notice the cancelled context and return, so the
 	// connections they are using are not closed underneath them.
 	drained := make(chan struct{})
+	//safego:ok waits on a WaitGroup and closes a channel; neither can panic
 	go func() {
 		a.workers.Wait()
 		close(drained)
