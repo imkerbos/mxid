@@ -909,6 +909,40 @@ OIDC discovery、SAML metadata、头像抓取 —— 都走带 SSRF 防护的客
 > 的浏览器可能还会显示一次旧 SPA —— 升级后让用户强刷一次
 > (Ctrl/Cmd+Shift+R)即可,此后全自动。
 
+## 管理员口令找回(带外)
+
+超管忘记口令、且没有第二个超管账户时的救援通道。命令跑在服务端二进制上,镜像里现成:
+
+```bash
+# 交互输入(不回显,不进 shell history)——需要 -it
+kubectl -n <ns> exec -it <backend-pod> -- ./mxid -config=configs \
+  admin reset-password -username=admin
+
+# 生成强口令并打印
+kubectl -n <ns> exec <backend-pod> -- ./mxid -config=configs \
+  admin reset-password -username=admin -generate
+
+# 账户同时处于锁定/禁用状态时,一并恢复为启用
+kubectl -n <ns> exec <backend-pod> -- ./mxid -config=configs \
+  admin reset-password -username=admin -generate -unlock
+
+# 管道(给脚本用)
+echo '<新口令>' | kubectl -n <ns> exec -i <backend-pod> -- ./mxid -config=configs \
+  admin reset-password -username=admin -stdin
+```
+
+**刻意不提供 `-password <明文>` 参数** —— 那会落进 shell history 和 `ps` 输出,正是这条命令要消除的暴露面。
+
+它走的是与控制台重置口令完全相同的服务方法,因此:
+
+- 运行时口令复杂度策略与历史重用检查照常生效(恢复通道不做策略后门)
+- 哈希写入、`must_change_pwd` 标记、口令历史三者在**同一个事务**内
+- **首次登录强制改密,不可关闭** —— 这个口令经过了终端、回滚缓冲,可能还有工单
+- 该用户的既有会话全部撤销(忘记口令常伴随「凭据可能已泄露」)
+- **留下审计记录**,actor 标记为 `cli`,以便事后能分辨这次变更来自带外命令行而非某个管理员会话
+
+手写 bcrypt 哈希直接 `UPDATE mxid_user` 是上述每一条都绕过去的做法,且完全无痕迹 —— 不要再那样做。
+
 ## 排错
 
 | 现象 | 可能原因 | 修法 |

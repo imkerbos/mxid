@@ -811,3 +811,34 @@ func int64Ptr(n int64) *int64 {
 	}
 	return &n
 }
+
+// RecordOutOfBand writes one audit record SYNCHRONOUSLY, for callers that are
+// not a request and not a subscriber — currently the operator subcommands on
+// the server binary.
+//
+// The event bus is fire-and-forget: Publish starts a goroutine per handler and
+// returns. That is right for a request, which stays alive long enough for the
+// handler to finish, and wrong for a command that exits immediately afterwards
+// — the process is gone before the write lands, so a break-glass password reset
+// would leave no trace at all. The whole point of routing such a reset through
+// the product instead of an UPDATE statement is that it IS recorded.
+//
+// Actor, IP and tenant come from auditctx on ctx, exactly as they do for a
+// request, so an out-of-band change is attributable in the same columns as
+// every other one.
+func (s *Service) RecordOutOfBand(ctx context.Context, eventType, resourceType string, resourceID int64, resourceName string, detail map[string]any) {
+	log := &AuditLog{
+		ID:           s.idGen.Generate(),
+		TenantID:     s.tenantID,
+		EventType:    eventType,
+		EventStatus:  EventStatusSuccess,
+		ResourceType: &resourceType,
+		ResourceID:   int64Ptr(resourceID),
+		Detail:       s.marshalDetailFor(eventType, detail),
+		CreatedAt:    time.Now(),
+	}
+	if resourceName != "" {
+		log.ResourceName = &resourceName
+	}
+	s.createLog(ctx, log)
+}
