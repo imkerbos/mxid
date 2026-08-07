@@ -2,6 +2,21 @@ import type { AxiosRequestConfig } from 'axios'
 import { client, portalClient } from './client'
 import type { ApiResponse, LoginRequest, LoginResponse, CurrentUser, CaptchaResponse } from '../types'
 
+// StepUpMethod is what the server will accept as proof for this session:
+// 'totp' when a factor is enrolled, 'password' when none is but the account has
+// a local password, 'none' for an external-IdP account with neither (that one
+// has to enroll a factor first).
+export type StepUpMethod = 'totp' | 'password' | 'none'
+
+export interface StepUpMethodInfo {
+  method: StepUpMethod
+}
+
+// StepUpProof carries exactly the field the resolved method asks for. The
+// server picks which one it reads — sending a password never satisfies a
+// session whose account has a factor enrolled.
+export type StepUpProof = { code: string } | { password: string }
+
 export const authApi = {
   // Console auth
   captcha: () =>
@@ -21,6 +36,12 @@ export const authApi = {
   // doesn't bounce the whole console to login.
   stepUp: (code: string) =>
     client.post<ApiResponse<null>>('/auth/step-up', { code }, { skipAuthEvent: true }).then(r => r.data),
+  // Which proof the CURRENT session will be challenged for. The server decides
+  // from what the account has (a factor → 'totp'; none but a local password →
+  // 'password'; neither → 'none'), so the SPA renders the right prompt instead
+  // of demanding a TOTP code from an account that has no authenticator.
+  stepUpMethod: () =>
+    client.get<ApiResponse<StepUpMethodInfo>>('/auth/step-up', { skipAuthEvent: true }).then(r => r.data.data),
 
   // Portal auth
   portalCaptcha: () =>
@@ -37,6 +58,18 @@ export const authApi = {
   // switching back from console). Open to any authenticated identity.
   portalSso: () =>
     portalClient.post<ApiResponse<null>>('/auth/sso', null, { skipAuthEvent: true }).then(r => r.data),
+  // Portal step-up. The portal needs its OWN sudo window: the console route
+  // above refreshes the console session, while portal-side gates (the form-fill
+  // extension's pair / credential reveal) read the portal session. Without this
+  // the window could only be reopened by signing in again.
+  portalStepUpMethod: () =>
+    portalClient
+      .get<ApiResponse<StepUpMethodInfo>>('/auth/step-up', { skipAuthEvent: true })
+      .then(r => r.data.data),
+  portalStepUp: (proof: StepUpProof) =>
+    portalClient
+      .post<ApiResponse<null>>('/auth/step-up', proof, { skipAuthEvent: true })
+      .then(r => r.data),
 
   // Console MFA (mirrors portal — same engine, different cookie namespace).
   consoleVerifyMFA: (data: { challenge: string; code: string; remember?: boolean }) =>

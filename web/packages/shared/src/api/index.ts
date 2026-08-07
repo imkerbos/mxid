@@ -1,5 +1,6 @@
-export { apiErrorCode, client, createApiClient, portalClient, systemClient, getActiveTenantID, setActiveTenantID, setStepUpHandler, CODE_STEP_UP_REQUIRED, CODE_MFA_ENROLL_REQUIRED, CODE_CAPTCHA_REQUIRED, CODE_CAPTCHA_INVALID, CODE_UNAUTHENTICATED, CODE_INVALID_MFA_CODE, CODE_TOTP_REQUIRED, CODE_ACCESS_DENIED, CODE_ACCOUNT_DISABLED, CODE_ACCOUNT_LOCKED, CODE_TOO_MANY_ATTEMPTS } from './client'
+export { apiErrorCode, client, createApiClient, portalClient, systemClient, getActiveTenantID, setActiveTenantID, setStepUpHandler, CODE_STEP_UP_REQUIRED, CODE_FORM_STEP_UP_REQUIRED, CODE_MFA_ENROLL_REQUIRED, CODE_CAPTCHA_REQUIRED, CODE_CAPTCHA_INVALID, CODE_UNAUTHENTICATED, CODE_INVALID_MFA_CODE, CODE_TOTP_REQUIRED, CODE_ACCESS_DENIED, CODE_ACCOUNT_DISABLED, CODE_ACCOUNT_LOCKED, CODE_TOO_MANY_ATTEMPTS } from './client'
 export { authApi } from './auth'
+export type { StepUpMethod, StepUpMethodInfo, StepUpProof } from './auth'
 export { userApi } from './user'
 export { orgApi } from './org'
 export { groupApi } from './group'

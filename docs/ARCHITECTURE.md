@@ -575,6 +575,26 @@ MV3 browser extension is a separate open-source repo
 ([mxid-extension](https://github.com/imkerbos/mxid-extension)) whose Record mode pushes the
 descriptor back to the server — see the README for the user-facing flow.
 
+### The step-up (sudo) window
+
+Reveal and pairing are gated on a *fresh* step-up, and freshness is a stamp on the session
+(`MFAVerifiedAt`) — which means it is **per session namespace**. Both namespaces therefore
+have their own `POST /auth/step-up`; verifying in the console does nothing for a portal-side
+gate, and vice versa. `GET /auth/step-up` reports which proof this account will be challenged
+for, because the challenge is not always MFA:
+
+| Account has | Challenge | Why |
+|---|---|---|
+| a verified TOTP factor | `totp` | Strongest proof, and the only one accepted — an enrolled account must not be able to downgrade its second factor to the password a phisher may already hold. |
+| no factor, a local password | `password` | GitHub/Google sudo-mode model. Demanding MFA from an account that has none made every gated action permanently unreachable, which is a worse outcome than a password re-prompt. |
+| neither (external IdP, no password) | `none` → `mfa_enroll_required` | Nothing to verify against; enrollment is the only way forward. |
+
+A failed challenge answers **403, never 401**: the session is still valid, and both SPAs treat
+any 401 as "session died" and bounce to the login screen. The same rule governs the form-fill
+step-up / pairing refusals (`40133` / `40137`). The portal's `/step-up` page is what the
+extension deep-links to when its window has lapsed; it re-stamps the session and the
+extension's poll fills the form without a reload.
+
 ## Extending — add a new external IdP (EE)
 
 External IdP is a code-separated EE feature; there is nothing to extend in this repo.

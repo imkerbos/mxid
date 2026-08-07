@@ -2,7 +2,6 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Header from './Header'
-import { Toaster } from '../ui/toast'
 
 const pageVariants = {
   initial: { opacity: 0, y: 8 },
@@ -25,7 +24,6 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
   return (
     <div className="h-screen bg-bg p-3 lg:p-4">
-      <Toaster />
       <div className="flex h-full overflow-hidden rounded-panel border border-border bg-surface shadow-card">
         <Sidebar />
         <div className="flex min-w-0 flex-1 flex-col">

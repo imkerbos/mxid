@@ -6,6 +6,21 @@ export default {
     success: 'Verified',
     failed: 'Verification failed',
     enrollRequired: 'This action requires two-step verification. Please set it up first.',
+    // Password fallback: shown to accounts with no authenticator enrolled, so a
+    // sensitive action is still reachable without forcing MFA enrollment.
+    passwordHint: 'This is a sensitive action. Re-enter your password to continue.',
+    passwordLabel: 'Password',
+    // No authenticator and no local password (external-IdP account) — there is
+    // nothing to challenge against, so enrollment is the only way forward.
+    noMethod: 'This action needs a fresh identity check, but your account has no authenticator or password to verify against. Set up two-step verification first.',
+    setUpMfa: 'Set up two-step verification',
+    // Standalone /step-up page, opened by the browser extension when its sudo
+    // window has lapsed.
+    pageTitle: 'Identity check',
+    pageHint: 'Verify your identity to unlock auto-fill for your apps.',
+    pageDoneTitle: 'You are verified',
+    pageDoneHint: 'Go back to the app tab — it will fill in automatically. You can close this page.',
+    backToApps: 'Back to my apps',
   },
   errors: {
     eeFeatureRequired: 'This is an Enterprise Edition feature and requires a valid enterprise license. Activate one under Settings → License.',
@@ -23,6 +38,9 @@ export default {
     totpRequired: 'Enter your 6-digit authenticator code to change the password.',
     selfApproval: 'You can\'t approve your own access request — it must be approved by someone else (separation of duties).',
     approverNotEligible: 'You are not a designated approver for this eligibility, so you can\'t approve this request.',
+    // One sentence for both step-up proofs: the prompt only ever showed the
+    // user one of them, so naming which failed adds nothing.
+    stepUpFailed: 'That did not check out. Try again — you are still signed in.',
   },
   common: {
     validation: {

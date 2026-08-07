@@ -103,6 +103,13 @@ const (
 	NumSelfApproval        = 40012 // errors.selfApproval
 	NumApproverNotEligible = 40013 // errors.approverNotEligible
 	NumEEFeatureRequired   = 40332 // errors.eeFeatureRequired
+	// NumStepUpVerifyFailed — the step-up challenge was answered wrongly (bad
+	// TOTP / backup code, or bad password on the no-factor fallback). Localized
+	// because it is the one sentence the person retyping the box reads, and it
+	// must not depend on which proof the server happened to ask for. It is NOT
+	// NumInvalidMFACode: that one is generic, so the SPA printed the server's
+	// English "step-up verification failed" verbatim at a Chinese-locale user.
+	NumStepUpVerifyFailed = 40334 // errors.stepUpFailed
 
 	// Password-policy refusals. One number per rule, because each is a
 	// different sentence to the person retyping the box.
@@ -180,6 +187,7 @@ var Catalog = map[int]struct {
 	NumMFAEnrollRequired:      {Generic, "MFA enrollment required (SPA branches on this)"},
 	NumPasswordChangeRequired: {Generic, "password change required (SPA branches on this)"},
 	NumEEFeatureRequired:      {Localized, "feature requires an Enterprise licence"},
+	NumStepUpVerifyFailed:     {Localized, "step-up challenge answered wrongly"},
 
 	40201: {Generic, "licence user quota exhausted"},
 

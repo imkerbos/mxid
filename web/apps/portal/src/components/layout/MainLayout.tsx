@@ -1,6 +1,5 @@
 import { Outlet, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Toaster } from '@mxid/shared/ui/toast'
 import Navbar from './Navbar'
 
 const pageVariants = {
@@ -14,7 +13,6 @@ export default function MainLayout() {
 
   return (
     <div className="min-h-screen bg-bg">
-      <Toaster />
       <Navbar />
       <main className="mx-auto mt-16 max-w-6xl px-4 py-8">
         <AnimatePresence mode="wait">

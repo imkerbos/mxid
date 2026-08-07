@@ -31,6 +31,7 @@ make backup-verify FILE=/tmp/mxid-....dump
 | `verify-lint`     | `golangci-lint`               | `exhaustruct` on the `app/` wiring adapters; staticcheck; errcheck |
 | `verify-exports`  | `scripts/verify-exports.mjs`  | `package.json` `exports`/`main`/`bin` paths missing on disk  |
 | `verify-i18n-markers` | `scripts/verify-i18n-markers.mjs` | a `<Field required>` label that also ends in `*`, so the marker renders twice |
+| `verify-toaster-mount` | `scripts/verify-toaster-mount.mjs` | `<Toaster />` mounted inside a layout (or twice), so screens outside it raise toasts nobody renders |
 | `verify-pinned-tag` | `scripts/verify-pinned-tag.mjs` | an example env file pinning an image tag that no longer exists |
 | `verify-web`      | `pnpm -r build`               | Vite prod-mode strictness that dev mode tolerates             |
 | `smoke`           | `scripts/smoke-test.sh`       | runtime nil-pointer in cross-module wiring; middleware order |
@@ -53,6 +54,12 @@ Each gate exists because a real bug shipped past everything else:
 - **verify-exports** — `package.json` had `"./ui": "./src/ui/index.ts"` but
   the file is `.tsx`. Vite dev resolved nothing; broke the whole console.
   Gate walks every `package.json` and asserts the path exists.
+- **verify-toaster-mount** — both apps mounted `<Toaster />` inside
+  `MainLayout`, and both render screens outside it (the portal's `/step-up`
+  page and forced MFA-enrollment gate, the console's login and forced
+  password-change gates). `toast.*` is a pub-sub, so those screens published
+  into nothing: a failed step-up reported *no* error at all and the button
+  looked dead. Gate asserts exactly one mount, in `App.tsx`.
 - **verify-pinned-tag** — `.env.example` pinned `MXID_TAG=v0.1.0` long after
   that tag stopped being published. `cp .env.example .env` is step one of the
   compose path, so the first thing a new user saw was ImagePullBackOff on an

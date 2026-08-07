@@ -5,6 +5,8 @@ package app
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"github.com/imkerbos/mxid/internal/bootstrap"
 	"github.com/imkerbos/mxid/internal/domain/authn"
@@ -52,8 +54,19 @@ func (a *userMFAVerifierAdapter) HasVerifiedTOTP(ctx context.Context, userID int
 	return a.userModule.Service.HasVerifiedTOTP(ctx, userID)
 }
 
+// VerifyTOTP translates the one failure the caller must tell apart from a plain
+// wrong code: a code that was correct but already consumed this window (the
+// replay guard). "Your code is wrong" is actively misleading there — the user
+// typed the right digits — and it is the common case whenever two prompts land
+// inside the same 30s step, e.g. finishing enrollment and then being asked to
+// step up. authn cannot import the user package, so the sentinel is remapped
+// here, at the seam that already exists to keep them apart.
 func (a *userMFAVerifierAdapter) VerifyTOTP(ctx context.Context, userID int64, code string) error {
-	return a.userModule.Service.VerifyTOTP(ctx, userID, code)
+	err := a.userModule.Service.VerifyTOTP(ctx, userID, code)
+	if errors.Is(err, user.ErrMFACodeReused) {
+		return fmt.Errorf("%w: %w", authn.ErrMFACodeReused, err)
+	}
+	return err
 }
 
 func (a *userMFAVerifierAdapter) ConsumeBackupCode(ctx context.Context, userID int64, code string) error {

@@ -21,7 +21,7 @@ fi
 
 # Both are dirt cheap; run if any web/ file changed.
 if echo "$staged" | grep -qE '^web/'; then
-  make verify-exports verify-i18n-keys verify-i18n-markers verify-error-extraction
+  make verify-exports verify-i18n-keys verify-i18n-markers verify-error-extraction verify-toaster-mount
 fi
 
 echo "✓ pre-commit OK"

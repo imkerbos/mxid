@@ -70,6 +70,7 @@ const LOCALIZED_CODES: Record<number, string> = {
   40012: 'errors.selfApproval', // JIT approve: separation of duties — can't approve own request
   40013: 'errors.approverNotEligible', // JIT approve: not in the eligibility's approver_subject
   [CODE_EE_FEATURE_REQUIRED]: 'errors.eeFeatureRequired',
+  40334: 'errors.stepUpFailed', // step-up answered wrongly (TOTP, backup code, or password)
   40906: 'errors.codeExists', // an operator-chosen `code` is already taken
   // Password policy — one code per rule. The server used to assemble the
   // sentence itself and it came out half English half Chinese ("password does
