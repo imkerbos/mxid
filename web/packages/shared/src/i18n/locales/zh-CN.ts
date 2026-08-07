@@ -9,6 +9,21 @@ export default {
     success: '已验证',
     failed: '验证失败',
     enrollRequired: '此操作需要两步验证，请先完成绑定。',
+    // Password fallback: shown to accounts with no authenticator enrolled, so a
+    // sensitive action is still reachable without forcing MFA enrollment.
+    passwordHint: '这是敏感操作。请重新输入登录密码以继续。',
+    passwordLabel: '登录密码',
+    // No authenticator and no local password (external-IdP account) — there is
+    // nothing to challenge against, so enrollment is the only way forward.
+    noMethod: '此操作需要重新核验身份，但你的账号既没有绑定认证器，也没有可用的登录密码。请先绑定两步验证。',
+    setUpMfa: '去绑定两步验证',
+    // Standalone /step-up page, opened by the browser extension when its sudo
+    // window has lapsed.
+    pageTitle: '身份核验',
+    pageHint: '核验身份后即可继续为应用自动填充登录信息。',
+    pageDoneTitle: '已核验通过',
+    pageDoneHint: '回到应用所在的标签页，扩展会自动完成填充。本页可以关闭。',
+    backToApps: '返回我的应用',
   },
   errors: {
     eeFeatureRequired: '该功能为企业版功能,需有效的企业版授权。请在「设置 → 许可信息」激活授权。',
@@ -26,6 +41,9 @@ export default {
     totpRequired: '请输入 6 位动态验证码以修改密码。',
     selfApproval: '不能审批自己提交的提权申请,需由他人审批(职责分离)。',
     approverNotEligible: '你不是该访问资格指定的审批人,无权审批此申请。',
+    // One sentence for both step-up proofs: the prompt only ever showed the
+    // user one of them, so naming which failed adds nothing.
+    stepUpFailed: '身份核验未通过,请检查后重试。你的登录状态没有失效。',
   },
   common: {
     validation: {

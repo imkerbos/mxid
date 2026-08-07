@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/imkerbos/mxid/internal/bootstrap"
+	"github.com/imkerbos/mxid/pkg/crypto"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/ratelimit"
 	"github.com/imkerbos/mxid/pkg/session"
@@ -25,6 +26,13 @@ var (
 	ErrPasswordExpired = errors.New("password has expired")
 	ErrMFARequired     = errors.New("mfa verification required")
 	ErrSessionNotFound = errors.New("session not found")
+	// ErrMFACodeReused — the TOTP code was CORRECT but already spent this
+	// window (the single-use replay guard). Kept apart from ErrMFAVerifyFailed
+	// because the advice is the opposite: not "check your code" but "wait for
+	// the next one". Flattening the two told a user who had typed the right
+	// digits that they were wrong, in the most common sequence there is —
+	// two prompts landing inside the same 30-second step.
+	ErrMFACodeReused = errors.New("mfa code already used this window")
 )
 
 // LoginResponse is returned by Engine.Login.
@@ -329,7 +337,101 @@ func (e *Engine) VerifyStepUp(ctx context.Context, userID int64, clientIP, code 
 	}
 	if verifyErr != nil {
 		e.mfaRateLimiter.RecordFailure(ctx, userID, clientIP)
+		// A spent-but-correct code keeps its own sentinel: the caller renders
+		// "wait for the next code", not "that code is wrong".
+		if errors.Is(verifyErr, ErrMFACodeReused) {
+			return ErrMFACodeReused
+		}
 		return ErrMFAVerifyFailed
+	}
+	e.mfaRateLimiter.Reset(ctx, userID, clientIP)
+	return nil
+}
+
+// Step-up methods. A step-up ("sudo") challenge proves the person at the
+// keyboard is still the account owner. Which proof we can demand depends on
+// what the account actually has:
+//
+//   - StepUpMethodTOTP     — a verified second factor is enrolled. Always
+//     preferred: it is the strongest proof and the only one that satisfies an
+//     MFA-enforcing policy.
+//   - StepUpMethodPassword — no factor enrolled, but the account has a usable
+//     local password. Re-typing it is a real barrier to someone who only stole
+//     the session cookie (the GitHub / Google "sudo mode" model), and without
+//     it every step-up-gated feature is permanently unreachable for accounts
+//     that never enrolled MFA.
+//   - StepUpMethodNone     — neither (an external-IdP account with no password
+//     and no factor). The caller must enroll a factor first; there is nothing
+//     to challenge against.
+const (
+	StepUpMethodTOTP     = "totp"
+	StepUpMethodPassword = "password"
+	StepUpMethodNone     = "none"
+)
+
+// StepUpMethod reports which proof this user can be challenged for. See the
+// StepUpMethod* constants for the ordering rationale.
+func (e *Engine) StepUpMethod(ctx context.Context, tenantID, userID int64) string {
+	if ok, err := e.HasMFA(ctx, userID); err == nil && ok {
+		return StepUpMethodTOTP
+	}
+	if e.HasLocalPassword(ctx, tenantID, userID) {
+		return StepUpMethodPassword
+	}
+	return StepUpMethodNone
+}
+
+// HasLocalPassword reports whether the user can authenticate with a local
+// password. False for external-IdP (e.g. Lark) accounts that never set one,
+// and whenever the local provider isn't wired.
+func (e *Engine) HasLocalPassword(ctx context.Context, tenantID, userID int64) bool {
+	lp, ok := e.providers[LocalProviderType].(*LocalProvider)
+	if !ok {
+		return false
+	}
+	u, err := e.userRepo.GetByID(ctx, userID)
+	if err != nil || u == nil {
+		return false
+	}
+	ua, err := lp.userRepo.GetByUsername(ctx, tenantID, u.Username)
+	if err != nil || ua == nil {
+		return false
+	}
+	return crypto.HasUsablePassword(ua.PasswordHash)
+}
+
+// VerifyPasswordStepUp re-checks the password of an ALREADY-authenticated user
+// as a step-up proof. Only for accounts with no MFA factor — an enrolled user
+// must answer the TOTP challenge, or the second factor would be downgradeable
+// to something the phisher already has.
+//
+// Rate-limited on the same per-user+IP counters as the MFA step-up, so this
+// path is not a lower-friction password oracle than the login form.
+func (e *Engine) VerifyPasswordStepUp(ctx context.Context, tenantID, userID int64, clientIP, password string) error {
+	lp, ok := e.providers[LocalProviderType].(*LocalProvider)
+	if !ok {
+		return ErrUnknownProvider
+	}
+	u, err := e.userRepo.GetByID(ctx, userID)
+	if err != nil || u == nil {
+		return ErrAuthFailed
+	}
+	if err := e.mfaRateLimiter.Check(ctx, userID, clientIP); err != nil {
+		return err
+	}
+	result, err := lp.Authenticate(ctx, &AuthRequest{
+		TenantID:    tenantID,
+		AuthType:    LocalProviderType,
+		Credentials: map[string]string{"username": u.Username, "password": password},
+		ClientIP:    clientIP,
+		UserAgent:   "",
+	})
+	// Only an outright success counts. AuthPasswordExpired / AuthDisabled /
+	// AuthLocked all mean the account may not act right now, and AuthFailed is a
+	// wrong password — none of them is a valid proof of presence.
+	if err != nil || result == nil || result.Status != AuthSuccess || result.UserID != userID {
+		e.mfaRateLimiter.RecordFailure(ctx, userID, clientIP)
+		return ErrAuthFailed
 	}
 	e.mfaRateLimiter.Reset(ctx, userID, clientIP)
 	return nil

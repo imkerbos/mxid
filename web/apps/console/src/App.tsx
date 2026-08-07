@@ -11,6 +11,7 @@ import {
 } from '@mxid/shared'
 import MainLayout from './components/layout/MainLayout'
 import StepUpModal from './components/StepUpModal'
+import { Toaster } from './components/ui/toast'
 import LoginPage from './pages/login'
 import DashboardPage from './pages/dashboard'
 import UsersPage from './pages/users'
@@ -135,57 +136,65 @@ export default function App() {
   // bought no animation and instead unmounted AuthGuard, MainLayout and the
   // page on every navigation, refetching the entire shell each time.
   return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route
-        path="/*"
-        element={
-          <AuthGuard>
-            <MainLayout>
-              <StepUpModal />
-              <Routes>
-                <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                <Route path="/dashboard" element={<DashboardPage />} />
-                <Route path="/users" element={<UsersPage />} />
-                <Route path="/users/:id" element={<UserDetailPage />} />
-                <Route path="/orgs" element={<OrgsPage />} />
-                <Route path="/groups" element={<GroupsPage />} />
-                <Route path="/apps" element={<AppsPage />} />
-                <Route path="/idps" element={<IDPsPage />} />
-                <Route path="/tenants" element={<TenantsPage />} />
-                <Route path="/permissions" element={<PermissionsPage />} />
-                <Route path="/access-approvals" element={<AccessApprovalsPage />} />
-                <Route path="/audit" element={<AuditPage />} />
-                <Route path="/offboarding" element={<OffboardingPage />} />
-                <Route path="/docs" element={<DocsPage />} />
-                <Route path="/browser-extension" element={<BrowserExtensionPage />} />
-                <Route path="/account" element={<AccountPage />} />
-                <Route path="/settings" element={<SettingsLayout />}>
-                  <Route index element={<RRNavigate to="/settings/mail/smtp" replace />} />
-                  <Route path="mail/smtp" element={<MailSMTPPage />} />
-                  <Route path="mail/templates" element={<MailTemplatesPage />} />
-                  <Route path="sms" element={<SMSPage />} />
-                  <Route path="security" element={<SecurityPage />} />
-                  <Route path="mfa" element={<MFAPolicyPage />} />
-                  <Route path="conditional-access" element={<ConditionalAccessPage />} />
-                  <Route path="login-methods" element={<LoginMethodsPage />} />
-                  <Route path="protocol-defaults" element={<ProtocolDefaultsPage />} />
-                  <Route path="branding" element={<BrandingPage />} />
-                  <Route path="localization" element={<LocalizationPage />} />
-                  <Route path="audit-policy" element={<AuditPolicyPage />} />
-                  <Route path="offboarding-webhook" element={<OffboardingWebhookPage />} />
-                  <Route path="license" element={<LicensePage />} />
-                  <Route path="external-urls" element={<ExternalURLsPage />} />
-                  <Route path="system-version" element={<SystemVersionPage />} />
-                  <Route path="access-eligibility" element={<AccessEligibilityPage />} />
-                </Route>
-                <Route path="*" element={<Navigate to="/dashboard" replace />} />
-              </Routes>
-            </MainLayout>
-          </AuthGuard>
-        }
-      />
-    </Routes>
+    <>
+      {/* Toaster at the app root, not inside MainLayout: the login screen and
+          the forced password-change gate render outside that layout, so every
+          toast they raised went to a host that was not mounted and vanished.
+          Exactly one instance — two Toasters share the queue and double
+          every toast. */}
+      <Toaster />
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="/*"
+          element={
+            <AuthGuard>
+              <MainLayout>
+                <StepUpModal />
+                <Routes>
+                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                  <Route path="/dashboard" element={<DashboardPage />} />
+                  <Route path="/users" element={<UsersPage />} />
+                  <Route path="/users/:id" element={<UserDetailPage />} />
+                  <Route path="/orgs" element={<OrgsPage />} />
+                  <Route path="/groups" element={<GroupsPage />} />
+                  <Route path="/apps" element={<AppsPage />} />
+                  <Route path="/idps" element={<IDPsPage />} />
+                  <Route path="/tenants" element={<TenantsPage />} />
+                  <Route path="/permissions" element={<PermissionsPage />} />
+                  <Route path="/access-approvals" element={<AccessApprovalsPage />} />
+                  <Route path="/audit" element={<AuditPage />} />
+                  <Route path="/offboarding" element={<OffboardingPage />} />
+                  <Route path="/docs" element={<DocsPage />} />
+                  <Route path="/browser-extension" element={<BrowserExtensionPage />} />
+                  <Route path="/account" element={<AccountPage />} />
+                  <Route path="/settings" element={<SettingsLayout />}>
+                    <Route index element={<RRNavigate to="/settings/mail/smtp" replace />} />
+                    <Route path="mail/smtp" element={<MailSMTPPage />} />
+                    <Route path="mail/templates" element={<MailTemplatesPage />} />
+                    <Route path="sms" element={<SMSPage />} />
+                    <Route path="security" element={<SecurityPage />} />
+                    <Route path="mfa" element={<MFAPolicyPage />} />
+                    <Route path="conditional-access" element={<ConditionalAccessPage />} />
+                    <Route path="login-methods" element={<LoginMethodsPage />} />
+                    <Route path="protocol-defaults" element={<ProtocolDefaultsPage />} />
+                    <Route path="branding" element={<BrandingPage />} />
+                    <Route path="localization" element={<LocalizationPage />} />
+                    <Route path="audit-policy" element={<AuditPolicyPage />} />
+                    <Route path="offboarding-webhook" element={<OffboardingWebhookPage />} />
+                    <Route path="license" element={<LicensePage />} />
+                    <Route path="external-urls" element={<ExternalURLsPage />} />
+                    <Route path="system-version" element={<SystemVersionPage />} />
+                    <Route path="access-eligibility" element={<AccessEligibilityPage />} />
+                  </Route>
+                  <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                </Routes>
+              </MainLayout>
+            </AuthGuard>
+          }
+        />
+      </Routes>
+    </>
   )
 }
 

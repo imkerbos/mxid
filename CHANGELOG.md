@@ -7,7 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- The portal has a step-up (sudo) endpoint of its own, plus a `/step-up` page
+  the form-fill browser extension deep-links to. Only the console had one, and
+  the sudo window is per session namespace — so a portal-side gate that went
+  stale could not be cleared at all: the extension sent the user to the portal
+  root, which just rendered the app list, and auto-fill stayed dead until they
+  signed out and back in.
+- Step-up now accepts the account password when the account has **no**
+  authenticator enrolled (the GitHub / Google sudo-mode model). Before this,
+  every step-up-gated action — revealing a form-fill credential, pairing the
+  extension, revoking a connected extension — was permanently unreachable for
+  those accounts: the gate demanded a code they had no way to produce. An
+  enrolled account is still challenged for TOTP and cannot downgrade to the
+  password; an external-IdP account with neither is pointed at enrollment.
+  `GET /auth/step-up` reports which of the two the SPA should prompt for.
+
 ### Fixed
+- A failed step-up no longer signs the user out. A wrong code answered 401, and
+  both SPAs treat any 401 as "your session died" and bounce to the login screen
+  — so mistyping a digit, or hitting a step-up gate with no MFA enrolled, threw
+  away whatever the user was doing. The session is valid in that case and stays
+  valid: the refusal is now a 403. Same for the form-fill step-up / pairing
+  refusals (codes 40133 / 40137), which were 401 for the same reason.
+- A failed step-up now says so in the reader's language. The refusal carried a
+  *generic* business code, and a generic code means the SPA prints the server's
+  message verbatim — so a Chinese-locale user got a translated toast title over
+  an English sentence ("step-up verification failed"). It now carries a
+  localized code (40334) with one sentence for both proofs.
+- Toasts raised outside the main layout are no longer swallowed. Both apps
+  mounted `<Toaster />` inside `MainLayout`, and several real screens render
+  outside it — the portal's step-up page and forced MFA-enrollment gate, the
+  console's login screen and forced password-change gate. Every toast those
+  screens published had no host to render it, so a failed step-up reported
+  nothing at all and the button simply looked dead. The Toaster now mounts once
+  at each app's root, and `make verify-toaster-mount` fails the build if it
+  moves back into a subtree or is mounted twice.
+- The form-fill step-up refusal now drives the portal's step-up prompt instead
+  of surfacing as an opaque error: the portal registers the global handler the
+  console already had, and the API client recognises the form-fill code
+  alongside the generic one, replaying the original request once it passes.
 - Native controls stayed light on the dark theme. A `<select>`'s option list,
   the date picker and the scrollbar are painted by the browser, not by CSS, so
   no class reaches them — only `color-scheme` does, and neither app declared it.

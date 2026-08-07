@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/conditionalaccess"
+	"github.com/imkerbos/mxid/pkg/auditctx"
 	"github.com/imkerbos/mxid/pkg/crypto"
 	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/ratelimit"
@@ -211,7 +212,8 @@ func (h *Handler) RegisterConsoleRoutes(rg *gin.RouterGroup) {
 		}))
 		// Step-up: re-verify MFA on the current console session to clear a
 		// high-risk operation's step_up_required gate.
-		auth.POST("/step-up", h.stepUpHandler())
+		auth.GET("/step-up", h.stepUpMethodHandler(session.NamespaceConsole, CookieConsole))
+		auth.POST("/step-up", h.stepUpHandler(session.NamespaceConsole, CookieConsole))
 	}
 }
 
@@ -231,6 +233,13 @@ func (h *Handler) RegisterPortalRoutes(rg *gin.RouterGroup) {
 			{session.NamespaceConsole, CookieConsole},
 			{session.NamespaceProtocol, CookieProto},
 		}))
+		// Step-up on the PORTAL session. Without this the sudo window could only
+		// ever be opened by logging in again: the console route below refreshes
+		// the console session, and portal-side step-up gates (the form-fill
+		// extension's pair / credential reveal) read the portal one. Once the
+		// window lapsed, every gated action was unsatisfiable until re-login.
+		auth.GET("/step-up", h.stepUpMethodHandler(session.NamespacePortal, CookiePortal))
+		auth.POST("/step-up", h.stepUpHandler(session.NamespacePortal, CookiePortal))
 	}
 }
 
@@ -639,29 +648,96 @@ func (h *Handler) ssoHandler(targetNS, targetCookie string, requireAdmin bool, s
 	}
 }
 
-// StepUpRequest carries the MFA code submitted for a step-up challenge.
+// StepUpRequest carries the proof submitted for a step-up challenge. Exactly
+// one of the two is used, decided by the server from what the account has (see
+// Engine.StepUpMethod) — never by what the client chose to send, or an enrolled
+// user could downgrade their own second factor to a password.
 type StepUpRequest struct {
-	Code string `json:"code" binding:"required"`
+	Code     string `json:"code"`
+	Password string `json:"password"`
 }
 
-// stepUpHandler re-verifies the user's MFA on their existing console session
-// and refreshes MFAVerifiedAt, so subsequent high-risk operations fall inside
-// the grace window without another prompt. The user must already hold a valid
-// console session (the SPA calls this after a high-risk op returns
-// step_up_required). Reuses the same MFA verifier and rate limiter as login.
-func (h *Handler) stepUpHandler() gin.HandlerFunc {
+// StepUpMethodResponse tells the SPA which challenge to render.
+type StepUpMethodResponse struct {
+	Method string `json:"method"`
+}
+
+// stepUpSession resolves and validates the session behind a step-up request,
+// pinning its tenant for the downstream lookups. Returns nil after writing the
+// 401 when there is no usable session.
+//
+// It also stamps the audit actor. These /auth/* routes are registered before
+// AuthMiddleware, so nothing else identifies the caller — and the catch-all
+// audit middleware would otherwise file a step-up (a security-relevant re-auth)
+// against an anonymous actor.
+func (h *Handler) stepUpSession(c *gin.Context, namespace, cookieName string) *session.Session {
+	sid, err := c.Cookie(cookieName)
+	if err != nil || sid == "" {
+		response.Unauthorized(c, errcode.NumUnauthenticated, "authentication required")
+		return nil
+	}
+	sess, err := h.engine.GetSession(c.Request.Context(), namespace, sid)
+	if err != nil {
+		response.Unauthorized(c, errcode.NumUnauthenticated, "invalid or expired session")
+		return nil
+	}
+	pinSessionTenant(c, sess.TenantID)
+	actorType := auditctx.TypeUser
+	if namespace == session.NamespaceConsole {
+		actorType = auditctx.TypeAdmin
+	}
+	c.Request = c.Request.WithContext(auditctx.With(c.Request.Context(), auditctx.Actor{
+		ActorID:   sess.UserID,
+		ActorType: actorType,
+		// Left to the audit service's name resolver — the session carries no
+		// username, and resolving one here would cost a lookup per request.
+		ActorName: "",
+		TenantID:  sess.TenantID,
+		SessionID: sess.ID,
+		IP:        c.ClientIP(),
+		UserAgent: c.Request.UserAgent(),
+	}))
+	return sess
+}
+
+// stepUpMethodHandler reports which proof this session will be challenged for,
+// so the SPA can render the right prompt (a TOTP box or a password box) before
+// the user types anything.
+func (h *Handler) stepUpMethodHandler(namespace, cookieName string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		sid, err := c.Cookie(CookieConsole)
-		if err != nil || sid == "" {
-			response.Unauthorized(c, errcode.NumUnauthenticated, "authentication required")
+		sess := h.stepUpSession(c, namespace, cookieName)
+		if sess == nil {
 			return
 		}
-		sess, err := h.engine.GetSession(c.Request.Context(), session.NamespaceConsole, sid)
-		if err != nil {
-			response.Unauthorized(c, errcode.NumUnauthenticated, "invalid or expired session")
+		response.OK(c, StepUpMethodResponse{
+			Method: h.engine.StepUpMethod(c.Request.Context(), sess.TenantID, sess.UserID),
+		})
+	}
+}
+
+// stepUpHandler re-verifies the user on their existing session and refreshes
+// MFAVerifiedAt, so subsequent high-risk operations fall inside the grace
+// window without another prompt. The user must already hold a valid session
+// (the SPA calls this after a high-risk op returns step_up_required).
+//
+// The challenge is whatever the account can actually answer:
+//
+//   - TOTP (or a backup code) when a factor is enrolled — the strong proof, and
+//     the only one accepted in that case.
+//   - the account password when no factor is enrolled. Demanding MFA from an
+//     account that has none made every step-up-gated feature permanently
+//     unreachable; re-typing the password is still a real barrier to someone
+//     holding only a stolen session cookie, and matches GitHub/Google sudo mode.
+//   - nothing, for an external-IdP account with neither: those get
+//     mfa_enroll_required, which the SPA turns into the enrollment screen.
+//
+// Reuses the same verifier and rate limiter as login in both cases.
+func (h *Handler) stepUpHandler(namespace, cookieName string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		sess := h.stepUpSession(c, namespace, cookieName)
+		if sess == nil {
 			return
 		}
-		pinSessionTenant(c, sess.TenantID)
 
 		var req StepUpRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -669,17 +745,65 @@ func (h *Handler) stepUpHandler() gin.HandlerFunc {
 			return
 		}
 
-		if err := h.engine.VerifyStepUp(c.Request.Context(), sess.UserID, c.ClientIP(), req.Code); err != nil {
-			h.handleAuthError(c, err)
+		ctx := c.Request.Context()
+		switch h.engine.StepUpMethod(ctx, sess.TenantID, sess.UserID) {
+		case StepUpMethodTOTP:
+			if req.Code == "" {
+				response.BadRequest(c, errcode.NumTOTPRequired, "totp code required")
+				return
+			}
+			if err := h.engine.VerifyStepUp(ctx, sess.UserID, c.ClientIP(), req.Code); err != nil {
+				h.writeStepUpFailure(c, err)
+				return
+			}
+		case StepUpMethodPassword:
+			if req.Password == "" {
+				response.BadRequest(c, errcode.NumInvalidInput, "password required")
+				return
+			}
+			if err := h.engine.VerifyPasswordStepUp(ctx, sess.TenantID, sess.UserID, c.ClientIP(), req.Password); err != nil {
+				h.writeStepUpFailure(c, err)
+				return
+			}
+		default:
+			// Nothing to challenge against. Enrolling a factor is the only way
+			// forward, and the SPA already owns that flow.
+			response.Forbidden(c, errcode.NumMFAEnrollRequired, "mfa enrollment required for this operation")
 			return
 		}
 
-		if err := h.engine.SessionManager().MarkMFAVerified(c.Request.Context(), session.NamespaceConsole, sid); err != nil {
+		if err := h.engine.SessionManager().MarkMFAVerified(ctx, namespace, sess.ID); err != nil {
 			response.InternalError(c, "failed to record mfa verification", err)
 			return
 		}
 		response.OK(c, nil)
 	}
+}
+
+// writeStepUpFailure reports a failed step-up challenge. A wrong code or
+// password here is NOT an authentication failure — the session is valid and
+// stays valid — so it must not answer 401: the SPAs treat any 401 as "your
+// session died" and bounce the user to the login screen, losing whatever they
+// were doing. (That is exactly what happened to form-fill users: a step-up
+// refusal logged them out instead of prompting.) Everything else (rate limit,
+// lockout, misconfiguration) keeps its usual mapping.
+func (h *Handler) writeStepUpFailure(c *gin.Context, err error) {
+	// Correct code, already spent this window. Its own localized sentence
+	// ("wait for the next one") — telling this user their code is wrong sends
+	// them to re-read digits that were right.
+	if errors.Is(err, ErrMFACodeReused) {
+		response.Error(c, http.StatusForbidden, errcode.NumTOTPCodeReused, "totp code already used, wait for the next one", "")
+		return
+	}
+	if errors.Is(err, ErrMFAVerifyFailed) || errors.Is(err, ErrAuthFailed) {
+		// Localized code: the SPA renders its own sentence. One code for both
+		// proofs on purpose — telling the user WHICH of the two they got wrong
+		// adds nothing (the prompt only ever showed them one) and the server
+		// message would otherwise reach a Chinese-locale user in English.
+		response.Error(c, http.StatusForbidden, errcode.NumStepUpVerifyFailed, "step-up verification failed", "")
+		return
+	}
+	h.handleAuthError(c, err)
 }
 
 // setSessionCookieWithRemember writes the SPA session cookie, switching to

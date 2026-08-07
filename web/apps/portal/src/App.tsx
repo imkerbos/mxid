@@ -10,6 +10,7 @@ import {
   ForcePasswordChange,
   portalApi,
 } from '@mxid/shared'
+import { Toaster } from '@mxid/shared/ui/toast'
 import { resumeSSOIfAny } from './lib/sso'
 import MainLayout from './components/layout/MainLayout'
 import LoginPage from './pages/login'
@@ -24,6 +25,8 @@ import NoAccessPage from './pages/no-access'
 import ForgotPasswordPage from './pages/password/forgot'
 import ResetPasswordPage from './pages/password/reset'
 import ForceMfaEnroll from './components/ForceMfaEnroll'
+import StepUpModal from './components/StepUpModal'
+import StepUpPage from './pages/step-up'
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const {
@@ -162,50 +165,74 @@ export default function App() {
     initTheme()
   }, [initTheme])
   return (
-    <Routes>
-      <Route
-        path="/login"
-        element={
-          <RedirectIfAuth>
-            <LoginPage />
-          </RedirectIfAuth>
-        }
-      />
-      <Route
-        path="/"
-        element={
-          <AuthGuard>
-            <MainLayout />
-          </AuthGuard>
-        }
-      >
-        <Route index element={<Navigate to="/apps" replace />} />
-        <Route path="apps" element={<AppsPage />} />
-        <Route path="consent" element={<ConsentPage />} />
-        <Route path="profile" element={<ProfilePage />} />
-        <Route path="security" element={<SecurityPage />} />
-        <Route path="access-requests" element={<AccessRequestsPage />} />
-      </Route>
-      <Route
-        path="/login/magic-link"
-        element={
-          <RedirectIfAuth>
-            <MagicLinkLoginPage />
-          </RedirectIfAuth>
-        }
-      />
-      <Route
-        path="/login/sms"
-        element={
-          <RedirectIfAuth>
-            <SMSLoginPage />
-          </RedirectIfAuth>
-        }
-      />
-      <Route path="/password/forgot" element={<ForgotPasswordPage />} />
-      <Route path="/password/reset" element={<ResetPasswordPage />} />
-      <Route path="/no-access" element={<NoAccessPage />} />
-      <Route path="*" element={<Navigate to="/apps" replace />} />
-    </Routes>
+    <>
+      {/* Toaster lives at the app root, not inside MainLayout. Several screens
+          render OUTSIDE that layout — /step-up, the forced MFA-enrollment and
+          password-change gates — and every toast they raised was published to a
+          host that was not mounted, so their errors were silently swallowed: a
+          failed step-up looked like a dead button. Exactly one instance — two
+          Toasters subscribe to the same queue and would double every toast. */}
+      <Toaster />
+      {/* Global step-up prompt: registers the handler the API client invokes
+          when a request comes back step_up_required, then replays it. Mounted
+          outside <Routes> so it survives navigation between pages. */}
+      <StepUpModal />
+      <Routes>
+        <Route
+          path="/login"
+          element={
+            <RedirectIfAuth>
+              <LoginPage />
+            </RedirectIfAuth>
+          }
+        />
+        <Route
+          path="/"
+          element={
+            <AuthGuard>
+              <MainLayout />
+            </AuthGuard>
+          }
+        >
+          <Route index element={<Navigate to="/apps" replace />} />
+          <Route path="apps" element={<AppsPage />} />
+          <Route path="consent" element={<ConsentPage />} />
+          <Route path="profile" element={<ProfilePage />} />
+          <Route path="security" element={<SecurityPage />} />
+          <Route path="access-requests" element={<AccessRequestsPage />} />
+        </Route>
+        <Route
+          path="/login/magic-link"
+          element={
+            <RedirectIfAuth>
+              <MagicLinkLoginPage />
+            </RedirectIfAuth>
+          }
+        />
+        <Route
+          path="/login/sms"
+          element={
+            <RedirectIfAuth>
+              <SMSLoginPage />
+            </RedirectIfAuth>
+          }
+        />
+        <Route path="/password/forgot" element={<ForgotPasswordPage />} />
+        <Route path="/password/reset" element={<ResetPasswordPage />} />
+        <Route path="/no-access" element={<NoAccessPage />} />
+        {/* Standalone: the form-fill extension deep-links here to reopen the
+            sudo window. Outside MainLayout — a single-purpose landing page,
+            not a portal section. */}
+        <Route
+          path="/step-up"
+          element={
+            <AuthGuard>
+              <StepUpPage />
+            </AuthGuard>
+          }
+        />
+        <Route path="*" element={<Navigate to="/apps" replace />} />
+      </Routes>
+    </>
   )
 }

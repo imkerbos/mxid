@@ -261,6 +261,7 @@ func constNameFor(num int) string {
 		errcode.NumInvalidMFACode: "NumInvalidMFACode", errcode.NumForbidden: "NumForbidden",
 		errcode.NumForbiddenScope: "NumForbiddenScope", errcode.NumStepUpRequiredNum: "NumStepUpRequiredNum",
 		errcode.NumMFAEnrollRequired: "NumMFAEnrollRequired", errcode.NumEEFeatureRequired: "NumEEFeatureRequired",
+		errcode.NumStepUpVerifyFailed: "NumStepUpVerifyFailed",
 		errcode.NumPasswordChangeRequired: "NumPasswordChangeRequired",
 		errcode.NumNotFound:               "NumNotFound", errcode.NumTemplateNotFound: "NumTemplateNotFound",
 		errcode.NumConflict: "NumConflict", errcode.NumRouteNotFound: "NumRouteNotFound",

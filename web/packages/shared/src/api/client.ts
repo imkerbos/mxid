@@ -43,6 +43,11 @@ export const CODE_ACCOUNT_DISABLED = 40303
 export const CODE_ACCOUNT_LOCKED = 40304
 export const CODE_TOO_MANY_ATTEMPTS = 42901
 export const CODE_STEP_UP_REQUIRED = 40330
+// The form-fill (EE) surface answers step-up refusals with its own code from the
+// 4013x block it reserves. Same meaning, same handling — the SPA must run the
+// step-up prompt and replay, or a user managing their connected extensions just
+// sees an opaque refusal.
+export const CODE_FORM_STEP_UP_REQUIRED = 40133
 export const CODE_MFA_ENROLL_REQUIRED = 40331
 export const CODE_EE_FEATURE_REQUIRED = 40332
 export const CODE_PASSWORD_CHANGE_REQUIRED = 40333
@@ -139,7 +144,7 @@ export function createApiClient(baseURL: string): AxiosInstance {
       // replay the original request exactly once.
       if (
         status === 403 &&
-        code === CODE_STEP_UP_REQUIRED &&
+        (code === CODE_STEP_UP_REQUIRED || code === CODE_FORM_STEP_UP_REQUIRED) &&
         stepUpHandler &&
         error.config &&
         !error.config._stepUpRetried
