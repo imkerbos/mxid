@@ -5,7 +5,7 @@ All notable changes to MXID are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.8.6] — 2026-08-07
 
 ### Added
 - The portal has a step-up (sudo) endpoint of its own, plus a `/step-up` page
@@ -904,7 +904,8 @@ Initial public preview. Two integrations verified end-to-end: **Grafana (OIDC)**
 - pnpm workspaces (`console` / `portal` / `shared`).
 - Tailwind v4 monorepo `@source` directive so shared package UI compiles into both SPAs.
 
-[Unreleased]: https://github.com/imkerbos/mxid/compare/v1.8.5...HEAD
+[Unreleased]: https://github.com/imkerbos/mxid/compare/v1.8.6...HEAD
+[1.8.6]: https://github.com/imkerbos/mxid/compare/v1.8.5...v1.8.6
 [1.8.5]: https://github.com/imkerbos/mxid/compare/v1.8.4...v1.8.5
 [1.8.4]: https://github.com/imkerbos/mxid/compare/v1.8.3...v1.8.4
 [1.8.3]: https://github.com/imkerbos/mxid/compare/v1.8.2...v1.8.3
