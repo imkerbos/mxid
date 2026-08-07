@@ -38,6 +38,12 @@
 
 /* ── 语义色三元组(亮) ── */
 :root {
+  /* color-scheme tells the browser which palette to paint the parts of a
+     control it draws itself: a <select>'s popup list, the date picker, the
+     scrollbar. None of those are reachable from CSS classes, so without this
+     the option list opened white on the dark theme while the closed control
+     next to it was dark — the mismatch a user sees the moment they click. */
+  color-scheme: light;
   --bg: 246 248 251;
   --surface: 255 255 255;
   --surface-muted: 248 250 252;
@@ -57,6 +63,7 @@
 
 /* ── 语义色三元组(暗) ── border 值较亮版提高, 保证卡片描边可见. */
 .dark {
+  color-scheme: dark;
   --bg: 9 12 22;
   --surface: 20 26 42;
   --surface-muted: 28 36 55;
