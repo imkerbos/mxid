@@ -1,6 +1,6 @@
 .PHONY: dev dev-console dev-portal dev-web dev-docker-up dev-docker-up-d dev-docker-down dev-docker-logs dev-docker-ps dev-docker-restart dev-docker-reload dev-docker-watch dev-docker-clean \
        build run test lint migrate-up migrate-down migrate-create clean deps \
-       verify verify-mod verify-vet verify-build verify-lint verify-web verify-exports verify-i18n-keys verify-i18n-markers verify-error-extraction verify-pinned-tag smoke install-hooks \
+       verify verify-mod verify-vet verify-build verify-lint verify-web verify-exports verify-i18n-keys verify-i18n-markers verify-error-extraction verify-toaster-mount verify-pinned-tag smoke install-hooks \
        docker-build prod-up prod-down prod-logs standalone-up standalone-down standalone-logs
 
 # Variables
@@ -252,7 +252,7 @@ clean:
 
 # Verify — invariant gates. Run before commit / in CI.
 # Each sub-target is independently runnable to localize failures.
-verify: verify-mod verify-vet verify-build verify-gormtags verify-lint verify-exports verify-i18n-keys verify-i18n-markers verify-error-extraction verify-pinned-tag verify-web
+verify: verify-mod verify-vet verify-build verify-gormtags verify-lint verify-exports verify-i18n-keys verify-i18n-markers verify-error-extraction verify-toaster-mount verify-pinned-tag verify-web
 	@echo "✓ verify OK"
 
 # go.mod / go.sum must match the import graph. Catches indirect-vs-direct drift.
@@ -320,6 +320,14 @@ verify-error-extraction:
 verify-i18n-markers:
 	@echo "==> verify-i18n-markers"
 	node scripts/verify-i18n-markers.mjs
+
+# <Toaster /> must be mounted once, at the app root. Inside a layout it covers
+# only that subtree, and every toast raised by a screen outside it (the
+# step-up page, the forced enrollment / password-change gates, login) is
+# published to nothing — a failed action reports absolutely nothing.
+verify-toaster-mount:
+	@echo "==> verify-toaster-mount"
+	node scripts/verify-toaster-mount.mjs
 
 # The example env files are copied verbatim when deploying, so the tag they pin
 # has to be one that still exists. Hits the network; kept out of the pre-commit
