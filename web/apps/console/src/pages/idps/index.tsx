@@ -415,7 +415,7 @@ function IDPForm({
 
           <div className="grid grid-cols-2 gap-4">
             <Field label={t('idps.fields.enable')}>
-              <select value={form.status} onChange={(e) => setForm({ ...form, status: Number(e.target.value) })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
+              <select value={form.status} onChange={(e) => setForm({ ...form, status: Number(e.target.value) })} className="w-full rounded-lg border border-border bg-surface text-ink px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
                 <option value={1}>{t('common.enable')}</option>
                 <option value={2}>{t('common.disable')}</option>
               </select>

@@ -129,7 +129,7 @@ export default function RuleEditor({ value, onChange }: RuleEditorProps) {
                     value: newField === 'status' ? 1 : '',
                   })
                 }}
-                className="rounded-md border border-border px-2 py-1 text-xs outline-none focus:border-primary"
+                className="rounded-md border border-border bg-surface text-ink px-2 py-1 text-xs outline-none focus:border-primary"
               >
                 {fieldKeys.map((f) => (
                   <option key={f} value={f}>
@@ -141,7 +141,7 @@ export default function RuleEditor({ value, onChange }: RuleEditorProps) {
               <select
                 value={c.cmp}
                 onChange={(e) => updateCondition(i, { cmp: e.target.value })}
-                className="rounded-md border border-border px-2 py-1 text-xs outline-none focus:border-primary"
+                className="rounded-md border border-border bg-surface text-ink px-2 py-1 text-xs outline-none focus:border-primary"
               >
                 {cmps.map((op) => (
                   <option key={op} value={op}>
@@ -197,7 +197,7 @@ function ConditionValue({
       <select
         value={typeof value === 'number' ? value : Number(value) || 1}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="rounded-md border border-border px-2 py-1 text-xs outline-none focus:border-primary"
+        className="rounded-md border border-border bg-surface text-ink px-2 py-1 text-xs outline-none focus:border-primary"
       >
         {STATUS_OPTIONS.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>

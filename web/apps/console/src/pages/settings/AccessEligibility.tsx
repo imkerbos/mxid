@@ -317,7 +317,7 @@ export default function AccessEligibilityPage() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Field label={t('eligibility.targetKind')}>
             <select
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+              className="w-full rounded-lg border border-border bg-surface text-ink px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
               value={form.target_kind}
               onChange={(e) => {
                 const value = e.target.value as 'console' | 'app'
@@ -488,7 +488,7 @@ export default function AccessEligibilityPage() {
 
           <Field label={t('eligibility.maxDuration')}>
             <select
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+              className="w-full rounded-lg border border-border bg-surface text-ink px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
               value={form.max_duration_seconds}
               onChange={(e) =>
                 setForm((f) => ({
