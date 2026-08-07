@@ -402,7 +402,7 @@ function BasicTab({ user, onSaved }: { user: User; onSaved: () => void }) {
         </div>
       </Field>
       <Field label={t('users.detail.basicForm.status')} hint={<><strong>{t('users.detail.status.active')}</strong>{t('users.detail.basicForm.statusHintActiveDesc')}<strong>{t('users.detail.status.locked')}</strong>{t('users.detail.basicForm.statusHintLockedDesc')}<strong>{t('users.detail.status.disabled')}</strong>{t('users.detail.basicForm.statusHintDisabledDesc')}<strong>{t('users.detail.status.pending')}</strong>{t('users.detail.basicForm.statusHintPendingDesc')}</>}>
-        <select value={form.status} onChange={(e) => setForm({ ...form, status: Number(e.target.value) })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
+        <select value={form.status} onChange={(e) => setForm({ ...form, status: Number(e.target.value) })} className="w-full rounded-lg border border-border bg-surface text-ink px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
           {STATUS_VALUES.map((s) => (
             <option key={s.value} value={s.value}>{t(s.i18nKey)}</option>
           ))}
@@ -487,7 +487,7 @@ function DetailTab({ userID }: { userID: string }) {
   return (
     <form onSubmit={save} className="max-w-2xl space-y-4">
       <Field label={t('users.detail.profile.gender')} hint={t('users.detail.profile.genderHint')}>
-        <select value={form.gender} onChange={(e) => setForm({ ...form, gender: Number(e.target.value) })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
+        <select value={form.gender} onChange={(e) => setForm({ ...form, gender: Number(e.target.value) })} className="w-full rounded-lg border border-border bg-surface text-ink px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
           {GENDER_VALUES.map((g) => (
             <option key={g.value} value={g.value}>{t(g.i18nKey)}</option>
           ))}

@@ -487,7 +487,7 @@ export default function UsersPage() {
                   <select
                     value={editForm.status}
                     onChange={(e) => setEditForm((f) => ({ ...f, status: Number(e.target.value) }))}
-                    className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    className="w-full rounded-lg border border-border bg-surface text-ink px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   >
                     <option value={1}>{t('users.list.editModal.statusActive')}</option>
                     <option value={2}>{t('users.list.editModal.statusLocked')}</option>

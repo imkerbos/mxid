@@ -5,7 +5,7 @@ import { appApi, appGroupApi, protocolLabel, statusLabel, statusColor, cn, AppIc
 import type { App, AppGroup, PaginatedData, AppTemplate, AppTemplateListItem } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
 import AppGroupsTab from './AppGroupsTab'
-import { CodeField, Field, pageMotion, Button, ConfirmDialog, Modal } from '../../components/ui'
+import { CodeField, Field, pageMotion, Button, ConfirmDialog, Modal, INPUT_CLASS } from '../../components/ui'
 import { IconPicker } from '../../components/icon-picker/IconPicker'
 import { toast, extractMessage } from '../../components/ui/toast'
 import AccessPolicyTab from './AccessPolicyTab'
@@ -314,8 +314,10 @@ const DETAIL_TAB_KEYS: DetailTab[] = ['basic', 'protocol', 'credentials', 'acces
 // Input class constant
 // ---------------------------------------------------------------------------
 
-const inputCls =
-  'w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+// Was a local copy of the shared INPUT_CLASS that had drifted: it lacked the
+// bg-surface / text-ink pair, so every control using it fell back to the
+// browser's own colours and stayed light on the dark theme.
+const inputCls = INPUT_CLASS
 
 // Environment presets offered in the app-detail select; admins may still type a
 // custom value via the "custom" option. Keep in sync with the portal's ENV_ORDER.

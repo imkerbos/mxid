@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Native controls stayed light on the dark theme. A `<select>`'s option list,
+  the date picker and the scrollbar are painted by the browser, not by CSS, so
+  no class reaches them — only `color-scheme` does, and neither app declared it.
+  The closed control looked right (Tailwind's preflight leaves it transparent,
+  so it took the surface behind it) and the mismatch appeared the moment the
+  list opened. Both apps now declare `color-scheme` alongside their palettes.
+- Nine hand-written `<select>` elements carried no surface or ink token, and
+  the app-management page used a local copy of `INPUT_CLASS` that had drifted
+  from the shared one by exactly those two classes. The copy is gone; it now
+  imports the shared constant.
+
 ## [1.8.5] — 2026-08-06
 
 ### Fixed
