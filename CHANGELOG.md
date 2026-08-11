@@ -5,7 +5,7 @@ All notable changes to MXID are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.9.0] — 2026-08-11
 
 ### Added
 - Deleted accounts can be restored from the console user list. Previously a soft-deleted user
@@ -976,7 +976,8 @@ Initial public preview. Two integrations verified end-to-end: **Grafana (OIDC)**
 - pnpm workspaces (`console` / `portal` / `shared`).
 - Tailwind v4 monorepo `@source` directive so shared package UI compiles into both SPAs.
 
-[Unreleased]: https://github.com/imkerbos/mxid/compare/v1.8.6...HEAD
+[Unreleased]: https://github.com/imkerbos/mxid/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/imkerbos/mxid/compare/v1.8.6...v1.9.0
 [1.8.6]: https://github.com/imkerbos/mxid/compare/v1.8.5...v1.8.6
 [1.8.5]: https://github.com/imkerbos/mxid/compare/v1.8.4...v1.8.5
 [1.8.4]: https://github.com/imkerbos/mxid/compare/v1.8.3...v1.8.4
