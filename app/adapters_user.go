@@ -29,9 +29,48 @@ func (a *userExternalResolver) Resolve(ctx context.Context, in *registry.Resolve
 		AutoCreate: in.AutoCreate, DefaultOrgID: in.DefaultOrgID,
 	})
 	if err != nil {
-		return 0, "", err
+		return 0, "", translateSeamErr(err)
 	}
 	return u.ID, u.Username, nil
+}
+
+// bindIdentityAdapter maps the neutral EE seam type onto the CE user service.
+func bindIdentityAdapter(svc *user.Service) registry.BindIdentityFunc {
+	return func(ctx context.Context, in *registry.BindIdentityInput) error {
+		err := svc.BindExternalIdentity(ctx, &user.BindIdentityInput{
+			TenantID:     in.TenantID,
+			UserID:       in.UserID,
+			ProviderType: in.ProviderType,
+			ProviderID:   in.ProviderID,
+			ExternalID:   in.ExternalID,
+			DisplayName:  in.DisplayName,
+			Raw:          in.Raw,
+		})
+		return translateSeamErr(err)
+	}
+}
+
+// translateSeamErr maps a CE user-domain error onto the registry's stable,
+// EE-importable sentinel (see registry.ErrExternalIDTaken's doc comment for
+// why this exists) so an EE caller can react to a known identity-rebind
+// conflict via errors.Is without ever seeing — or forwarding — the
+// underlying message. Anything else passes through unchanged: the EE side
+// treats an unrecognized error as opaque and must not put ITS text anywhere
+// user-visible either, but that is enforced on the EE side of the seam, not
+// here.
+func translateSeamErr(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, user.ErrExternalIDTaken):
+		return registry.ErrExternalIDTaken
+	case errors.Is(err, user.ErrIdentityAlreadyBound):
+		return registry.ErrIdentityAlreadyBound
+	case errors.Is(err, user.ErrExternalUserDeleted):
+		return registry.ErrExternalUserDeleted
+	default:
+		return err
+	}
 }
 
 type dbTenantResolver struct{ app *bootstrap.App }

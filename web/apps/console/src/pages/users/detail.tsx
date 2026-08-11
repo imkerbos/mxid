@@ -10,6 +10,7 @@ import {
   LogOut,
   Mail,
   Phone,
+  RotateCcw,
   ShieldCheck,
   Trash2,
   Unlink,
@@ -613,15 +614,22 @@ function GroupsTab({ userID }: { userID: string }) {
 function IdentitiesTab({ userID }: { userID: string }) {
   const { t } = useTranslation()
   const [items, setItems] = useState<UserIdentity[]>([])
+  const [deleted, setDeleted] = useState<UserIdentity[]>([])
   const [loading, setLoading] = useState(true)
   const [removingID, setRemovingID] = useState<string | null>(null)
   const [delIdentity, setDelIdentity] = useState<UserIdentity | null>(null)
+  const [restoring, setRestoring] = useState<string | null>(null)
+  const [restoreTarget, setRestoreTarget] = useState<UserIdentity | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const list = await userApi.listIdentities(userID)
-      setItems(list ?? [])
+      const [live, gone] = await Promise.all([
+        userApi.listIdentities(userID),
+        userApi.listDeletedIdentities(userID),
+      ])
+      setItems(live ?? [])
+      setDeleted(gone ?? [])
     } finally {
       setLoading(false)
     }
@@ -647,10 +655,26 @@ function IdentitiesTab({ userID }: { userID: string }) {
     }
   }
 
+  const confirmRestore = async () => {
+    const it = restoreTarget
+    if (!it) return
+    setRestoreTarget(null)
+    setRestoring(it.id)
+    try {
+      await userApi.restoreIdentity(userID, it.id)
+      toast.success(t('users.detail.identitiesTab.restoreSuccess'))
+      await load()
+    } catch (e) {
+      toast.error(t('users.detail.identitiesTab.restoreFailed'), extractMessage(e))
+    } finally {
+      setRestoring(null)
+    }
+  }
+
   if (loading) {
     return <div className="py-8 text-center text-sm text-faint"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
   }
-  if (items.length === 0) {
+  if (items.length === 0 && deleted.length === 0) {
     return <div className="py-8 text-center text-sm text-faint">{t('users.detail.identitiesTab.empty')}</div>
   }
   return (
@@ -678,12 +702,52 @@ function IdentitiesTab({ userID }: { userID: string }) {
         </div>
       ))}
 
+      {deleted.length > 0 && (
+        <div className="mt-6">
+          <h4 className="mb-2 text-xs font-medium uppercase tracking-wide text-faint">
+            {t('users.detail.identitiesTab.unboundTitle')}
+          </h4>
+          <div className="space-y-2">
+            {deleted.map((it) => (
+              <div key={it.id} className="flex items-center justify-between rounded-lg border border-dashed border-border px-4 py-3 opacity-70">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-ink">{it.provider_type}</span>
+                    <code className="rounded bg-surface-muted px-1.5 py-0.5 text-xs text-muted">{it.provider_id}</code>
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted">
+                    {it.external_name ? `${it.external_name} · ` : ''}{it.external_id}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setRestoreTarget(it)}
+                  disabled={restoring === it.id}
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-faint hover:bg-surface-muted hover:text-ink disabled:opacity-50"
+                >
+                  {restoring === it.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                  {t('users.detail.identitiesTab.restore')}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <ConfirmDialog
         open={!!delIdentity}
         title={t('users.detail.identitiesTab.confirmUnbind', { provider: delIdentity?.provider_type ?? '' })}
         loading={removingID === delIdentity?.id}
         onConfirm={confirmUnbind}
         onCancel={() => setDelIdentity(null)}
+      />
+
+      <ConfirmDialog
+        open={!!restoreTarget}
+        title={t('users.detail.identitiesTab.confirmRestore', { provider: restoreTarget?.provider_type ?? '' })}
+        danger={false}
+        loading={restoring === restoreTarget?.id}
+        onConfirm={confirmRestore}
+        onCancel={() => setRestoreTarget(null)}
       />
     </div>
   )

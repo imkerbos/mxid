@@ -103,6 +103,18 @@ export const portalApi = {
     portalClient.delete<ApiResponse<null>>('/security/mfa/totp').then(r => r.data),
   listIdentities: () =>
     portalClient.get<ApiResponse<IdentityInfo[]>>('/security/identities').then(r => r.data.data),
+  // Start a self-service bind of an external-IdP account to the caller's own
+  // profile. Step-up gated server-side (fresh MFA required) and answers JSON,
+  // not a 302 — this is a POST, so the browser must not auto-follow a
+  // cross-origin redirect; the caller navigates itself to authorize_url.
+  // The IdP list to offer buttons for is externalIdpApi.listPublic() (the
+  // same list the login page renders) — there is no separate portal-only list.
+  startIdentityBind: (idpCode: string) =>
+    portalClient
+      .post<ApiResponse<{ authorize_url: string }>>(
+        `/security/identities/bind/${encodeURIComponent(idpCode)}`,
+      )
+      .then(r => r.data.data),
   listSessions: () =>
     portalClient.get<ApiResponse<SessionInfo[]>>('/security/sessions').then(r => r.data.data),
   deleteSession: (sid: string) =>

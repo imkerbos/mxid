@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Plus, RotateCcw, Trash2, Loader2, Pencil, ShieldCheck, ShieldOff } from 'lucide-react'
+import { Plus, RotateCcw, Trash2, Loader2, Pencil, ShieldCheck, ShieldOff, Undo2 } from 'lucide-react'
 import { userApi, formatDate, statusLabel, statusColor, cn, useTranslation, useUrlState, UserStatus } from '@mxid/shared'
 import { Field, pageMotion, Button, Card, DataTable, Modal, Pagination, SearchInput, Select, FilterBar, ConfirmDialog } from '@mxid/shared/ui'
 import type { Column } from '@mxid/shared/ui'
@@ -15,8 +15,10 @@ export default function UsersPage() {
   const [data, setData] = useState<PaginatedData<User>>({ items: [], total: 0, page: 1, page_size: 20 })
   const [loading, setLoading] = useState(true)
   // Filters live in the URL so the view is shareable and survives reload /
-  // back-forward (and the post-login bounce back here).
-  const [q, setQ] = useUrlState({ page: 1, search: '', status: '' })
+  // back-forward (and the post-login bounce back here). showDeleted is a
+  // '0' | '1' string (useUrlState only knows string | number) — off by
+  // default so the ordinary list stays clean of soft-deleted accounts.
+  const [q, setQ] = useUrlState({ page: 1, search: '', status: '', showDeleted: '0' })
   // Local echo for the debounced search box.
   const [search, setSearch] = useState(q.search)
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -39,12 +41,17 @@ export default function UsersPage() {
   const [delUser, setDelUser] = useState<User | null>(null)
   const [deletingUser, setDeletingUser] = useState(false)
 
+  // Restore modal state
+  const [restoreTarget, setRestoreTarget] = useState<User | null>(null)
+  const [restoring, setRestoring] = useState(false)
+
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
       const params: Record<string, unknown> = { page: q.page, page_size: 20 }
       if (q.search) params.search = q.search
       if (q.status !== '') params.status = Number(q.status)
+      if (q.showDeleted === '1') params.include_deleted = true
       const result = await userApi.list(params)
       setData(result)
     } catch {
@@ -52,7 +59,7 @@ export default function UsersPage() {
     } finally {
       setLoading(false)
     }
-  }, [q.page, q.search, q.status])
+  }, [q.page, q.search, q.status, q.showDeleted])
 
   useEffect(() => {
     void loadData()
@@ -88,6 +95,21 @@ export default function UsersPage() {
       toast.error(t('common.failed'), extractMessage(e))
     } finally {
       setDeletingUser(false)
+    }
+  }
+
+  const confirmRestoreUser = async () => {
+    if (!restoreTarget) return
+    setRestoring(true)
+    try {
+      await userApi.restoreUser(restoreTarget.id)
+      toast.success(t('users.list.restoreUserSuccess'))
+      setRestoreTarget(null)
+      loadData()
+    } catch (e) {
+      toast.error(t('users.list.restoreUserFailed'), extractMessage(e))
+    } finally {
+      setRestoring(false)
     }
   }
 
@@ -184,7 +206,7 @@ export default function UsersPage() {
       key: 'username',
       title: t('users.columns.username'),
       render: (u) => (
-        <div className="flex items-center gap-2.5">
+        <div className={cn('flex items-center gap-2.5', u.deleted_at && 'opacity-50')}>
           {u.avatar ? (
             <img src={u.avatar} alt={u.username} className="h-7 w-7 shrink-0 rounded-full object-cover" />
           ) : (
@@ -199,30 +221,33 @@ export default function UsersPage() {
     {
       key: 'display_name',
       title: t('users.columns.displayName'),
-      render: (u) => <span className="text-muted">{u.display_name || '-'}</span>,
+      render: (u) => <span className={cn('text-muted', u.deleted_at && 'opacity-50')}>{u.display_name || '-'}</span>,
     },
     {
       key: 'email',
       title: t('users.columns.email'),
-      render: (u) => <span className="text-muted">{u.email || '-'}</span>,
+      render: (u) => <span className={cn('text-muted', u.deleted_at && 'opacity-50')}>{u.email || '-'}</span>,
     },
     {
       key: 'status',
       title: t('users.columns.status'),
-      render: (u) => (
-        <span className={cn('text-sm font-medium', statusColor(u.status))}>{statusLabel(u.status)}</span>
-      ),
+      render: (u) =>
+        u.deleted_at ? (
+          <span className="text-sm font-medium text-red-500 opacity-50">{t('users.list.deleted')}</span>
+        ) : (
+          <span className={cn('text-sm font-medium', statusColor(u.status))}>{statusLabel(u.status)}</span>
+        ),
     },
     {
       key: 'mfa',
       title: t('users.columns.mfa'),
       render: (u) =>
         u.mfa_enabled ? (
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
+          <span className={cn('inline-flex items-center gap-1 text-xs font-medium text-emerald-600', u.deleted_at && 'opacity-50')}>
             <ShieldCheck className="h-3.5 w-3.5" /> {t('users.mfa.on')}
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 text-xs text-faint">
+          <span className={cn('inline-flex items-center gap-1 text-xs text-faint', u.deleted_at && 'opacity-50')}>
             <ShieldOff className="h-3.5 w-3.5" /> {t('users.mfa.off')}
           </span>
         ),
@@ -230,57 +255,69 @@ export default function UsersPage() {
     {
       key: 'last_login',
       title: t('users.columns.lastLogin'),
-      render: (u) => <span className="whitespace-nowrap text-muted">{formatDate(u.last_login_at)}</span>,
+      render: (u) => <span className={cn('whitespace-nowrap text-muted', u.deleted_at && 'opacity-50')}>{formatDate(u.last_login_at)}</span>,
     },
     {
       key: 'created_at',
       title: t('users.columns.createdAt'),
-      render: (u) => <span className="whitespace-nowrap text-muted">{formatDate(u.created_at)}</span>,
+      render: (u) => <span className={cn('whitespace-nowrap text-muted', u.deleted_at && 'opacity-50')}>{formatDate(u.created_at)}</span>,
     },
     {
       key: 'actions',
       title: t('common.actions'),
       align: 'right',
-      render: (u) => (
-        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-          <button
-            onClick={() => openEditModal(u)}
-            className="rounded p-1 text-faint hover:bg-blue-50 hover:text-blue-500"
-            title={t('common.edit')}
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </button>
-          {u.status === UserStatus.Active ? (
+      render: (u) =>
+        u.deleted_at ? (
+          <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
             <button
-              onClick={() => handleStatusChange(u, 3)}
-              className="rounded px-2 py-1 text-xs text-muted hover:bg-surface-muted hover:text-ink"
+              onClick={() => setRestoreTarget(u)}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-faint hover:bg-surface-muted hover:text-ink"
+              title={t('users.list.restoreUser')}
             >
-              {t('common.disable')}
+              <Undo2 className="h-3.5 w-3.5" />
+              {t('users.list.restoreUser')}
             </button>
-          ) : (
+          </div>
+        ) : (
+          <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
             <button
-              onClick={() => handleStatusChange(u, 1)}
-              className="rounded px-2 py-1 text-xs text-emerald-600 hover:bg-emerald-50"
+              onClick={() => openEditModal(u)}
+              className="rounded p-1 text-faint hover:bg-blue-50 hover:text-blue-500"
+              title={t('common.edit')}
             >
-              {t('common.enable')}
+              <Pencil className="h-3.5 w-3.5" />
             </button>
-          )}
-          <button
-            onClick={() => setResetTarget(u)}
-            className="rounded p-1 text-faint hover:bg-surface-muted hover:text-muted"
-            title={t('users.resetPassword')}
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-          </button>
-          <button
-            onClick={() => setDelUser(u)}
-            className="rounded p-1 text-faint hover:bg-red-50 hover:text-red-500"
-            title={t('common.delete')}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      ),
+            {u.status === UserStatus.Active ? (
+              <button
+                onClick={() => handleStatusChange(u, 3)}
+                className="rounded px-2 py-1 text-xs text-muted hover:bg-surface-muted hover:text-ink"
+              >
+                {t('common.disable')}
+              </button>
+            ) : (
+              <button
+                onClick={() => handleStatusChange(u, 1)}
+                className="rounded px-2 py-1 text-xs text-emerald-600 hover:bg-emerald-50"
+              >
+                {t('common.enable')}
+              </button>
+            )}
+            <button
+              onClick={() => setResetTarget(u)}
+              className="rounded p-1 text-faint hover:bg-surface-muted hover:text-muted"
+              title={t('users.resetPassword')}
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => setDelUser(u)}
+              className="rounded p-1 text-faint hover:bg-red-50 hover:text-red-500"
+              title={t('common.delete')}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ),
     },
   ]
 
@@ -315,6 +352,15 @@ export default function UsersPage() {
             <option value={3}>{t('users.statusDisabled')}</option>
             <option value={4}>{t('users.statusPending')}</option>
           </Select>
+          <label className="flex items-center gap-2 text-sm text-muted">
+            <input
+              type="checkbox"
+              checked={q.showDeleted === '1'}
+              onChange={(e) => setQ({ showDeleted: e.target.checked ? '1' : '0', page: 1 })}
+              className="h-4 w-4 rounded border-border"
+            />
+            {t('users.list.showDeleted')}
+          </label>
         </FilterBar>
 
         <Card className="overflow-hidden hover:shadow-card">
@@ -514,6 +560,15 @@ export default function UsersPage() {
         loading={deletingUser}
         onConfirm={confirmDeleteUser}
         onCancel={() => setDelUser(null)}
+      />
+
+      <ConfirmDialog
+        open={!!restoreTarget}
+        title={t('users.list.confirmRestoreUser', { username: restoreTarget?.username ?? '' })}
+        danger={false}
+        loading={restoring}
+        onConfirm={confirmRestoreUser}
+        onCancel={() => setRestoreTarget(null)}
       />
     </motion.div>
   )

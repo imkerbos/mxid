@@ -32,6 +32,14 @@ var highRiskWriteSuffixes = []string{
 	"/shared-credential",           // set a form app's shared service-account password
 	"/access-requests/:id/approve", // JIT: approve a temporary privilege elevation
 	"/access-requests/:id/revoke",  // JIT: revoke an active temporary grant
+	"/identities/:iid/restore",     // hand an external login back to a user
+	// "/restore" (bare) additionally covers POST /users/:id/restore, undoing a
+	// soft-deleted account. It also re-matches the identities entry above
+	// (harmless — both are meant to be high-risk); it's the ONLY other route
+	// shape ending in /restore today. Grep '"/restore"' in internal/ + app/
+	// before widening this suffix further, so a future unrelated /restore
+	// route doesn't get silently swept into step-up.
+	"/restore",
 }
 
 // IsHighRiskConsole reports whether a console request should be gated by

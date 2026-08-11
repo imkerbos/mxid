@@ -534,6 +534,7 @@ so they are asserted by tests rather than documented and hoped for:
 | A session owing a password change reaches nothing but the change-password route | `internal/domain/authn/password_gate_test.go` |
 | No goroutine is started without a recover (an unrecovered panic terminates the process) | `pkg/safego/no_bare_goroutines_test.go` |
 | Every error response carries a traceId (no hand-written body) | `pkg/response/no_bypass_test.go` |
+| No handler answers `204 No Content` — an empty body can't carry the `{code,message,data}` envelope, so the SPA's success interceptor reads `data.code` off nothing, sees `undefined`, and reports the write as failed even though it succeeded | `internal/httpguard/no_204_test.go` |
 | Every event with an audit allow-list is actually subscribed to | `internal/domain/audit/subscription_coverage_test.go` |
 | No allow-listed audit field is silently removed by the sensitive-key filter | `internal/domain/audit/schema_honesty_test.go` |
 | A snowflake id survives the trip to the client with every digit intact | `internal/domain/audit/id_precision_test.go` |
@@ -649,6 +650,45 @@ packages, and runs the same `app.Run()`.
   list it only after the package has been blank-imported and its `init()` has
   called `registry.Register*`. This prevents clients from relying on a feature
   that the current binary cannot serve.
+
+### Named cross-module seams
+
+`registry.InitContext` (`pkg/ee/registry/seam.go`) carries the handful of CE-domain decisions an
+EE feature needs but cannot import directly (internal packages, separate Go module). Most of its
+fields are narrow one-off hooks; three are architecturally significant enough to call out by name:
+
+- **`ExternalLoginFunc`** — resolves an external identity to a local user on an ordinary
+  external-IdP login (find the linked user, or auto-provision one). Implemented by the CE user
+  domain.
+- **`BindIdentityFunc`** — links an already-authenticated external identity to the CE user that
+  is already signed in: self-service account *linking*, as opposed to `ExternalLoginFunc`'s
+  *login*. Implemented by the CE user domain, over the same three-way occupancy rule login uses —
+  identity unclaimed → create the binding; held by a live user → reject; held by a *deleted* user
+  → take it over and record a high-risk audit event, because the caller has just proven control of
+  the identity via OAuth and the previous owner no longer exists to contest it. The takeover event
+  rides on `event.UserUpdated` with `action=identity_taken_over` and `previous_user_id`; the audit
+  detail allow-list must keep naming those, since the callback route is a public GET that the
+  `api.*` catch-all does not cover, making this event the only record.
+  The CE side also re-checks the *caller* on every call: the bind is refused unless `in.UserID`
+  still loads as a live user in `in.TenantID`. Session revocation on delete is best-effort and
+  detached, so a soft-deleted account can still hold a working cookie, and neither the EE handler
+  (which takes the user id from Redis state and the tenant from the IdP row) nor anything else on
+  the request path re-reads `deleted_at`.
+
+  **Why linking lives in CE, not EE.** Deciding who may claim an external identity is a security
+  decision, and it has to live in auditable open code rather than a `garble -tiny`-obfuscated EE
+  binary. The alternative considered and rejected was letting an administrator type an
+  `external_id` by hand to (re-)create a binding: anyone holding `user.identity.manage` could then
+  graft a colleague's external account onto an account they control, and step-up plus audit only
+  tell you about it afterwards. `ExternalLoginFunc` already put this class of decision in CE for
+  login; `BindIdentityFunc` mirrors it for self-service binding.
+- **`OptionalSessionMiddlewareFunc`** — builds gin middleware that resolves a session cookie when
+  one is present and does nothing otherwise (it never rejects). Wraps CE's
+  `internal/domain/authn.OptionalAuthMiddleware`. The external-IdP callback route serves two
+  different callers on the same URL: an anonymous visitor signing in, and an already-signed-in
+  user completing a self-service bind — only the second needs to know who is calling, and
+  `mxid-ee` cannot import `internal/domain/authn` directly. Hence the seam, mounted on the single
+  callback route rather than a whole route group.
 
 User-facing matrix, activation, and limits: [EDITIONS.md](EDITIONS.md).
 

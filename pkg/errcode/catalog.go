@@ -124,6 +124,22 @@ const (
 	NumPasswordNeedLower   = 40027 // errors.pwdNeedLower
 	NumPasswordNeedDigit   = 40028 // errors.pwdNeedDigit
 	NumPasswordNeedSpecial = 40029 // errors.pwdNeedSpecial
+
+	// Identity-rebind conflicts (40907-40909 were the next free numbers in the
+	// 409xx family; 40902-40906 were already taken — see the Generic Catalog
+	// entries around 40902 for what those mean). These three ARE localized:
+	// the sentence a person reads after a failed bind or restore must not
+	// depend on the server's English wording, so the SPA replaces it exactly
+	// like every other entry in this block. See errors.externalIDTaken /
+	// identityAlreadyBound / externalUserDeleted in toast.tsx.
+	NumExternalIDTaken      = 40907 // errors.externalIDTaken
+	NumIdentityAlreadyBound = 40908 // errors.identityAlreadyBound
+	NumExternalUserDeleted  = 40909 // errors.externalUserDeleted
+	// NumIdentityOwnerDeleted refuses an admin restore of a binding whose user
+	// is soft-deleted. Distinct from NumExternalUserDeleted, which refuses a
+	// LOGIN: this one is addressed to an administrator who can fix it, and its
+	// sentence has to name the fix (restore the account first).
+	NumIdentityOwnerDeleted = 40910 // errors.identityOwnerDeleted
 )
 
 // Numbers that replaced a collided use of a localized code. Kept as named
@@ -212,6 +228,16 @@ var Catalog = map[int]struct {
 	40903:       {Generic, "tertiary uniqueness conflict"},
 	40904:       {Generic, "user: last super admin cannot be demoted"},
 	40905:       {Generic, "user: password already set"},
+
+	// Identity-rebind conflicts. All Localized: each is a sentence an end
+	// user or admin reads after a failed bind/restore, and it must not
+	// depend on the server's own (English) wording. See toast.tsx
+	// LOCALIZED_CODES for the matching zh-CN/en-US sentences.
+	NumExternalIDTaken:      {Localized, "external account already bound to a live user"},
+	NumIdentityAlreadyBound: {Localized, "identity binding is already active"},
+	NumExternalUserDeleted:  {Localized, "the account behind this external identity was deleted"},
+	NumIdentityOwnerDeleted: {Localized, "the account this binding belongs to is deleted; restore it first"},
+
 	// Localized: every domain whose resource is keyed by an operator-chosen
 	// `code` reports a duplicate with THIS number, so the SPA can say "that
 	// code is taken, pick another" once instead of surfacing an English

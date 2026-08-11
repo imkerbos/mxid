@@ -114,16 +114,17 @@ func (UserPasswordHistory) TableName() string {
 
 // UserIdentity represents the mxid_user_identity table.
 type UserIdentity struct {
-	ID           int64     `gorm:"column:id;primaryKey" json:"id"`
-	UserID       int64     `gorm:"column:user_id;not null" json:"user_id"`
-	TenantID     int64     `gorm:"column:tenant_id;not null" json:"tenant_id"`
-	ProviderType string    `gorm:"column:provider_type;not null;size:32" json:"provider_type"`
-	ProviderID   string    `gorm:"column:provider_id;not null;size:128" json:"provider_id"`
-	ExternalID   string    `gorm:"column:external_id;not null;size:256" json:"external_id"`
-	ExternalName *string   `gorm:"column:external_name;size:256" json:"external_name"`
-	Extra        *string   `gorm:"column:extra;type:jsonb;default:'{}'" json:"extra"`
-	CreatedAt    time.Time `gorm:"column:created_at;not null" json:"created_at"`
-	UpdatedAt    time.Time `gorm:"column:updated_at;not null" json:"updated_at"`
+	ID           int64          `gorm:"column:id;primaryKey" json:"id"`
+	UserID       int64          `gorm:"column:user_id;not null" json:"user_id"`
+	TenantID     int64          `gorm:"column:tenant_id;not null" json:"tenant_id"`
+	ProviderType string         `gorm:"column:provider_type;not null;size:32" json:"provider_type"`
+	ProviderID   string         `gorm:"column:provider_id;not null;size:128" json:"provider_id"`
+	ExternalID   string         `gorm:"column:external_id;not null;size:256" json:"external_id"`
+	ExternalName *string        `gorm:"column:external_name;size:256" json:"external_name"`
+	Extra        *string        `gorm:"column:extra;type:jsonb;default:'{}'" json:"extra"`
+	CreatedAt    time.Time      `gorm:"column:created_at;not null" json:"created_at"`
+	UpdatedAt    time.Time      `gorm:"column:updated_at;not null" json:"updated_at"`
+	DeletedAt    gorm.DeletedAt `gorm:"column:deleted_at;index" json:"-"`
 }
 
 // TableName returns the table name for UserIdentity.

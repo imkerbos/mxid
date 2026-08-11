@@ -34,6 +34,10 @@ export const userApi = {
     client.delete<ApiResponse<null>>(`/users/${id}`).then(r => r.data),
   updateStatus: (id: UID, status: number) =>
     client.put<ApiResponse<null>>(`/users/${id}/status`, { status }).then(r => r.data),
+  // Restores a soft-deleted account. Does NOT restore its identity bindings —
+  // those are a separate, separately-audited restore from the user detail page.
+  restoreUser: (id: UID) =>
+    client.post<ApiResponse<null>>(`/users/${id}/restore`).then(r => r.data),
   resetPassword: (id: UID, new_password: string, must_change = true) =>
     client.put<ApiResponse<null>>(`/users/${id}/password`, { new_password, must_change }).then(r => r.data),
 
@@ -46,6 +50,10 @@ export const userApi = {
     client.get<ApiResponse<UserIdentity[]>>(`/users/${id}/identities`).then(r => r.data.data),
   unbindIdentity: (id: UID, identityId: UID) =>
     client.delete<ApiResponse<null>>(`/users/${id}/identities/${identityId}`).then(r => r.data),
+  listDeletedIdentities: (id: UID) =>
+    client.get<ApiResponse<UserIdentity[]>>(`/users/${id}/identities/deleted`).then(r => r.data.data),
+  restoreIdentity: (id: UID, identityId: UID) =>
+    client.post<ApiResponse<null>>(`/users/${id}/identities/${identityId}/restore`).then(r => r.data),
 
   listMFA: (id: UID) =>
     client.get<ApiResponse<UserMFA[]>>(`/users/${id}/mfa`).then(r => r.data.data),

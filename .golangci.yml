@@ -57,6 +57,15 @@ linters-settings:
       - 'github.com/imkerbos/mxid/app\.userExternalResolver$'
       - 'github.com/imkerbos/mxid/app\.userLoginRecorderAdapter$'
       - 'github.com/imkerbos/mxid/app\.userMFAVerifierAdapter$'
+      # Not in package app, but the same failure mode and a worse blast radius:
+      # InitContext is the CE→EE dependency seam, built from a single composite
+      # literal in app/run.go. A field omitted there compiles, and the EE
+      # feature that needed it nil-derefs (or silently skips a security hook
+      # like ConsoleGate) on the first request that reaches it. All 16 fields
+      # are set today, so this line is known-safe now and will never be cheaper
+      # to add. app/wiring_test.go only parses package app, so it neither
+      # requires nor flags this entry.
+      - 'github.com/imkerbos/mxid/pkg/ee/registry\.InitContext$'
 
 issues:
   max-issues-per-linter: 0
