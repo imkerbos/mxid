@@ -3,6 +3,7 @@ package access
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -326,8 +327,17 @@ func TestConsoleDeleteEligibility_Returns204(t *testing.T) {
 
 	r := consoleEngine(h)
 	w := doDELETE(r, fmt.Sprintf("/api/v1/console/access-eligibilities/%d", elig.ID))
-	if w.Code != http.StatusNoContent {
-		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("delete eligibility: want 200, got %d (body=%s)", w.Code, w.Body.String())
+	}
+	var env struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &env); err != nil {
+		t.Fatalf("delete eligibility: response body is not an envelope: %v (body=%s)", err, w.Body.String())
+	}
+	if env.Code != 0 {
+		t.Fatalf("delete eligibility: want envelope code 0, got %d", env.Code)
 	}
 }
 

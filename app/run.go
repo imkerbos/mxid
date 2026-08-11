@@ -58,13 +58,13 @@ import (
 	"github.com/imkerbos/mxid/pkg/metrics"
 	"github.com/imkerbos/mxid/pkg/pgpartition"
 	"github.com/imkerbos/mxid/pkg/ratelimit"
+	"github.com/imkerbos/mxid/pkg/safego"
 	"github.com/imkerbos/mxid/pkg/session"
 	"github.com/imkerbos/mxid/pkg/sms"
 	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"github.com/imkerbos/mxid/pkg/updatecheck"
 	"github.com/imkerbos/mxid/pkg/urlswap"
 	"github.com/imkerbos/mxid/pkg/version"
-	"github.com/imkerbos/mxid/pkg/safego"
 )
 
 // Run starts the MXID server: parse flags, build the app, register modules,
@@ -1122,6 +1122,7 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 		App:           a,
 		SessionMgr:    sessionMgr,
 		ExternalLogin: newUserExternalResolver(userModule).Resolve,
+		BindIdentity:  bindIdentityAdapter(userModule.Service),
 		UpdateLastLogin: func(ctx context.Context, userID int64, ip string) error {
 			return userModule.Repo.UpdateLastLogin(ctx, userID, ip)
 		},
@@ -1186,6 +1187,13 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 		// stepUpDeps is built above (reused by the JIT StepUpChecker); the checker
 		// is stateless so a dedicated instance here is fine.
 		StepUpFresh: authn.NewStepUpChecker(stepUpDeps).Fresh,
+		// Optional-session resolver for the external-IdP callback: it must serve
+		// both an anonymous login and a signed-in user's bind round-trip through
+		// the same URL (adding a second redirect_uri per tenant is the rejected
+		// alternative — see registry.OptionalSessionMiddlewareFunc).
+		OptionalSessionMiddleware: func(namespace string) gin.HandlerFunc {
+			return authn.OptionalAuthMiddleware(sessionMgr, namespace)
+		},
 		// App access-policy check for EE form-fill: only reveal a credential for
 		// an app the user may launch. accessSvc is assigned below; the closure
 		// runs at request time so the late binding is safe.

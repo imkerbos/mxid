@@ -122,3 +122,9 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm -r build
+
+      - name: test web
+        working-directory: web
+        # --if-present: only @mxid/shared has a `test` script today; the other
+        # workspaces (console, portal) have none, and this must not fail on that.
+        run: pnpm -r --if-present test

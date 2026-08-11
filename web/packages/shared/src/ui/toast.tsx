@@ -14,7 +14,13 @@
 import { CheckCircle2, XCircle, Info, AlertTriangle, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import i18next from 'i18next'
-import { CODE_EE_FEATURE_REQUIRED } from '../api/client'
+import {
+  CODE_EE_FEATURE_REQUIRED,
+  CODE_EXTERNAL_ID_TAKEN,
+  CODE_IDENTITY_ALREADY_BOUND,
+  CODE_EXTERNAL_USER_DELETED,
+  CODE_IDENTITY_OWNER_DELETED,
+} from '../api/client'
 import { cn } from '../utils'
 
 type ToastKind = 'success' | 'error' | 'info' | 'warning'
@@ -80,6 +86,16 @@ const LOCALIZED_CODES: Record<number, string> = {
   40027: 'errors.pwdNeedLower',
   40028: 'errors.pwdNeedDigit',
   40029: 'errors.pwdNeedSpecial',
+  // Identity-rebind conflicts (console's admin restore, the portal bind button's
+  // own JSON errors). NumExternalIDTaken needs its own sentence — the account is
+  // held by someone else, not just "already bound" — so an admin restoring a
+  // stale binding doesn't read it as their own mistake.
+  [CODE_EXTERNAL_ID_TAKEN]: 'errors.externalIDTaken',
+  [CODE_IDENTITY_ALREADY_BOUND]: 'errors.identityAlreadyBound',
+  [CODE_EXTERNAL_USER_DELETED]: 'errors.externalUserDeleted',
+  // Admin-facing sibling of externalUserDeleted: the restore was refused
+  // because the binding's OWNER is deleted, and the console can fix that.
+  [CODE_IDENTITY_OWNER_DELETED]: 'errors.identityOwnerDeleted',
 }
 
 // extractMessage pulls a human-readable error message from an axios / ApiError

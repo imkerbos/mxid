@@ -41,6 +41,12 @@ export default {
     // One sentence for both step-up proofs: the prompt only ever showed the
     // user one of them, so naming which failed adds nothing.
     stepUpFailed: 'That did not check out. Try again — you are still signed in.',
+    // Identity-rebind conflicts.
+    externalIDTaken: 'That account is already bound to another user and cannot be bound again.',
+    identityAlreadyBound: 'This binding is already active — there is nothing to redo.',
+    externalUserDeleted: 'The account behind this external identity has been deleted.',
+    identityOwnerDeleted:
+      'This account is deleted. Restore the account first, then restore its binding.',
   },
   common: {
     validation: {
@@ -394,9 +400,15 @@ export default {
       },
       identitiesTab: {
         empty: 'This user has no third-party identities bound',
-        confirmUnbind: 'Unbind {{provider}} identity?',
+        confirmUnbind: 'Unbinding only dissolves the link to {{provider}} — it does not block access: the user can restore it themselves by signing in with {{provider}} again, and you can restore it from "Unbound" below. MFA is unaffected. To actually cut off access, lock or disable the account.',
         boundAt: 'Bound at {{date}}',
         unbind: 'Unbind',
+        unboundTitle: 'Unbound',
+        unboundEmpty: 'No unbound identities',
+        restore: 'Restore',
+        confirmRestore: 'Restore the {{provider}} binding? The user will be able to sign in through it again.',
+        restoreSuccess: 'Binding restored',
+        restoreFailed: 'Failed to restore binding',
       },
       mfaTab: {
         empty: 'This user has no MFA factors enabled',
@@ -457,6 +469,12 @@ export default {
     },
     list: {
       confirmDelete: 'Delete user "{{name}}"? This action cannot be undone.',
+      deleted: 'Deleted',
+      showDeleted: 'Show deleted',
+      restoreUser: 'Restore account',
+      confirmRestoreUser: 'Restore account "{{username}}"? Its external identity bindings need to be restored separately.',
+      restoreUserSuccess: 'Account restored',
+      restoreUserFailed: 'Failed to restore account',
       createModal: {
         title: 'New user',
         username: 'Username',
@@ -1383,6 +1401,23 @@ export default {
       backupConfirmSaved: 'I saved them',
       backupFileOneShot: '# Each code can only be used once. Keep them safe.',
       backupFileGenAt: '# Generated at: {{at}}',
+    },
+    identities: {
+      title: 'Identity bindings',
+      hint: 'Bind an account to sign in with it directly. If an administrator removes a binding, you can recover it yourself by signing in with that provider again — no administrator action needed.',
+      bind: 'Bind',
+      bound: 'Bound',
+      bindSuccess: 'Bound successfully',
+      bindFailed: 'Bind failed',
+      // Generic fallback when the backend's reason slug isn't one of the
+      // three known conflicts (errors.externalIDTaken etc.) — the backend's
+      // own catch-all slug, or a value this build predates. Never shown next
+      // to a raw token; always this sentence instead.
+      bindGenericFailed: 'Please try again. If it keeps failing, contact your administrator.',
+      // The bind round-trip's own session-mismatch guard tripped: the browser
+      // that completed the third-party login isn't the one that started it.
+      bindSessionMismatch: 'Your session changed mid-flow. Click bind again on this page and complete the sign-in in the same browser session.',
+      empty: 'No third-party accounts available to bind',
     },
     apiTokens: {
       newToken: 'New token',

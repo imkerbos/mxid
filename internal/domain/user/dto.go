@@ -126,6 +126,23 @@ type UserIdentityResponse struct {
 	CreatedAt    string `json:"created_at"`
 }
 
+// ToIdentityResponse maps a UserIdentity to its API view. Shared by the
+// active-bindings and deleted-bindings ("unbound") list handlers so the two
+// stay in sync rather than drifting apart as separate copies.
+func ToIdentityResponse(idt *UserIdentity) *UserIdentityResponse {
+	out := &UserIdentityResponse{
+		ID:           idt.ID,
+		ProviderType: idt.ProviderType,
+		ProviderID:   idt.ProviderID,
+		ExternalID:   idt.ExternalID,
+		CreatedAt:    idt.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}
+	if idt.ExternalName != nil {
+		out.ExternalName = *idt.ExternalName
+	}
+	return out
+}
+
 // ListUsersRequest holds query parameters for listing users.
 type ListUsersRequest struct {
 	Page     int    `form:"page"`
@@ -133,6 +150,9 @@ type ListUsersRequest struct {
 	Search   string `form:"search"`
 	Status   *int   `form:"status"`
 	OrgID    *int64 `form:"org_id"`
+	// IncludeDeleted surfaces soft-deleted accounts so an administrator can find
+	// and restore one. Off by default — the ordinary list must stay clean.
+	IncludeDeleted bool `form:"include_deleted"`
 }
 
 // UserResponse is the API response for a user.
@@ -165,6 +185,10 @@ type UserResponse struct {
 	CreatedBy   *int64              `json:"created_by,string,omitempty"`
 	UpdatedBy   *int64              `json:"updated_by,string,omitempty"`
 	Detail      *UserDetailResponse `json:"detail,omitempty"`
+	// DeletedAt is only ever populated when the list was queried with
+	// include_deleted — a live account always omits it. Lets the console list
+	// tell a soft-deleted row apart from a live one and offer Restore.
+	DeletedAt *string `json:"deleted_at,omitempty"`
 }
 
 // UserDetailResponse is the API response for user detail.
@@ -261,6 +285,11 @@ func ToResponse(u *User, detail *UserDetail) *UserResponse {
 			Department: detail.Department,
 			Extra:      detail.Extra,
 		}
+	}
+
+	if u.DeletedAt.Valid {
+		ts := u.DeletedAt.Time.Format("2006-01-02T15:04:05Z07:00")
+		resp.DeletedAt = &ts
 	}
 
 	return resp

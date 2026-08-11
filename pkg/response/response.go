@@ -122,11 +122,6 @@ func Conflict(c *gin.Context, code int, message string) {
 	Error(c, http.StatusConflict, code, message, "")
 }
 
-// NoContent sends a 204 with no body. Used by DELETE handlers.
-func NoContent(c *gin.Context) {
-	c.Status(http.StatusNoContent)
-}
-
 // MapError writes the API response for a domain error. If err (or anything it
 // wraps) is a sentinel registered in pkg/errcode, its bound (status, code) is
 // used with the error's own message — domain sentinels carry safe, user-facing

@@ -47,6 +47,19 @@ var (
 	// ErrLastSuperAdmin blocks revoking the only remaining super_admin
 	// of a tenant — without it the tenant becomes unmanageable.
 	ErrLastSuperAdmin = errors.New("cannot revoke the last super admin of the tenant")
+	// ErrExternalIDTaken means the external account is already bound to a live
+	// user, so restoring or binding would move somebody else's login.
+	ErrExternalIDTaken = errors.New("external id already bound")
+	// ErrIdentityAlreadyBound means the binding is active; there is nothing to restore.
+	ErrIdentityAlreadyBound = errors.New("identity already bound")
+	// ErrIdentityOwnerDeleted refuses to restore a binding onto a soft-deleted
+	// account. The restore would produce a live binding on a dead user — the
+	// same orphan shape the delete-time identity sweep exists to eliminate, and
+	// the shape that caused the 2026-08-10 lockout. The console's "show
+	// deleted" user filter makes a deleted user's id trivially reachable, so
+	// this is an ordinary mis-click, not an exotic path. It is recoverable:
+	// restore the account first, then the binding.
+	ErrIdentityOwnerDeleted = errors.New("restore the account before restoring its identity binding")
 )
 
 // PasswordPolicy is the runtime view user.Service uses for validation.
@@ -473,6 +486,15 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 		return fmt.Errorf("get user: %w", err)
 	}
 
+	// Sweep the identity bindings first. The FK is ON DELETE CASCADE but a soft
+	// delete is an UPDATE, which never fires it. Order matters: if the sweep
+	// succeeds and the user delete then fails, the recoverable state is "user
+	// present, bindings restorable". The reverse leaves orphaned bindings
+	// pointing at a user nobody can load — the shape that wedged Lark login.
+	if err := s.repo.SoftDeleteIdentitiesByUser(ctx, id); err != nil {
+		return fmt.Errorf("sweep identities: %w", err)
+	}
+
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return fmt.Errorf("delete user: %w", err)
 	}
@@ -482,6 +504,23 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 		Payload: map[string]any{"user_id": id},
 	})
 
+	return nil
+}
+
+// RestoreUser undoes a soft delete. Identity bindings are NOT restored — that
+// is a separate, separately-audited decision made per binding on the user
+// detail page (see RestoreIdentity).
+func (s *Service) RestoreUser(ctx context.Context, id int64) error {
+	if err := s.repo.RestoreUser(ctx, id); err != nil {
+		if dberr.IsNotFound(err) {
+			return ErrUserNotFound
+		}
+		return err
+	}
+	s.eventBus.Publish(ctx, event.Event{
+		Type:    event.UserUpdated,
+		Payload: map[string]any{"user_id": id, "action": "user_restored"},
+	})
 	return nil
 }
 
@@ -838,6 +877,41 @@ func (s *Service) UnbindIdentity(ctx context.Context, userID, identityID int64) 
 	s.eventBus.Publish(ctx, event.Event{
 		Type:    event.UserUpdated,
 		Payload: map[string]any{"user_id": userID, "action": "identity_unbound", "identity_id": identityID},
+	})
+	return nil
+}
+
+// ListDeletedIdentities returns bindings an admin previously unbound.
+func (s *Service) ListDeletedIdentities(ctx context.Context, userID int64) ([]*UserIdentity, error) {
+	return s.repo.ListDeletedIdentities(ctx, userID)
+}
+
+// RestoreIdentity undoes an unbind. Emits identity_restored so the audit trail
+// shows who handed the external login back and when.
+//
+// The owner must still be live. repo.RestoreIdentity checks that the external
+// id is free and that the row belongs to userID, but never that userID is a
+// user anyone can still load — so restoring a binding on a soft-deleted account
+// used to succeed, recreating exactly the orphan (live binding, dead owner)
+// that Service.Delete's sweep removes. Refused with a message naming the fix,
+// because unlike the login path the console CAN act on it: restore the account
+// from the user list, then restore the binding.
+func (s *Service) RestoreIdentity(ctx context.Context, userID, identityID int64) error {
+	if _, err := s.repo.GetByID(ctx, userID); err != nil {
+		if dberr.IsNotFound(err) {
+			return ErrIdentityOwnerDeleted
+		}
+		return fmt.Errorf("load identity owner: %w", err)
+	}
+	if err := s.repo.RestoreIdentity(ctx, userID, identityID); err != nil {
+		if dberr.IsNotFound(err) {
+			return ErrIdentityNotFound
+		}
+		return err
+	}
+	s.eventBus.Publish(ctx, event.Event{
+		Type:    event.UserUpdated,
+		Payload: map[string]any{"user_id": userID, "action": "identity_restored", "identity_id": identityID},
 	})
 	return nil
 }

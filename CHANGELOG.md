@@ -5,6 +5,78 @@ All notable changes to MXID are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Deleted accounts can be restored from the console user list. Previously a soft-deleted user
+  had no recovery path, and an external-IdP login against it failed with an opaque error
+  instead of saying the account was deleted. The user list has a "show deleted" filter and a
+  restore action; restoring the account does NOT restore its identity bindings — that stays a
+  separate, separately-audited action on the user detail page.
+- An admin can now restore a mis-clicked identity unbind. Unbinding an external
+  (e.g. Lark) identity is soft-delete only; the console exposes the deleted
+  bindings for a user and a restore action that hands the external login back,
+  refusing only if the external account has since been claimed by another live
+  binding. The unbind confirmation now spells out what is actually lost —
+  the user's ability to sign in through that provider — states plainly that
+  MFA is unaffected, and points at the new "Unbound" section to undo it, so it
+  can no longer be mistaken for an MFA reset.
+- A signed-in user can now recreate their own external-identity binding by
+  re-authenticating against the IdP, for when an administrator's unbind (or a
+  never-created binding) would otherwise lock them out with no recovery path.
+  The portal starts an authorization round-trip against the chosen provider,
+  gated on a fresh step-up (sudo) MFA challenge — the same window console
+  uses — and the callback attaches the resulting identity only when it lands
+  on the SAME session that started it, so a bind link can't be handed to
+  someone else to attach an attacker's account to their profile. (EE)
+
+### Fixed
+- Deleting a user now soft-deletes its external identity bindings (Lark etc.)
+  first. The bindings' foreign key is `ON DELETE CASCADE`, but user deletion
+  is a soft delete — an `UPDATE` — and `UPDATE` never fires `CASCADE`, so a
+  binding could survive its user and point at an account nobody could load.
+  In production this locked a real user out of Lark login after an admin
+  deleted an unrelated shell account that happened to leave an orphaned
+  binding behind. The swept bindings are recoverable through the same
+  console restore action added above, not destroyed.
+- External-IdP login (Lark etc.) now tells a deleted account's owner why they
+  can't sign in instead of failing silently, and never auto-provisions a
+  replacement account behind an administrator's back. It distinguishes two
+  cases that used to be conflated: if the account itself was deleted, the
+  login is refused with a clear "account deleted" message; if only the
+  provider binding was unbound while the account stayed live (the restorable
+  case above), the login is refused as "no account linked" instead — never
+  telling a live user their account was deleted.
+- Admin writes that answered `204 No Content` — unbind identity, force-remove an MFA factor,
+  revoke sessions, delete an access-eligibility policy — reported a successful operation as a
+  failure in the console. The SPA reads the `{code,message,data}` envelope, and a 204 has no
+  body to read it from. All five now answer `200` with the envelope.
+- The shared API client's response interceptor no longer treats an empty or missing body (a
+  204/205, or a proxy that strips the body on any status) as an envelope failure. This is the
+  client-side backstop for the incident above, so a future 204 from anywhere cannot resurrect it.
+- Audit entries for identity-binding changes now record what actually happened. Every one of
+  them — bind, unbind, restore, takeover, account restore, admin MFA removal — was stored as an
+  indistinguishable "user updated" row, because the audit detail dropped the `action`,
+  `provider`, `identity_id` and `previous_user_id` fields the events carried. A takeover, where
+  an external account moves from one user to another, is only recorded by this event (its
+  callback route is outside the catch-all API audit), so the previous owner was not written down
+  anywhere.
+- The portal security page no longer shows a permanent red "Identity bindings" error to every
+  Community-edition user. The section fetched the external-IdP list, which exists only in
+  Enterprise, and let that 404 fail the whole section — discarding the bindings that had loaded
+  successfully. A missing provider list now simply means there is nothing to offer; only a
+  genuine failure of the bindings call is reported as an error.
+- Binding an external identity is refused unless the signed-in account is still live and in the
+  stated tenant, and restoring an unbound identity is refused when the account itself is deleted
+  — with a message telling the administrator to restore the account first. Both could previously
+  recreate the orphaned "live binding on a deleted user" that caused the lockout.
+- Re-binding an external identity now stores the profile the provider just returned. On the
+  restore/takeover paths it was computed and thrown away, leaving whatever the row carried
+  before it was unbound.
+- The console's unbind confirmation no longer claims the user "can no longer sign in through"
+  the provider. With self-service rebind that is not true; it now says the user can restore it
+  themselves and points at lock/disable as the way to actually cut off access.
+
 ## [1.8.6] — 2026-08-07
 
 ### Added

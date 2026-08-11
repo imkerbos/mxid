@@ -86,6 +86,8 @@ export interface User {
   created_by: string | null
   updated_by: string | null
   detail?: UserDetail
+  /** Only present when the list was queried with include_deleted; absent for a live account. */
+  deleted_at?: string | null
 }
 
 export interface UserDetail {

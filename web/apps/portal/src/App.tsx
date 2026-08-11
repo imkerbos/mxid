@@ -147,6 +147,22 @@ function RedirectIfAuth({ children }: { children: React.ReactNode }) {
     // we fall through to /apps rather than hang.
     const sp = new URLSearchParams(location.search)
     if (resumeSSOIfAny(sp)) return null
+    // A failed identity-bind round-trip shares its failure target with an
+    // ordinary external-login failure (?err=external&reason=...) — the
+    // backend callback has no way to tell the two apart, since both land here
+    // as a plain 302. A user starting a BIND is, by construction, already
+    // authenticated (the endpoint that begins one requires a session), so
+    // landing here with a live session and ?err=external can only be a bind
+    // failure: a genuine external LOGIN attempt never reaches this branch,
+    // because RedirectIfAuth would have bounced an already-authenticated user
+    // off /login before the login buttons ever rendered. Without this, the
+    // reason is silently dropped and the user lands on /apps with no idea
+    // anything went wrong — forward it to the security page instead, where
+    // the bind button lives and the mount effect turns it into a toast.
+    if (sp.get('err') === 'external') {
+      const reason = sp.get('reason') ?? ''
+      return <Navigate to={`/security?bindErr=${encodeURIComponent(reason)}`} replace />
+    }
     const from = safeReturnPath((location.state as { from?: string })?.from, '/apps')
     return <Navigate to={from} replace />
   }

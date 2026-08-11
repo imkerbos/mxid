@@ -51,6 +51,15 @@ export const CODE_FORM_STEP_UP_REQUIRED = 40133
 export const CODE_MFA_ENROLL_REQUIRED = 40331
 export const CODE_EE_FEATURE_REQUIRED = 40332
 export const CODE_PASSWORD_CHANGE_REQUIRED = 40333
+// Identity-rebind conflicts (errcode.NumExternalIDTaken / NumIdentityAlreadyBound /
+// NumExternalUserDeleted / NumIdentityOwnerDeleted). All four are registered
+// Localized in the catalog: extractMessage REPLACES the server's sentence with
+// the translated one keyed here, so each number must keep exactly one meaning —
+// see toast.tsx LOCALIZED_CODES.
+export const CODE_EXTERNAL_ID_TAKEN = 40907
+export const CODE_IDENTITY_ALREADY_BOUND = 40908
+export const CODE_EXTERNAL_USER_DELETED = 40909
+export const CODE_IDENTITY_OWNER_DELETED = 40910
 
 // Step-up handler: the console registers a callback (a modal) that resolves
 // once the user passes an MFA challenge. The 403/step_up_required interceptor
@@ -126,7 +135,21 @@ export function createApiClient(baseURL: string): AxiosInstance {
 
   instance.interceptors.response.use(
     (response: AxiosResponse<ApiResponse>) => {
+      // 204/205 carry no body per the HTTP spec, and a proxy can hand back an
+      // empty body on any status. Neither is an envelope — reading `.code` off
+      // one yields undefined and turns a success into a failure toast.
       const data = response.data
+      // Cast to unknown for the emptiness check: `data` is typed as ApiResponse,
+      // but at runtime an empty body survives transformResponse as the literal
+      // string '' rather than an object, which TS won't let us compare directly.
+      if (
+        response.status === 204 ||
+        response.status === 205 ||
+        (data as unknown) === '' ||
+        data == null
+      ) {
+        return response
+      }
       if (data.code !== 0) {
         return Promise.reject(new ApiError(data.code, data.message, data.detail, data.traceId))
       }
