@@ -131,10 +131,49 @@ func (s *Storage) getJSON(ctx context.Context, key string, v any) (bool, error) 
 
 // --- AuthStorage: auth requests + codes -------------------------------------
 
+// pkceRequirer is the optional capability an op.Client can expose to demand
+// PKCE for itself. Kept as a local interface so Storage does not need to know
+// the concrete client type.
+type pkceRequirer interface {
+	PKCERequired() bool
+}
+
+// enforcePKCE rejects an authorization request that omits code_challenge for an
+// app configured with pkce_required, and rejects the downgrade to the "plain"
+// challenge method. zitadel enforces PKCE only for public clients; this extends
+// it per app, so a confidential client can be held to the OAuth 2.1 bar.
+//
+// Fails open when no client resolver is wired (tests) or the client cannot be
+// resolved — the request is rejected further along by the library's own client
+// validation, and this hook must not become a second, divergent gate.
+func (s *Storage) enforcePKCE(ctx context.Context, req *oidc.AuthRequest) error {
+	if s.clients == nil {
+		return nil
+	}
+	client, err := s.clients.ClientByID(ctx, req.ClientID)
+	if err != nil || client == nil {
+		return nil
+	}
+	requirer, ok := client.(pkceRequirer)
+	if !ok || !requirer.PKCERequired() {
+		return nil
+	}
+	if req.CodeChallenge == "" {
+		return oidc.ErrInvalidRequest().WithDescription("code_challenge is required for this client")
+	}
+	if req.CodeChallengeMethod != oidc.CodeChallengeMethodS256 {
+		return oidc.ErrInvalidRequest().WithDescription("code_challenge_method must be S256")
+	}
+	return nil
+}
+
 func (s *Storage) CreateAuthRequest(ctx context.Context, req *oidc.AuthRequest, userID string) (op.AuthRequest, error) {
 	if len(req.Prompt) == 1 && req.Prompt[0] == oidc.PromptNone {
 		// No login UI can run under prompt=none → fail per spec.
 		return nil, oidc.ErrLoginRequired()
+	}
+	if err := s.enforcePKCE(ctx, req); err != nil {
+		return nil, err
 	}
 	id, err := crypto.GenerateBase62(24)
 	if err != nil {

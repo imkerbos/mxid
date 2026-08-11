@@ -28,6 +28,21 @@ type clientConfig struct {
 	JWKS                  string        `json:"jwks"`
 	JWKSURI               string        `json:"jwks_uri"`
 	ClaimMappers          []claimMapper `json:"claim_mappers"`
+	// IDTokenUserinfoClaims puts the identity claims (email, name, phone,
+	// locale, …) into the id_token in addition to serving them from the
+	// userinfo endpoint. Off by default because the spec prefers the smaller
+	// token and every conformant RP can fetch userinfo.
+	//
+	// It exists because plenty of real relying parties never call userinfo:
+	// Atlassian's Confluence OIDC plugin reads the id_token only, and its
+	// just-in-time provisioning fails with "Claim [email] could not be found"
+	// against an otherwise perfectly valid login. Such an RP has no setting to
+	// fix on its side, so the IdP has to meet it where it is.
+	//
+	// Enable it per app rather than globally: it widens what a leaked id_token
+	// discloses, so an app should only carry the extra claims when its RP
+	// actually needs them.
+	IDTokenUserinfoClaims bool `json:"id_token_userinfo_claims"`
 	// RateLimitPerMin overrides the IdP-wide default token-endpoint rate limit
 	// (see ratelimit.go's defaultTokenRateLimitPerMin) for this client. Same
 	// field name/shape as the hand-rolled engine's oidc.Config.RateLimitPerMin
@@ -157,9 +172,29 @@ func (c *oidcClient) IsScopeAllowed(scope string) bool {
 	return slices.Contains(c.cfg.Scopes, scope)
 }
 
-// IDTokenUserinfoClaimsAssertion: false → identity claims are served from the
-// userinfo endpoint, not stuffed into the id_token (the common default).
-func (c *oidcClient) IDTokenUserinfoClaimsAssertion() bool { return false }
+// PKCERequired reports whether this app refuses an authorization request that
+// carries no code_challenge.
+//
+// zitadel only demands PKCE for public clients (auth method "none"). This is
+// the per-app switch on top of that, so a confidential client can be held to
+// the same bar — which is what OAuth 2.1 asks for. Not part of op.Client;
+// Storage.CreateAuthRequest type-asserts for it.
+//
+// The `pkce_required` key was parsed into clientConfig for a long time and read
+// by nothing, so an operator who set it got no enforcement and no warning.
+func (c *oidcClient) PKCERequired() bool {
+	return c.cfg.PKCERequired
+}
+
+// IDTokenUserinfoClaimsAssertion reports whether the identity claims should ride
+// in the id_token as well as the userinfo endpoint. Default false: the spec
+// prefers the smaller token, and a conformant RP fetches userinfo for the rest.
+//
+// Apps set `id_token_userinfo_claims: true` when their RP never calls userinfo —
+// see the field's doc comment for why that is not a hypothetical.
+func (c *oidcClient) IDTokenUserinfoClaimsAssertion() bool {
+	return c.cfg.IDTokenUserinfoClaims
+}
 
 // --- ClientResolver ----------------------------------------------------------
 

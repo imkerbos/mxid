@@ -2,12 +2,10 @@ package authn
 
 import (
 	"context"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/imkerbos/mxid/pkg/errcode"
-	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/session"
 )
 
@@ -46,30 +44,17 @@ const pwdAllowedPathFragment = "/security/password"
 // the password has been changed the flag is cleared and the lookup never
 // recurs.
 func PwdGateMiddleware(d PwdGateDeps) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if !c.GetBool(CtxPwdChangePending) {
-			c.Next()
-			return
-		}
-
-		// They may have changed it on a prior request — clear the stale flag
-		// and let them through. Note this is checked BEFORE the path allowance,
-		// so the very request that changes the password still passes below and
-		// the one after it comes back clean.
-		if d.MustChange != nil {
-			if still, err := d.MustChange(c.Request.Context(), c.GetInt64(CtxUserID)); err == nil && !still {
-				_ = d.SessionMgr.SetPwdChangePending(c.Request.Context(), d.Namespace, c.GetString(CtxSessionID), false)
-				c.Next()
-				return
+	return obligationGate{
+		namespace: d.Namespace,
+		ctxFlag:   CtxPwdChangePending,
+		stillOwes: func(ctx context.Context, userID int64) (bool, error) {
+			if d.MustChange == nil {
+				return true, nil
 			}
-		}
-
-		if strings.Contains(c.FullPath(), pwdAllowedPathFragment) {
-			c.Next()
-			return
-		}
-
-		response.Forbidden(c, errcode.NumPasswordChangeRequired, "password change required")
-		c.Abort()
-	}
+			return d.MustChange(ctx, userID)
+		},
+		clearFlag: d.SessionMgr.SetPwdChangePending,
+		code:      errcode.NumPasswordChangeRequired,
+		message:   "password change required",
+	}.handler()
 }

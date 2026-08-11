@@ -62,7 +62,11 @@ function encodeFieldValue(raw: string, coerce: Coerce | undefined): unknown {
     case 'bool':
       return raw.toLowerCase() === 'true'
     case 'string_array_csv':
-      return raw.split(',').map((s) => s.trim()).filter(Boolean)
+      // Split on commas AND whitespace. decodeFieldValue renders these joined
+      // by commas, but several placeholders show space-separated examples
+      // (OIDC scopes, grant types), and an operator following the placeholder
+      // must not end up with one list entry containing spaces.
+      return raw.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean)
     case 'json':
       try {
         return JSON.parse(raw)
@@ -88,7 +92,15 @@ function decodeFieldValue(v: unknown, coerce: Coerce | undefined): string {
     case 'bool':
       return v === true ? 'true' : 'false'
     default:
-      return typeof v === 'string' ? v : String(v)
+      if (typeof v === 'string') return v
+      // String() throws on a value with no primitive conversion, and one throw
+      // here used to abort the whole form load. Nothing displayed in a text box
+      // is worth that.
+      try {
+        return String(v)
+      } catch {
+        return JSON.stringify(v) ?? ''
+      }
   }
 }
 
@@ -104,16 +116,46 @@ function buildProtocolConfigFields(t: (k: string) => string): Record<string, Con
       // Fields below populate the protocol_config JSONB blob that the OIDC IdP
       // reads when handling /authorize and /token for THIS app. They do NOT
       // describe a remote OIDC provider — MXID is the provider.
-      { key: 'scopes', label: p('oidc', 'scopes', 'label'), type: 'text', placeholder: 'openid profile email phone groups' },
-      { key: 'grant_types', label: p('oidc', 'grant_types', 'label'), type: 'text', placeholder: 'authorization_code refresh_token' },
-      { key: 'response_types', label: p('oidc', 'response_types', 'label'), type: 'text', placeholder: 'code' },
-      { key: 'token_endpoint_auth_method', label: p('oidc', 'token_endpoint_auth_method', 'label'), type: 'text', placeholder: 'client_secret_basic | client_secret_post | none' },
-      { key: 'pkce_required', label: p('oidc', 'pkce_required', 'label'), type: 'text', placeholder: 'false (true for SPA / native)' },
-      { key: 'access_token_lifetime', label: p('oidc', 'access_token_lifetime', 'label'), type: 'text', placeholder: '3600' },
-      { key: 'id_token_lifetime', label: p('oidc', 'id_token_lifetime', 'label'), type: 'text', placeholder: '3600' },
-      { key: 'refresh_token_lifetime', label: p('oidc', 'refresh_token_lifetime', 'label'), type: 'text', placeholder: '2592000' },
-      { key: 'id_token_signing_alg', label: p('oidc', 'id_token_signing_alg', 'label'), type: 'text', placeholder: 'RS256' },
-      { key: 'subject_type', label: p('oidc', 'subject_type', 'label'), type: 'text', placeholder: 'public' },
+      // These three are []string on the backend. Without the coerce the form
+      // sent back the comma-joined display string, json.Unmarshal rejected the
+      // type and dropped the field -- so saving this tab wiped the app's scopes.
+      { key: 'scopes', label: p('oidc', 'scopes', 'label'), type: 'text', coerce: 'string_array_csv', placeholder: 'openid profile email phone groups' },
+      { key: 'grant_types', label: p('oidc', 'grant_types', 'label'), type: 'text', coerce: 'string_array_csv', placeholder: 'authorization_code refresh_token' },
+      { key: 'response_types', label: p('oidc', 'response_types', 'label'), type: 'text', coerce: 'string_array_csv', placeholder: 'code' },
+      // Every key below must exist in the engine's clientConfig / oidcProtocolConfig
+      // struct tags — scripts/verify-protocol-fields.mjs fails the build otherwise.
+      // Five fields used to sit here that the engine never read
+      // (access_token_lifetime, refresh_token_lifetime, id_token_signing_alg,
+      // subject_type, and id_token_lifetime / token_endpoint_auth_method spelled
+      // differently from the engine's id_token_ttl / token_endpoint_auth_mode).
+      // Operators set them and nothing happened.
+      { key: 'token_endpoint_auth_mode', label: p('oidc', 'token_endpoint_auth_mode', 'label'), type: 'text', placeholder: 'client_secret_basic | client_secret_post | none' },
+      {
+        key: 'pkce_required',
+        label: p('oidc', 'pkce_required', 'label'),
+        type: 'select',
+        coerce: 'bool',
+        options: [
+          { value: 'false', label: 'false' },
+          { value: 'true', label: 'true (SPA / native)' },
+        ],
+        hint: p('oidc', 'pkce_required', 'hint'),
+      },
+      { key: 'id_token_ttl', label: p('oidc', 'id_token_ttl', 'label'), type: 'text', coerce: 'int', placeholder: '3600' },
+      { key: 'rate_limit_per_min', label: p('oidc', 'rate_limit_per_min', 'label'), type: 'text', coerce: 'int', placeholder: '0 = unlimited' },
+      { key: 'backchannel_logout_uri', label: p('oidc', 'backchannel_logout_uri', 'label'), type: 'text', placeholder: 'https://app.example.com/backchannel-logout' },
+      { key: 'claim_mappers', label: p('oidc', 'claim_mappers', 'label'), type: 'textarea', coerce: 'json', placeholder: '[{"claim":"dept","source":"user.detail.department"}]' },
+      {
+        key: 'id_token_userinfo_claims',
+        label: p('oidc', 'id_token_userinfo_claims', 'label'),
+        type: 'select',
+        coerce: 'bool',
+        options: [
+          { value: 'false', label: 'false' },
+          { value: 'true', label: 'true' },
+        ],
+        hint: p('oidc', 'id_token_userinfo_claims', 'hint'),
+      },
     ],
     saml: [
       // Field keys match internal/protocol/saml/config.go SAMLConfig json tags
@@ -178,7 +220,18 @@ function buildProtocolConfigFields(t: (k: string) => string): Record<string, Con
       { key: 'attribute_mapping', label: p('cas', 'attribute_mapping', 'label'), type: 'textarea', placeholder: '{"username":"uid","email":"mail","display_name":"displayName","phone":"telephoneNumber"}', coerce: 'json' },
       { key: 'role_attribute', label: p('cas', 'role_attribute', 'label'), type: 'text', placeholder: 'roles', hint: p('cas', 'role_attribute', 'hint') },
       { key: 'group_attribute', label: p('cas', 'group_attribute', 'label'), type: 'text', placeholder: 'groups', hint: p('cas', 'group_attribute', 'hint') },
-      { key: 'renew_enabled', label: p('cas', 'renew_enabled', 'label'), type: 'text', placeholder: 'false', coerce: 'bool' },
+      // A select, not a text box: the bool coerce treats anything other than
+      // "true" as false, so a typed "yes" or "1" silently meant false.
+      {
+        key: 'renew_enabled',
+        label: p('cas', 'renew_enabled', 'label'),
+        type: 'select',
+        coerce: 'bool',
+        options: [
+          { value: 'false', label: 'false' },
+          { value: 'true', label: 'true' },
+        ],
+      },
     ],
     // Form-fill (SWA) descriptor. credential_mode picks per-user vs shared vault;
     // the selectors + login_url tell the browser extension how to auto-submit the
@@ -418,7 +471,20 @@ export default function AppsPage() {
 
   // Protocol config state
   const [protocolConfig, setProtocolConfig] = useState<Record<string, string>>({})
+  // Keys the server returned that this form has no field for — claim_mappers,
+  // id_token_ttl, jwks, rate_limit_per_min, backchannel_logout_uri and anything
+  // added later. UpdateProtocolConfig REPLACES the whole JSONB blob, so a key
+  // absent from the save payload is deleted. Carrying them through the
+  // round-trip is what stops one save of this tab from silently switching off
+  // back-channel logout.
+  const [protocolConfigPassthrough, setProtocolConfigPassthrough] = useState<Record<string, unknown>>({})
   const [protocolConfigLoading, setProtocolConfigLoading] = useState(false)
+  // Set when the config could not be loaded. While it is set the form is not
+  // editable and saving is blocked, because a form that failed to load shows
+  // empty fields — and an empty field is indistinguishable from "cleared" once
+  // it reaches the server. That is precisely how one load bug turned into the
+  // silent deletion of a live app's protocol config.
+  const [protocolConfigError, setProtocolConfigError] = useState<string | null>(null)
   const [savingProtocol, setSavingProtocol] = useState(false)
 
   // -------------------------------------------------------------------------
@@ -518,6 +584,7 @@ export default function AppsPage() {
   const closeDetail = () => {
     setDetailApp(null)
     setProtocolConfig({})
+    setProtocolConfigPassthrough({})
   }
 
   // -------------------------------------------------------------------------
@@ -526,6 +593,7 @@ export default function AppsPage() {
 
   const loadProtocolConfig = useCallback(async (appId: string, protocol: string) => {
     setProtocolConfigLoading(true)
+    setProtocolConfigError(null)
     try {
       const cfg = await appApi.getProtocolConfig(appId)
       const fields = protocolConfigFields[protocol] || []
@@ -541,14 +609,28 @@ export default function AppsPage() {
           flat[f.key] = f.options[0].value
         }
       }
+      const passthrough: Record<string, unknown> = {}
       if (cfg) {
+        const known = new Set(fields.map((f) => f.key))
         for (const [k, v] of Object.entries(cfg)) {
-          flat[k] = decodeFieldValue(v, coerceByKey[k])
+          // Only keys this form renders get flattened to a string. The rest are
+          // held as-is for the save payload: they have no input to display them,
+          // and decoding them was actively harmful -- claim_mappers is an array
+          // of objects, and stringifying it threw, which sent the whole load
+          // into the catch below and left every field blank.
+          if (known.has(k)) {
+            flat[k] = decodeFieldValue(v, coerceByKey[k])
+          } else {
+            passthrough[k] = v
+          }
         }
       }
       setProtocolConfig(flat)
-    } catch {
+      setProtocolConfigPassthrough(passthrough)
+    } catch (e) {
       setProtocolConfig({})
+      setProtocolConfigPassthrough({})
+      setProtocolConfigError(extractMessage(e))
     } finally {
       setProtocolConfigLoading(false)
     }
@@ -604,9 +686,17 @@ export default function AppsPage() {
   const handleSaveProtocol = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!detailApp) return
+    // Never save on top of a failed load: the fields are blank because nothing
+    // arrived, not because the operator cleared them.
+    if (protocolConfigError) {
+      toast.error(t('common.failed'), protocolConfigError)
+      return
+    }
     setSavingProtocol(true)
     try {
-      const payload: Record<string, unknown> = {}
+      // Keys this form cannot render are still sent back, so the config stays
+      // whole even if the endpoint is ever pointed at replace semantics again.
+      const payload: Record<string, unknown> = { ...protocolConfigPassthrough }
       const fields = protocolConfigFields[detailApp.protocol] || []
       for (const f of fields) {
         const raw = protocolConfig[f.key]
@@ -1473,6 +1563,23 @@ export default function AppsPage() {
                           <div className="flex items-center justify-center py-20">
                             <Loader2 className="h-6 w-6 animate-spin text-faint" />
                           </div>
+                        ) : protocolConfigError ? (
+                          // Deliberately not a blank form with a save button:
+                          // saving from here would write emptiness over a config
+                          // we never managed to read.
+                          <div className="space-y-3 rounded-lg border border-danger/30 bg-danger/5 px-4 py-6 text-center">
+                            <p className="text-sm font-medium text-danger">
+                              {t('apps.detail.protocol.loadFailed')}
+                            </p>
+                            <p className="text-xs text-muted">{protocolConfigError}</p>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              onClick={() => loadProtocolConfig(detailApp.id, detailApp.protocol)}
+                            >
+                              {t('common.retry')}
+                            </Button>
+                          </div>
                         ) : (
                           <form onSubmit={handleSaveProtocol} className="space-y-5">
                             <div className="mb-4 rounded-lg bg-surface-muted px-4 py-3">
@@ -1506,10 +1613,14 @@ export default function AppsPage() {
                                       flat[f.key] = f.options[0].value
                                     }
                                   }
+                                  const passthrough: Record<string, unknown> = {}
+                                  const known = new Set(fields.map((f) => f.key))
                                   for (const [k, v] of Object.entries(cfg)) {
                                     flat[k] = decodeFieldValue(v, coerceByKey[k])
+                                    if (!known.has(k)) passthrough[k] = v
                                   }
                                   setProtocolConfig(flat)
+                                  setProtocolConfigPassthrough(passthrough)
                                 }}
                               />
                             )}

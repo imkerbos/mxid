@@ -2,11 +2,9 @@ package authn
 
 import (
 	"context"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/session"
 )
 
@@ -32,29 +30,20 @@ const enrollAllowedPathFragment = "/security/mfa"
 // that path self-heals — once a factor is detected the flag is cleared so the
 // lookup never recurs.
 func EnrollGateMiddleware(d EnrollGateDeps) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if !c.GetBool(CtxMFAEnrollPending) {
-			c.Next()
-			return
-		}
-
-		// The user may have just bound a factor on a prior request — clear the
-		// stale flag and let them through.
-		if d.HasMFA != nil {
-			if ok, err := d.HasMFA(c.Request.Context(), c.GetInt64(CtxUserID)); err == nil && ok {
-				_ = d.SessionMgr.SetEnrollPending(c.Request.Context(), d.Namespace, c.GetString(CtxSessionID), false)
-				c.Next()
-				return
+	return obligationGate{
+		namespace: d.Namespace,
+		ctxFlag:   CtxMFAEnrollPending,
+		// HasMFA answers the opposite question, so invert it: having a factor
+		// means the enrollment is no longer owed.
+		stillOwes: func(ctx context.Context, userID int64) (bool, error) {
+			if d.HasMFA == nil {
+				return true, nil
 			}
-		}
-
-		// Still no factor — only the enrollment surface is reachable.
-		if strings.Contains(c.FullPath(), enrollAllowedPathFragment) {
-			c.Next()
-			return
-		}
-
-		response.Forbidden(c, CodeMFAEnrollRequired, "mfa enrollment required")
-		c.Abort()
-	}
+			has, err := d.HasMFA(ctx, userID)
+			return !has, err
+		},
+		clearFlag: d.SessionMgr.SetEnrollPending,
+		code:      CodeMFAEnrollRequired,
+		message:   "mfa enrollment required",
+	}.handler()
 }

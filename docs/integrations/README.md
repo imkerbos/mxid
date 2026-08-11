@@ -41,12 +41,15 @@ OIDC 引擎基于 [`zitadel/oidc`](https://github.com/zitadel/oidc) v3，是标�
   - `sub`：主体标识（OIDC 默认 = `persistent_id`，不透明且改名后不变；可在应用里改为
     username/username_suffixed/pairwise/email）。SAML NameID 与 CAS `cas:user` 默认 = 用户名，
     因为下游应用拿它当账号名建号。
-  - `groups`：用户所属组的 code 列表 —— **需要应用配置里加 `groups` claim mapper**
+  - `groups`：用户所属组的 code 列表 —— 请求 `groups` scope 即可，**不需要 claim mapper**
   - `app_roles`：用户在**本应用**的角色 code 列表（给 RP 直接做角色映射，比解析 groups 省事）
   - `tenant_code`、`preferred_username`、`email` / `email_verified`、`name`、`amr`、`sid`
 
-> 要让 `groups` 出现在 token，需在 MXID console 的应用配置里加 claim mapper：
-> `{"claim":"groups","source":"user.groups.codes"}`
+> 要让 `groups` 出现在 token，把 `groups` 加进应用的 scope 列表即可。
+>
+> claim mapper 只在需要**换个 claim 名**时才用，且 source 是两段式 `user.<字段>`
+> （`user.groups`、`user.email`、`user.display_name` …）或 `user.detail.<自定义字段>`。
+> 三段式的 `user.groups.codes` 不是合法路径，写了会被静默忽略。
 
 ### 登录确认行为
 
@@ -65,6 +68,7 @@ MXID 后端在 TLS 边缘（GKE Gateway / nginx / LB）后面时，有两个坑�
 ## 各应用接入手册
 
 - [Jenkins（OIDC）](jenkins-oidc.md)
+- [Confluence（OIDC）](confluence-oidc.md) — 需开 `id_token_userinfo_claims`，它只读 id_token 不调 userinfo
 - Grafana（OIDC）：demo 见 `~/Workspaces/Docker/demo`（generic_oauth）
 - JumpServer：仅社区版 **CAS**（见 [[reference_app_protocol_support]] 备注）
 

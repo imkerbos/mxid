@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import QRCode from 'qrcode'
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import {
   authApi,
@@ -8,6 +9,7 @@ import {
   currentReturnPath,
   safeReturnPath,
   ForcePasswordChange,
+  ForceMfaEnroll,
   portalApi,
 } from '@mxid/shared'
 import { Toaster } from '@mxid/shared/ui/toast'
@@ -24,7 +26,6 @@ import AccessRequestsPage from './pages/access-requests'
 import NoAccessPage from './pages/no-access'
 import ForgotPasswordPage from './pages/password/forgot'
 import ResetPasswordPage from './pages/password/reset'
-import ForceMfaEnroll from './components/ForceMfaEnroll'
 import StepUpModal from './components/StepUpModal'
 import StepUpPage from './pages/step-up'
 
@@ -104,7 +105,17 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   if (!user) return null
 
   // Block everything behind mandatory MFA enrollment until a factor is bound.
-  if (mfaEnrollRequired) return <ForceMfaEnroll />
+  if (mfaEnrollRequired)
+    return (
+      <ForceMfaEnroll
+        setupTOTP={() => portalApi.setupTOTP()}
+        verifyTOTP={(code) => portalApi.verifyTOTP(code)}
+        logout={() => authApi.portalLogout()}
+        toQRDataURL={(url) => QRCode.toDataURL(url, { width: 220, margin: 1 })}
+        onEnrolled={() => navigate('/apps', { replace: true })}
+        toLogin={() => navigate('/login', { replace: true })}
+      />
+    )
 
   // An administrator reset this account's password; every other portal call
   // 403s until a new one is chosen.

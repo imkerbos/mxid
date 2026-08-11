@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import QRCode from 'qrcode'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import {
   useAuthStore,
@@ -7,6 +8,7 @@ import {
   useTheme,
   currentReturnPath,
   ForcePasswordChange,
+  ForceMfaEnroll,
   consoleSecurityApi,
 } from '@mxid/shared'
 import MainLayout from './components/layout/MainLayout'
@@ -50,8 +52,16 @@ import {
 import { Navigate as RRNavigate } from 'react-router-dom'
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { user, loading, setUser, clear, passwordChangeRequired, setPasswordChangeRequired } =
-    useAuthStore()
+  const {
+    user,
+    loading,
+    setUser,
+    clear,
+    passwordChangeRequired,
+    setPasswordChangeRequired,
+    mfaEnrollRequired,
+    setMfaEnrollRequired,
+  } = useAuthStore()
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -98,6 +108,17 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('mxid:password-change-required', onPwd)
   }, [setPasswordChangeRequired])
 
+  // Policy requires MFA and this account has no factor. Every other console
+  // call 403s until one is bound — including the password change above, which
+  // is itself a high-risk operation requiring MFA. Without this screen the
+  // seeded administrator was shown a password form that answered every
+  // submission with "mfa enrollment required" and offered no way to enrol.
+  useEffect(() => {
+    const onEnroll = () => setMfaEnrollRequired(true)
+    window.addEventListener('mxid:mfa-enroll-required', onEnroll)
+    return () => window.removeEventListener('mxid:mfa-enroll-required', onEnroll)
+  }, [setMfaEnrollRequired])
+
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -107,6 +128,21 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) return null
+
+  // MFA first: on the console a password change requires a factor, so the
+  // other order is a dead end.
+  if (mfaEnrollRequired) {
+    return (
+      <ForceMfaEnroll
+        setupTOTP={() => consoleSecurityApi.setupTOTP()}
+        verifyTOTP={(code) => consoleSecurityApi.verifyTOTP(code)}
+        logout={() => authApi.logout()}
+        toQRDataURL={(url) => QRCode.toDataURL(url, { width: 220, margin: 1 })}
+        onEnrolled={() => navigate('/dashboard', { replace: true })}
+        toLogin={() => navigate('/login', { replace: true })}
+      />
+    )
+  }
 
   if (passwordChangeRequired) {
     return (

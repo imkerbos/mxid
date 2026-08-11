@@ -1,23 +1,53 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
-import QRCode from 'qrcode'
 import { ShieldCheck, Loader2, Copy, LogOut } from 'lucide-react'
-import { portalApi, authApi, useAuthStore, useTranslation } from '@mxid/shared'
-import { toast, extractMessage } from '@mxid/shared/ui/toast'
+import { useAuthStore } from '../hooks/use-auth-store'
+import { useTranslation } from '../i18n'
+import { toast, extractMessage, Toaster } from '../ui/toast'
 
 /**
  * ForceMfaEnroll — full-screen blocking gate shown when the backend enroll gate
  * reports the tenant's MFA policy requires this user to hold a factor and they
- * have none (HTTP 403, code 40331). Until they bind TOTP, every other portal
- * route/API would 403, so we render ONLY this — no half-broken pages.
+ * have none (HTTP 403, code 40331). Until they bind TOTP every other route and
+ * API returns that same 403, so this renders INSTEAD of the app rather than
+ * alongside it — a half-broken page full of failed requests tells the user
+ * nothing about what is being asked of them.
  *
- * On success the server-side session's pending flag self-heals (the EnrollGate
- * middleware clears it once a factor exists), so we drop the client flag and
- * bounce to /apps.
+ * Shared between console and portal because the demand is identical on both,
+ * and because the console is where it matters most: the seeded administrator
+ * account ships flagged for a password change, and on the console changing a
+ * password is itself a high-risk operation requiring MFA. With no enrollment
+ * screen the console showed that administrator a password form which answered
+ * every submission with "mfa enrollment required" and offered no way to enrol —
+ * a locked-out administrator with nobody left to unlock the account.
+ *
+ * Rendered BEFORE the forced-password-change screen, since MFA is the
+ * prerequisite of the two.
  */
-export default function ForceMfaEnroll() {
+export default function ForceMfaEnroll({
+  setupTOTP,
+  verifyTOTP,
+  logout,
+  toQRDataURL,
+  onEnrolled,
+  toLogin,
+}: {
+  /** Starts enrollment; returns the shared secret and its otpauth:// URL. */
+  setupTOTP: () => Promise<{ secret: string; qr_url: string }>
+  /** Confirms the six-digit code, binding the factor. */
+  verifyTOTP: (code: string) => Promise<unknown>
+  /** Best-effort server-side logout. */
+  logout: () => Promise<unknown>
+  /**
+   * Renders an otpauth:// URL to a PNG data URL. Passed in because `qrcode`
+   * is an application dependency, not one of this package's.
+   */
+  toQRDataURL: (url: string) => Promise<string>
+  /** Where to go once the factor is bound (the app's landing route). */
+  onEnrolled: () => void
+  /** Send the browser to the sign-in screen. */
+  toLogin: () => void
+}) {
   const { t } = useTranslation()
-  const navigate = useNavigate()
   const setMfaEnrollRequired = useAuthStore((s) => s.setMfaEnrollRequired)
   const clear = useAuthStore((s) => s.clear)
 
@@ -31,24 +61,24 @@ export default function ForceMfaEnroll() {
 
   useEffect(() => {
     let alive = true
-    portalApi
-      .setupTOTP()
+    setupTOTP()
       .then(async ({ secret, qr_url }) => {
         if (!alive) return
         setSecret(secret)
         setQrUrl(qr_url)
         try {
-          const png = await QRCode.toDataURL(qr_url, { width: 220, margin: 1 })
+          const png = await toQRDataURL(qr_url)
           if (alive) setQrDataURL(png)
         } catch {
           // QR render failed — manual entry still works.
         }
       })
-      .catch((e: Error) => alive && setErr(e.message || t('common.failed')))
+      .catch((e: Error) => alive && setErr(extractMessage(e, t('common.failed'))))
       .finally(() => alive && setLoading(false))
     return () => {
       alive = false
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [t])
 
   const handleSubmit = async (e: FormEvent) => {
@@ -56,10 +86,10 @@ export default function ForceMfaEnroll() {
     if (code.length !== 6) return
     setVerifying(true)
     try {
-      await portalApi.verifyTOTP(code)
+      await verifyTOTP(code)
       toast.success(t('account.mfa.enabled'), t('account.mfa.enabledHint'))
       setMfaEnrollRequired(false)
-      navigate('/apps', { replace: true })
+      onEnrolled()
     } catch (e) {
       const msg = extractMessage(e, t('common.failed'))
       toast.error(t('account.mfa.verifyFailed'), msg)
@@ -75,16 +105,19 @@ export default function ForceMfaEnroll() {
       .catch(() => toast.error(t('account.mfa.copyFail')))
   }
 
-  const logout = () => {
-    // Best-effort server logout; clear locally + bounce regardless (the escape
-    // hatch must work even if the call fails).
-    authApi.portalLogout().catch(() => {})
+  const signOut = () => {
+    // Best-effort server logout; clear locally and bounce regardless — the
+    // escape hatch must work even if the call fails.
+    logout().catch(() => {})
     clear()
-    navigate('/login', { replace: true })
+    toLogin()
   }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-canvas p-4">
+      {/* Own Toaster: this screen replaces the app shell, which is where the
+          app's own Toaster lives. */}
+      <Toaster />
       <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-xl">
         <div className="mb-4 flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -166,7 +199,7 @@ export default function ForceMfaEnroll() {
         )}
 
         <button
-          onClick={logout}
+          onClick={signOut}
           className="mt-4 inline-flex w-full items-center justify-center gap-1.5 text-xs text-faint hover:text-ink"
         >
           <LogOut className="h-3.5 w-3.5" />
