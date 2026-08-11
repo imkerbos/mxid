@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"sort"
 	"strings"
 	"time"
 
@@ -697,9 +699,48 @@ func (s *Service) GetProtocolConfig(ctx context.Context, id int64) (map[string]a
 	return config, nil
 }
 
-// UpdateProtocolConfig updates the protocol configuration for an application.
+// UpdateProtocolConfig REPLACES the protocol configuration for an application.
+//
+// Replace is the destructive shape: any key absent from config is deleted, and
+// protocol_config holds settings that have no console field (claim_mappers,
+// jwks, rate_limit_per_min, backchannel_logout_uri…). A caller that renders a
+// subset of the document and PUTs what it rendered silently deletes the rest —
+// that is how back-channel logout got switched off for a live app. Prefer
+// PatchProtocolConfig unless you genuinely intend to drop unlisted keys.
 func (s *Service) UpdateProtocolConfig(ctx context.Context, id int64, config map[string]any) error {
-	data, err := json.Marshal(config)
+	return s.writeProtocolConfig(ctx, id, config, false)
+}
+
+// PatchProtocolConfig merges the given keys into the app's protocol_config.
+// Keys not mentioned are left alone; a key given as JSON null is deleted. This
+// is what an editor that shows part of the document should use.
+func (s *Service) PatchProtocolConfig(ctx context.Context, id int64, patch map[string]any) error {
+	return s.writeProtocolConfig(ctx, id, patch, true)
+}
+
+func (s *Service) writeProtocolConfig(ctx context.Context, id int64, config map[string]any, merge bool) error {
+	// Read the current config first, for two reasons: merging needs it, and
+	// recording it in the audit entry is the only way a mistaken overwrite can
+	// be reconstructed — the app table keeps no history.
+	before, err := s.GetProtocolConfig(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	after := config
+	if merge {
+		after = make(map[string]any, len(before)+len(config))
+		maps.Copy(after, before)
+		for k, v := range config {
+			if v == nil {
+				delete(after, k)
+				continue
+			}
+			after[k] = v
+		}
+	}
+
+	data, err := json.Marshal(after)
 	if err != nil {
 		return fmt.Errorf("marshal protocol config: %w", err)
 	}
@@ -712,11 +753,39 @@ func (s *Service) UpdateProtocolConfig(ctx context.Context, id int64, config map
 	}
 
 	s.eventBus.Publish(ctx, event.Event{
-		Type:    event.AppUpdated,
-		Payload: map[string]any{"app_id": id, "action": "update_protocol_config"},
+		Type: event.AppUpdated,
+		Payload: map[string]any{
+			"app_id":        id,
+			"action":        "update_protocol_config",
+			"changed_keys":  changedKeys(before, after),
+			"config_before": before,
+			"config_after":  after,
+		},
 	})
 
 	return nil
+}
+
+// changedKeys lists the keys whose value differs between two configs, so an
+// auditor can see what a change touched without diffing two blobs by eye.
+func changedKeys(before, after map[string]any) []string {
+	seen := make(map[string]struct{}, len(before)+len(after))
+	for k := range before {
+		seen[k] = struct{}{}
+	}
+	for k := range after {
+		seen[k] = struct{}{}
+	}
+	changed := make([]string, 0, len(seen))
+	for k := range seen {
+		b, _ := json.Marshal(before[k])
+		a, _ := json.Marshal(after[k])
+		if !bytes.Equal(b, a) {
+			changed = append(changed, k)
+		}
+	}
+	sort.Strings(changed)
+	return changed
 }
 
 // ImportSAMLSPMetadata parses an SP metadata XML document and merges the

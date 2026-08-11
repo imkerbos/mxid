@@ -129,7 +129,13 @@ var detailSchemas = map[string]detailSchema{
 	event.UserOffboarded:       {allow: []string{"user_id", "tenant_id", "username", "actor_id", "sessions_killed"}},
 
 	event.AppCreated:  {allow: []string{"app_id", "tenant_id", "name", "code", "protocol", "actor_id"}},
-	event.AppUpdated:  {allow: []string{"app_id", "tenant_id", "fields", "action", "status", "actor_id"}},
+	// config_before / config_after carry the app's protocol_config either side of
+	// a change. They are here because the app table keeps no history: without
+	// them a mistaken overwrite of protocol_config is unrecoverable, which is
+	// exactly what happened when the console's partial form replaced the whole
+	// document. protocol_config holds no secrets (the client secret is a
+	// separate bcrypt column; jwks is public key material).
+	event.AppUpdated: {allow: []string{"app_id", "tenant_id", "fields", "action", "status", "actor_id", "changed_keys", "config_before", "config_after"}},
 	event.AppDeleted:  {allow: []string{"app_id", "tenant_id", "name", "code", "actor_id"}},
 	event.AppLaunched: {allow: []string{"app_id", "tenant_id", "user_id", "name", "session_id"}},
 

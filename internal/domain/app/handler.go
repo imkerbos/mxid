@@ -39,6 +39,7 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 		apps.PUT("/:id/status", authz.Require("app.update", nil), h.UpdateStatus)
 		apps.GET("/:id/config", authz.Require("app.read", nil), h.GetProtocolConfig)
 		apps.PUT("/:id/config", authz.Require("app.update", nil), h.UpdateProtocolConfig)
+		apps.PATCH("/:id/config", authz.Require("app.update", nil), h.PatchProtocolConfig)
 		apps.GET("/:id/access", authz.Require("app.read", nil), h.ListAccess)
 		apps.POST("/:id/access", authz.Require("app.access.manage", nil), h.AddAccess)
 		apps.DELETE("/:id/access/:aid", authz.Require("app.access.manage", nil), h.RemoveAccess)
@@ -288,6 +289,32 @@ func (h *Handler) UpdateProtocolConfig(c *gin.Context) {
 	}
 
 	if err := h.svc.UpdateProtocolConfig(c.Request.Context(), id, req.ProtocolConfig); err != nil {
+		h.handleServiceError(c, err)
+		return
+	}
+
+	response.OK(c, nil)
+}
+
+// PatchProtocolConfig handles PATCH /apps/:id/config. Merges the given keys and
+// leaves the rest of the document alone; a key sent as null is deleted.
+//
+// This is what the console uses. The PUT above replaces the whole blob, which
+// is only safe for a caller that holds the complete document — an editor
+// rendering a subset of the keys does not.
+func (h *Handler) PatchProtocolConfig(c *gin.Context) {
+	id, ok := ginutil.ParseInt64Param(c, "id")
+	if !ok {
+		return
+	}
+
+	var req UpdateProtocolConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
+		return
+	}
+
+	if err := h.svc.PatchProtocolConfig(c.Request.Context(), id, req.ProtocolConfig); err != nil {
 		h.handleServiceError(c, err)
 		return
 	}

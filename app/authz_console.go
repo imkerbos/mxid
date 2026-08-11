@@ -173,6 +173,7 @@ var consoleProtectedRoutes = [][2]string{
 	{http.MethodPut, "/api/v1/console/app-groups/:id/roles/:role_id"},
 	{http.MethodPut, "/api/v1/console/apps/:id"},
 	{http.MethodPut, "/api/v1/console/apps/:id/config"},
+	{http.MethodPatch, "/api/v1/console/apps/:id/config"},
 	{http.MethodPut, "/api/v1/console/apps/:id/provisioning"},
 	{http.MethodPut, "/api/v1/console/apps/:id/roles/:role_id"},
 	{http.MethodPut, "/api/v1/console/apps/:id/status"},
