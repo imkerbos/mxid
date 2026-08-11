@@ -1,6 +1,6 @@
 .PHONY: dev dev-console dev-portal dev-web dev-docker-up dev-docker-up-d dev-docker-down dev-docker-logs dev-docker-ps dev-docker-restart dev-docker-reload dev-docker-watch dev-docker-clean \
        build run test lint migrate-up migrate-down migrate-create clean deps \
-       verify verify-mod verify-vet verify-build verify-lint verify-web verify-exports verify-i18n-keys verify-i18n-markers verify-error-extraction verify-toaster-mount verify-pinned-tag smoke install-hooks \
+       verify verify-mod verify-vet verify-build verify-lint verify-web verify-exports verify-i18n-keys verify-i18n-markers verify-error-extraction verify-toaster-mount verify-protocol-fields verify-pinned-tag smoke install-hooks \
        docker-build prod-up prod-down prod-logs standalone-up standalone-down standalone-logs
 
 # Variables
@@ -252,7 +252,7 @@ clean:
 
 # Verify — invariant gates. Run before commit / in CI.
 # Each sub-target is independently runnable to localize failures.
-verify: verify-mod verify-vet verify-build verify-gormtags verify-lint verify-exports verify-i18n-keys verify-i18n-markers verify-error-extraction verify-toaster-mount verify-pinned-tag verify-web
+verify: verify-mod verify-vet verify-build verify-gormtags verify-lint verify-exports verify-i18n-keys verify-i18n-markers verify-error-extraction verify-toaster-mount verify-protocol-fields verify-pinned-tag verify-web
 	@echo "✓ verify OK"
 
 # go.mod / go.sum must match the import graph. Catches indirect-vs-direct drift.
@@ -328,6 +328,10 @@ verify-i18n-markers:
 verify-toaster-mount:
 	@echo "==> verify-toaster-mount"
 	node scripts/verify-toaster-mount.mjs
+
+verify-protocol-fields:
+	@echo "==> verify-protocol-fields (console settings the engine actually reads)"
+	node scripts/verify-protocol-fields.mjs
 
 # The example env files are copied verbatim when deploying, so the tag they pin
 # has to be one that still exists. Hits the network; kept out of the pre-commit

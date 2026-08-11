@@ -31,8 +31,12 @@ export const appApi = {
     client.delete<ApiResponse<null>>(`/apps/${id}`).then(r => r.data),
   updateStatus: (id: string, status: number) =>
     client.put<ApiResponse<null>>(`/apps/${id}/status`, { status }).then(r => r.data),
+  // PATCH merges: keys absent from `config` keep their stored value, and a key
+  // sent as null is removed. PUT on this path replaces the whole document and
+  // will delete anything the caller did not send — an editor that renders only
+  // part of the config must never use it.
   updateProtocolConfig: (id: string, config: Record<string, unknown>) =>
-    client.put<ApiResponse<null>>(`/apps/${id}/config`, { protocol_config: config }).then(r => r.data),
+    client.patch<ApiResponse<null>>(`/apps/${id}/config`, { protocol_config: config }).then(r => r.data),
   getProtocolConfig: (id: string) =>
     client.get<ApiResponse<Record<string, unknown>>>(`/apps/${id}/config`).then(r => r.data.data),
 

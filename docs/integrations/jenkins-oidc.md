@@ -24,7 +24,8 @@ MXID console 新建 OIDC 应用：
 
 - **Redirect URI**：`<JENKINS>/securityRealm/finishLogin`
 - **Scopes**：`openid profile email groups`
-- **Claim mapper**（让 groups 进 token，必加）：`{"claim":"groups","source":"user.groups.codes"}`
+- **groups 进 token**：把 `groups` 加进应用的 scope 列表即可，不需要 claim mapper。
+  （早期版本这里写的 `{"claim":"groups","source":"user.groups.codes"}` 是无效路径，会被静默忽略——如果你照着配过，删掉它，改用 scope。）
 - 记下生成的 **client_id** / **client_secret**
 
 ## 3. Jenkins 配 Security Realm

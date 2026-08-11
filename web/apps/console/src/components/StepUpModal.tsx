@@ -17,6 +17,8 @@ export default function StepUpModal() {
   const [code, setCode] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const pending = useRef<{ resolve: () => void; reject: () => void } | null>(null)
+  // Guards the enrollment notice against firing once per failed request.
+  const enrollAnnounced = useRef(false)
 
   useEffect(() => {
     setStepUpHandler(
@@ -32,8 +34,20 @@ export default function StepUpModal() {
 
   useEffect(() => {
     const onEnroll = () => {
+      // Every in-flight request on the page raises this event, and a console
+      // screen fires a dozen. Announce it once and route once: a user under an
+      // enforce-MFA policy with no factor was otherwise buried under a stack of
+      // identical toasts covering the very page they had been sent to, which
+      // reads as "the product is broken" rather than "bind a factor".
+      if (enrollAnnounced.current) return
+      enrollAnnounced.current = true
       toast.error(t('stepup.enrollRequired'))
       navigate('/account')
+      // Let it announce again if they are still stuck a while later, but not
+      // once per request.
+      window.setTimeout(() => {
+        enrollAnnounced.current = false
+      }, 10_000)
     }
     window.addEventListener('mxid:mfa-enroll-required', onEnroll)
     return () => window.removeEventListener('mxid:mfa-enroll-required', onEnroll)

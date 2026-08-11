@@ -319,7 +319,7 @@ func TestPortalStepUp_MissingProofIsBadRequest(t *testing.T) {
 		body     string
 		wantCode int
 	}{
-		{"enrolled, no code", true, `{}`, 40007},         // errcode.NumTOTPRequired
+		{"enrolled, no code", true, `{}`, 40007},          // errcode.NumTOTPRequired
 		{"not enrolled, no password", false, `{}`, 40002}, // errcode.NumInvalidInput
 	} {
 		t.Run(tc.name, func(t *testing.T) {

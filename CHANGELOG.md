@@ -5,6 +5,82 @@ All notable changes to MXID are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.1] — 2026-08-11
+
+### Added
+- OIDC apps can carry the identity claims (`email`, `name`, `phone_number`, `locale`) in the
+  id_token as well as the userinfo endpoint, via `id_token_userinfo_claims` in the app's
+  protocol config. Off by default — the spec prefers the smaller token and a conformant
+  relying party fetches userinfo for the rest. It exists because several real ones never do:
+  Confluence's OIDC plugin reads the id_token only, and its just-in-time user provisioning
+  fails with "Claim [email] could not be found" on a login that otherwise succeeded. Such an
+  RP has no setting to change on its side. Enable it per app rather than globally, since it
+  widens what a leaked id_token discloses.
+- `docs/integrations/confluence-oidc.md`, covering the three traps that flow hits: JIT
+  provisioning off, the writable-directory requirement, and the id_token claim gap above.
+- `pkce_required` now does something. The key had been parsed into the OIDC client config and
+  read by no code at all, so an operator who required PKCE got no enforcement and no warning.
+  An app with it set now rejects an authorization request carrying no `code_challenge`, and
+  rejects the downgrade to the `plain` challenge method. Off unless set, so no existing app
+  changes behaviour.
+- The OIDC protocol tab exposes settings that previously could only be changed by editing the
+  database: back-channel logout URI, claim mappers, ID token TTL and the per-app rate limit.
+- `PATCH /api/v1/console/apps/:id/config` merges into an app's protocol config; a key sent as
+  null is deleted. `PUT` keeps its replace semantics for callers holding the whole document.
+- Protocol-config changes now record the configuration before and after, plus the list of keys
+  that moved, in the audit entry. The app table keeps no history, so before this a mistaken
+  overwrite could not be reconstructed from anything short of a database backup.
+
+### Fixed
+- The console had no mandatory-MFA-enrollment screen, so an administrator under an enforce-MFA
+  policy with no factor was shown the forced-password-change form — and on the console a
+  password change is itself a high-risk operation requiring MFA, so every submission answered
+  "mfa enrollment required" with no way to enrol. The seeded administrator account ships
+  flagged for a password change, which made this reachable on a fresh deployment with nobody
+  left to unlock it. The enrollment screen is now shared between console and portal and is
+  shown first, MFA being the prerequisite of the two.
+- The console raised the enrollment notice once per failed request, so the page a user had
+  just been sent to was buried under a stack of identical toasts. It announces once.
+- A user who owed both a forced password change and a mandatory MFA enrollment could not
+  satisfy either. The two gates each permitted only their own remediation surface, so the
+  enrollment call was refused by the password gate and vice versa; the portal showed both
+  demands and offered no way out short of an administrator clearing a flag in the database.
+  This is the state a restored account lands in — the administrator sets a password to hand
+  it back, and under an enforce-MFA policy the factor is gone with the deletion. Both gates
+  now permit both surfaces, and the user is still held until every debt is paid.
+- The console's protocol-config tab no longer destroys an app's protocol configuration when
+  saved. Four defects stacked into one silent data loss, all reproduced end to end:
+  - Loading the tab crashed on any app with `claim_mappers`. The loader stringified every
+    returned key to fill a text box, including ones it has no field for, and that threw on
+    an array of objects — sending the whole load into its error path, which blanks the form.
+    Operators saw an empty form for an app that was configured, and no error.
+  - Saving rebuilt the payload from only the keys the form renders, while the update replaces
+    the entire config blob. Combined with the blank form above, one save wiped `scopes`,
+    `grant_types`, `claim_mappers`, `id_token_ttl`, `rate_limit_per_min` and the back-channel
+    logout endpoint — silently turning off single logout for that app.
+  - `scopes`, `grant_types` and `response_types` are `[]string` on the backend but were sent
+    back as the comma-joined display string, which `json.Unmarshal` rejected and dropped.
+  - A failed load left an empty but editable form with a working save button, so any load
+    error could be promoted into deletion of the stored config.
+  Keys with no field now ride through untouched, the list fields carry the right conversion,
+  the display conversion can no longer throw, the save goes through PATCH, and a form that
+  failed to load refuses to save at all. See
+  [the postmortem](docs/postmortems/2026-08-11-protocol-config-wipe.md) for how to find
+  affected apps.
+- Six fields in the OIDC protocol tab did nothing. Four had no counterpart in the engine at
+  all (`access_token_lifetime`, `refresh_token_lifetime`, `id_token_signing_alg`,
+  `subject_type`) and two were spelled differently from the key the engine reads
+  (`id_token_lifetime` → `id_token_ttl`, `token_endpoint_auth_method` →
+  `token_endpoint_auth_mode`). Setting them reported success and changed nothing. The dead
+  ones are gone, the misspelled ones corrected, and `make verify-protocol-fields` now fails
+  the build when the console offers a setting the engine does not read.
+- The CAS "renew enabled" field was a text box whose value was compared against `"true"`, so
+  a typed `yes` or `1` silently meant false. It is a select now.
+- Corrected the `groups` claim instructions in `docs/integrations/README.md` and
+  `docs/integrations/jenkins-oidc.md`. Both told operators to add a claim mapper with source
+  `user.groups.codes`, which is not a valid source path and was silently ignored; `groups`
+  comes from the `groups` scope and needs no mapper.
+
 ## [1.9.0] — 2026-08-11
 
 ### Added
@@ -976,7 +1052,8 @@ Initial public preview. Two integrations verified end-to-end: **Grafana (OIDC)**
 - pnpm workspaces (`console` / `portal` / `shared`).
 - Tailwind v4 monorepo `@source` directive so shared package UI compiles into both SPAs.
 
-[Unreleased]: https://github.com/imkerbos/mxid/compare/v1.9.0...HEAD
+[Unreleased]: https://github.com/imkerbos/mxid/compare/v1.9.1...HEAD
+[1.9.1]: https://github.com/imkerbos/mxid/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/imkerbos/mxid/compare/v1.8.6...v1.9.0
 [1.8.6]: https://github.com/imkerbos/mxid/compare/v1.8.5...v1.8.6
 [1.8.5]: https://github.com/imkerbos/mxid/compare/v1.8.4...v1.8.5
