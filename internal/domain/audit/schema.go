@@ -93,8 +93,32 @@ var detailSchemas = map[string]detailSchema{
 	event.LoginRisk:    {allow: []string{"user_id", "tenant_id", "ip", "user_agent", "reasons"}},
 	event.Logout:       {allow: []string{"user_id", "tenant_id", "session_id", "ip", "user_agent"}},
 
-	event.UserCreated:          {allow: []string{"user_id", "tenant_id", "username", "email", "display_name", "actor_id"}},
-	event.UserUpdated:          {allow: []string{"user_id", "tenant_id", "actor_id", "fields", "status"}},
+	event.UserCreated: {allow: []string{"user_id", "tenant_id", "username", "email", "display_name", "actor_id"}},
+	// UserUpdated is not only "a display name changed": the user domain rides
+	// its whole identity-binding lifecycle on this event type and puts the
+	// meaning in "action" — identity_bound, identity_taken_over,
+	// identity_unbound, identity_restored, user_restored, mfa_removed,
+	// batch_*. Without "action" every one of them projects down to the same
+	// {user_id, tenant_id} row, indistinguishable from an edit to a display
+	// name. "provider", "identity_id" and "previous_user_id" are the operands
+	// that make the row answer a question: which external account, which
+	// binding, and — for a takeover — whose it was before.
+	//
+	// takeOverIdentity (internal/domain/user/external_login.go) is the only
+	// code path that moves an external identity between accounts, and it runs
+	// on the external-IdP callback: a GET on publicPortalGroup, which the
+	// catch-all api.* audit does not cover (middleware.go returns early for
+	// GET, and auditCatchAll is only .Use'd on the console/portal groups). This
+	// domain event is the ONLY record that a takeover happened, so a dropped
+	// previous_user_id is a takeover with no previous owner on record.
+	//
+	// All four are safe for the tamper-evident chain: "action" is a closed set
+	// of code-authored literals, "provider" is an IdP type ("lark", "oidc"),
+	// and the two id fields are snowflakes that stringifyBigIDs keeps exact.
+	// No credential, token or free-form user input reaches any of them.
+	// Precedent: event.AppUpdated already allow-lists "action" for the same
+	// reason.
+	event.UserUpdated:          {allow: []string{"user_id", "tenant_id", "actor_id", "fields", "status", "action", "provider", "identity_id", "previous_user_id"}},
 	event.UserDeleted:          {allow: []string{"user_id", "tenant_id", "username", "actor_id"}},
 	event.UserLocked:           {allow: []string{"user_id", "tenant_id", "actor_id", "reason", "status", "source"}},
 	event.UserUnlocked:         {allow: []string{"user_id", "tenant_id", "actor_id"}},

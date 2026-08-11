@@ -1,10 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { motion } from 'framer-motion'
 import QRCode from 'qrcode'
-import { portalApi, formatDate, cn, parseUserAgent, useTranslation } from '@mxid/shared'
+import { portalApi, externalIdpApi, formatDate, cn, parseUserAgent, useTranslation } from '@mxid/shared'
 import { Field, Button, ConfirmDialog } from '@mxid/shared/ui'
 import { toast, extractMessage } from '@mxid/shared/ui/toast'
-import type { MFAInfo, SessionInfo, FormFillExtToken } from '@mxid/shared'
+import type { MFAInfo, SessionInfo, FormFillExtToken, IdentityInfo, PublicIDP } from '@mxid/shared'
 import {
   KeyRound,
   Shield,
@@ -19,10 +19,56 @@ import {
   Copy,
   X,
   Puzzle,
+  Link2,
 } from 'lucide-react'
+import { externalAuthReasonKey } from '../../lib/externalAuthReason'
+
+// Reason SLUGS the OAuth-bind round-trip can bounce back with (never raw
+// error text — see externalAuthReason.ts's doc comment for why that
+// distinction is load-bearing). bind_session_mismatch and bind_unconfigured
+// are this flow's own fixed guard slugs (mxid-ee's finishBind, unrelated to
+// the shared conflict taxonomy externalAuthReasonKey knows about); anything
+// else — the backend's own generic slug, or a value this build predates —
+// gets one sensible, actionable sentence: binding failed, retry or contact
+// an administrator.
+function bindFailureDetail(reason: string, t: (key: string) => string): string | undefined {
+  if (reason === 'bind_session_mismatch') return t('account.identities.bindSessionMismatch')
+  if (reason === 'bind_unconfigured') return undefined
+  const key = externalAuthReasonKey(reason)
+  return t(key ?? 'account.identities.bindGenericFailed')
+}
 
 export default function SecurityPage() {
   const { t } = useTranslation()
+
+  // The bind round-trip is a full page navigation (the browser leaves for the
+  // IdP and comes back), so there is no in-app moment to toast success from —
+  // read it once off the URL on mount instead. Success lands here as
+  // ?bind=ok (see startBind's finalURL). A failure never reaches this page
+  // today (see RedirectIfAuth in App.tsx, which forwards it here as
+  // ?bindErr=<reason> so it isn't silently dropped) — handle both under the
+  // same effect so a refresh never re-shows either toast.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    let changed = false
+    if (params.get('bind') === 'ok') {
+      toast.success(t('account.identities.bindSuccess'))
+      params.delete('bind')
+      changed = true
+    }
+    const bindErr = params.get('bindErr')
+    if (bindErr !== null) {
+      toast.error(t('account.identities.bindFailed'), bindFailureDetail(bindErr, t))
+      params.delete('bindErr')
+      changed = true
+    }
+    if (changed) {
+      const qs = params.toString()
+      window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -37,6 +83,7 @@ export default function SecurityPage() {
       <div className="space-y-6">
         <ChangePasswordSection />
         <MFASection />
+        <IdentitiesSection />
         <SessionsSection />
         <ConnectedExtensionsSection />
       </div>
@@ -548,6 +595,159 @@ function EnrollTOTPModal({
         )}
       </div>
     </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Identity bindings (external IdPs)                                  */
+/* ------------------------------------------------------------------ */
+// Lets a user bind an external-IdP account (e.g. Lark) to their own profile,
+// and shows what is already bound. This is the self-service recovery path
+// for a binding an administrator removed: completing the IdP's own sign-in
+// proves the caller holds the account, so no one else can graft a colleague's
+// external identity onto their own profile by typing an id.
+//
+// The IdP list is externalIdpApi.listPublic() — the same endpoint the login
+// page already uses to render its "sign in with ..." buttons — there is no
+// separate portal-only list to fetch. A bound identity's provider_id is the
+// IdP's `code` (see mxid-ee/features/externalidp/provider.go), which is what
+// correlates the two lists.
+function IdentitiesSection() {
+  const { t } = useTranslation()
+  const [identities, setIdentities] = useState<IdentityInfo[]>([])
+  const [idps, setIdps] = useState<PublicIDP[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [binding, setBinding] = useState<string | null>(null)
+
+  const fetchAll = () => {
+    setLoading(true)
+    // The two calls are settled INDEPENDENTLY, because only one of them exists
+    // in every edition.
+    //
+    // externalIdpApi.listPublic() is EE-only — the route is registered in
+    // mxid-ee/features/externalidp/register.go and nowhere in CE, so on CE it
+    // 404s into the router's NoRoute and the interceptor rejects. Folded into a
+    // shared Promise.all that rejection also discarded the identities that HAD
+    // loaded, and left `error` set, which the hide-when-empty guard below
+    // deliberately refuses to fire through — so every CE portal rendered a
+    // permanent red "Identity bindings — <error>" card. A missing or failing
+    // IdP list is not an outage; it means "no providers to offer", which is
+    // what the login page's own listPublic() swallow already assumes.
+    //
+    // portalApi.listIdentities() is served by CE (internal/gateway/portal), so
+    // a failure there IS a real outage and must stay visible: rendering "no
+    // bindings" over a backend that never answered is the same lie this branch
+    // exists to remove. That rejection is the only one that reaches setError.
+    const idpList = externalIdpApi.listPublic().catch(() => [] as PublicIDP[])
+    Promise.all([portalApi.listIdentities(), idpList])
+      .then(([ids, list]) => {
+        setIdentities(ids)
+        setIdps(list)
+        setError('')
+      })
+      .catch((err: Error) => {
+        setIdentities([])
+        setIdps([])
+        setError(err.message || t('common.failed'))
+      })
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    fetchAll()
+  }, [])
+
+  const boundCodes = new Set(identities.map((i) => i.provider_id))
+  const unboundIdps = idps.filter((idp) => !boundCodes.has(idp.code))
+  const idpNameByCode = new Map(idps.map((idp) => [idp.code, idp.name]))
+
+  const handleBind = async (idpCode: string) => {
+    setBinding(idpCode)
+    try {
+      const res = await portalApi.startIdentityBind(idpCode)
+      // Full-page navigation to the IdP — there is no XHR response to react
+      // to next; the OAuth round-trip finishes on ?bind=ok (see the mount
+      // effect above). A 403/step_up_required here is handled transparently
+      // by the shared axios client (registered by portal's StepUpModal): it
+      // runs the step-up prompt and replays this same POST once verified.
+      window.location.assign(res.authorize_url)
+    } catch (e) {
+      toast.error(t('account.identities.bindFailed'), extractMessage(e))
+      setBinding(null)
+    }
+  }
+
+  // Nothing bound and no external IdP configured (CE, or EE with none set
+  // up yet) — the whole section would be an empty shell, so skip it, same
+  // as the login page's ExternalIdpButtons hiding itself for an empty list.
+  // Never on a fetch failure, though: that would show a confident "nothing
+  // to bind here" for what is actually a backend outage — the frontend
+  // stating something the backend never said. Only listIdentities() can set
+  // `error` now (see fetchAll), so this guard reacts to a real outage and no
+  // longer to CE simply not serving the EE IdP list.
+  if (!loading && !error && idps.length === 0 && identities.length === 0) return null
+
+  return (
+    <SectionCard icon={Link2} title={t('account.identities.title')}>
+      <p className="mb-3 text-xs text-muted">{t('account.identities.hint')}</p>
+      {loading ? (
+        <div className="flex items-center gap-2 py-4 text-sm text-muted">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          {t('common.loading')}
+        </div>
+      ) : error ? (
+        <p className="text-sm text-red-500">{error}</p>
+      ) : (
+        <div className="space-y-3">
+          {identities.map((id) => (
+            <div
+              key={`${id.provider_type}:${id.provider_id}`}
+              className="flex items-center justify-between rounded-lg border border-border bg-surface px-4 py-3"
+            >
+              <div className="flex items-center gap-3">
+                <Link2 className="h-5 w-5 text-primary" />
+                <div>
+                  <p className="text-sm font-medium text-ink">
+                    {id.external_name || idpNameByCode.get(id.provider_id) || id.provider_type}
+                  </p>
+                  <p className="text-xs text-muted">{idpNameByCode.get(id.provider_id) || id.provider_type}</p>
+                </div>
+              </div>
+              <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-600">
+                {t('account.identities.bound')}
+              </span>
+            </div>
+          ))}
+          {unboundIdps.map((idp) => (
+            <div
+              key={idp.id}
+              className="flex items-center justify-between rounded-lg border border-dashed border-border bg-surface-muted/40 px-4 py-3"
+            >
+              <div className="flex items-center gap-3">
+                {idp.icon ? (
+                  <img src={idp.icon} alt="" className="h-5 w-5 rounded object-contain" />
+                ) : (
+                  <Link2 className="h-5 w-5 text-faint" />
+                )}
+                <p className="text-sm font-medium text-ink">{idp.name}</p>
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={binding === idp.code}
+                onClick={() => handleBind(idp.code)}
+              >
+                {t('account.identities.bind')}
+              </Button>
+            </div>
+          ))}
+          {identities.length === 0 && unboundIdps.length === 0 && (
+            <p className="py-4 text-sm text-muted">{t('account.identities.empty')}</p>
+          )}
+        </div>
+      )}
+    </SectionCard>
   )
 }
 

@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -15,6 +16,16 @@ import (
 type gormRepository struct {
 	db *gorm.DB
 }
+
+// uniqueExternalIDConstraint is the Postgres partial unique index name for
+// (tenant_id, provider_type, external_id) WHERE deleted_at IS NULL
+// (migration 000068). uniqueExternalIDColumns is how sqlite names the same
+// violation in unit tests (the glebarez/sqlite driver reports the column list,
+// not the index name) — see dberr.IsUniqueViolationOn.
+const (
+	uniqueExternalIDConstraint = "uk_user_identity_external"
+	uniqueExternalIDColumns    = "mxid_user_identity.tenant_id, mxid_user_identity.provider_type, mxid_user_identity.external_id"
+)
 
 // NewGormRepository creates a new GORM-based user repository.
 func NewGormRepository(db *gorm.DB) Repository {
@@ -196,6 +207,19 @@ func (r *gormRepository) GetByID(ctx context.Context, id int64) (*User, error) {
 	return &user, nil
 }
 
+// GetAnyByID loads a user regardless of soft-delete state, mirroring
+// GetAnyIdentityByExternal's "any" naming for the same reason: the caller
+// needs to distinguish "deleted" from "never existed" or "still live", and
+// the ordinary soft-delete filter would hide exactly the row that answers
+// that question.
+func (r *gormRepository) GetAnyByID(ctx context.Context, id int64) (*User, error) {
+	var user User
+	if err := r.db.WithContext(ctx).Unscoped().First(&user, id).Error; err != nil {
+		return nil, fmt.Errorf("get user by id (unscoped): %w", err)
+	}
+	return &user, nil
+}
+
 // GetByUsername finds a user by tenant and username.
 func (r *gormRepository) GetByUsername(ctx context.Context, tenantID int64, username string) (*User, error) {
 	var user User
@@ -248,6 +272,23 @@ func (r *gormRepository) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
+// RestoreUser clears deleted_at on a soft-deleted account. Its identity bindings
+// stay unbound — restoring them is a separate, separately-audited decision.
+func (r *gormRepository) RestoreUser(ctx context.Context, id int64) error {
+	result := r.db.WithContext(ctx).
+		Unscoped().
+		Model(&User{}).
+		Where("id = ? AND deleted_at IS NOT NULL", id).
+		Updates(map[string]any{"deleted_at": nil, "updated_at": time.Now()})
+	if result.Error != nil {
+		return fmt.Errorf("restore user: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
 // CountByTenant counts users in a single tenant. Cheap (single index scan).
 func (r *gormRepository) CountByTenant(ctx context.Context, tenantID int64) (int64, error) {
 	var n int64
@@ -272,6 +313,11 @@ func (r *gormRepository) List(ctx context.Context, tenantID int64, params ListPa
 	var total int64
 
 	query := r.db.WithContext(ctx).Model(&User{}).Where("tenant_id = ?", tenantID)
+	// IncludeDeleted surfaces soft-deleted rows so an admin can find one to
+	// restore. Off by default — Unscoped() only applies when explicitly asked.
+	if params.IncludeDeleted {
+		query = query.Unscoped()
+	}
 
 	// Apply scopes
 	query = query.Scopes(
@@ -462,6 +508,130 @@ func (r *gormRepository) DeleteIdentity(ctx context.Context, userID, identityID 
 	return nil
 }
 
+// ListDeletedIdentities returns this user's soft-deleted bindings, newest first.
+func (r *gormRepository) ListDeletedIdentities(ctx context.Context, userID int64) ([]*UserIdentity, error) {
+	var out []*UserIdentity
+	err := r.db.WithContext(ctx).
+		Unscoped().
+		Where("user_id = ? AND deleted_at IS NOT NULL", userID).
+		Order("deleted_at DESC").
+		Find(&out).Error
+	if err != nil {
+		return nil, fmt.Errorf("list deleted user identities: %w", err)
+	}
+	return out, nil
+}
+
+// RestoreIdentity clears deleted_at on a binding this user previously had.
+// Scoped by both user_id and identity id so a stale id from one user cannot
+// resurrect another user's binding.
+//
+// The occupancy check below is read-then-write: a concurrent first-time
+// external login can insert a fresh live binding for the same external id in
+// the gap between the Count and the Updates call. That gap is real but the
+// partial unique index uk_user_identity_external (migration 000068) is the
+// actual arbiter — it accepts only one live row per (tenant_id,
+// provider_type, external_id). A losing restore hits that index and the
+// driver returns a unique-violation error, which is translated to
+// ErrExternalIDTaken below instead of leaking a raw driver error to the
+// caller. No additional locking is added; the index is authoritative.
+func (r *gormRepository) RestoreIdentity(ctx context.Context, userID, identityID int64) error {
+	var target UserIdentity
+	err := r.db.WithContext(ctx).
+		Unscoped().
+		Where("user_id = ? AND id = ?", userID, identityID).
+		First(&target).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return gorm.ErrRecordNotFound
+		}
+		return fmt.Errorf("load identity for restore: %w", err)
+	}
+	if !target.DeletedAt.Valid {
+		return ErrIdentityAlreadyBound
+	}
+
+	// The external account may have been claimed while this binding was gone.
+	// Restoring over a live binding would hand somebody else's login to this
+	// account, so refuse and let a human resolve it. Deliberately NOT
+	// Unscoped(): only a live binding counts as "taken".
+	var clash int64
+	err = r.db.WithContext(ctx).
+		Model(&UserIdentity{}).
+		Where("tenant_id = ? AND provider_type = ? AND external_id = ? AND id <> ?",
+			target.TenantID, target.ProviderType, target.ExternalID, target.ID).
+		Count(&clash).Error
+	if err != nil {
+		return fmt.Errorf("check external id availability: %w", err)
+	}
+	if clash > 0 {
+		return ErrExternalIDTaken
+	}
+
+	err = r.db.WithContext(ctx).
+		Unscoped().
+		Model(&UserIdentity{}).
+		Where("user_id = ? AND id = ?", userID, identityID).
+		Updates(map[string]any{"deleted_at": nil, "updated_at": time.Now()}).Error
+	if err != nil {
+		if dberr.IsUniqueViolationOn(err, uniqueExternalIDConstraint, uniqueExternalIDColumns) {
+			return ErrExternalIDTaken
+		}
+		return fmt.Errorf("restore user identity: %w", err)
+	}
+	return nil
+}
+
+// RestoreIdentityTo clears deleted_at on a binding and reassigns it to a new
+// owner in the same write — the takeover branch of BindExternalIdentity. No
+// occupancy check precedes this write the way RestoreIdentity's does: the
+// caller (BindExternalIdentity) already established that the only existing
+// row for this external id belongs to a deleted user, so there is nothing
+// live to clash with at read time. The remaining gap — a concurrent
+// first-time bind inserting a fresh live row for the same external id between
+// that read and this write — is exactly the race the partial unique index
+// uk_user_identity_external (migration 000068) exists to arbitrate; the
+// index doesn't care which side (a competing insert or this update) arrives
+// second, only that just one live row per (tenant_id, provider_type,
+// external_id) survives. A losing write here hits that index and is
+// translated to ErrExternalIDTaken below, matching RestoreIdentity's pattern.
+func (r *gormRepository) RestoreIdentityTo(ctx context.Context, i *UserIdentity) error {
+	err := r.db.WithContext(ctx).
+		Unscoped().
+		Model(&UserIdentity{}).
+		Where("id = ?", i.ID).
+		Updates(map[string]any{
+			"user_id":       i.UserID,
+			"external_name": i.ExternalName,
+			// Both callers (reclaimIdentity, takeOverIdentity) run
+			// setIdentityExtra before getting here, so leaving "extra" out of
+			// this map made that call a dead write: the raw profile the IdP
+			// just returned was computed, assigned, and never persisted, while
+			// the row kept whatever Extra it carried before it was unbound.
+			"extra":      i.Extra,
+			"deleted_at": nil,
+			"updated_at": i.UpdatedAt,
+		}).Error
+	if err != nil {
+		if dberr.IsUniqueViolationOn(err, uniqueExternalIDConstraint, uniqueExternalIDColumns) {
+			return ErrExternalIDTaken
+		}
+		return fmt.Errorf("restore identity to new owner: %w", err)
+	}
+	return nil
+}
+
+// SoftDeleteIdentitiesByUser soft-deletes every binding belonging to a user.
+func (r *gormRepository) SoftDeleteIdentitiesByUser(ctx context.Context, userID int64) error {
+	err := r.db.WithContext(ctx).
+		Where("user_id = ?", userID).
+		Delete(&UserIdentity{}).Error
+	if err != nil {
+		return fmt.Errorf("soft delete user identities: %w", err)
+	}
+	return nil
+}
+
 // GetMFA finds a specific MFA configuration for a user.
 func (r *gormRepository) GetMFA(ctx context.Context, userID int64, mfaType string) (*UserMFA, error) {
 	var mfa UserMFA
@@ -593,7 +763,10 @@ func (r *gormRepository) ListLoginRecords(ctx context.Context, userID int64, pag
 }
 
 // GetIdentityByExternal looks up an identity binding by the external composite
-// key. Used by the external-IdP login flow.
+// key. Used by the external-IdP login flow. Excludes soft-deleted bindings:
+// UserIdentity carries gorm.DeletedAt, so this (and every other gorm finder on
+// the model) is scoped to live rows automatically. Use GetAnyIdentityByExternal
+// when a soft-deleted match still matters.
 func (r *gormRepository) GetIdentityByExternal(ctx context.Context, tenantID int64, providerType, providerID, externalID string) (*UserIdentity, error) {
 	var id UserIdentity
 	err := r.db.WithContext(ctx).
@@ -606,9 +779,45 @@ func (r *gormRepository) GetIdentityByExternal(ctx context.Context, tenantID int
 	return &id, nil
 }
 
-// CreateIdentity inserts a new identity binding.
+// GetAnyIdentityByExternal finds a binding by the external composite key,
+// including soft-deleted ones. Lets a caller tell "never bound" apart from
+// "bound to an account that was deleted" — GetIdentityByExternal alone cannot
+// distinguish the two, since a soft-deleted row is invisible to it.
+//
+// Ordering: a live row wins outright (the partial unique index permits at most
+// one), but the index does NOT constrain soft-deleted rows, so a key can carry
+// many of them — one per past unbind. `deleted_at DESC` breaks that tie by
+// most-recently-unbound. Without it the tiebreak was whatever the planner
+// returned, which decides whether BindExternalIdentity sees the caller's own
+// row (a reclaim) or a stranger's (a takeover). The end state is the same
+// either way — one live row, owned by the caller — but the audit attribution
+// is not, and attribution is the entire difference between those two events.
+func (r *gormRepository) GetAnyIdentityByExternal(ctx context.Context, tenantID int64, providerType, providerID, externalID string) (*UserIdentity, error) {
+	var id UserIdentity
+	err := r.db.WithContext(ctx).
+		Unscoped().
+		Where("tenant_id = ? AND provider_type = ? AND provider_id = ? AND external_id = ?",
+			tenantID, providerType, providerID, externalID).
+		Order("deleted_at IS NULL DESC, deleted_at DESC").
+		First(&id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &id, nil
+}
+
+// CreateIdentity inserts a new identity binding. Its only caller,
+// BindExternalIdentity, checks the external id is free before calling this —
+// but that check-then-write gap is real, so a concurrent insert for the same
+// external id can still land here first. The partial unique index
+// uk_user_identity_external is the actual arbiter; a losing insert is
+// translated to ErrExternalIDTaken instead of a raw driver error, matching
+// RestoreIdentity's pattern for the same index.
 func (r *gormRepository) CreateIdentity(ctx context.Context, identity *UserIdentity) error {
 	if err := r.db.WithContext(ctx).Create(identity).Error; err != nil {
+		if dberr.IsUniqueViolationOn(err, uniqueExternalIDConstraint, uniqueExternalIDColumns) {
+			return ErrExternalIDTaken
+		}
 		return fmt.Errorf("create identity: %w", err)
 	}
 	return nil

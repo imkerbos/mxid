@@ -6,6 +6,7 @@ import { extractMessage } from '@mxid/shared/ui/toast'
 import type { PublicIDP } from '@mxid/shared'
 import { Eye, EyeOff, Loader2, RefreshCw } from 'lucide-react'
 import { resumeSSOIfAny } from '../../lib/sso'
+import { externalAuthReasonKey } from '../../lib/externalAuthReason'
 import logo from '../../assets/logo.png'
 
 // loginErrorMessage maps the backend error code to a specific, localized
@@ -100,6 +101,24 @@ export default function LoginPage() {
       setError(t('login.sessionExpired'))
     }
   }, [location.state, t])
+
+  // External-IdP failure landing here unauthenticated: normally this is an
+  // ordinary federated-login failure, but it is also where an identity-BIND
+  // round-trip lands if the caller's portal session did not survive the trip
+  // (App.tsx's RedirectIfAuth forwards the still-authenticated case to the
+  // security page instead — see its comment). reason is a stable backend slug
+  // (see externalAuthReason.ts) — never render it raw; anything this map
+  // doesn't recognize (including the bind-specific guard slugs, which read
+  // oddly outside the security page) falls back to the existing generic
+  // third-party-login-failed message.
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search)
+    if (p.get('err') === 'external') {
+      const reason = p.get('reason') || ''
+      const key = externalAuthReasonKey(reason)
+      setError(key ? t(key) : t('login.externalFailed'))
+    }
+  }, [t])
 
   const loadCaptcha = useCallback(async () => {
     setCaptchaFailed(false)

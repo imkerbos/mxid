@@ -2,7 +2,6 @@ package user
 
 import (
 	"errors"
-	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -48,6 +47,14 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 		users.GET("/:id", authz.Require("user.read", nil), h.Get)
 		users.PUT("/:id", authz.Require("user.update", nil), h.Update)
 		users.DELETE("/:id", authz.Require("user.delete", nil), h.Delete)
+		// Restore undoes a soft delete. It does NOT restore identity bindings —
+		// that is a separate, separately-audited decision on the identities
+		// endpoint below. Gated by its own catalog permission (user.restore,
+		// see migration 000069) rather than reusing user.delete: delete and
+		// restore are separate capabilities, the same way user.lock and
+		// user.unlock already are, so a tenant can grant "can undo a
+		// deletion" without also granting "can delete".
+		users.POST("/:id/restore", authz.Require("user.restore", nil), h.RestoreUser)
 		users.PUT("/:id/status", authz.Require("user.update", nil), h.UpdateStatus)
 		users.POST("/:id/lock", authz.Require("user.lock", nil), h.LockUser)
 		users.POST("/:id/unlock", authz.Require("user.unlock", nil), h.UnlockUser)
@@ -61,6 +68,8 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 
 		users.GET("/:id/identities", authz.Require("user.read", nil), h.ListIdentities)
 		users.DELETE("/:id/identities/:iid", authz.Require("user.identity.manage", nil), h.UnbindIdentity)
+		users.GET("/:id/identities/deleted", authz.Require("user.read", nil), h.ListDeletedIdentities)
+		users.POST("/:id/identities/:iid/restore", authz.Require("user.identity.manage", nil), h.RestoreIdentity)
 
 		users.GET("/:id/mfa", authz.Require("user.read", nil), h.ListMFA)
 		users.DELETE("/:id/mfa/:type", authz.Require("user.mfa.manage", nil), h.DeleteMFA)
@@ -187,6 +196,19 @@ func (h *Handler) Delete(c *gin.Context) {
 	response.OK(c, nil)
 }
 
+// RestoreUser handles POST /users/:id/restore.
+func (h *Handler) RestoreUser(c *gin.Context) {
+	id, ok := ginutil.ParseInt64Param(c, "id")
+	if !ok {
+		return
+	}
+	if err := h.svc.RestoreUser(c.Request.Context(), id); err != nil {
+		h.handleServiceError(c, err)
+		return
+	}
+	response.OK(c, nil)
+}
+
 // List handles GET /users.
 func (h *Handler) List(c *gin.Context) {
 	tenantID := getTenantID(c)
@@ -199,11 +221,12 @@ func (h *Handler) List(c *gin.Context) {
 	}
 
 	params := ListParams{
-		Page:     p.Page,
-		PageSize: p.PageSize,
-		Search:   req.Search,
-		Status:   req.Status,
-		OrgID:    req.OrgID,
+		Page:           p.Page,
+		PageSize:       p.PageSize,
+		Search:         req.Search,
+		Status:         req.Status,
+		OrgID:          req.OrgID,
+		IncludeDeleted: req.IncludeDeleted,
 	}
 
 	users, total, err := h.svc.List(c.Request.Context(), tenantID, params)
@@ -363,16 +386,7 @@ func (h *Handler) ListIdentities(c *gin.Context) {
 
 	items := make([]*UserIdentityResponse, len(identities))
 	for i, idt := range identities {
-		items[i] = &UserIdentityResponse{
-			ID:           idt.ID,
-			ProviderType: idt.ProviderType,
-			ProviderID:   idt.ProviderID,
-			ExternalID:   idt.ExternalID,
-			CreatedAt:    idt.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		}
-		if idt.ExternalName != nil {
-			items[i].ExternalName = *idt.ExternalName
-		}
+		items[i] = ToIdentityResponse(idt)
 	}
 	response.OK(c, items)
 }
@@ -395,7 +409,44 @@ func (h *Handler) UnbindIdentity(c *gin.Context) {
 		h.handleServiceError(c, err)
 		return
 	}
-	c.JSON(http.StatusNoContent, nil)
+	response.OK(c, nil)
+}
+
+// ListDeletedIdentities handles GET /users/:id/identities/deleted. Feeds the
+// console's "unbound" section so a mis-clicked unbind can be undone.
+func (h *Handler) ListDeletedIdentities(c *gin.Context) {
+	id, ok := ginutil.ParseInt64Param(c, "id")
+	if !ok {
+		return
+	}
+	items, err := h.svc.ListDeletedIdentities(c.Request.Context(), id)
+	if err != nil {
+		h.handleServiceError(c, err)
+		return
+	}
+	out := make([]*UserIdentityResponse, len(items))
+	for i, idt := range items {
+		out[i] = ToIdentityResponse(idt)
+	}
+	response.OK(c, out)
+}
+
+// RestoreIdentity handles POST /users/:id/identities/:iid/restore.
+func (h *Handler) RestoreIdentity(c *gin.Context) {
+	id, ok := ginutil.ParseInt64Param(c, "id")
+	if !ok {
+		return
+	}
+	iid, err := strconv.ParseInt(c.Param("iid"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, errcode.NumInvalidInput, "invalid identity id")
+		return
+	}
+	if err := h.svc.RestoreIdentity(c.Request.Context(), id, iid); err != nil {
+		h.handleServiceError(c, err)
+		return
+	}
+	response.OK(c, nil)
 }
 
 // GetDetail handles GET /users/:id/detail.
@@ -496,7 +547,7 @@ func (h *Handler) DeleteMFA(c *gin.Context) {
 		h.handleServiceError(c, err)
 		return
 	}
-	c.JSON(http.StatusNoContent, nil)
+	response.OK(c, nil)
 }
 
 // ClearMFALockout handles POST /users/:id/mfa/lockout/clear. Admin op

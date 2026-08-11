@@ -44,6 +44,11 @@ export default {
     // One sentence for both step-up proofs: the prompt only ever showed the
     // user one of them, so naming which failed adds nothing.
     stepUpFailed: '身份核验未通过,请检查后重试。你的登录状态没有失效。',
+    // Identity-rebind conflicts.
+    externalIDTaken: '该账号已绑定到其他用户,无法再次绑定。',
+    identityAlreadyBound: '该绑定已生效,无需重复操作。',
+    externalUserDeleted: '该外部身份对应的账号已被删除。',
+    identityOwnerDeleted: '该账号已被删除，请先恢复账号，再恢复其身份绑定。',
   },
   common: {
     validation: {
@@ -397,9 +402,15 @@ export default {
       },
       identitiesTab: {
         empty: '该用户未绑定任何第三方身份',
-        confirmUnbind: '解除 {{provider}} 身份绑定？',
+        confirmUnbind: '解绑只是解除与 {{provider}} 的关联，并不会阻止其登录：用户重新完成一次 {{provider}} 登录即可自行恢复，你也可在下方“已解绑”中恢复。MFA 设置不受影响。若要真正阻断访问，请锁定或禁用该账号。',
         boundAt: '绑定于 {{date}}',
         unbind: '解绑',
+        unboundTitle: '已解绑',
+        unboundEmpty: '没有已解绑的身份',
+        restore: '恢复',
+        confirmRestore: '恢复「{{provider}}」绑定？该用户将重新可以通过它登录。',
+        restoreSuccess: '已恢复绑定',
+        restoreFailed: '恢复绑定失败',
       },
       mfaTab: {
         empty: '该用户未启用任何 MFA 因子',
@@ -460,6 +471,12 @@ export default {
     },
     list: {
       confirmDelete: '确定要删除用户 "{{name}}" 吗？此操作不可撤销。',
+      deleted: '已删除',
+      showDeleted: '显示已删除',
+      restoreUser: '恢复账号',
+      confirmRestoreUser: '恢复账号「{{username}}」？其外部身份绑定需另行恢复。',
+      restoreUserSuccess: '账号已恢复',
+      restoreUserFailed: '恢复账号失败',
       createModal: {
         title: '新建用户',
         username: '用户名',
@@ -1386,6 +1403,23 @@ export default {
       backupConfirmSaved: '我已保存',
       backupFileOneShot: '# 每码只能用一次，请妥善保管。',
       backupFileGenAt: '# 生成时间: {{at}}',
+    },
+    identities: {
+      title: '身份绑定',
+      hint: '绑定后可用该账号直接登录。若绑定被管理员解除，重新完成一次第三方登录即可自行找回，无需管理员代为操作。',
+      bind: '绑定',
+      bound: '已绑定',
+      bindSuccess: '绑定成功',
+      bindFailed: '绑定失败',
+      // Generic fallback when the backend's reason slug isn't one of the
+      // three known conflicts (errors.externalIDTaken etc.) — the backend's
+      // own catch-all slug, or a value this build predates. Never shown next
+      // to a raw token; always this sentence instead.
+      bindGenericFailed: '请重试；如果反复失败，请联系管理员。',
+      // The bind round-trip's own session-mismatch guard tripped: the browser
+      // that completed the third-party login isn't the one that started it.
+      bindSessionMismatch: '登录状态发生变化，请在本页重新点击绑定后完成第三方登录。',
+      empty: '暂无可绑定的第三方账号',
     },
     apiTokens: {
       newToken: '新建 Token',

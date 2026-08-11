@@ -195,7 +195,7 @@ func (h *Handler) deleteEligibility(c *gin.Context) {
 		response.InternalError(c, "delete failed", err)
 		return
 	}
-	response.NoContent(c)
+	response.OK(c, nil)
 }
 
 func (h *Handler) listRequests(c *gin.Context) {

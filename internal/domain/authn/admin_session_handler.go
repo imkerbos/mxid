@@ -1,8 +1,6 @@
 package authn
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/pkg/authz"
 	"github.com/imkerbos/mxid/pkg/errcode"
@@ -102,7 +100,7 @@ func (h *AdminSessionHandler) revokeAll(c *gin.Context) {
 		// Best-effort across namespaces; one failure should not abort.
 		_ = h.sessionMgr.DeleteAllByUser(c.Request.Context(), ns, uid)
 	}
-	c.JSON(http.StatusNoContent, nil)
+	response.OK(c, nil)
 }
 
 // revokeOne deletes a single session. The namespace must be supplied as a
@@ -144,5 +142,5 @@ func (h *AdminSessionHandler) revokeOne(c *gin.Context) {
 		response.InternalError(c, "delete session failed", err)
 		return
 	}
-	c.JSON(http.StatusNoContent, nil)
+	response.OK(c, nil)
 }

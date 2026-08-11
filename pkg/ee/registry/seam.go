@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"errors"
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/bootstrap"
@@ -41,6 +42,49 @@ type ResolverInput struct {
 // ExternalLoginFunc resolves an external identity to a local user, returning the
 // user id and username. Implemented by the CE user domain.
 type ExternalLoginFunc func(ctx context.Context, in *ResolverInput) (userID int64, username string, err error)
+
+// BindIdentityInput is the neutral binding contract between an external IdP
+// callback (EE) and the CE user domain. Mirrors ResolverInput but carries the
+// already-authenticated local user instead of auto-provision knobs.
+type BindIdentityInput struct {
+	TenantID     int64
+	UserID       int64
+	ProviderType string
+	ProviderID   string
+	ExternalID   string
+	DisplayName  string
+	Raw          map[string]any
+}
+
+// BindIdentityFunc links an already-authenticated external identity to an
+// existing local user. Implemented by the CE user domain. Account linking is a
+// CE concern on purpose: the rule deciding who may take over an external
+// identity is a security decision and belongs in auditable open code, not in an
+// obfuscated EE build.
+type BindIdentityFunc func(ctx context.Context, in *BindIdentityInput) error
+
+// Stable identity-rebind conflict sentinels. BindIdentityFunc and
+// ExternalLoginFunc implementations (CE) translate their internal
+// user.ErrExternalIDTaken / ErrIdentityAlreadyBound / ErrExternalUserDeleted
+// into these before returning, so an EE caller — which cannot import CE's
+// internal user domain to compare against those directly — can still tell a
+// known conflict apart from an arbitrary failure via errors.Is, and choose a
+// fixed, URL-safe slug for it.
+//
+// This exists because an EE callback handler once put a bind failure's raw
+// err.Error() straight into a redirect's query string: a wrapped database
+// error ("create identity: %w") flowed unfiltered into the browser's address
+// bar, its history, and server access logs. errors.Is against these values —
+// never the error's own text — is how a caller crossing this seam picks a
+// slug safely. Mirrors errcode.NumExternalIDTaken / NumIdentityAlreadyBound /
+// NumExternalUserDeleted in pkg/errcode/catalog.go; these are the same three
+// conflicts, just referenceable from a package that must not import CE
+// internals.
+var (
+	ErrExternalIDTaken      = errors.New("external account already bound to a live user")
+	ErrIdentityAlreadyBound = errors.New("identity binding is already active")
+	ErrExternalUserDeleted  = errors.New("the account behind this external identity was deleted")
+)
 
 // TenantByCodeFunc maps a tenant code to its id (0 when unknown). Implemented by
 // the CE tenant domain.
@@ -93,6 +137,16 @@ type OutboxRegisterFunc func(kind string, h OutboxHandler)
 // in CE over authn.StepUpChecker.Fresh.
 type StepUpFreshFunc func(c *gin.Context, tenantID int64) bool
 
+// OptionalSessionMiddlewareFunc builds gin middleware that resolves the given
+// session namespace's cookie when one is present and valid, and does nothing
+// otherwise — it never rejects. The external-IdP callback is the motivating
+// caller: the same URL serves both an anonymous visitor signing in and a
+// signed-in user attaching an external account to their profile (identity
+// rebind), and only the second needs to know who is calling. Implemented in
+// CE over authn.OptionalAuthMiddleware, which mxid-ee cannot import directly
+// (internal package, separate module) — hence the seam.
+type OptionalSessionMiddlewareFunc func(namespace string) gin.HandlerFunc
+
 // MFAChallengeRequiredFunc reports whether an already-first-factor-authenticated
 // user must clear an interactive MFA (TOTP) challenge before a session is issued:
 // the MFA policy applies to them (all → everyone, admin_only → admins) AND they
@@ -127,8 +181,12 @@ type InitContext struct {
 	App           *bootstrap.App
 	SessionMgr    *session.Manager
 	ExternalLogin ExternalLoginFunc
-	TenantByCode  TenantByCodeFunc
-	ConsoleGate   ConsoleGateFunc
+	// BindIdentity links an already-authenticated external identity to an
+	// existing local user (account-linking, as opposed to ExternalLogin's
+	// resolve-or-auto-provision). Implemented by the CE user domain.
+	BindIdentity BindIdentityFunc
+	TenantByCode TenantByCodeFunc
+	ConsoleGate  ConsoleGateFunc
 	// IsAdmin reports whether a user holds admin (console) permissions, without
 	// the built-in-account rejection ConsoleGate applies. Gates admin writes made
 	// over the portal (form-fill descriptor push).
@@ -144,6 +202,10 @@ type InitContext struct {
 	ProvisioningConfig ProvisioningConfigFunc
 	// StepUpFresh gates EE credential reveal on a fresh step-up (sudo) window.
 	StepUpFresh StepUpFreshFunc
+	// OptionalSessionMiddleware resolves a session without requiring one — used
+	// to mount an optional-auth check on a single route (the external-IdP
+	// callback) rather than a whole route group.
+	OptionalSessionMiddleware OptionalSessionMiddlewareFunc
 	// CanLaunchApp reports whether a user passes an app's access policy — EE
 	// form-fill only reveals a credential for an app the user may launch.
 	CanLaunchApp AppAccessFunc

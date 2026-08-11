@@ -12,6 +12,9 @@ type ListParams struct {
 	Search   string
 	Status   *int
 	OrgID    *int64
+	// IncludeDeleted surfaces soft-deleted accounts so an administrator can find
+	// and restore one. Off by default — the ordinary list must stay clean.
+	IncludeDeleted bool
 }
 
 // Repository defines the data access interface for the user domain.
@@ -33,11 +36,21 @@ type Repository interface {
 	// "MFA removed" cannot leave working backup codes behind.
 	DeleteMFATx(ctx context.Context, userID int64, mfaType string) error
 	GetByID(ctx context.Context, id int64) (*User, error)
+	// GetAnyByID also sees soft-deleted users. Needed by external login to
+	// tell apart "the user behind a soft-deleted binding was deleted" (refuse,
+	// name it) from "the user is still live and only the binding was unbound"
+	// (refuse, but as not-linked — telling a live user their account was
+	// deleted would be false).
+	GetAnyByID(ctx context.Context, id int64) (*User, error)
 	GetByUsername(ctx context.Context, tenantID int64, username string) (*User, error)
 	GetByEmail(ctx context.Context, tenantID int64, email string) (*User, error)
 	GetByPhone(ctx context.Context, tenantID int64, phone string) (*User, error)
 	Update(ctx context.Context, user *User) error
 	Delete(ctx context.Context, id int64) error
+	// RestoreUser clears deleted_at on a soft-deleted account. Its identity
+	// bindings stay unbound — restoring them is a separate, separately-audited
+	// decision (see Repository.RestoreIdentity).
+	RestoreUser(ctx context.Context, id int64) error
 	List(ctx context.Context, tenantID int64, params ListParams) ([]*User, int64, error)
 	UpdateStatus(ctx context.Context, id int64, status int) error
 	UpdatePassword(ctx context.Context, id int64, hash string) error
@@ -72,12 +85,36 @@ type Repository interface {
 	// Identity
 	ListIdentities(ctx context.Context, userID int64) ([]*UserIdentity, error)
 	DeleteIdentity(ctx context.Context, userID, identityID int64) error
+	// ListDeletedIdentities returns the bindings an admin unbound, so a
+	// mis-click can be undone. Ordinary listing never shows these.
+	ListDeletedIdentities(ctx context.Context, userID int64) ([]*UserIdentity, error)
+	// RestoreIdentity clears deleted_at. Refuses when the external account has
+	// since been claimed by a live binding — restoring over it would move
+	// somebody else's login into this account.
+	RestoreIdentity(ctx context.Context, userID, identityID int64) error
+	// RestoreIdentityTo clears deleted_at on a binding AND reassigns it to a
+	// new owner (i.UserID) in the same write. Used by BindExternalIdentity's
+	// takeover branch: the external account was bound to a user who has since
+	// been deleted, and the caller — who just proved they hold the external
+	// account — is claiming it. Distinct from RestoreIdentity, which restores
+	// a binding back to the SAME user who unbound it.
+	RestoreIdentityTo(ctx context.Context, i *UserIdentity) error
 	// GetIdentityByExternal looks up a binding by (tenant, provider_type,
 	// provider_id, external_id). Used by the external-IdP login flow to
 	// decide whether to attach to an existing user or auto-create one.
+	// Soft-deleted bindings are invisible to it (UserIdentity carries
+	// gorm.DeletedAt, so every gorm finder excludes them automatically) — use
+	// GetAnyIdentityByExternal when a soft-deleted match still matters.
 	GetIdentityByExternal(ctx context.Context, tenantID int64, providerType, providerID, externalID string) (*UserIdentity, error)
+	// GetAnyIdentityByExternal also sees soft-deleted bindings. Needed to tell
+	// "never bound" apart from "bound to an account that was deleted".
+	GetAnyIdentityByExternal(ctx context.Context, tenantID int64, providerType, providerID, externalID string) (*UserIdentity, error)
 	CreateIdentity(ctx context.Context, identity *UserIdentity) error
 	UpdateIdentity(ctx context.Context, identity *UserIdentity) error
+	// SoftDeleteIdentitiesByUser sweeps a user's bindings when the user is
+	// soft-deleted. The FK is ON DELETE CASCADE, but a soft delete is an UPDATE
+	// and UPDATE never fires CASCADE, so this has to happen in the app layer.
+	SoftDeleteIdentitiesByUser(ctx context.Context, userID int64) error
 
 	// MFA
 	GetMFA(ctx context.Context, userID int64, mfaType string) (*UserMFA, error)

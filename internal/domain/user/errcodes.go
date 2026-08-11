@@ -27,6 +27,19 @@ var (
 	codePasswordNeedLower   = errcode.Code{HTTP: 400, Num: errcode.NumPasswordNeedLower}
 	codePasswordNeedDigit   = errcode.Code{HTTP: 400, Num: errcode.NumPasswordNeedDigit}
 	codePasswordNeedSpecial = errcode.Code{HTTP: 400, Num: errcode.NumPasswordNeedSpecial}
+	// Restoring a soft-deleted identity binding can fail two ways: the
+	// external account was claimed by another live binding in the meantime,
+	// or the binding wasn't actually deleted.
+	codeExternalIDTaken      = errcode.Code{HTTP: 409, Num: errcode.NumExternalIDTaken}
+	codeIdentityAlreadyBound = errcode.Code{HTTP: 409, Num: errcode.NumIdentityAlreadyBound}
+	// A deleted-account login refusal is not a resource conflict; it's a
+	// straight access refusal, so 403 rather than the 409 family its
+	// neighbours above use for restore-time conflicts.
+	codeExternalUserDeleted = errcode.Code{HTTP: 403, Num: errcode.NumExternalUserDeleted}
+	// Restoring a binding onto a soft-deleted account is a state conflict the
+	// administrator can resolve (restore the account, then the binding), so it
+	// joins the 409 restore-time family rather than the 403 login refusal above.
+	codeIdentityOwnerDeleted = errcode.Code{HTTP: 409, Num: errcode.NumIdentityOwnerDeleted}
 )
 
 func init() {
@@ -48,4 +61,8 @@ func init() {
 	errcode.Bind(ErrLastSuperAdmin, codeLastSuperAdmin)
 	errcode.Bind(ErrMFAAlreadyExists, codeMFAAlreadyExists)
 	errcode.Bind(ErrPasswordAlreadySet, codePasswordAlreadySet)
+	errcode.Bind(ErrExternalIDTaken, codeExternalIDTaken)
+	errcode.Bind(ErrIdentityAlreadyBound, codeIdentityAlreadyBound)
+	errcode.Bind(ErrExternalUserDeleted, codeExternalUserDeleted)
+	errcode.Bind(ErrIdentityOwnerDeleted, codeIdentityOwnerDeleted)
 }
