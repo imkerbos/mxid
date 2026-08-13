@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- The portal's one-shot links — magic sign-in, password reset, email verification — are
+  consumed with a single atomic `GETDEL`. They read the token and then deleted it, so two
+  requests carrying the same token could both finish the read before either delete landed and
+  both be honoured: two sessions from one magic link, two password sets from one reset link.
+  Every other single-use value in the codebase was already consumed atomically; these three
+  were the outliers, and one carried a comment claiming the atomicity it did not have.
 - The SAML redirect-binding signature check now selects the same parameter the handlers act on.
   It matched the parameter name against the raw query while the handlers read it with
   `c.Query()`, which decodes names, so `SAMLReque%73t=…&SAMLRequest=…` had the signature verified

@@ -276,21 +276,24 @@ func (h *PasswordResetHandler) reset(c *gin.Context) {
 	response.OK(c, gin.H{"reset": true})
 }
 
-// consumeToken atomically reads + deletes the (tenant_id, user_id) pair bound
+// consumeToken reads + deletes, in one atomic GETDEL, the (tenant_id, user_id) pair bound
 // to the token. Mirrors the email-verify pattern: one-shot, no replay. The
 // value is "tenant:user"; a legacy bare-int value (no tenant) parses with
 // tenantID=0, in which case the caller leaves the scope unset and the
 // underlying ResetPassword still works via its explicit user id.
 func (h *PasswordResetHandler) consumeToken(ctx context.Context, token string) (tenantID, userID int64, err error) {
 	key := pwdResetKeyPrefix + token
-	val, err := h.rdb.Get(ctx, key).Result()
+	// GETDEL, not GET-then-DEL: two requests arriving with the same token
+	// could both pass a separate read before either delete landed, and each
+	// would be allowed to set a password. One-shot has to mean one, including
+	// under a race.
+	val, err := h.rdb.GetDel(ctx, key).Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
 			return 0, 0, errResetTokenInvalid
 		}
 		return 0, 0, fmt.Errorf("read token: %w", err)
 	}
-	_ = h.rdb.Del(ctx, key).Err()
 
 	if i := strings.IndexByte(val, ':'); i >= 0 {
 		tenantID, _ = strconv.ParseInt(val[:i], 10, 64)
