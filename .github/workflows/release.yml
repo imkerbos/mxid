@@ -105,6 +105,11 @@ jobs:
       # The GitHub Release is what GET /repos/imkerbos/mxid/releases/latest
       # returns — without it the in-console update check never sees a new version.
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        # Pinned to a commit, not the v2 tag: this is the only third-party
+        # action in either workflow that runs with contents:write, so a tag
+        # moved under us could publish or exfiltrate during a release. The
+        # first-party actions/ and docker/ steps stay on major tags.
+        # v2 as of 2026-08-13.
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           generate_release_notes: true

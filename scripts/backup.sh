@@ -50,8 +50,17 @@ cmd_dump() {
   file="${OUT_DIR%/}/mxid-${stamp}.dump"
 
   say "dumping ${DB} → ${file}"
+  # Create the dump owner-only. It carries password hashes, TOTP secrets,
+  # personal data and the audit chain; the default umask on most hosts is 022,
+  # which would leave all of that world-readable on a shared machine or in a
+  # backup directory someone else can list. Set before pg_dump creates the file
+  # rather than chmod after, so it is never briefly readable.
+  local prev_umask
+  prev_umask="$(umask)"
+  umask 077
   pg_dump --format=custom --compress=9 --no-owner --no-privileges \
           --dbname="$DB" --file="$file"
+  umask "$prev_umask"
 
   ok "$(du -h "$file" | cut -f1) written"
   warn "the encryption key (MXID_CRYPTO_KEY_ENCRYPTION_KEY) is NOT in this file — back it up separately, or the secrets restore as unreadable bytes"
