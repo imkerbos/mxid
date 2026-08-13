@@ -5,6 +5,17 @@ All notable changes to MXID are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+- The two SPA HTML entrypoints now carry a Content-Security-Policy. It is the backstop for the
+  admin-authored branding HTML the login pages render as markup — that value is sanitized on
+  write, so this covers a sanitizer bypass or a value that predates it. `script-src` allows no
+  inline script beyond the theme guard in `index.html`, which is pinned by hash. The policy is
+  set per-entrypoint rather than server-wide because `/protocol/` would inherit it, and the SAML
+  HTTP-POST binding page is an auto-submitting form with an inline handler that posts
+  cross-origin — a server-wide policy strict enough to be worth having would break SAML SSO.
+
 ## [1.9.1] — 2026-08-11
 
 ### Added
