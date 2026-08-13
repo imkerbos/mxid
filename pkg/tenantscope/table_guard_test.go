@@ -92,6 +92,31 @@ var allowedTableCalls = map[string]string{
 // it reported green while missing an unscoped lookup on mxid_app_group_rel.
 var tableName = regexp.MustCompile(`(?:\.|^\s*)Table\("([A-Za-z0-9_]+)"`)
 
+// tableNonLiteral matches a .Table() call whose argument is NOT a string
+// literal — `.Table(table)`, `.Table(m.name)`, `.Table(fmt.Sprintf(...))`.
+//
+// tableName above only sees literals, so a variable table name was invisible to
+// this guard: it passed silently, and neither the tenant scoping nor the
+// identifier itself was checked. Nothing in the tree does this today, and the
+// only near-miss (access.batchNames) takes a table name from its callers, all
+// of which pass constants — so this exists to keep it that way rather than to
+// fix a live defect.
+//
+// A dynamic table name is also the one shape where GORM offers no escaping: the
+// value is interpolated into the statement as an identifier.
+var tableNonLiteral = regexp.MustCompile(`(?:\.|^\s*)Table\(\s*[^")\s]`)
+
+// tableNonLiteralAllowed lists functions that legitimately take a table name as
+// a parameter, keyed by "file:identifier-of-the-enclosing-declaration". Each
+// entry must state why every caller is safe.
+var tableNonLiteralAllowed = map[string]string{
+	// batchNames(ctx, table, ids, filterDeleted) resolves display names for a
+	// mixed bag of subject tables. Every call site in the package passes a
+	// constant ("mxid_role", "mxid_app_role", "mxid_app", "mxid_user_group",
+	// "mxid_organization"), so no caller-controlled value reaches it.
+	"internal/domain/access/repository.go": "batchNames: all callers pass string constants",
+}
+
 // maxStatementLines bounds the forward walk that reassembles a chained
 // statement, so a malformed file cannot make the guard run away.
 const maxStatementLines = 20
@@ -122,6 +147,17 @@ func TestNoUnscopedTableQueries(t *testing.T) {
 				return readErr
 			}
 			for i, line := range lines {
+				// A non-literal table name is checked first: tableName cannot
+				// see it, so without this the call would pass unexamined.
+				if tableNonLiteral.MatchString(line) {
+					if _, ok := tableNonLiteralAllowed[rel]; !ok {
+						t.Errorf("%s:%d: .Table() called with a non-literal table name:\n\t%s\n"+
+							"A dynamic table name is interpolated as an identifier with no escaping, and this "+
+							"guard cannot verify its tenant scoping. Use a string literal, or add an entry to "+
+							"tableNonLiteralAllowed stating why every caller is safe.", rel, i+1, strings.TrimSpace(line))
+					}
+					continue
+				}
 				m := tableName.FindStringSubmatch(line)
 				if m == nil {
 					continue
