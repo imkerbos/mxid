@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `.Table()` tenant guard now also rejects a table name held in a variable. It matched
   string literals only, so a dynamic name passed unexamined; nothing in the tree does this, and
   the one function that takes a table as a parameter is allow-listed with its callers checked.
+- `make verify-csp-hash` fails the build when the CSP's `script-src` hashes stop matching the
+  inline scripts the SPAs ship. The policy allows the theme guard by hash rather than by
+  `'unsafe-inline'`, which is what makes it worth having; the cost is a coupling with no
+  compiler behind it, and drifting out of sync is silent (the app still works, the guard is
+  refused, and the theme flashes on every load).
 - The two SPA HTML entrypoints now carry a Content-Security-Policy. It is the backstop for the
   admin-authored branding HTML the login pages render as markup — that value is sanitized on
   write, so this covers a sanitizer bypass or a value that predates it. `script-src` allows no
