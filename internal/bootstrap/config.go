@@ -528,9 +528,18 @@ func (c *Config) validateSecrets() error {
 	if len(c.Server.AllowedOrigins) == 0 {
 		return fmt.Errorf("server.allowed_origins must be set in release mode; export MXID_SERVER_ALLOWED_ORIGINS")
 	}
-	iss := strings.TrimSpace(c.Server.IssuerURL)
+	// Validate the issuer that will actually be used, not the config field.
+	// MXID_ISSUER outranks server.issuer_url in ResolveBootIssuer, so checking
+	// the field alone left the override unguarded: the dev compose file carries
+	// MXID_ISSUER=${MXID_ISSUER:-http://localhost:3500}, and a deployment
+	// derived from it keeps a localhost issuer in release however carefully
+	// MXID_SERVER_ISSUER_URL was set. That is not merely a wrong issuer — a
+	// localhost base is what makes urlswap.SwapLocalhostHost substitute the
+	// request's Host header, handing SAML EntityID and CAS service URLs to
+	// whoever sets that header.
+	iss := strings.TrimSpace(c.Server.ResolveBootIssuer(os.Getenv("MXID_ISSUER")))
 	if iss == "" || strings.Contains(iss, "localhost") || strings.Contains(iss, "127.0.0.1") {
-		return fmt.Errorf("server.issuer_url must be an externally-reachable URL in release mode (not empty/localhost); export MXID_SERVER_ISSUER_URL")
+		return fmt.Errorf("the effective issuer must be an externally-reachable URL in release mode (not empty/localhost); set MXID_SERVER_ISSUER_URL, and unset MXID_ISSUER if it is carrying a localhost value from a dev compose file")
 	}
 	return nil
 }
