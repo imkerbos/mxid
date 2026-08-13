@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/imkerbos/mxid/pkg/snowflake"
+	"github.com/imkerbos/mxid/pkg/tenantscope"
 	"gorm.io/gorm"
 )
 
@@ -203,6 +204,21 @@ func (r *repo) batchNames(ctx context.Context, table string, ids []int64, filter
 	q := r.db.WithContext(ctx).Table(table).Select("id, name").Where("id IN ?", ids)
 	if filterDeleted {
 		q = q.Where("deleted_at IS NULL")
+	}
+	// Scope by tenant explicitly. A .Table() query scanning into an anonymous
+	// struct carries no model type, so the tenantscope plugin has nothing to
+	// key off and leaves the statement bare — the ids reaching here come from
+	// rows already loaded under the caller's tenant, so this is the second
+	// layer rather than the first.
+	//
+	// `OR tenant_id IS NULL` covers mxid_app, whose tenant_id is nullable for
+	// apps shared across tenants. On the other four tables the column is NOT
+	// NULL, so that branch never matches and the predicate is plain equality.
+	//
+	// Skipped for system and cross-tenant scopes, matching what the plugin
+	// itself does for them.
+	if s, ok := tenantscope.From(ctx); ok && !s.System && !s.CrossTenant && s.TenantID != 0 {
+		q = q.Where("tenant_id = ? OR tenant_id IS NULL", s.TenantID)
 	}
 	if err := q.Find(&out).Error; err != nil {
 		return nil
