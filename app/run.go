@@ -751,6 +751,12 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	}
 	a.ConsoleGroup.Use(authn.StepUpMiddleware(stepUpDeps))
 
+	// The user batch route carries its action in the body, so the middleware
+	// above — which sees only method and path — cannot tell a bulk delete from
+	// a bulk enable. Hand the handler the same freshness check so it can demand
+	// step-up for the delete action itself.
+	userModule.Handler.SetStepUpFresh(authn.NewStepUpChecker(stepUpDeps).Fresh)
+
 	// 4e. Deny-by-default authz gateway (HARD MODE). Mounted AFTER AuthMiddleware
 	// + authz install (so c has user/tenant + the Service) and BEFORE the module
 	// routes, so it sits on every console request post-routing. A matched console

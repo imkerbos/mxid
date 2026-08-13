@@ -53,8 +53,13 @@ type AdminSessionResponse struct {
 // fails closed regardless of the audit-only gateway.
 func (h *AdminSessionHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/users/:id/sessions", authz.Require("user.read", nil), h.list)
-	rg.DELETE("/users/:id/sessions", authz.Require("user.update", nil), h.revokeAll)
-	rg.DELETE("/users/:id/sessions/:sid", authz.Require("user.update", nil), h.revokeOne)
+	// user.session.manage, not user.update: revoking sessions is its own seeded
+	// permission (migration 000016) and was going unused, so anyone who could
+	// edit a user could also sign them out everywhere. Both built-in roles that
+	// hold user.update were granted user.session.manage in the same migration,
+	// so this narrows custom roles without changing the shipped ones.
+	rg.DELETE("/users/:id/sessions", authz.Require("user.session.manage", nil), h.revokeAll)
+	rg.DELETE("/users/:id/sessions/:sid", authz.Require("user.session.manage", nil), h.revokeOne)
 }
 
 func (h *AdminSessionHandler) list(c *gin.Context) {
