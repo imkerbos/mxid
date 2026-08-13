@@ -18,11 +18,23 @@ import (
 // Handler handles HTTP requests for the user domain.
 type Handler struct {
 	svc *Service
+	// stepUpFresh reports whether the caller's console session passed MFA
+	// recently enough. Injected because the batch route carries an action in
+	// its body, so the route-level step-up middleware — which sees only method
+	// and path — cannot tell a bulk delete from a bulk enable. nil disables the
+	// check, which is why BatchAction refuses a delete when it is unset.
+	stepUpFresh func(c *gin.Context, tenantID int64) bool
 }
 
 // NewHandler creates a new user handler.
 func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
+}
+
+// SetStepUpFresh injects the step-up freshness check. Wired in app.Run once the
+// step-up dependencies exist, which is after this module is constructed.
+func (h *Handler) SetStepUpFresh(fn func(c *gin.Context, tenantID int64) bool) {
+	h.stepUpFresh = fn
 }
 
 // RegisterRoutes registers user routes on the given router group.
@@ -298,6 +310,22 @@ func (h *Handler) ResetPassword(c *gin.Context) {
 	response.OK(c, nil)
 }
 
+// callerMay evaluates a permission for the current caller outside the route
+// middleware, for a route whose required permission depends on the request
+// body. Fails closed: no authz service, no user, or a check error is a denial.
+func (h *Handler) callerMay(c *gin.Context, perm string) bool {
+	svc := authz.FromContext(c)
+	if svc == nil {
+		return false
+	}
+	uid := actorIDFromCtx(c)
+	if uid == 0 {
+		return false
+	}
+	ok, err := svc.Check(c.Request.Context(), tenantctx.FromContext(c, 0), uid, perm, nil)
+	return err == nil && ok
+}
+
 // BatchAction handles POST /users/batch. Applies enable/disable/delete to
 // a list of user IDs. Returns a per-id error map so the console UI can
 // show partial success.
@@ -315,6 +343,24 @@ func (h *Handler) BatchAction(c *gin.Context) {
 		response.BadRequest(c, errcode.NumBadRequest, "invalid user id list")
 		return
 	}
+	// A batch delete is a delete. The route is mounted with user.update because
+	// that is the floor for enable/disable, but BatchActionDelete reaches the
+	// same Service.Delete as DELETE /users/:id — which requires user.delete and
+	// a fresh step-up. Without these two checks the batch endpoint is a way
+	// around both: an operator holding only user.update, with no recent MFA,
+	// could delete users in bulk.
+	if req.Action == BatchActionDelete {
+		if !h.callerMay(c, "user.delete") {
+			response.Forbidden(c, errcode.NumForbidden, "user.delete required to delete users")
+			return
+		}
+		tenantID := tenantctx.FromContext(c, 0)
+		if h.stepUpFresh == nil || !h.stepUpFresh(c, tenantID) {
+			response.Forbidden(c, authn.CodeStepUpRequired, "step-up mfa required for this operation")
+			return
+		}
+	}
+
 	res, err := h.svc.BatchAction(c.Request.Context(), ids, req.Action, actorIDFromCtx(c))
 	if err != nil {
 		response.BadRequest(c, errcode.NumInvalidInput, err.Error())

