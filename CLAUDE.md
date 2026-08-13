@@ -268,12 +268,12 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full picture.
 | What are the local dev gates? | [CONTRIBUTING.md](CONTRIBUTING.md) |
 | Why was it built this way? | [docs/archive/](docs/archive/) (frozen; code wins) |
 
-The security rules above are the repo-specific distillation of two standards
-kept outside this checkout, at the workspace root beside it:
-`Claude Code 通用安全开发规范.md` (input trust, authz, injection, SSRF, files,
-secrets, logging, audit) and `Claude_Code_通用安全开发规范补充版：AI_Code_Agent_
-与协议安全增强.md` (prompt injection, dependency confusion, JWT algorithm
-confusion, DNS rebinding, host-header injection, minimal change surface). They
-are the fuller statement; this file is what binds day to day. Both live outside
-git, so a clone does not carry them — treat what is written here as complete on
-its own.
+The security rules above are this repo's distillation of two standards held in
+the private EE repository under `docs/standards/` — one covering input trust,
+authz, injection, SSRF, files, secrets, logging and audit; the other covering
+prompt injection, dependency confusion, JWT algorithm confusion, DNS rebinding,
+host-header injection and minimal change surface. They are the fuller
+statement, consulted when a rule is added or the wording here is in doubt.
+
+This file is deliberately self-contained: it binds day to day, and a CE clone
+carries everything needed to follow it without reading them.
