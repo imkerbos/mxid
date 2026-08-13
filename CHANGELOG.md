@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   over one copy and the other processed. Duplicated names are refused outright. The session torn
   down by an SP LogoutRequest is the caller's own, so the reach was logout CSRF rather than
   logging out a chosen user — but a signature check that can be routed around is not a check.
+- `react-router` moved to 7.18.2, clearing GHSA-qwww-vcr4-c8h2. The advisory covers RSC mode,
+  which neither app uses, so nothing was reachable; the floor is recorded so it stays that way.
 - Release mode now validates the issuer that will actually be used, not the config field.
   `MXID_ISSUER` outranks `server.issuer_url`, so the check missed it — and the dev compose file
   carries `MXID_ISSUER=${MXID_ISSUER:-http://localhost:3500}`, meaning a deployment derived from
