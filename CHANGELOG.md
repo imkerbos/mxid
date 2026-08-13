@@ -22,6 +22,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   told to navigate to it. `home_url` and a form app's `login_url` are admin-typed and only
   length-checked, so a `javascript:` value was stored and returned verbatim — script execution
   on the portal's own origin in every user's browser, reachable by anyone holding `app.update`.
+- The build context no longer carries `.env`. The backend Dockerfile does `COPY . .` into its
+  builder stage, so a local `.env` — master KEK, database and Redis passwords — landed in an
+  intermediate layer. The published images were never affected (the file is gitignored, so CI
+  never had it) and the final stage copies only three paths, but that layer sits in the local
+  build cache and is uploaded by any `--cache-to` export.
+- `scripts/backup.sh` creates dumps owner-only. A dump carries password hashes, TOTP secrets,
+  personal data and the audit chain, and was written under the ambient umask — world-readable
+  on most hosts.
+- The one third-party GitHub Action that runs with `contents: write` is pinned to a commit
+  rather than a moving tag.
 - The portal's one-shot links — magic sign-in, password reset, email verification — are
   consumed with a single atomic `GETDEL`. They read the token and then deleted it, so two
   requests carrying the same token could both finish the read before either delete landed and
