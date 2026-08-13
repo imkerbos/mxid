@@ -33,13 +33,37 @@ func randomHex(n int) string {
 // a redirect-binding query string, preserving the exact bytes the SP signed.
 // url.ParseQuery would percent-decode (and reorder) the value, breaking the
 // byte-for-byte signature recomputation, so we scan the raw pairs instead.
+//
+// It matches on the DECODED parameter name and refuses a query carrying the
+// name more than once. Both matter, and for the same reason: this function
+// decides which bytes get authenticated, while the handlers that act on the
+// message read it with c.Query(), which decodes names. Matching the raw name
+// only, and taking the first hit, let those two disagree —
+//
+//	SAMLReque%73t=<attacker>&SAMLRequest=<a captured, validly signed request>
+//
+// verified the signed one and processed the attacker's. A signature over bytes
+// nobody acts on is not a signature.
 func parseRawRedirectParam(rawQuery, key string) (string, bool) {
+	var value string
+	var found bool
 	for _, pair := range strings.Split(rawQuery, "&") {
-		if eq := strings.IndexByte(pair, '='); eq >= 0 && pair[:eq] == key {
-			return pair[eq+1:], true
+		eq := strings.IndexByte(pair, '=')
+		if eq < 0 {
+			continue
 		}
+		name, err := url.QueryUnescape(pair[:eq])
+		if err != nil || name != key {
+			continue
+		}
+		if found {
+			// Duplicate. SAML carries each parameter once; which copy is
+			// authoritative is exactly the ambiguity being exploited.
+			return "", false
+		}
+		value, found = pair[eq+1:], true
 	}
-	return "", false
+	return value, found
 }
 
 // rsaPublicKeyFromCertPEM parses a PEM X.509 certificate and returns its RSA
