@@ -254,14 +254,17 @@ func (h *MagicLinkHandler) callback(c *gin.Context) {
 
 func (h *MagicLinkHandler) consumeToken(ctx context.Context, token string) (int64, int64, error) {
 	key := magicLinkKeyPrefix + token
-	val, err := h.rdb.Get(ctx, key).Result()
+	// GETDEL, not GET-then-DEL: two requests arriving with the same token
+	// could both pass a separate read before either delete landed, and each
+	// would be handed a session. One-shot has to mean one, including under a
+	// race.
+	val, err := h.rdb.GetDel(ctx, key).Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
 			return 0, 0, errors.New("token invalid or expired")
 		}
 		return 0, 0, fmt.Errorf("read token: %w", err)
 	}
-	_ = h.rdb.Del(ctx, key).Err()
 
 	var userID, tenantID int64
 	if _, err := fmt.Sscanf(val, "%d:%d", &userID, &tenantID); err != nil {

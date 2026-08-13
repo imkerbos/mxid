@@ -221,16 +221,19 @@ func (h *EmailVerifyHandler) verify(c *gin.Context) {
 
 func (h *EmailVerifyHandler) consumeToken(ctx context.Context, token string) (int64, string, error) {
 	key := verifyKeyPrefix + token
-	val, err := h.rdb.Get(ctx, key).Result()
+	// GETDEL, not GET-then-DEL: two requests arriving with the same token
+	// could both pass a separate read before either delete landed, and both
+	// would be honoured. One-shot has to mean one, including under a race.
+	//
+	// Consumed even if MarkEmailVerified errors below — the user can request a
+	// new link; better than leaving a reusable token behind.
+	val, err := h.rdb.GetDel(ctx, key).Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
 			return 0, "", errVerifyTokenInvalid
 		}
 		return 0, "", fmt.Errorf("read token: %w", err)
 	}
-	// Delete immediately — one-shot. Even if MarkEmailVerified errors below,
-	// the user can request a new link; better than leaving a reusable token.
-	_ = h.rdb.Del(ctx, key).Err()
 	// Value is "<userID>:<email>"; split on the first colon (emails have no ':').
 	uidStr, email, ok := strings.Cut(val, ":")
 	if !ok {
