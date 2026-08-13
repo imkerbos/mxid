@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- `batchNames` in the JIT access repository scoped its name lookups to the caller's tenant. It
+  resolves display names through a `.Table()` query scanning into an anonymous struct, a shape
+  the tenantscope plugin cannot key off, so the statement went out unscoped and any id resolved
+  to a name. Not reachable — the ids come from rows already loaded under the caller's tenant —
+  and a no-op on a single-tenant deployment.
+- The `.Table()` tenant guard now also rejects a table name held in a variable. It matched
+  string literals only, so a dynamic name passed unexamined; nothing in the tree does this, and
+  the one function that takes a table as a parameter is allow-listed with its callers checked.
 - The two SPA HTML entrypoints now carry a Content-Security-Policy. It is the backstop for the
   admin-authored branding HTML the login pages render as markup — that value is sanitized on
   write, so this covers a sanitizer bypass or a value that predates it. `script-src` allows no
