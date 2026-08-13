@@ -64,6 +64,63 @@ var (
 	ErrNotRegistered = errors.New("saferedirect: target not registered")
 )
 
+// ValidateShape rejects the target shapes that are hostile no matter which
+// origins are legitimate: control characters, protocol-relative and
+// backslash-smuggled paths, non-http(s) schemes, and userinfo.
+//
+// It deliberately does NOT check the origin, so it cannot reject a target that
+// is merely off-site. Use it only where the legitimate destination genuinely
+// cannot be enumerated at the point of validation — the consent return_to is
+// the case it exists for: the destination is a protocol-replay URL on the
+// issuer, and the issuer is an admin-editable runtime setting, so an
+// allow-list built at the wrong moment rejects a legitimate login instead of
+// an attack. Everywhere the origins ARE knowable, ValidateRelativeOrOrigin is
+// the stronger validator and the one to reach for.
+//
+// This is a floor, not a boundary. It stops javascript:/data: and the
+// origin-confusion smuggles; it does not stop https://attacker.example.
+func ValidateShape(target string) (string, error) {
+	if target == "" {
+		return "", ErrEmpty
+	}
+	if hasControlChars(target) {
+		return "", ErrControlChars
+	}
+	// Same pre-parse rejections as ValidateRelativeOrOrigin: a "//" prefix is
+	// protocol-relative (foreign origin), and browsers normalise a leading
+	// backslash to a slash.
+	if strings.HasPrefix(target, "//") || strings.HasPrefix(target, "/\\") ||
+		strings.HasPrefix(target, "\\") {
+		return "", ErrBadRelative
+	}
+
+	u, err := url.Parse(target)
+	if err != nil {
+		return "", ErrMalformed
+	}
+	// Relative paths are fine and need no further checks — isSafeRelativePath
+	// enforces the single-slash rule the prefix test above already covers.
+	if u.Scheme == "" && u.Host == "" && u.Opaque == "" {
+		if !isSafeRelativePath(target) {
+			return "", ErrBadRelative
+		}
+		return target, nil
+	}
+
+	switch strings.ToLower(u.Scheme) {
+	case "http", "https":
+	default:
+		return "", ErrScheme
+	}
+	if u.User != nil {
+		return "", ErrUserInfo
+	}
+	if u.Hostname() == "" {
+		return "", ErrNoHost
+	}
+	return target, nil
+}
+
 // ValidateRelativeOrOrigin validates a user-agent-supplied return target.
 //
 // It accepts EITHER:
