@@ -10,3 +10,13 @@ bin/
 web/apps/*/dist
 **/.turbo
 data/uploads/
+
+# Secrets must never enter the build context. The backend Dockerfile does
+# `COPY . .` into its builder stage, so a local .env — which carries the master
+# KEK and the database/Redis passwords — would land in an intermediate layer.
+# The final image is a separate stage and stays clean, but that layer sits in
+# the local build cache and is uploaded by any --cache-to export. CI never had
+# the file (it is gitignored), so published images were unaffected.
+.env
+.env.*
+!.env.example
