@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- Release mode now validates the issuer that will actually be used, not the config field.
+  `MXID_ISSUER` outranks `server.issuer_url`, so the check missed it — and the dev compose file
+  carries `MXID_ISSUER=${MXID_ISSUER:-http://localhost:3500}`, meaning a deployment derived from
+  it kept a localhost issuer however carefully `MXID_SERVER_ISSUER_URL` was set. A localhost
+  issuer is what makes the request's `Host` header stand in for it, so SAML EntityID and CAS
+  service URLs followed whoever set that header.
+- The consent handler validates the shape of `return_to` server-side before appending a
+  confirmation token to it and handing it back to be navigated to. The SPA already checked it,
+  but the front end is not a security boundary. Shape only — `javascript:`/`data:`, control
+  characters, protocol-relative and backslash smuggles, userinfo — not origin: the legitimate
+  destination sits on an admin-editable issuer, so an origin allow-list assembled in the handler
+  would reject real logins whenever it disagreed with the value that built the URL.
 - `batchNames` in the JIT access repository scoped its name lookups to the caller's tenant. It
   resolves display names through a `.Table()` query scanning into an anonymous struct, a shape
   the tenantscope plugin cannot key off, so the statement went out unscoped and any id resolved

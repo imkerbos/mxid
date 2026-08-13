@@ -12,6 +12,7 @@ import (
 	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/response"
+	"github.com/imkerbos/mxid/pkg/saferedirect"
 	"github.com/imkerbos/mxid/pkg/ssoflow"
 )
 
@@ -118,6 +119,20 @@ func (h *consentHandler) grant(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
+		return
+	}
+	// The SPA validates return_to before sending it, but the front end is not
+	// a security boundary and this handler decorates the value with a freshly
+	// minted confirmation token before handing it back to be navigated to.
+	//
+	// Shape only, not origin: the legitimate destination is a protocol-replay
+	// URL on the issuer, and the issuer is an admin-editable runtime setting,
+	// so an allow-list assembled here would reject legitimate logins whenever
+	// it disagreed with the value that generated the URL. This rejects what is
+	// hostile regardless of origin — javascript:/data:, control characters,
+	// protocol-relative and backslash smuggles, userinfo.
+	if _, err := saferedirect.ValidateShape(req.ReturnTo); err != nil {
+		response.BadRequest(c, errcode.NumBadRequest, "invalid return_to")
 		return
 	}
 	// Record the scope grant. Empty for non-OIDC confirmations (SAML/CAS carry
