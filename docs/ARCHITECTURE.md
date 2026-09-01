@@ -543,6 +543,7 @@ so they are asserted by tests rather than documented and hoped for:
 | A dynamic-group rule value cannot be empty (a blank one matches nearly everyone) | `internal/domain/group/rule_empty_value_test.go` |
 | A group code is usable by the systems that receive it in a claim | `internal/domain/group/code_test.go` |
 | `errcode.Lookup` returns the most specific bound sentinel, not a random match | `pkg/errcode/lookup_specificity_test.go` |
+| Declining an SSO login confirmation ends the flow rather than reopening the confirm page | `internal/protocol/oidcop/bridge_deny_test.go` |
 
 Each guard was verified by reintroducing the defect it exists to catch. Two of them were wrong on
 the first attempt and passed against the broken code — a line-window scan that found a neighbour's

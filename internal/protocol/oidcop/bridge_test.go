@@ -104,7 +104,7 @@ func TestLoginBridgeHandle_AuthRequestExpiredDuringCompletion(t *testing.T) {
 	bridge := NewLoginBridge(storage, apps, sessions, nil, nil, nil,
 		func(context.Context, string) string { return "https://issuer.example.com/callback" },
 		func(id string) string { return "https://issuer.example.com/login?authRequestID=" + id },
-		"https://portal.example.com",
+		"https://portal.example.com", nil,
 	)
 
 	w := httptest.NewRecorder()
@@ -180,7 +180,7 @@ func TestLoginBridgeHandle_TracksParticipation(t *testing.T) {
 	bridge := NewLoginBridge(storage, apps, sessions, nil, nil, tracker,
 		func(context.Context, string) string { return "https://issuer.example.com/callback" },
 		func(id string) string { return "https://issuer.example.com/login?authRequestID=" + id },
-		"https://portal.example.com",
+		"https://portal.example.com", nil,
 	)
 
 	w := httptest.NewRecorder()
@@ -246,7 +246,7 @@ func TestLoginBridgeHandle_PortalFallbackDoesNotTrackParticipation(t *testing.T)
 	bridge := NewLoginBridge(storage, apps, sessions, nil, nil, tracker,
 		func(context.Context, string) string { return "https://issuer.example.com/callback" },
 		func(id string) string { return "https://issuer.example.com/login?authRequestID=" + id },
-		"https://portal.example.com",
+		"https://portal.example.com", nil,
 	)
 
 	w := httptest.NewRecorder()
@@ -327,7 +327,7 @@ func TestLoginBridgeHandle_AccessDenied(t *testing.T) {
 	bridge := NewLoginBridge(storage, apps, sessions, nil, access, nil,
 		func(context.Context, string) string { return "https://issuer.example.com/callback" },
 		func(id string) string { return "https://issuer.example.com/login?authRequestID=" + id },
-		"https://portal.example.com",
+		"https://portal.example.com", nil,
 	)
 
 	w := httptest.NewRecorder()
@@ -369,7 +369,7 @@ func TestLoginBridgeHandle_AccessAdapterError_FailsClosed(t *testing.T) {
 	bridge := NewLoginBridge(storage, apps, sessions, nil, access, nil,
 		func(context.Context, string) string { return "https://issuer.example.com/callback" },
 		func(id string) string { return "https://issuer.example.com/login?authRequestID=" + id },
-		"https://portal.example.com",
+		"https://portal.example.com", nil,
 	)
 
 	w := httptest.NewRecorder()
@@ -404,7 +404,7 @@ func TestLoginBridgeHandle_AccessAllowed_ProceedsToCallback(t *testing.T) {
 	bridge := NewLoginBridge(storage, apps, sessions, nil, access, nil,
 		func(context.Context, string) string { return "https://issuer.example.com/callback" },
 		func(id string) string { return "https://issuer.example.com/login?authRequestID=" + id },
-		"https://portal.example.com",
+		"https://portal.example.com", nil,
 	)
 
 	w := httptest.NewRecorder()
@@ -488,7 +488,7 @@ func newConfirmBridge(storage *Storage, confirm *ssoflow.ConfirmStore, apps *fak
 	return NewLoginBridge(storage, apps, sessions, confirm, nil, nil,
 		func(context.Context, string) string { return "https://issuer.example.com/callback" },
 		func(id string) string { return "https://issuer.example.com/oidc-login?authRequestID=" + id },
-		"https://portal.example.com",
+		"https://portal.example.com", nil,
 	)
 }
 

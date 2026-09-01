@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/zitadel/oidc/v3/pkg/oidc"
+	"github.com/zitadel/oidc/v3/pkg/op"
 
 	"github.com/imkerbos/mxid/internal/protocol/resolver"
 	"github.com/imkerbos/mxid/pkg/ssoflow"
@@ -49,6 +51,10 @@ type LoginBridge struct {
 	callbackURL   func(context.Context, string) string
 	loginURL      func(authRequestID string) string
 	portalURL     string
+	// authorizer is the op provider, used only to answer a declined consent
+	// with a spec-shaped error response. May be nil, which degrades that one
+	// case to a plain redirect back to the portal.
+	authorizer op.Authorizer
 }
 
 // NewLoginBridge wires a LoginBridge. loginURL must build the external URL of
@@ -69,6 +75,7 @@ func NewLoginBridge(
 	callbackURL func(context.Context, string) string,
 	loginURL func(string) string,
 	portalURL string,
+	authorizer op.Authorizer,
 ) *LoginBridge {
 	return &LoginBridge{
 		storage:       storage,
@@ -80,6 +87,7 @@ func NewLoginBridge(
 		callbackURL:   callbackURL,
 		loginURL:      loginURL,
 		portalURL:     portalURL,
+		authorizer:    authorizer,
 	}
 }
 
@@ -163,6 +171,24 @@ func (b *LoginBridge) Handle(c *gin.Context) {
 		idpInitiated = a.IdpInitiated
 	}
 	if !idpInitiated && b.confirm != nil {
+		// sso_deny=1 → the user pressed Cancel on the confirm page.
+		//
+		// This branch was missing, and its absence did not fail — it looped.
+		// Cancel sends the browser back to this endpoint with sso_deny=1, which
+		// nothing here read, so the request fell through to the token check,
+		// found no token, and bounced to the confirm page again. Pressing
+		// Cancel redisplayed the page it was cancelling, with no way out but
+		// the back button. CAS and SAML both handled it; only OIDC did not.
+		//
+		// The answer owed to the RP is access_denied at its redirect_uri
+		// (OIDC Core 3.1.2.6), not a page on our side: the application asked a
+		// question and is entitled to hear that the user said no, so it can
+		// show its own sign-in again rather than hang on a callback that never
+		// arrives.
+		if c.Query("sso_deny") == "1" {
+			b.denyAuthRequest(c, ctx, authReqID, ar)
+			return
+		}
 		if !b.confirm.Consume(ctx, c.Query("sso_confirm"), sess.UserID, app.ID) {
 			scope := joinScopes(ar.GetScopes())
 			b.redirect(c, b.portalURL+"/consent?app_id="+itoa(app.ID)+
@@ -192,6 +218,33 @@ func (b *LoginBridge) Handle(c *gin.Context) {
 		return
 	}
 	b.redirect(c, b.callbackURL(ctx, authReqID))
+}
+
+// denyAuthRequest answers a declined consent the way the protocol expects: an
+// access_denied error delivered to the client's registered redirect_uri, with
+// the original state so the RP can match it to the request it started.
+//
+// op.AuthRequestError builds that response from the STORED auth request, so the
+// redirect_uri is the one already validated against the client's registration —
+// never a value echoed back from this request's query string, which is what
+// would make this an open redirect.
+//
+// The auth request is deleted first: it has been answered, and leaving it live
+// would let a replay of the same URL resume a flow the user rejected.
+func (b *LoginBridge) denyAuthRequest(c *gin.Context, ctx context.Context, authReqID string, ar op.AuthRequest) {
+	if b.storage != nil {
+		_ = b.storage.DeleteAuthRequest(ctx, authReqID)
+	}
+	// No authorizer wired (or no redirect_uri to answer to): fall back to the
+	// portal, so Cancel still leaves the confirm page instead of looping.
+	if b.authorizer == nil || ar == nil || ar.GetRedirectURI() == "" {
+		b.redirect(c, b.portalURL+"/")
+		return
+	}
+	op.AuthRequestError(c.Writer, c.Request, ar,
+		oidc.ErrAccessDenied().WithDescription("user denied the login confirmation"),
+		b.authorizer)
+	c.Abort()
 }
 
 // resolveSession finds the logged-in SSO session for this request and reports
