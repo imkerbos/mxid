@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.2] — 2026-09-01
+
 ### Fixed
 - Declining the SSO login confirmation looped instead of ending the flow. Cancel
   returns the browser to the OIDC login bridge carrying `sso_deny=1`, which
@@ -1137,7 +1139,8 @@ Initial public preview. Two integrations verified end-to-end: **Grafana (OIDC)**
 - pnpm workspaces (`console` / `portal` / `shared`).
 - Tailwind v4 monorepo `@source` directive so shared package UI compiles into both SPAs.
 
-[Unreleased]: https://github.com/imkerbos/mxid/compare/v1.9.1...HEAD
+[Unreleased]: https://github.com/imkerbos/mxid/compare/v1.9.2...HEAD
+[1.9.2]: https://github.com/imkerbos/mxid/compare/v1.9.1...v1.9.2
 [1.9.1]: https://github.com/imkerbos/mxid/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/imkerbos/mxid/compare/v1.8.6...v1.9.0
 [1.8.6]: https://github.com/imkerbos/mxid/compare/v1.8.5...v1.8.6
