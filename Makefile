@@ -1,6 +1,6 @@
 .PHONY: dev dev-console dev-portal dev-web dev-docker-up dev-docker-up-d dev-docker-down dev-docker-logs dev-docker-ps dev-docker-restart dev-docker-reload dev-docker-watch dev-docker-clean \
        build run test lint migrate-up migrate-down migrate-create clean deps \
-       verify verify-mod verify-vet verify-build verify-lint verify-web verify-exports verify-i18n-keys verify-i18n-markers verify-error-extraction verify-toaster-mount verify-protocol-fields verify-csp-hash verify-pinned-tag smoke install-hooks \
+       verify verify-mod verify-vet verify-build verify-lint verify-web verify-exports verify-i18n-keys verify-i18n-markers verify-error-extraction verify-toaster-mount verify-protocol-fields verify-csp-hash verify-pinned-tag verify-vuln smoke install-hooks \
        docker-build prod-up prod-down prod-logs standalone-up standalone-down standalone-logs
 
 # Variables
@@ -17,6 +17,17 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 IMAGE := ghcr.io/imkerbos/$(APP_NAME)
+
+# govulncheck is pinned, not @latest: an unpinned tool changes CI's verdict with
+# no commit behind it, and it is a supply-chain path into a job that can read
+# the module cache. Bump deliberately.
+GOVULNCHECK_VERSION := v1.7.0
+
+# golangci-lint is pinned for the same reason, and it bites harder: .golangci.yml
+# is v1-format config, and a v2 binary refuses to read it ("unsupported version
+# of the configuration"). Whatever is on PATH is therefore NOT trusted — a
+# developer with v2 installed had a permanently broken `make verify-lint`.
+GOLANGCI_VERSION := v1.64.8
 
 # Development — Go backend (air hot reload)
 dev:
@@ -288,10 +299,23 @@ verify-gormtags:
 	@./bin/gormtaglint ./app/... ./internal/... ./cmd/...
 
 # golangci-lint — exhaustruct on app/adapters_*, nilness, errcheck, staticcheck.
+# Run through `go run` at the pinned version rather than whatever is on PATH:
+# the config is v1-format and a v2 binary hard-errors on it, so "install
+# golangci-lint" is not a reproducible instruction. Slow only on the first run;
+# the build is cached afterwards. Matches the CI action's version + goinstall.
 verify-lint:
-	@echo "==> verify-lint"
-	@command -v golangci-lint >/dev/null 2>&1 || { echo "golangci-lint not installed: https://golangci-lint.run/welcome/install/"; exit 1; }
-	golangci-lint run ./...
+	@echo "==> verify-lint (golangci-lint $(GOLANGCI_VERSION))"
+	go run github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_VERSION) run ./...
+
+# govulncheck — reachable known vulnerabilities in the stdlib and the module
+# graph. NOT part of `verify` and NOT a push gate: it goes red when the
+# vulnerability database moves rather than when the code does, so blocking a
+# commit on it punishes whoever happens to push that day. It runs daily
+# (.github/workflows/vuln.yml) and blocks the release workflow, which is the
+# point where shipping a known-vulnerable binary actually matters.
+verify-vuln:
+	@echo "==> verify-vuln (govulncheck $(GOVULNCHECK_VERSION))"
+	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
 # package.json `exports` map paths must exist on disk.
 verify-exports:
