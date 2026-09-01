@@ -91,6 +91,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   set per-entrypoint rather than server-wide because `/protocol/` would inherit it, and the SAML
   HTTP-POST binding page is an auto-submitting form with an inline handler that posts
   cross-origin — a server-wide policy strict enough to be worth having would break SAML SSO.
+- The Go toolchain is pinned to 1.25.14. The 1.25.12 pin the images were built from carries
+  seven fixed standard-library advisories that `govulncheck` reports as reachable from this
+  code: `crypto/tls` accepting unbounded post-handshake messages (GO-2026-6090, reached from
+  the mailer's STARTTLS path and the syslog audit sink), `net/http` skipping
+  `ReadHeaderTimeout` on the unencrypted HTTP/2 check (GO-2026-6089, on the server's own
+  listener) and GO-2026-5026, `net/url` resolvePath quadratic blowup (GO-2026-6218, reached
+  through the SSRF-guarded HTTP client), `html/template` JavaScript regexp context tracking
+  (GO-2026-6091, reached from mail rendering), and recursion-depth guards in `encoding/xml`
+  and `encoding/asn1` (GO-2026-6088, GO-2026-5972, on the SAML parse path). No product code
+  changes; the pin moves in lockstep across `go.mod`, CI, both Dockerfiles and dev compose.
 
 ## [1.9.1] — 2026-08-11
 
