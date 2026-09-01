@@ -48,7 +48,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25.12' # keep in lockstep with go.mod + the CE Dockerfile
+          go-version: '1.25.14' # keep in lockstep with go.mod + the CE Dockerfile
           cache: true
 
       - name: Download modules
@@ -69,7 +69,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          # goinstall builds golangci-lint with the setup-go toolchain (1.25.12);
+          # goinstall builds golangci-lint with the setup-go toolchain (1.25.14);
           # the prebuilt v1.64.8 binary is compiled with go1.24 and refuses to
           # analyze a go 1.25 module ("language version used to build golangci-lint
           # is lower than the targeted Go version"). Pin the last v1 (the repo's
