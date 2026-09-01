@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- CI no longer runs twice per push. `dev` and `main` are pushed together and have
+  not diverged since PRs stopped being used, so every commit ran the whole
+  seven-minute suite under two ref names. `push` is now `main` only; anything that
+  merges into `dev` arrives through the `pull_request` trigger, which was already
+  there. Same in the EE repo.
+- `govulncheck` moved out of the per-push CI job into a daily scheduled workflow
+  that files (and updates) a single issue. It reports on a vulnerability database
+  that moves on its own, so the same commit is green one morning and red the next
+  with nothing in the diff — three of the last six CI failures were exactly that,
+  each one painting unrelated work red. It is now a hard gate where it belongs:
+  the release workflow.
+- `verify-lint` runs golangci-lint through `go run` at the pinned v1.64.8 instead
+  of whatever is on PATH. `.golangci.yml` is v1-format config and a v2 binary
+  hard-errors on it, so anyone with a current golangci-lint installed had a
+  permanently broken `make verify` — it could not pass on a developer machine.
+  `govulncheck` is pinned the same way, replacing `@latest`, which let CI change
+  its verdict with no commit behind it.
+
+### Fixed
+- The release workflow had no quality gate at all. It went straight from a tag
+  push to buildx, depending on nothing, so a red CI on the very same commit did
+  not stop the images from being built and published — which is exactly what
+  happened with v1.9.2. Both editions now run their full suite (and, for CE,
+  govulncheck) on the tagged commit before anything is built.
+- `verify-pinned-tag` ran in no gate whatsoever — not pre-commit, not CI — and was
+  red. `.env.example`, the file the documented compose path tells a new user to
+  copy verbatim, still pinned `MXID_TAG=v1.8.2`: three releases behind, missing
+  every fix in v1.9.x. It is now on v1.9.2 and CI runs the check, along with the
+  other source-only verifies (i18n, error extraction, toaster mount, protocol
+  fields, CSP hash) that were in `make verify` and pre-commit but had never run in
+  CI.
+- A pre-push hook now runs `verify-lint`, and `verify-web` when `web/` moved, on
+  pushes to dev/main. Those two live in `make verify` but in no hook, so they were
+  first exercised in the cloud seven minutes after the push — two of the six CI
+  failures. `install-hooks.sh` installs both hooks; it used to install only
+  pre-commit.
+
 ## [1.9.2] — 2026-09-01
 
 ### Fixed

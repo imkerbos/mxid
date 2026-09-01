@@ -1,22 +1,34 @@
 #!/usr/bin/env bash
-# Idempotent installer: point .git/hooks/pre-commit at scripts/pre-commit.sh.
+# Idempotent installer: point .git/hooks/{pre-commit,pre-push} at scripts/.
+#
+# Both gates matter and they cover different ground: pre-commit is the ~10s
+# fast pass on every commit, pre-push is the slower pair (lint, web build) that
+# used to be discovered only by CI. Installing just one leaves the gap that
+# every CI failure in this repo has fallen into.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
-HOOK="$ROOT/.git/hooks/pre-commit"
-TARGET="../../scripts/pre-commit.sh"
 
-chmod +x "$ROOT/scripts/pre-commit.sh"
+install_hook() {
+  local name="$1"
+  local hook="$ROOT/.git/hooks/$name"
+  local target="../../scripts/$name.sh"
 
-if [[ -L "$HOOK" && "$(readlink "$HOOK")" == "$TARGET" ]]; then
-  echo "✓ pre-commit hook already installed"
-  exit 0
-fi
+  chmod +x "$ROOT/scripts/$name.sh"
 
-if [[ -e "$HOOK" ]]; then
-  mv "$HOOK" "$HOOK.bak.$(date +%s 2>/dev/null || echo backup)"
-  echo "moved existing hook to $HOOK.bak.*"
-fi
+  if [[ -L "$hook" && "$(readlink "$hook")" == "$target" ]]; then
+    echo "✓ $name hook already installed"
+    return 0
+  fi
 
-ln -s "$TARGET" "$HOOK"
-echo "✓ installed pre-commit hook -> scripts/pre-commit.sh"
+  if [[ -e "$hook" ]]; then
+    mv "$hook" "$hook.bak.$(date +%s 2>/dev/null || echo backup)"
+    echo "moved existing hook to $hook.bak.*"
+  fi
+
+  ln -s "$target" "$hook"
+  echo "✓ installed $name hook -> scripts/$name.sh"
+}
+
+install_hook pre-commit
+install_hook pre-push

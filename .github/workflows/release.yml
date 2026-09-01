@@ -23,7 +23,30 @@ permissions:
   packages: write   # push images to GHCR
 
 jobs:
+  # Nothing is built until the suite that guards main has passed on the TAGGED
+  # commit. Until this existed, release had no quality gate at all — it went
+  # straight to buildx. v1.9.2 is what that costs: CI was red on the very same
+  # commit while this workflow built and published the images anyway.
+  gate:
+    uses: ./.github/workflows/ci.yml
+
+  # Kept out of ci.yml on purpose (see vuln.yml — it goes red on the database
+  # moving, not on the diff), but a release is precisely the moment a reachable
+  # known vulnerability has to stop the line.
+  vuln:
+    name: govulncheck (release gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.14' # keep in lockstep with go.mod + the CE Dockerfile
+          cache: true
+      # Version pinned in the Makefile, shared with the daily scan.
+      - run: make verify-vuln
+
   images:
+    needs: [gate, vuln]
     runs-on: ubuntu-latest
     strategy:
       matrix:

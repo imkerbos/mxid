@@ -1,0 +1,94 @@
+name: vuln
+
+# govulncheck on a schedule, not on push.
+#
+# It reports vulnerabilities the code can actually reach, drawn from a database
+# that moves on its own: the same commit is green one morning and red the next
+# because someone upstream published an advisory. Three of the last six CI
+# failures in this repo were exactly that, and each one painted an unrelated
+# commit red — including v1.9.2, where CI went red while the release workflow
+# published the images anyway.
+#
+# So it is split in two. Here it runs daily and files an issue, which is what a
+# time-triggered signal deserves. In release.yml it is a hard gate, because
+# shipping a binary with a reachable known vulnerability is the outcome worth
+# blocking.
+on:
+  schedule:
+    # 02:30 UTC daily — after the Go security team's usual publishing window,
+    # before the working day in +08.
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vuln
+  cancel-in-progress: false
+
+jobs:
+  govulncheck:
+    name: govulncheck (reachable vulnerabilities)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.14' # keep in lockstep with go.mod + the CE Dockerfile
+          cache: true
+
+      - name: govulncheck
+        # pipefail matters: without it `tee` decides the step's exit status and
+        # a red scan reports success. The version is pinned in the Makefile so
+        # the local run, this job and the release gate cannot drift apart.
+        shell: bash
+        run: |
+          set -o pipefail
+          make verify-vuln 2>&1 | tee vuln.txt
+
+      # A fresh issue every morning would be noise, so reuse the open one.
+      - name: Report
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          {
+            echo "govulncheck reports reachable vulnerabilities on \`${GITHUB_REF_NAME}\`."
+            echo
+            echo "Run: ${RUN_URL}"
+            echo
+            echo '```'
+            # The scan output can be long; the traces at the end are the useful part.
+            tail -c 8000 vuln.txt || true
+            echo '```'
+            echo
+            echo "This does not block day-to-day pushes. It DOES block the release"
+            echo "workflow, so it has to be cleared before the next tag."
+          } > body.md
+
+          # The label may not exist yet in a fresh fork/mirror.
+          gh label create vulnerability --repo "$GITHUB_REPOSITORY" \
+            --color B60205 --description "Reported by the daily govulncheck scan" 2>/dev/null || true
+
+          existing="$(gh issue list --repo "$GITHUB_REPOSITORY" \
+            --state open --label vulnerability --limit 1 --json number \
+            --jq '.[0].number // empty')"
+
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body-file body.md
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "govulncheck: reachable vulnerabilities" \
+              --label vulnerability \
+              --body-file body.md
+          fi
