@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Declining the SSO login confirmation looped instead of ending the flow. Cancel
+  returns the browser to the OIDC login bridge carrying `sso_deny=1`, which
+  nothing there read — so the request fell through to the confirmation-token
+  check, found no token, and bounced back to the confirm page. Pressing Cancel
+  redisplayed the page being cancelled, with no way out but the back button.
+  CAS and SAML both handled the parameter; only OIDC did not. The RP is now
+  answered with `access_denied` at its registered redirect_uri (OIDC Core
+  3.1.2.6) and the auth request is deleted, so replaying the URL cannot resume a
+  flow the user rejected.
+
 ### Security
 - Deleting users through `POST /users/batch` now requires `user.delete` and a fresh step-up,
   the same as `DELETE /users/:id`. The batch route is mounted with `user.update` — right for

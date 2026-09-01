@@ -155,9 +155,11 @@ func wireOIDCOP(
 	// portalURL "" → the bridge redirects to relative /login, /consent, and
 	// /no-access, which the browser resolves against the nginx host it is
 	// already on.
+	// provider doubles as the op.Authorizer the bridge needs to answer a declined
+	// consent with access_denied at the client's registered redirect_uri.
 	bridge := oidcop.NewLoginBridge(
 		storage, appResolver, sessResolver, confirm, access, participationIndex,
-		callbackURL, loginURL, "",
+		callbackURL, loginURL, "", provider,
 	)
 	a.ProtocolGroup.GET("/oidc-login", bridge.Handle)
 
