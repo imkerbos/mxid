@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.2] — 2026-09-01
+
 ### Changed
 - CI no longer runs twice per push. `dev` and `main` are pushed together and have
   not diverged since PRs stopped being used, so every commit ran the whole
@@ -29,8 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - The release workflow had no quality gate at all. It went straight from a tag
   push to buildx, depending on nothing, so a red CI on the very same commit did
-  not stop the images from being built and published — which is exactly what
-  happened with v1.9.2. Both editions now run their full suite (and, for CE,
+  not stop the images from being built and published — which is what happened
+  the first time this version was cut. Both editions now run their full suite (and, for CE,
   govulncheck) on the tagged commit before anything is built.
 - `verify-pinned-tag` ran in no gate whatsoever — not pre-commit, not CI — and was
   red. `.env.example`, the file the documented compose path tells a new user to
@@ -44,10 +46,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   first exercised in the cloud seven minutes after the push — two of the six CI
   failures. `install-hooks.sh` installs both hooks; it used to install only
   pre-commit.
-
-## [1.9.2] — 2026-09-01
-
-### Fixed
 - Declining the SSO login confirmation looped instead of ending the flow. Cancel
   returns the browser to the OIDC login bridge carrying `sso_deny=1`, which
   nothing there read — so the request fell through to the confirmation-token
