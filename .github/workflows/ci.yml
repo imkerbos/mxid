@@ -1,14 +1,28 @@
 name: CI
 
-# Quality gate for every push + PR to dev/main. Until this existed the ONLY
-# gates were local (pre-commit, skippable via SKIP_VERIFY) — so regressions
-# could merge unchecked. This runs the same `make verify` chain + the test
-# suite in the cloud, on every change, so a red check blocks the merge.
+# Quality gate for main and every PR, and the reusable gate release.yml calls
+# before it builds an image. Until this existed the ONLY gates were local
+# (pre-commit, skippable via SKIP_VERIFY) — so regressions could merge
+# unchecked. This runs the same `make verify` chain + the test suite in the
+# cloud, so a red check blocks the merge.
+#
+# Deliberately NOT `push: [dev, main]`. The two branches are pushed together
+# and have not diverged since PRs stopped being used, so every commit ran the
+# whole suite twice under two ref names. main keeps the push trigger — it is
+# what gets tagged; anything that actually merges into dev arrives through the
+# pull_request trigger.
+#
+# govulncheck deliberately does NOT run here — see vuln.yml. It goes red when
+# the vulnerability database moves, not when the diff does (3 of the last 6 CI
+# failures were exactly that: green at push, red the next morning, no code
+# change). As a push gate it only paints unrelated work red. It runs daily on a
+# schedule and blocks the release workflow instead.
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
   pull_request:
     branches: [dev, main]
+  workflow_call:
 
 # Cancel superseded runs on the same ref to save CI minutes.
 concurrency:
@@ -20,7 +34,7 @@ permissions:
 
 jobs:
   backend:
-    name: Go (build · vet · lint · gormtaglint · test · vuln)
+    name: Go (build · vet · lint · gormtaglint · test)
     runs-on: ubuntu-latest
 
     # Postgres so the tests exercise the PG-specific machinery (tenant plugin,
@@ -89,11 +103,6 @@ jobs:
           MXID_E2E_DSN: "host=localhost port=5432 user=postgres password=postgres dbname=mxid sslmode=disable"
         run: go test -race ./...
 
-      - name: govulncheck
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./...
-
   frontend:
     name: Web (build · exports)
     runs-on: ubuntu-latest
@@ -116,6 +125,18 @@ jobs:
 
       - name: verify-exports (package.json exports map exists on disk)
         run: node scripts/verify-exports.mjs
+
+      # These are in `make verify` and in pre-commit, but ran nowhere in CI —
+      # and verify-pinned-tag ran nowhere at all, in any gate. It was red: the
+      # .env.example a new user copies verbatim still pinned MXID_TAG=v1.8.2,
+      # three releases behind, so the documented compose path deployed a build
+      # missing every fix in v1.9.x. Cheap, source-only, so they run before the
+      # expensive build and fail fast.
+      - name: verify (i18n · error extraction · toaster · protocol fields · csp · pinned tag)
+        run: |
+          make verify-i18n-keys verify-i18n-markers verify-error-extraction \
+               verify-toaster-mount verify-protocol-fields verify-csp-hash \
+               verify-pinned-tag
 
       - name: build web (strict)
         working-directory: web
