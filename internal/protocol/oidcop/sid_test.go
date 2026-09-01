@@ -246,7 +246,7 @@ func driveBridge(t *testing.T, storage *Storage, sessions resolver.SessionResolv
 	bridge := NewLoginBridge(storage, apps, sessions, nil, nil, nil,
 		func(context.Context, string) string { return "https://issuer.example.com/callback" },
 		func(id string) string { return "https://issuer.example.com/login?authRequestID=" + id },
-		"https://portal.example.com",
+		"https://portal.example.com", nil,
 	)
 
 	w := httptest.NewRecorder()
