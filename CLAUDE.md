@@ -70,8 +70,8 @@ org; canonical namespace stays `imkerbos/mxid` (images `ghcr.io/imkerbos/...`).
 
 ## Stack
 
-- **Backend** — Go (Gin + GORM + Redis + Snowflake IDs + bcrypt). `go 1.25.12`;
-  pin `golang:1.25.12-alpine` in Docker / dev compose (the floating
+- **Backend** — Go (Gin + GORM + Redis + Snowflake IDs + bcrypt). `go 1.25.14`;
+  pin `golang:1.25.14-alpine` in Docker / dev compose (the floating
   `1.25-alpine` tag lags a patch behind and breaks builds).
 - **Frontend** — React 19 + Vite + TypeScript + Tailwind v4, pnpm workspaces
   (`web/apps/console`, `web/apps/portal`, `web/packages/shared`).
