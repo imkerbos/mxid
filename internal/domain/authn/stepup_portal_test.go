@@ -412,7 +412,9 @@ func TestPortalStepUp_PasswordFallbackIsRateLimited(t *testing.T) {
 	env := newPortalStepUpEnv(t, "Sup3rSecret!", false)
 
 	var last *httptest.ResponseRecorder
-	for i := 0; i < 12; i++ {
+	// Track the constant, not a literal: the threshold is a tuning knob and a
+	// hardcoded loop bound turns a deliberate loosening into a mystery failure.
+	for i := 0; i < mfaFailThreshold+1; i++ {
 		last = env.do(http.MethodPost, `{"password":"wrong"}`)
 		if last.Code == http.StatusTooManyRequests {
 			break
