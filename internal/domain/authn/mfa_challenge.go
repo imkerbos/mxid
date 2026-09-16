@@ -8,13 +8,17 @@ import (
 	"time"
 
 	"github.com/imkerbos/mxid/pkg/crypto"
+	"github.com/imkerbos/mxid/pkg/mfaerr"
 )
 
-// MFA challenge errors.
+// MFA challenge errors. The ones an EE feature must be able to branch on are
+// aliases of pkg/mfaerr — the EE module is a separate module and cannot import
+// this package, so the seam needs a publicly importable identity. Aliasing
+// (rather than wrapping) keeps errors.Is true on both names.
 var (
 	ErrMFAChallengeNotFound = errors.New("mfa challenge not found or expired")
-	ErrMFAVerifyFailed      = errors.New("mfa verification failed")
-	ErrMFANotConfigured     = errors.New("mfa verifier not configured")
+	ErrMFAVerifyFailed      = mfaerr.ErrVerifyFailed
+	ErrMFANotConfigured     = mfaerr.ErrNotConfigured
 )
 
 // looksLikeBackupCode reports whether `code` resembles a backup recovery
