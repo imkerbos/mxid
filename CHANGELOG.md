@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.3] — 2026-09-16
+
+### Fixed
+- A federated (external-IdP) login that hit the MFA rate limit was told "invalid
+  mfa code" — the same sentence a wrong code gets. Every error the TOTP verify
+  could return collapsed into that one message, so a user locked out for fifteen
+  minutes was invited to retry on each of the attempts that could not possibly
+  succeed, and neither they nor support could tell the two situations apart. The
+  federated verify now answers the way local login already did: `429` with
+  `Retry-After` for a lockout, the localized "wait for the next code" for a
+  replayed code (`NumTOTPCodeReused`, the same code the local step-up uses), and
+  a `500` for an unconfigured verifier. A wrong code now carries
+  `NumInvalidMFACode` instead of the generic validation code, so the portal
+  renders its own translated sentence rather than the server's English. The
+  sentinels moved to a new public leaf package, `pkg/mfaerr`, because the EE
+  module is a separate Go module and cannot import `internal/...` — which is
+  exactly why every error crossing the `registry.VerifyStepUpTOTPFunc` seam
+  used to arrive indistinguishable.
+- A replayed TOTP code no longer counts toward the MFA lockout. Submitting the
+  same correct code twice is a double-submit — the portal auto-submits the moment
+  a sixth digit is typed, so it happens routinely — and it was spending the
+  attempt budget. Replaying a code the user already held is not a guess, so
+  counting it bought nothing.
+
+### Changed
+- The MFA lockout is now 15 failed attempts (was 5), and the lock escalates —
+  1 minute, then 5, then 15 — instead of a flat 15 minutes. A six-digit code
+  checked across a ±1 step window leaves 3 valid codes in a million, so the old
+  threshold bought no meaningful brute-force resistance over the new one; what it
+  did buy was locking out people who mistype. A correct code still clears the
+  counter and the escalation.
+
 ## [1.9.2] — 2026-09-01
 
 ### Changed
@@ -1185,7 +1217,8 @@ Initial public preview. Two integrations verified end-to-end: **Grafana (OIDC)**
 - pnpm workspaces (`console` / `portal` / `shared`).
 - Tailwind v4 monorepo `@source` directive so shared package UI compiles into both SPAs.
 
-[Unreleased]: https://github.com/imkerbos/mxid/compare/v1.9.2...HEAD
+[Unreleased]: https://github.com/imkerbos/mxid/compare/v1.9.3...HEAD
+[1.9.3]: https://github.com/imkerbos/mxid/compare/v1.9.2...v1.9.3
 [1.9.2]: https://github.com/imkerbos/mxid/compare/v1.9.1...v1.9.2
 [1.9.1]: https://github.com/imkerbos/mxid/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/imkerbos/mxid/compare/v1.8.6...v1.9.0

@@ -10,6 +10,7 @@ import (
 	"github.com/imkerbos/mxid/internal/bootstrap"
 	"github.com/imkerbos/mxid/pkg/crypto"
 	"github.com/imkerbos/mxid/pkg/event"
+	"github.com/imkerbos/mxid/pkg/mfaerr"
 	"github.com/imkerbos/mxid/pkg/ratelimit"
 	"github.com/imkerbos/mxid/pkg/session"
 	"github.com/imkerbos/mxid/pkg/snowflake"
@@ -32,7 +33,9 @@ var (
 	// the next one". Flattening the two told a user who had typed the right
 	// digits that they were wrong, in the most common sequence there is —
 	// two prompts landing inside the same 30-second step.
-	ErrMFACodeReused = errors.New("mfa code already used this window")
+	// Aliased to pkg/mfaerr so the EE module — a separate Go module that
+	// cannot import internal/... — can branch on it across the seam.
+	ErrMFACodeReused = mfaerr.ErrCodeReused
 )
 
 // LoginResponse is returned by Engine.Login.
@@ -336,12 +339,16 @@ func (e *Engine) VerifyStepUp(ctx context.Context, userID int64, clientIP, code 
 		}
 	}
 	if verifyErr != nil {
-		e.mfaRateLimiter.RecordFailure(ctx, userID, clientIP)
 		// A spent-but-correct code keeps its own sentinel: the caller renders
-		// "wait for the next code", not "that code is wrong".
+		// "wait for the next code", not "that code is wrong". It also does NOT
+		// count toward the lockout — replaying a code means the digits were
+		// already right, so it is evidence of a double-submit (the portal
+		// auto-submits on the sixth digit), not of guessing. An attacker who
+		// can replay a valid code did not brute-force it.
 		if errors.Is(verifyErr, ErrMFACodeReused) {
 			return ErrMFACodeReused
 		}
+		e.mfaRateLimiter.RecordFailure(ctx, userID, clientIP)
 		return ErrMFAVerifyFailed
 	}
 	e.mfaRateLimiter.Reset(ctx, userID, clientIP)
@@ -468,7 +475,12 @@ func (e *Engine) VerifyMFAChallenge(ctx context.Context, challenge, code string)
 		}
 	}
 	if verifyErr != nil {
-		e.mfaRateLimiter.RecordFailure(ctx, payload.UserID, payload.ClientIP)
+		// A replayed code does not count toward the lockout — see VerifyStepUp.
+		// The attempt is still audited: a failed second factor is a failed
+		// second factor, whatever the reason.
+		if !errors.Is(verifyErr, ErrMFACodeReused) {
+			e.mfaRateLimiter.RecordFailure(ctx, payload.UserID, payload.ClientIP)
+		}
 		err := verifyErr
 		// Token already consumed; client must restart login. We do NOT
 		// fold MFA failures into the password lockout counter — the
