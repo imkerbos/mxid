@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `redis.db` in the Helm chart, emitted as `MXID_REDIS_DB` (default `0`). mxid
+  writes plain keys rather than a namespaced prefix, so sharing db 0 with
+  another workload means colliding on them; on a shared Redis, give mxid an
+  index of its own. Viper already mapped the env var onto `redis.db` — only the
+  chart had no way to set it.
+
+### Changed
+- The vite dev servers read the front door's port from `MXID_DEV_HMR_PORT`
+  instead of hardcoding the compose nginx's 3500, which the HMR client needs in
+  order to dial back. Unset keeps 3500, so the compose stack is unaffected. An
+  empty value makes the HMR client follow the page's own port, for a dev server
+  behind a proxy that serves both http and https: a fixed port is right for only
+  one scheme, and a client pinned to :80 on an https page attempts TLS against
+  plaintext (`net::ERR_SSL_PROTOCOL_ERROR`), so HMR dies while the page loads
+  normally.
+
 ## [1.9.3] — 2026-09-16
 
 ### Fixed
