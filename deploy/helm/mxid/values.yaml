@@ -221,6 +221,10 @@ database:
 redis:
   host: "redis"             # hostname or IP of the Redis server
   port: "6379"
+  # Logical database index (0-15 on a stock Redis). Point this at an index of
+  # its own when the instance is shared with other workloads — mxid uses plain
+  # keys, not a namespace prefix, so two tenants of db 0 will collide.
+  db: "0"
   # password: see secrets section below
 
 # ---------------------------------------------------------------------------

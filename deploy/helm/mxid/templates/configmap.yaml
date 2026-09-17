@@ -45,3 +45,4 @@ data:
   # Redis connection (non-sensitive fields only — password is in the Secret)
   MXID_REDIS_HOST: {{ .Values.redis.host | quote }}
   MXID_REDIS_PORT: {{ .Values.redis.port | quote }}
+  MXID_REDIS_DB: {{ .Values.redis.db | default "0" | quote }}

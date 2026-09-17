@@ -7,6 +7,22 @@ import path from 'path'
 // routes /admin/* here and forwards /api /protocol to the backend.
 // HMR client tells the browser to dial back through nginx (port 3500),
 // otherwise it would try to reach the vite-internal port 5173 and fail.
+// The browser reaches vite through a front door whose port the container
+// cannot discover. MXID_DEV_HMR_PORT says which:
+//   unset  → nginx on 3500, the compose stack's front door (unchanged default)
+//   ""     → follow the page's own port (a proxy serving both http and https)
+//   "N"    → a fixed port
+// "Follow the page" exists because a fixed port is right for only one scheme:
+// behind a proxy serving http on 80 and https on 443, a client pinned to :80 on
+// an https page attempts TLS against plaintext (net::ERR_SSL_PROTOCOL_ERROR) —
+// HMR dies silently while the page itself loads fine, and browsers upgrade to
+// https on their own. Leaving clientPort unset makes vite's client fall back to
+// location.port, which is right for both schemes and has no port to keep in
+// sync with the proxy.
+const hmrClientPortEnv = process.env.MXID_DEV_HMR_PORT
+const hmrClientPort =
+  hmrClientPortEnv === undefined ? 3500 : hmrClientPortEnv === '' ? undefined : Number(hmrClientPortEnv)
+
 export default defineConfig(() => ({
   base: '/admin/',
   plugins: [react(), tailwindcss()],
@@ -30,7 +46,7 @@ export default defineConfig(() => ({
     // Bind HMR ws to the nginx-exposed port so the browser can find it
     // when the SPA is served behind /admin/.
     hmr: {
-      clientPort: 3500,
+      clientPort: hmrClientPort,
       path: '/admin/',
     },
     // /api and /protocol proxies kept for standalone `pnpm dev` (no
