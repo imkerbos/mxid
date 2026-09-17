@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `local.mk`: an optional, gitignored file included at the top of the Makefile.
+  It overrides `MIGRATE` and `EE_SMOKE`, so `make migrate-*` and `make ee-smoke`
+  (which the EE pre-push hook runs) can target a developer's own database
+  without the repository carrying anyone's environment. Without it the defaults
+  are unchanged.
 - `redis.db` in the Helm chart, emitted as `MXID_REDIS_DB` (default `0`). mxid
   writes plain keys rather than a namespaced prefix, so sharing db 0 with
   another workload means colliding on them; on a shared Redis, give mxid an
