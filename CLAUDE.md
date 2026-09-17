@@ -223,7 +223,11 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full picture.
 - Feature-gate change → `docs/EDITIONS.md` + the README feature tables
   (EN and ZH, kept mirrored).
 - Cutting a release: rename `[Unreleased]` → `[X.Y.Z] — date`, add the compare
-  link at the bottom, bump helm `Chart.yaml` `appVersion` and `values.yaml` tag.
+  link at the bottom, bump helm `Chart.yaml` `appVersion` and `values.yaml` tag,
+  and bump `MXID_TAG` in `.env.example` and `deploy/compose/.env.prod.example`.
+  The last two are gated by `make verify-pinned-tag`, which the release
+  workflow runs before building any image — missing them stops the release at
+  the web gate (v1.9.3 did exactly that).
 - A design doc whose feature has shipped moves to `docs/archive/`, or is deleted
   if it has no reference value. **Stale plans are worse than no plans.**
 
