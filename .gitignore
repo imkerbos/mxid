@@ -63,6 +63,8 @@ web/packages/*/dist/
 # Local-only working notes (never published)
 TODO.local.md
 *.local.md
+# Machine-local Makefile overrides (see the top of Makefile).
+local.mk
 
 # Secrets
 *.pem

@@ -3,6 +3,15 @@
        verify verify-mod verify-vet verify-build verify-lint verify-web verify-exports verify-i18n-keys verify-i18n-markers verify-error-extraction verify-toaster-mount verify-protocol-fields verify-csp-hash verify-pinned-tag verify-vuln smoke install-hooks \
        docker-build prod-up prod-down prod-logs standalone-up standalone-down standalone-logs
 
+# Machine-local overrides, never committed (local.mk is gitignored). A developer
+# whose database is not the compose stack's host-mapped :5432 points the
+# DB-touching targets at their own environment here instead of editing this
+# file — the repository must not carry anyone's environment. Included before the
+# variables below so its assignments win over their `?=` defaults. Overridable:
+#   MIGRATE   the golang-migrate invocation (receives: up | down 1 | force N | version)
+#   EE_SMOKE  the command `make ee-smoke` runs (also what the EE pre-push hook calls)
+-include local.mk
+
 # Variables
 APP_NAME := mxid
 MAIN_PATH := cmd/server/main.go
@@ -10,6 +19,8 @@ BUILD_DIR := bin
 CONFIG_PATH := configs
 MIGRATE_DIR := migrations
 DB_DSN ?= "postgres://postgres:12345@host.docker.internal:5432/mxid?sslmode=disable"
+MIGRATE ?= migrate -path $(MIGRATE_DIR) -database $(DB_DSN)
+EE_SMOKE ?= ./scripts/ee-smoke.sh
 
 # Build identity (stamped into the binary / image). VERSION falls back to the
 # git tag (v1.2.3) or short sha; CI passes an explicit tag.
@@ -200,10 +211,10 @@ deps:
 
 # Database migrations
 migrate-up:
-	migrate -path $(MIGRATE_DIR) -database $(DB_DSN) up
+	$(MIGRATE) up
 
 migrate-down:
-	migrate -path $(MIGRATE_DIR) -database $(DB_DSN) down 1
+	$(MIGRATE) down 1
 
 migrate-create:
 	@read -p "Enter migration name: " name; \
@@ -211,10 +222,10 @@ migrate-create:
 
 migrate-force:
 	@read -p "Enter version: " version; \
-	migrate -path $(MIGRATE_DIR) -database $(DB_DSN) force $$version
+	$(MIGRATE) force $$version
 
 migrate-version:
-	migrate -path $(MIGRATE_DIR) -database $(DB_DSN) version
+	$(MIGRATE) version
 
 # Docker — Production build (version stamped via build args). Builds BOTH the
 # backend and the web (nginx + baked SPAs) images, mirroring CI. No `latest`
@@ -385,7 +396,7 @@ smoke:
 # pre-push hook calls `make -C ../mxid ee-smoke`.
 ee-smoke:
 	@echo "==> ee-smoke"
-	./scripts/ee-smoke.sh
+	$(EE_SMOKE)
 
 # Idempotent: link .git/hooks/pre-commit -> scripts/pre-commit.sh
 install-hooks:
