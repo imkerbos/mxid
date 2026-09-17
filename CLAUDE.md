@@ -17,6 +17,7 @@ behaviour. Read the whole file before the first edit.
 | 8 | Every frontend write gives **toast feedback** — never silent. |
 | 9 | User-visible change → **`CHANGELOG.md` bullet in the same commit**. |
 | 10 | Every API business code must be declared in **`pkg/errcode/catalog.go`** and passed by name. Never a numeric literal — a subset of the codes are *localized*, meaning the SPA replaces the server message with a fixed sentence, so reusing one shows the user the wrong text. |
+| 11 | **No environment data in the repository.** Host names, cluster/namespace layout, database and cache locations, certificate/CA names, machine paths and quirks never go into code, comments, docs, `CHANGELOG.md` or commit messages. They live in untracked local files (`CLAUDE.local.md`, `local.mk`, local manifests). Grep the diff and the commit message before pushing. |
 
 ## Project
 
@@ -64,6 +65,8 @@ org; canonical namespace stays `imkerbos/mxid` (images `ghcr.io/imkerbos/...`).
   feature on the target branch, not `--no-ff` preserving every intermediate
   commit. Keep granular commits while working; squash at merge. Promote
   `dev` → `main` as usual.
+- **`dev` is local-only — never push it.** Push `main` (to both remotes) and
+  release tags; nothing else goes to GitHub.
 - CE and EE release in **lockstep**: the same `vX.Y.Z` tag on both repos. EE
   release CI checks out the CE tag of the same name and fails on a mismatch.
   Push the CE tag first.
@@ -233,27 +236,30 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full picture.
 
 ## Dev / deploy
 
-- **Dev**: `make dev-up` (`EE=1` for the Enterprise backend) brings up the ONE
-  dev stack — postgres, redis, backend (air), console/portal vite, nginx on
-  :3500. Postgres/Redis are compose services in project `mxid-dev` with their
-  own `mxid-dev_pgdata` / `mxid-dev_redisdata` volumes; host ports 5432/6379
-  stay published for psql/DBeaver. **Never start dev infra outside compose** —
-  that is how dev data ends up in a volume no compose file owns. `make dev-down`
-  keeps data; only `make dev-nuke` deletes it (and it prompts).
-- `make seed-demo` (re)seeds the demo org/groups/memberships/app-access so demo
-  users actually see apps in the portal. Idempotent.
+- **Dev runs on a local Kubernetes cluster.** The docker-compose dev stack
+  (`make dev-up`, `deploy/compose/docker-compose.dev*.yml`) is retired — do not
+  start it. The cluster manifests and every environment-specific value are
+  machine-local and untracked (rule 11); `CLAUDE.local.md` describes the machine
+  you are on. If it is missing, ask — do not guess an environment.
+- **Live reload** is a hostPath mount of the working tree into the backend and
+  vite pods: air and vite read it directly. No image build, no file-sync tool.
+  EE dev mounts the parent of both repos so EE's `replace => ../mxid` resolves.
+- **Machine-local Makefile overrides**: `local.mk` (gitignored, included at the
+  top of the Makefile) points `make migrate-*` and `make ee-smoke` — which the EE
+  pre-push hook calls — at the local database through `MIGRATE` / `EE_SMOKE`.
+  Without it they keep the compose-era defaults and fail against a k8s dev
+  stack.
+- `make seed-demo` still targets the retired compose container and has no
+  override yet.
 - **Prod**: released images from GHCR behind nginx on 80/443; one `.env` drives
   it (`COMPOSE_FILE` selects the mode). Tag `v*.*.*` → CI builds and publishes
   (no `latest` tag). See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 - **Pre-commit hook** runs `verify-mod / vet / build / gormtags / exports / i18n-markers`. Keep
   it green; don't `--no-verify` without saying so.
-- Start dev with `make dev-up`, never a bare `docker compose up`. The Makefile
-  passes `--env-file .env`; without it Compose substitutes its defaults and the
-  backend comes up unable to authenticate to Postgres.
-- The vite containers keep their own `node_modules` (anonymous volumes in the
-  dev compose file). They share the repo by bind mount, so without that the
-  container's `pnpm install` overwrites the host's native binaries with
-  linux/arm64 ones and `pnpm -r build` on the host dies pointing at npm.
+- The vite pods keep their own `node_modules` on separate volumes. They share
+  the repo over the hostPath mount, so without that the pod's `pnpm install`
+  overwrites the host's native binaries with linux/arm64 ones and
+  `pnpm -r build` on the host dies pointing at npm.
 - Repo-root tool configs (`.air.toml`, `.golangci.yml`, `.dockerignore`) are
   **shared project config and are committed** — CI and the Makefile read them.
   Never gitignore them.
