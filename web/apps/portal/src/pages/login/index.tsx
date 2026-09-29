@@ -117,6 +117,18 @@ export default function LoginPage() {
       const reason = p.get('reason') || ''
       const key = externalAuthReasonKey(reason)
       setError(key ? t(key) : t('login.externalFailed'))
+      return
+    }
+    // No error param, but the backend's "left for the IdP" marker is still set:
+    // the browser went to the provider and came back here without a callback.
+    // The callback clears the cookie on every exit, so a leftover means the trip
+    // never completed — the provider's own page failed and the user pressed back
+    // (Lark served a bare 502 from its accounts host; we never see that request,
+    // so nothing else can tell them what happened). Clear it so the notice shows
+    // once, not on every later visit.
+    if (document.cookie.split('; ').some((c) => c.startsWith('mxid_ext_pending='))) {
+      document.cookie = 'mxid_ext_pending=; Max-Age=0; path=/'
+      setError(t('login.externalIncomplete'))
     }
   }, [t])
 

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- The console's "my account" page let an external-IdP account set a first
+  password. It only ever offered the change-password form, which demands the
+  current password — an account provisioned through Lark has none, so there was
+  no way to add one from the console at all. The backend endpoint and both
+  locales' strings already existed; only this page never used them. The portal's
+  security page was never affected. Everything the section says now follows the
+  same branch: the title ("Set password"), the note about other sessions (a first
+  set signs none out — there is no old credential to invalidate) and the success
+  message.
+
 ### Added
 - `local.mk`: an optional, gitignored file included at the top of the Makefile.
   It overrides `MIGRATE` and `EE_SMOKE`, so `make migrate-*` and `make ee-smoke`
@@ -18,6 +29,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   another workload means colliding on them; on a shared Redis, give mxid an
   index of its own. Viper already mapped the env var onto `redis.db` — only the
   chart had no way to set it.
+- A federated login that never comes back is now explained instead of leaving a
+  blank page. The redirect to the provider sets a short-lived marker cookie that
+  the callback clears on every exit, so a leftover means the browser left and
+  never returned — the provider's own login page failed, which we cannot observe
+  any other way (that request never reaches us). The login page says so once and
+  clears the marker.
+- `mxid_external_login_phase_total{provider,phase}` counts each leg of a
+  federated login ("start" / "callback"). Alert on the gap between the two
+  rates, not on an error rate: a provider failing on its own pages produces no
+  errors here at all.
 
 ### Changed
 - The vite dev servers read the front door's port from `MXID_DEV_HMR_PORT`
