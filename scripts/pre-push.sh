@@ -45,8 +45,12 @@ while read -r _localref localsha remoteref remotesha; do
   esac
   gated=1
 
-  if [[ "$remotesha" == "$ZERO" ]]; then
-    # New branch on the remote: no baseline to diff against, so check everything.
+  # No usable baseline in two cases: a branch that does not exist on the remote
+  # yet, and a remote tip this clone no longer has — which is what a rewritten
+  # history looks like from here. Diffing against a missing object aborts the
+  # push with "Invalid revision range" instead of gating it, so check the whole
+  # tree in both cases.
+  if [[ "$remotesha" == "$ZERO" ]] || ! git cat-file -e "${remotesha}^{commit}" 2>/dev/null; then
     changed="$(git ls-tree -r --name-only "$localsha")"
     break
   fi
