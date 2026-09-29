@@ -56,10 +56,6 @@ web/packages/*/dist/
 .pnpm-store/
 **/.pnpm-store/
 
-# Agent / assistant tooling scratch (local only)
-.claude/
-.superpowers/
-
 # Local-only working notes (never published)
 TODO.local.md
 *.local.md
