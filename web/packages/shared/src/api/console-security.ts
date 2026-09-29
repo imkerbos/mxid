@@ -35,6 +35,12 @@ export interface APITokenRow {
 export const consoleSecurityApi = {
   changePassword: (old_password: string, new_password: string, totp_code?: string) =>
     client.put<ApiResponse<null>>('/security/password', { old_password, new_password, totp_code }).then(r => r.data),
+  // First-time password for an account provisioned through an external IdP,
+  // which has none to verify. Same endpoint the portal uses — /security is
+  // mounted on both groups — and the backend refuses it once a usable password
+  // exists, so this can never bypass the old-password check.
+  setPassword: (new_password: string) =>
+    client.post<ApiResponse<null>>('/security/password/set', { new_password }).then(r => r.data),
   listMFA: () =>
     client.get<ApiResponse<MFAInfo[]>>('/security/mfa').then(r => r.data.data),
   setupTOTP: () =>
@@ -99,6 +105,8 @@ export interface ConsoleUserInfo {
   avatar: string
   status: number
   last_login_at: string | null
+  /** false for external-IdP accounts that never set a local password. */
+  has_password: boolean
 }
 
 export interface ConsoleUserDetail {

@@ -322,8 +322,15 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 /* ─────────────── Change Password ─────────────── */
+// An account provisioned through an external IdP (Lark) has no local password,
+// so there is nothing to put in "current password" — the change form is a dead
+// end for it. has_password comes from /profile; while it is still loading the
+// old-password field stays hidden, because rendering it and then removing it is
+// worse than the other way round: a user who starts typing into a field that
+// disappears has to be told why.
 function ChangePasswordSection({ totpActive }: { totpActive: boolean }) {
   const { t } = useTranslation()
+  const [hasPassword, setHasPassword] = useState<boolean | null>(null)
   const [oldPwd, setOldPwd] = useState('')
   const [newPwd, setNewPwd] = useState('')
   const [confirmPwd, setConfirmPwd] = useState('')
@@ -333,6 +340,24 @@ function ChangePasswordSection({ totpActive }: { totpActive: boolean }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [okMsg, setOkMsg] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    consoleSecurityApi
+      .getProfile()
+      .then((p) => {
+        if (alive) setHasPassword(p.user.has_password)
+      })
+      // Default to the change form on failure: demanding a password the user
+      // has is recoverable, offering "set" to an account that already has one
+      // just fails in the backend with a confusing error.
+      .catch(() => {
+        if (alive) setHasPassword(true)
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -346,14 +371,25 @@ function ChangePasswordSection({ totpActive }: { totpActive: boolean }) {
       setError(t('account.pwd.tooShort'))
       return
     }
-    if (totpActive && totpCode.length !== 6) {
+    // No local password ⇒ no old password and no step-up: there is no credential
+    // to protect yet, and the session already proved identity through the IdP.
+    if (hasPassword && totpActive && totpCode.length !== 6) {
       setError(t('account.pwd.needMfa'))
       return
     }
     setSaving(true)
+    // Captured before the call: the set branch flips hasPassword, and reading it
+    // afterwards would always report a rotation — including the "other sessions
+    // signed out" claim, which a first-time set does not do.
+    const wasSet = hasPassword === false
     try {
-      await consoleSecurityApi.changePassword(oldPwd, newPwd, totpActive ? totpCode : undefined)
-      setOkMsg(t('account.pwd.changed'))
+      if (hasPassword) {
+        await consoleSecurityApi.changePassword(oldPwd, newPwd, totpActive ? totpCode : undefined)
+      } else {
+        await consoleSecurityApi.setPassword(newPwd)
+        setHasPassword(true)
+      }
+      setOkMsg(wasSet ? t('account.pwd.setDone') : t('account.pwd.changed'))
       setOldPwd('')
       setNewPwd('')
       setConfirmPwd('')
@@ -367,16 +403,26 @@ function ChangePasswordSection({ totpActive }: { totpActive: boolean }) {
   }
 
   return (
-    <SectionCard icon={KeyRound} title={t('account.passwordSection')}>
+    <SectionCard
+      icon={KeyRound}
+      title={hasPassword === false ? t('account.passwordSectionSet') : t('account.passwordSection')}
+    >
       <form onSubmit={handleSubmit} className="space-y-4">
-        <PasswordField
-          label={t('account.pwd.old')}
-          value={oldPwd}
-          onChange={setOldPwd}
-          show={showOld}
-          onToggle={() => setShowOld(!showOld)}
-          autoComplete="current-password"
-        />
+        {hasPassword === false && (
+          <p className="rounded-lg bg-subtle px-3 py-2 text-xs text-muted">
+            {t('account.pwd.setHint')}
+          </p>
+        )}
+        {hasPassword && (
+          <PasswordField
+            label={t('account.pwd.old')}
+            value={oldPwd}
+            onChange={setOldPwd}
+            show={showOld}
+            onToggle={() => setShowOld(!showOld)}
+            autoComplete="current-password"
+          />
+        )}
         <PasswordField
           label={t('account.pwd.new')}
           value={newPwd}
@@ -394,7 +440,7 @@ function ChangePasswordSection({ totpActive }: { totpActive: boolean }) {
           onToggle={() => setShowNew(!showNew)}
           autoComplete="new-password"
         />
-        {totpActive && (
+        {hasPassword && totpActive && (
           <Field
             label={<>{t('account.pwd.mfaCode')}
             <span className="ml-2 text-xs text-faint">{t('account.pwd.mfaCodeHint')}</span></>}
@@ -423,11 +469,19 @@ function ChangePasswordSection({ totpActive }: { totpActive: boolean }) {
           </div>
         )}
         <div>
-          <Button type="submit" loading={saving} disabled={saving || !oldPwd || !newPwd || !confirmPwd}>
-            {saving ? t('account.pwd.submitting') : t('account.pwd.submit')}
+          <Button
+            type="submit"
+            loading={saving}
+            disabled={saving || (hasPassword ? !oldPwd : hasPassword === null) || !newPwd || !confirmPwd}
+          >
+            {saving
+              ? t('account.pwd.submitting')
+              : hasPassword === false
+                ? t('account.pwd.setSubmit')
+                : t('account.pwd.submit')}
           </Button>
           <p className="mt-2 text-xs text-muted">
-            {t('account.pwd.footnote')}
+            {hasPassword === false ? t('account.pwd.setFootnote') : t('account.pwd.footnote')}
           </p>
         </div>
       </form>

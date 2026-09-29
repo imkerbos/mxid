@@ -51,6 +51,21 @@ var (
 		Help: "Outbox message dispatch outcomes.",
 	}, []string{"result"})
 
+	// External-IdP round trips, by provider and phase ("start" / "callback").
+	// A start that never reaches callback means the browser left for the provider
+	// and never came back — the provider's own login page failed, which we cannot
+	// observe any other way (that request never touches us; Lark served a bare
+	// 502 from its accounts host and the user read it as our outage).
+	//
+	// Alert on the gap, not on an error rate: rate(start) - rate(callback)
+	// staying above ~0 for a few minutes means the provider is broken. Some gap
+	// is normal — people abandon a login — so alert on a sustained ratio, not on
+	// a single missing pair.
+	extLoginPhase = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "mxid_external_login_phase_total",
+		Help: "External-IdP login round trips, by provider and phase.",
+	}, []string{"provider", "phase"})
+
 	// dlock leadership: 1 when this replica currently holds the advisory lock for
 	// a key, else 0 — lets an operator see which pod runs each singleton job.
 	dlockLeader = prometheus.NewGaugeVec(prometheus.GaugeOpts{
@@ -128,7 +143,7 @@ func init() {
 	reg.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	reg.MustRegister(reqTotal, reqDuration, buildInfo, workerRuns, workerLastSuccess, outboxDispatch, dlockLeader, authzCache,
 		auditWriteFailed, auditForward, partitionsAhead, partitionDefaultRows, partitionsDropped,
-		auditPendingDepth, auditAnchorLag)
+		auditPendingDepth, auditAnchorLag, extLoginPhase)
 }
 
 // WorkerRun records that a background worker completed a pass; WorkerSuccess
@@ -151,6 +166,13 @@ func DlockLeader(key string, held bool) {
 
 // AuthzCache records a binding-cache lookup outcome: "l1", "l2" or "miss".
 func AuthzCache(result string) { authzCache.WithLabelValues(result).Inc() }
+
+// ExternalLoginPhase records one leg of a federated login: phase "start" when we
+// redirect to the provider, "callback" when the browser comes back. The
+// difference is the provider failing on its own pages.
+func ExternalLoginPhase(provider, phase string) {
+	extLoginPhase.WithLabelValues(provider, phase).Inc()
+}
 
 // AuditWriteFailed records an audit entry that could not be persisted. The
 // originating request has already committed and returned 200, so nothing else
