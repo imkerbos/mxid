@@ -79,6 +79,19 @@ func Logger(logger *zap.Logger) gin.HandlerFunc {
 			fields = append(fields, zap.Any("request_id", requestID))
 		}
 
+		// Token-endpoint attribution, stamped by oidcop.WithTokenObserver.
+		// Optional and absent on every other route — a rejected token exchange
+		// is otherwise unattributable, because the client_id travels in a Basic
+		// auth header or a form body and neither is logged (nor should be).
+		// Keys are kept as literals rather than importing oidcop: this is the
+		// shared request logger and must not depend on one protocol engine.
+		if clientID, exists := c.Get("oidc_client_id"); exists {
+			fields = append(fields, zap.Any("oidc_client_id", clientID))
+		}
+		if oidcErr, exists := c.Get("oidc_error"); exists {
+			fields = append(fields, zap.Any("oidc_error", oidcErr))
+		}
+
 		if len(c.Errors) > 0 {
 			fields = append(fields, zap.String("errors", c.Errors.ByType(gin.ErrorTypePrivate).String()))
 		}

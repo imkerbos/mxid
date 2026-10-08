@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/imkerbos/mxid/internal/bootstrap"
+	"github.com/imkerbos/mxid/internal/domain/app"
 	"github.com/imkerbos/mxid/internal/domain/oidckey"
 	"github.com/imkerbos/mxid/internal/protocol/oidclogout"
 	"github.com/imkerbos/mxid/internal/protocol/oidcop"
@@ -40,7 +41,7 @@ func wireOIDCOP(
 	tenantResolver resolver.TenantResolver,
 	appRoles oidcop.AppRoleResolver,
 	issuerResolver func(context.Context) string,
-) (*oidclogout.Service, error) {
+) (*oidclogout.Service, app.TokenRevoker, error) {
 	// Provider keyset + auto-rotation (90d default). EnsureActive mints the
 	// first signing key on startup. Rotation runs under the leader lock so
 	// only one replica drives it — without this, N pods could concurrently
@@ -60,7 +61,7 @@ func wireOIDCOP(
 	opIssuer := strings.TrimSuffix(issuer, "/") + "/protocol/oidc"
 	issURL, err := url.Parse(opIssuer)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	issuerPath := issURL.Path // /protocol/oidc
 
@@ -99,7 +100,7 @@ func wireOIDCOP(
 	}
 	provider, err := oidcop.NewProvider(opIssuer, storage, cryptoKey, true, dynamicIssuer)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// WS8: per-client_id token-endpoint rate limit, ported from the
@@ -111,7 +112,14 @@ func wireOIDCOP(
 	rateLimited := oidcop.WithTokenRateLimit(a.Redis, appResolver)(provider)
 
 	// op endpoints under the issuer path; login bridge at the sibling path.
-	oidcop.Mount(a.ProtocolGroup, issuerPath, rateLimited)
+	//
+	// The token observer runs at the gin layer (above Mount's StripPrefix), so
+	// it is given the FULL token path. It makes a rejected token exchange
+	// attributable in the access log and raises event.OIDCGrantRejected —
+	// without it, a client_secret being probed is invisible to every alert we
+	// offer. See WithTokenObserver.
+	oidcop.Mount(a.ProtocolGroup, issuerPath, rateLimited,
+		oidcop.WithTokenObserver(a.Redis, a.EventBus, appResolver, issuerPath+"/token"))
 
 	// op.AuthCallbackURL returns an op-root-relative path (/authorize/callback?id=…)
 	// because op is mounted under a stripped prefix. Prepend only the issuer PATH
@@ -164,5 +172,8 @@ func wireOIDCOP(
 	a.ProtocolGroup.GET("/oidc-login", bridge.Handle)
 
 	a.Logger.Info("OIDC engine: zitadel/oidc", zap.String("issuer", opIssuer))
-	return logoutSvc, nil
+	// The emergency "rotate secret + drop tokens" console action needs to reach
+	// the OIDC token store, which is Redis state owned by this layer. Handing
+	// the domain service a function keeps the dependency pointing inward.
+	return logoutSvc, storage.RevokeAllForClient, nil
 }

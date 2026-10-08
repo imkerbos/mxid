@@ -48,6 +48,45 @@ func TestEverySchemaEventIsSubscribed(t *testing.T) {
 	}
 }
 
+// The other direction: every SUBSCRIBED event must have an explicit allow-list.
+//
+// TestEverySchemaEventIsSubscribed above catches a schema entry nobody listens
+// to. This catches the reverse, which is quieter still. A subscribed event with
+// no entry does not drop the row — projectDetail falls back to fallbackSchema,
+// so the row appears, with the actor, the resource and the common diagnostic
+// fields. What it drops is every field fallbackSchema does not happen to name.
+//
+// That gap was real and sat there unnoticed because only one direction was
+// guarded. Five form-fill credential events — stored, deleted, shared_set,
+// revealed, reveal_denied — were subscribed with no entry, and all five carry
+// "mode", which fallbackSchema does not list. A credential reveal, and a DENIED
+// reveal, recorded which app and which user but not which kind of credential
+// was exposed. Nothing failed; the rows simply said less than the events did.
+func TestEverySubscribedEventHasASchema(t *testing.T) {
+	subscribed := parseSubscribedEvents(t, "service.go")
+	declared := map[string]bool{}
+	for _, ev := range parseSchemaEvents(t, "schema.go") {
+		declared[ev] = true
+	}
+
+	var missing []string
+	for ev := range subscribed {
+		if !declared[ev] {
+			missing = append(missing, ev)
+		}
+	}
+	sort.Strings(missing)
+
+	if len(missing) > 0 {
+		t.Errorf("RegisterHandlers subscribes to these events, but schema.go "+
+			"declares no allow-list for them — their rows fall back to "+
+			"fallbackSchema and silently lose every field it does not name:\n  %s\n\n"+
+			"Add an event.X entry to detailSchemas naming the payload fields the "+
+			"publisher actually sends.",
+			strings.Join(missing, "\n  "))
+	}
+}
+
 // parseSubscribedEvents collects the event.X selectors passed as the first
 // argument to s.eventBus.Subscribe.
 func parseSubscribedEvents(t *testing.T, file string) map[string]bool {

@@ -28,6 +28,7 @@ var highRiskWriteSuffixes = []string{
 	"/password",                    // admin set another user's password (account takeover)
 	"/rotate-signing-key",          // invalidate an app's SSO signing material
 	"/regenerate-secret",           // reset an app's client secret
+	"/emergency-revoke",            // rotate an app's secret AND drop its tokens
 	"/mfa/lockout/clear",           // clear an MFA brute-force lockout
 	"/shared-credential",           // set a form app's shared service-account password
 	"/access-requests/:id/approve", // JIT: approve a temporary privilege elevation

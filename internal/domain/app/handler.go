@@ -48,6 +48,7 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 		apps.DELETE("/:id/certs/:cid", authz.Require("app.cert.manage", nil), h.DeleteCert)
 		apps.POST("/:id/regenerate-secret", authz.Require("app.cert.manage", nil), h.RegenerateClientSecret)
 		apps.POST("/:id/rotate-signing-key", authz.Require("app.cert.manage", nil), h.RotateSigningKey)
+		apps.POST("/:id/emergency-revoke", authz.Require("app.cert.manage", nil), h.EmergencyRevoke)
 		apps.GET("/:id/quickstart/:lang", authz.Require("app.read", nil), h.Quickstart)
 		// SAML SP metadata one-shot import. Body is the raw XML document.
 		apps.POST("/:id/saml/import-metadata", authz.Require("app.update", nil), h.ImportSAMLMetadata)
@@ -650,6 +651,30 @@ func (h *Handler) RegenerateClientSecret(c *gin.Context) {
 	response.OK(c, map[string]string{
 		"client_secret": result.ClientSecretPlain,
 	})
+}
+
+// EmergencyRevoke handles POST /apps/:id/emergency-revoke.
+//
+// The credential-compromise action: rotate the client secret and drop every
+// token issued to the app, in one step. Same permission as
+// regenerate-secret — identical blast radius, and it is step-up gated
+// (internal/domain/authn/stepup.go).
+//
+// The plaintext secret is returned exactly once, like regenerate-secret. The
+// response also reports how many users' tokens were dropped and whether the
+// revoke half ran at all, so the operator is never left assuming a cleanup
+// that did not happen.
+func (h *Handler) EmergencyRevoke(c *gin.Context) {
+	id, ok := ginutil.ParseInt64Param(c, "id")
+	if !ok {
+		return
+	}
+	result, err := h.svc.EmergencyRevoke(c.Request.Context(), id)
+	if err != nil {
+		h.handleServiceError(c, err)
+		return
+	}
+	response.OK(c, result)
 }
 
 // Quickstart handles GET /apps/:id/quickstart/:lang. Returns a

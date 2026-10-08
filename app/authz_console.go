@@ -143,6 +143,7 @@ var consoleProtectedRoutes = [][2]string{
 	{http.MethodPost, "/api/v1/console/apps/:id/access-policies/batch"},
 	{http.MethodPost, "/api/v1/console/apps/:id/certs"},
 	{http.MethodPost, "/api/v1/console/apps/:id/regenerate-secret"},
+	{http.MethodPost, "/api/v1/console/apps/:id/emergency-revoke"},
 	{http.MethodPost, "/api/v1/console/apps/:id/role-bindings"},
 	{http.MethodPost, "/api/v1/console/apps/:id/roles"},
 	{http.MethodPost, "/api/v1/console/apps/:id/rotate-signing-key"},

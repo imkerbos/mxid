@@ -1444,10 +1444,13 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 		return ""
 	}
 
-	oidcLogoutSvc, err := wireOIDCOP(workerCtx, a, issuer, appResolver, idResolver, sessResolver, sessionMgr, accessAdapter, tenantResolver, appRolesAdapter, oidcIssuerResolver)
+	oidcLogoutSvc, oidcTokenRevoker, err := wireOIDCOP(workerCtx, a, issuer, appResolver, idResolver, sessResolver, sessionMgr, accessAdapter, tenantResolver, appRolesAdapter, oidcIssuerResolver)
 	if err != nil {
 		a.Logger.Fatal("wire zitadel OIDC engine: " + err.Error())
 	}
+	// Emergency credential containment (console → app → emergency revoke) needs
+	// the OIDC token store, which only the engine owns.
+	appModule.Service.SetTokenRevoker(oidcTokenRevoker)
 	samlSessionIdx := saml.NewSessionIndexStore(a.Redis)
 	samlModule := saml.Register(a.ProtocolGroup, issuer, a.Config.Server.PortalURL, appResolver, idResolver, sessResolver, tenantResolver, samlSessionIdx, appRolesAdapter, accessAdapter, a.Redis, a.Logger)
 	casModule := cas.Register(a.ProtocolGroup, issuer, a.Config.Server.PortalURL, a.Redis, appResolver, idResolver, sessResolver, tenantResolver, appRolesAdapter, a.Logger)

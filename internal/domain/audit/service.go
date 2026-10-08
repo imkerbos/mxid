@@ -137,6 +137,7 @@ func (s *Service) SubscribeEvents() {
 	// Form-fill credential-vault events (EE form_fill feature emits these; the
 	// CE binary has no emitter so these subscriptions simply never fire there).
 	// Reveal / reveal_denied are the security-monitoring anchors for the vault.
+	s.eventBus.Subscribe(event.AppEmergencyRevoked, s.handleResourceEvent(event.AppEmergencyRevoked, "app"))
 	s.eventBus.Subscribe(event.AppCredentialStored, s.handleResourceEvent(event.AppCredentialStored, "app"))
 	s.eventBus.Subscribe(event.AppCredentialDeleted, s.handleResourceEvent(event.AppCredentialDeleted, "app"))
 	s.eventBus.Subscribe(event.AppSharedCredentialSet, s.handleResourceEvent(event.AppSharedCredentialSet, "app"))
@@ -211,6 +212,8 @@ func (s *Service) SubscribeEvents() {
 	s.eventBus.Subscribe(event.OIDCConsentGranted, s.handleGenericEvent(event.OIDCConsentGranted))
 	s.eventBus.Subscribe(event.OIDCConsentRevoked, s.handleGenericEvent(event.OIDCConsentRevoked))
 	s.eventBus.Subscribe(event.OIDCBackchannelLogout, s.handleGenericEvent(event.OIDCBackchannelLogout))
+	s.eventBus.Subscribe(event.OIDCGrantRejected, s.handleGenericEvent(event.OIDCGrantRejected))
+	s.eventBus.Subscribe(event.OIDCGrantRejectedBurst, s.handleGenericEvent(event.OIDCGrantRejectedBurst))
 }
 
 // List returns a paginated list of audit logs.

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, AppWindow, Loader2, Copy, X, Settings, Eye, EyeOff, LayoutGrid, Search } from 'lucide-react'
-import { appApi, appGroupApi, protocolLabel, statusLabel, statusColor, cn, AppIcon, useTranslation, useTabParam, AppStatus } from '@mxid/shared'
+import { appApi, appGroupApi, protocolLabel, statusLabel, statusColor, cn, AppIcon, useTranslation, useTabParam, AppStatus, clickableProps, FOCUS_RING } from '@mxid/shared'
 import type { App, AppGroup, PaginatedData, AppTemplate, AppTemplateListItem } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
 import AppGroupsTab from './AppGroupsTab'
@@ -442,7 +442,10 @@ export default function AppsPage() {
   // One-time client_secret reveal modal (shown immediately after create / rotate).
   // The backend stores bcrypt hash only; if the user closes this modal they
   // cannot retrieve the plaintext — they must rotate.
-  const [revealedSecret, setRevealedSecret] = useState<{ clientId: string; clientSecret: string } | null>(null)
+  // revokeNote carries the emergency action's OTHER half into this modal. The
+  // toast that reported it is gone by the time the operator reads the secret,
+  // and "did the tokens actually drop?" is the question they came to answer.
+  const [revealedSecret, setRevealedSecret] = useState<{ clientId: string; clientSecret: string; revokeNote?: string; revokeOk?: boolean } | null>(null)
 
   // Detail drawer state
   const [detailApp, setDetailApp] = useState<App | null>(null)
@@ -450,6 +453,8 @@ export default function AppsPage() {
   const [deletingApp, setDeletingApp] = useState(false)
   const [rotateApp, setRotateApp] = useState<App | null>(null)
   const [rotating, setRotating] = useState(false)
+  const [emergencyApp, setEmergencyApp] = useState<App | null>(null)
+  const [revoking, setRevoking] = useState(false)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailTab, setDetailTab] = useTabParam<DetailTab>('detail_tab', 'basic', DETAIL_TAB_VALUES)
 
@@ -586,6 +591,19 @@ export default function AppsPage() {
     setProtocolConfig({})
     setProtocolConfigPassthrough({})
   }
+
+  // Escape closes the detail drawer. The shared Modal primitive binds this (and
+  // traps focus); this drawer is hand-rolled and bound neither, so the only way
+  // out was clicking the backdrop or the X — a mouse-only exit from a panel that
+  // covers the page.
+  useEffect(() => {
+    if (!detailApp) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeDetail()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [detailApp])
 
   // -------------------------------------------------------------------------
   // Load protocol config when switching to that tab
@@ -910,6 +928,43 @@ export default function AppsPage() {
     }
   }
 
+  // Credential-compromise action. Reports what actually happened: the server
+  // rotates the secret first and only then drops tokens, so a partial run means
+  // "secret rotated, tokens not" — telling the operator otherwise would leave
+  // them believing in a cleanup that never ran.
+  const confirmEmergencyRevoke = async () => {
+    const app = emergencyApp
+    if (!app) return
+    setRevoking(true)
+    try {
+      const result = await appApi.emergencyRevoke(app.id)
+      // "tokens dropped for 0 user(s)" reads like the revoke failed. It did
+      // not — there was simply nothing outstanding, which is the common case
+      // and the one an operator must not misread while containing a leak.
+      const note = !result.revoke_supported
+        ? t('apps.detail.credentials.emergencyPartial')
+        : result.tokens_revoked === 0
+          ? t('apps.detail.credentials.emergencyDoneNone')
+          : t('apps.detail.credentials.emergencyDone', { count: result.tokens_revoked })
+      setRevealedSecret({
+        clientId: app.client_id || '',
+        clientSecret: result.client_secret,
+        revokeNote: note,
+        revokeOk: result.revoke_supported,
+      })
+      setEmergencyApp(null)
+      if (result.revoke_supported) {
+        toast.success(note)
+      } else {
+        toast.error(note)
+      }
+    } catch (e) {
+      toast.error(t('common.failed'), extractMessage(e))
+    } finally {
+      setRevoking(false)
+    }
+  }
+
   const totalPages = Math.ceil(data.total / data.page_size) || 1
 
   // -------------------------------------------------------------------------
@@ -1042,8 +1097,16 @@ export default function AppsPage() {
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.04, duration: 0.25 }}
-              className="group cursor-pointer rounded-xl border border-border bg-surface p-5 shadow-sm transition-shadow hover:shadow-md"
-              onClick={() => openDetail(app)}
+              className={cn(
+                'group cursor-pointer rounded-xl border border-border bg-surface p-5 shadow-sm transition-shadow hover:shadow-md',
+                FOCUS_RING,
+              )}
+              // The card IS the primary action, and it was a bare div: the whole
+              // application list could only be opened with a mouse. It cannot
+              // become a <button> because it contains its own Disable / Delete
+              // buttons (those stopPropagation), so it gets the button's
+              // keyboard contract instead.
+              {...clickableProps(() => openDetail(app))}
             >
               {/* App icon + name */}
               <div className="mb-4 flex items-start justify-between gap-2">
@@ -1115,7 +1178,7 @@ export default function AppsPage() {
                     'rounded px-2.5 py-1 text-xs font-medium transition-colors',
                     app.status === AppStatus.Enabled
                       ? 'text-muted hover:bg-surface-muted'
-                      : 'text-emerald-600 hover:bg-emerald-50'
+                      : 'text-success hover:bg-success/10'
                   )}
                 >
                   {app.status === AppStatus.Enabled ? t('common.disable') : t('common.enable')}
@@ -1125,7 +1188,7 @@ export default function AppsPage() {
                     e.stopPropagation()
                     setDelApp(app)
                   }}
-                  className="rounded px-2.5 py-1 text-xs font-medium text-red-500 transition-colors hover:bg-red-50"
+                  className="rounded px-2.5 py-1 text-xs font-medium text-danger transition-colors hover:bg-danger/10"
                 >
                   {t('common.delete')}
                 </button>
@@ -1187,7 +1250,7 @@ export default function AppsPage() {
                         key={tpl.key}
                         type="button"
                         onClick={() => handlePickTemplate(tpl.key)}
-                        className="flex min-w-0 items-center gap-3 rounded-lg border border-border px-3 py-2.5 text-left hover:border-blue-400 hover:bg-blue-50/30"
+                        className="flex min-w-0 items-center gap-3 rounded-lg border border-border px-3 py-2.5 text-left hover:border-blue-400 hover:bg-info/10/30"
                       >
                         <div className="shrink-0">
                           <AppIcon value={tpl.icon} fallbackName={tpl.name} size={32} />
@@ -1720,7 +1783,11 @@ export default function AppsPage() {
                         CAS  → CAS server URL + validate URL
                     */}
                     {detailTab === 'credentials' && (
-                      <CredentialsTab app={detailApp} onRotateSecret={() => setRotateApp(detailApp)} />
+                      <CredentialsTab
+                        app={detailApp}
+                        onRotateSecret={() => setRotateApp(detailApp)}
+                        onEmergencyRevoke={() => setEmergencyApp(detailApp)}
+                      />
                     )}
 
                     {/* ---- Access policy tab ---- */}
@@ -1759,6 +1826,22 @@ export default function AppsPage() {
                 {t('apps.secretReveal.desc')}
               </p>
 
+              {/* Colour by outcome, not by topic. The revoke succeeding is good
+                  news; rendering it in the danger tint made a completed
+                  containment read as a failure. */}
+              {revealedSecret.revokeNote && (
+                <p
+                  className={cn(
+                    'mb-4 rounded-lg border px-3 py-2 text-sm',
+                    revealedSecret.revokeOk
+                      ? 'border-success/20 bg-success/5 text-success'
+                      : 'border-danger/20 bg-danger/5 text-danger',
+                  )}
+                >
+                  {revealedSecret.revokeNote}
+                </p>
+              )}
+
               <div className="space-y-4">
                 <CopyField label={t('apps.detail.credentials.clientId')} value={revealedSecret.clientId} />
                 <SecretField label={t('apps.detail.credentials.clientSecret')} value={revealedSecret.clientSecret} />
@@ -1789,6 +1872,14 @@ export default function AppsPage() {
         onConfirm={confirmRotateSecret}
         onCancel={() => setRotateApp(null)}
       />
+      <ConfirmDialog
+        open={!!emergencyApp}
+        title={t('apps.detail.credentials.confirmEmergency', { name: emergencyApp?.name ?? '' })}
+        desc={t('apps.detail.credentials.confirmEmergencyDesc')}
+        loading={revoking}
+        onConfirm={confirmEmergencyRevoke}
+        onCancel={() => setEmergencyApp(null)}
+      />
     </motion.div>
   )
 }
@@ -1801,9 +1892,11 @@ export default function AppsPage() {
 function CredentialsTab({
   app,
   onRotateSecret,
+  onEmergencyRevoke,
 }: {
   app: App
   onRotateSecret: () => void
+  onEmergencyRevoke: () => void
 }) {
   const { t } = useTranslation()
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
@@ -1828,6 +1921,23 @@ function CredentialsTab({
               </button>
             )}
           </div>
+          {/* Emergency revoke sits on its own row, not beside Rotate.
+              Two reasons, both measured at a 390px-wide drawer: a second
+              132px button in that flex row squeezed the masked-secret label
+              from two lines to four, and a destructive action rendered the
+              same size and weight as the routine one, 12px away from it, is
+              a misclick waiting to happen. flex-wrap lets the button drop
+              below the explanation instead of crushing it. */}
+          {(app.client_type === 'web_app' || app.client_type === 'm2m') && (
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-danger/20 bg-danger/5 px-3 py-2">
+              <p className="min-w-[12rem] flex-1 text-xs text-muted">
+                {t('apps.detail.credentials.emergencyHint')}
+              </p>
+              <Button variant="danger" size="sm" onClick={onEmergencyRevoke}>
+                {t('apps.detail.credentials.emergency')}
+              </Button>
+            </div>
+          )}
           {(app.client_type === 'spa' || app.client_type === 'native') && (
             <p className="mt-1 text-xs text-faint">
               {t('apps.detail.credentials.publicClientHint', { clientType: app.client_type })}

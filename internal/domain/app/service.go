@@ -108,7 +108,14 @@ type Service struct {
 	keyService        *KeyService
 	protoDefaultsP    ProtocolDefaultsProvider
 	subjectValidators AccessSubjectValidators
+	tokenRevoker      TokenRevoker
 }
+
+// TokenRevoker drops every token the IdP holds for one OIDC client, returning
+// how many users were affected. Implemented by the OIDC engine's storage and
+// injected, because the token store is Redis state owned by the protocol layer
+// — a domain service must not reach into it directly.
+type TokenRevoker func(ctx context.Context, clientID string) (int, error)
 
 // SetAccessSubjectValidators injects the tenant-scoped subject existence checks
 // used by AddAccess. Wired in cmd/server/main.go once the domains exist.
@@ -157,6 +164,14 @@ func (s *Service) protoDefaults(ctx context.Context, tenantID int64) ProtocolDef
 		return ProtocolDefaults{}
 	}
 	return s.protoDefaultsP(ctx, tenantID)
+}
+
+// SetTokenRevoker injects the OIDC token-revocation seam. Wired in run.go
+// after the OIDC provider is built. Left nil, EmergencyRevoke rotates the
+// secret and reports that tokens were not revoked, rather than claiming a
+// revoke that never happened.
+func (s *Service) SetTokenRevoker(r TokenRevoker) {
+	s.tokenRevoker = r
 }
 
 // NewService creates a new app service.
@@ -416,6 +431,86 @@ func (s *Service) RotateClientSecret(ctx context.Context, id int64) (*RotateSecr
 	})
 
 	return &RotateSecretResult{ClientSecretPlain: plain}, nil
+}
+
+// EmergencyRevokeResult reports what the emergency action actually did.
+// TokensRevoked is a user count, not a token count.
+type EmergencyRevokeResult struct {
+	ClientSecretPlain string `json:"client_secret"`
+	TokensRevoked     int    `json:"tokens_revoked"`
+	// RevokeSupported is false when no revoker is wired, so the caller can say
+	// "secret rotated, tokens NOT revoked" instead of implying both ran.
+	RevokeSupported bool `json:"revoke_supported"`
+}
+
+// EmergencyRevoke is the credential-containment action: rotate the client
+// secret, then drop every token issued to that client.
+//
+// ORDER MATTERS, and it is rotate-then-revoke. Revoking first leaves a window
+// in which a holder of the OLD secret can still present a refresh token and
+// mint a fresh pair — undoing the revoke with the very credential being
+// contained. Rotating first kills the leaked secret immediately (the refresh
+// grant re-authenticates the client on every call, zitadel's
+// AuthorizeRefreshClient → AuthorizeClientIDSecret), and the revoke then clears
+// what was already outstanding.
+//
+// A revoke failure does NOT roll back the rotation. The rotation is the part
+// that stops the leaked credential, so keeping it is strictly safer than
+// restoring a secret an attacker holds; the error tells the operator the
+// cleanup was partial and can be retried.
+//
+// The legitimate relying party must be reconfigured with the new secret — that
+// is inherent to rotation, and the alternative is leaving a known-leaked
+// credential able to authenticate.
+func (s *Service) EmergencyRevoke(ctx context.Context, id int64) (*EmergencyRevokeResult, error) {
+	application, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		if dberr.IsNotFound(err) {
+			return nil, ErrAppNotFound
+		}
+		return nil, fmt.Errorf("get app: %w", err)
+	}
+	clientID := ""
+	if application.ClientID != nil {
+		clientID = *application.ClientID
+	}
+
+	rotated, err := s.RotateClientSecret(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	res := &EmergencyRevokeResult{
+		ClientSecretPlain: rotated.ClientSecretPlain,
+		TokensRevoked:     0,
+		RevokeSupported:   s.tokenRevoker != nil,
+	}
+	if s.tokenRevoker != nil && clientID != "" {
+		n, revokeErr := s.tokenRevoker(ctx, clientID)
+		res.TokensRevoked = n
+		if revokeErr != nil {
+			// Report the event before returning the error: the rotation and a
+			// partial revoke both already happened, and an audit trail that
+			// omits them because the cleanup was incomplete is worse than one
+			// that records exactly how far it got.
+			s.publishEmergencyRevoke(ctx, application.ID, clientID, n, false)
+			return res, fmt.Errorf("revoke tokens: %w", revokeErr)
+		}
+	}
+	s.publishEmergencyRevoke(ctx, application.ID, clientID, res.TokensRevoked, res.RevokeSupported)
+	return res, nil
+}
+
+func (s *Service) publishEmergencyRevoke(ctx context.Context, appID int64, clientID string, revoked int, complete bool) {
+	s.eventBus.Publish(ctx, event.Event{
+		Type: event.AppEmergencyRevoked,
+		Payload: map[string]any{
+			"app_id":         appID,
+			"client_id":      clientID,
+			"tokens_revoked": revoked,
+			"complete":       complete,
+		},
+	})
 }
 
 // RotateSigningKey performs a soft rotation of the app's signing key.

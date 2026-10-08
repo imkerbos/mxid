@@ -999,6 +999,13 @@ export default {
         jwks: 'JWKS URI',
         confirmRotate: '确定为 "{{name}}" 重新生成 client_secret 吗？旧密钥将立即失效。',
         rotated: 'client_secret 已重新生成',
+        emergency: '紧急吊销',
+        emergencyHint: '怀疑 client_secret 泄露时使用：重置密钥并吊销该应用已签发的全部 token。',
+        confirmEmergency: '对 "{{name}}" 执行紧急吊销？',
+        confirmEmergencyDesc: '将重置 client_secret 并吊销已签发的全部 token。应用方必须用新密钥重新配置才能恢复登录；已签发的 access token 最长 1 小时内仍然有效。',
+        emergencyDone: '已重置 client_secret，并吊销 {{count}} 个用户的 token',
+        emergencyDoneNone: '已重置 client_secret。该应用当时没有未过期的 token 需要吊销。',
+        emergencyPartial: '已重置 client_secret，但 token 未吊销（服务端无法访问 token 存储）',
         noneForProtocol: '该协议类型无需对外凭证',
         saml: {
           entityID: 'IdP Entity ID',

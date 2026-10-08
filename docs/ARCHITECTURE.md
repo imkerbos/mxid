@@ -145,6 +145,55 @@ discovery filtering, and rate limiting. Capability posture (OAuth 2.1 alignment)
   so the raw secret needed to HMAC a JWT never exists server-side. Use `private_key_jwt`
   for asymmetric client authentication.
 
+### The redirect_uri allow-list has one source
+
+`mxid_app.redirect_uris`, the column — surfaced as `resolver.AppConfig.RedirectURIs` and
+returned by `oidcClient.RedirectURIs()`. A `redirect_uris` key inside `protocol_config` is
+dead weight from before v1.2.0: nothing writes it (the console and the onboarding
+templates both target the column) and nothing reads it. The two can disagree, and reading
+the wrong one yields a confident but wrong answer to "what callbacks does this app accept?"
+— a question asked exactly when it matters most. Pinned by `redirect_source_test.go`.
+
+### Token-endpoint observability
+
+`WithTokenObserver` (gin middleware, above `Mount`'s `StripPrefix`) makes a refused token
+exchange attributable: it stamps `oidc_client_id` / `oidc_error` onto the request logger's
+optional fields and publishes `event.OIDCGrantRejected`, plus
+`event.OIDCGrantRejectedBurst` once per window when one client crosses ten rejections in
+five minutes.
+
+It exists because neither half was available before. zitadel logs protocol rejections
+through `authorizer.Logger()` — a `*slog.Logger` with no request context — so the lines
+carried no client, no IP and no request id; and because the console's alert webhook
+dispatches off audit event types, a rejection produced nothing it could match. A client
+secret being probed therefore left nothing to alert on, and nothing afterwards that said
+which client it was.
+
+Two deliberate choices: publishing goes through the event bus rather than a direct audit
+write, because this is the protocol *rejection* path and the usual "audit failure aborts
+the write" posture would turn a correct 400 into a 500; and the burst count is keyed per
+`client_id`, because the alert dispatcher suppresses by tenant + event type, so one noisy
+relying party would otherwise bury the alert for a different client being probed.
+
+### Emergency credential containment
+
+`app.Service.EmergencyRevoke` (console → app → credentials) rotates the `client_secret`
+and then drops every token the IdP holds for that client, via the `app.TokenRevoker` seam
+that `wireOIDCOP` fills with `oidcop.Storage.RevokeAllForClient`. The domain service does
+not reach into Redis itself; the dependency points inward.
+
+Order is rotate-then-revoke: revoking first leaves a window in which a holder of the old
+secret presents a refresh token and mints a fresh pair, because the refresh grant
+re-authenticates the client on every call. A failed revoke does not roll the rotation
+back — the rotation is the half that stops the leaked credential.
+
+`RevokeAllForClient` needs a reverse index (`oidc:clientusers:<client_id>`, written by
+`indexAdd` with the refresh-token TTL): the per-`(user, client)` sets cannot be enumerated
+by client without a Redis `SCAN` over a keyspace shared with sessions and tickets, on a
+live instance, at the moment containment is most urgent. Access tokens already issued are
+self-contained JWTs and stay valid until they expire — nothing at the IdP can shorten
+that.
+
 ## Settings domain — the hot-reload bus
 
 Operational config is split into typed groups:
@@ -536,6 +585,10 @@ so they are asserted by tests rather than documented and hoped for:
 | Every error response carries a traceId (no hand-written body) | `pkg/response/no_bypass_test.go` |
 | No handler answers `204 No Content` — an empty body can't carry the `{code,message,data}` envelope, so the SPA's success interceptor reads `data.code` off nothing, sees `undefined`, and reports the write as failed even though it succeeded | `internal/httpguard/no_204_test.go` |
 | Every event with an audit allow-list is actually subscribed to | `internal/domain/audit/subscription_coverage_test.go` |
+| Every subscribed event has an explicit allow-list (the fallback schema makes an omission invisible — it keeps the row and drops the fields it does not name) | `internal/domain/audit/subscription_coverage_test.go` |
+| A token-endpoint rejection names its client and reason, and a SUCCESSFUL exchange puts no token anywhere observable | `internal/protocol/oidcop/tokenobs_test.go` |
+| The OIDC redirect_uri allow-list comes from the `redirect_uris` column, never from a `redirect_uris` key inside `protocol_config` | `internal/protocol/oidcop/redirect_source_test.go` |
+| Emergency credential containment rotates the secret BEFORE revoking tokens, and a failed revoke does not roll the rotation back | `internal/domain/app/emergency_revoke_test.go` |
 | No allow-listed audit field is silently removed by the sensitive-key filter | `internal/domain/audit/schema_honesty_test.go` |
 | A snowflake id survives the trip to the client with every digit intact | `internal/domain/audit/id_precision_test.go` |
 | The dynamic-group sweeper writes no audit entries (an operator-triggered sync does) | `internal/domain/group/sweeper_audit_test.go` |
