@@ -37,7 +37,7 @@ COPY web/ .
 RUN pnpm -r build
 
 # ---- Runtime stage: nginx serving the baked SPAs ----
-FROM nginx:1.29-alpine
+FROM nginx:1.30-alpine
 
 # Pull the latest patched OS packages on top of the base image — the nginx image
 # lags the Alpine repo by a few package revisions, so this closes known-fixed
