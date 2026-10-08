@@ -3,7 +3,7 @@
 // looks identical. All colors are semantic tokens → dark-mode native.
 import { useEffect } from 'react'
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ChevronsUpDown } from 'lucide-react'
-import { cn, useTranslation } from '@mxid/shared'
+import { cn, useTranslation, clickableProps, FOCUS_RING } from '@mxid/shared'
 import type { ReactNode } from 'react'
 import { EmptyState } from './index'
 
@@ -143,10 +143,14 @@ export function DataTable<T>({
               return (
                 <tr
                   key={key}
-                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  // A clickable row was mouse-only: no focus, no Enter, and no
+                  // role for a screen reader to announce. clickableProps adds
+                  // all three. Spread only when the row IS clickable, so a
+                  // read-only table does not sprout fake buttons in the tab order.
+                  {...(onRowClick ? clickableProps(() => onRowClick(row)) : {})}
                   className={cn(
                     'border-b border-border/60 transition-colors last:border-0 hover:bg-surface-muted',
-                    onRowClick && 'cursor-pointer',
+                    onRowClick && cn('cursor-pointer', FOCUS_RING),
                   )}
                 >
                   {selectable && (

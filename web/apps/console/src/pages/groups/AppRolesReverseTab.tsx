@@ -122,7 +122,7 @@ function BindingRow({ binding, onDelete }: { binding: ReverseAppRoleBinding; onD
         <span className="text-sm font-medium text-primary">{binding.role_name}</span>
         <span className="font-mono text-xs text-primary/60">{binding.role_code}</span>
       </div>
-      <button onClick={() => onDelete(binding)} className="shrink-0 rounded-md p-1.5 text-faint hover:bg-red-50 hover:text-red-500">
+      <button onClick={() => onDelete(binding)} className="shrink-0 rounded-md p-1.5 text-faint hover:bg-danger/10 hover:text-danger">
         <Trash2 className="h-4 w-4" />
       </button>
     </div>

@@ -694,7 +694,7 @@ function IdentitiesTab({ userID }: { userID: string }) {
           <button
             onClick={() => setDelIdentity(it)}
             disabled={removingID === it.id}
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-faint hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-faint hover:bg-danger/10 hover:text-danger disabled:opacity-50"
           >
             {removingID === it.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlink className="h-3.5 w-3.5" />}
             {t('users.detail.identitiesTab.unbind')}
@@ -818,7 +818,7 @@ function MFATab({ userID }: { userID: string }) {
           <button
             onClick={() => setDelMfa(m)}
             disabled={removing === m.type}
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-faint hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-faint hover:bg-danger/10 hover:text-danger disabled:opacity-50"
           >
             {removing === m.type ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
             {t('users.detail.mfaTab.forceRemove')}
@@ -1117,7 +1117,7 @@ function SessionsTab({ userID }: { userID: string }) {
             <button
               onClick={() => setDelSession(s)}
               disabled={revoking === s.id}
-              className="ml-3 inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-faint hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+              className="ml-3 inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-faint hover:bg-danger/10 hover:text-danger disabled:opacity-50"
             >
               {revoking === s.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />}
               {t('users.detail.sessionsTab.revoke')}

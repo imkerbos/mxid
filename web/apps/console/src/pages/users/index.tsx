@@ -282,7 +282,7 @@ export default function UsersPage() {
           <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={() => openEditModal(u)}
-              className="rounded p-1 text-faint hover:bg-blue-50 hover:text-blue-500"
+              className="rounded p-1 text-faint hover:bg-info/10 hover:text-info"
               title={t('common.edit')}
             >
               <Pencil className="h-3.5 w-3.5" />
@@ -297,7 +297,7 @@ export default function UsersPage() {
             ) : (
               <button
                 onClick={() => handleStatusChange(u, 1)}
-                className="rounded px-2 py-1 text-xs text-emerald-600 hover:bg-emerald-50"
+                className="rounded px-2 py-1 text-xs text-success hover:bg-success/10"
               >
                 {t('common.enable')}
               </button>
@@ -311,7 +311,7 @@ export default function UsersPage() {
             </button>
             <button
               onClick={() => setDelUser(u)}
-              className="rounded p-1 text-faint hover:bg-red-50 hover:text-red-500"
+              className="rounded p-1 text-faint hover:bg-danger/10 hover:text-danger"
               title={t('common.delete')}
             >
               <Trash2 className="h-3.5 w-3.5" />

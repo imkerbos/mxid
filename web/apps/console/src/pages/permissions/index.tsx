@@ -333,7 +333,7 @@ export default function PermissionsPage() {
                   {selectedRole.type !== RoleType.System && (
                     <button
                       onClick={() => setDelRole(selectedRole)}
-                      className="rounded-lg border border-border px-3 py-1.5 text-sm text-red-500 hover:bg-red-50"
+                      className="rounded-lg border border-border px-3 py-1.5 text-sm text-danger hover:bg-danger/10"
                     >
                       {t('permissions.deleteRole')}
                     </button>
@@ -531,7 +531,7 @@ export default function PermissionsPage() {
                                 <button
                                   onClick={() => setDelBinding(binding)}
                                   disabled={removingMemberId === binding.id}
-                                  className="inline-flex items-center rounded-md p-1 text-faint opacity-0 transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 disabled:opacity-50"
+                                  className="inline-flex items-center rounded-md p-1 text-faint opacity-0 transition-all hover:bg-danger/10 hover:text-danger group-hover:opacity-100 disabled:opacity-50"
                                   title={t('permissions.removeMember')}
                                 >
                                   {removingMemberId === binding.id ? (

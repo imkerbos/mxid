@@ -12,6 +12,41 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+// clickableProps makes a non-button element that carries an onClick reachable
+// the way a button is: focusable, activated by Enter and Space, and announced
+// as a button by a screen reader.
+//
+// It exists because the pattern is easy to get half-right. A <div onClick> is
+// invisible to the keyboard and to assistive tech — the whole application list
+// was built this way, so the primary action on every card could only be reached
+// with a mouse. Wrapping those in a real <button> is not available: the cards
+// and rows contain their own buttons, and nesting a button inside a button is
+// invalid HTML that browsers silently restructure.
+//
+// Space is preventDefault-ed because its default on a focusable non-button is
+// to scroll the page, which would fire the action AND jump the viewport.
+//
+// Spread onto the element: {...clickableProps(() => open(row))}
+export function clickableProps(onActivate: () => void) {
+  return {
+    role: 'button' as const,
+    tabIndex: 0,
+    onClick: onActivate,
+    onKeyDown: (e: { key: string; preventDefault: () => void }) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        onActivate()
+      }
+    },
+  }
+}
+
+// FOCUS_RING is the shared visible focus style for those elements. Keyboard
+// reachability without a visible focus indicator is only half the fix.
+export const FOCUS_RING =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-1 focus-visible:ring-offset-surface'
+
+
 // upgradeToHTTPS redirects an http:// page load to https:// before the app
 // mounts. Reaching MXID over http makes the browser send `Origin: http://…`,
 // which never matches the https-only CSRF allow-list → state-changing POSTs

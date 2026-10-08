@@ -646,7 +646,7 @@ function MFASection({
                 {mfa.type === 'totp' && mfa.verified && (
                   <button
                     onClick={() => setShowDisable(true)}
-                    className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50"
+                    className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium text-danger transition-colors hover:bg-danger/10"
                   >
                     <Trash2 className="h-3.5 w-3.5" /> {t('account.mfa.disable')}
                   </button>
@@ -994,7 +994,7 @@ function SessionsSection() {
                     onClick={() => setDelSid(s.id)}
                     disabled={isCurrent || revoking === s.id}
                     title={isCurrent ? t('account.sessions.cantKickSelf') : t('account.sessions.kickTitle')}
-                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-danger transition-colors hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
                   >
                     {revoking === s.id ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1212,7 +1212,7 @@ function APITokensSection() {
                     {!tok.revoked_at && (
                       <button
                         onClick={() => setDelTok(tok)}
-                        className="rounded-lg px-2 py-1 text-red-600 hover:bg-red-50"
+                        className="rounded-lg px-2 py-1 text-danger hover:bg-danger/10"
                         title={t('account.apiTokens.cols.status')}
                       >
                         <Trash2 className="h-3.5 w-3.5" />

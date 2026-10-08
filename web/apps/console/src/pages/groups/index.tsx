@@ -528,14 +528,14 @@ export default function GroupsPage() {
                       <div className="inline-flex items-center gap-1">
                         <button
                           onClick={() => openEdit(group)}
-                          className="rounded p-1 text-faint hover:bg-blue-50 hover:text-blue-500"
+                          className="rounded p-1 text-faint hover:bg-info/10 hover:text-info"
                           title={t('common.edit')}
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
                         <button
                           onClick={() => setDelGroup(group)}
-                          className="rounded p-1 text-faint hover:bg-red-50 hover:text-red-500"
+                          className="rounded p-1 text-faint hover:bg-danger/10 hover:text-danger"
                           title={t('common.delete')}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -720,7 +720,7 @@ export default function GroupsPage() {
                           <button
                             onClick={() => setConfirmRemoveMember(m.user_id)}
                             disabled={removingMemberId === m.user_id}
-                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-faint transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-faint transition-colors hover:bg-danger/10 hover:text-danger disabled:opacity-50"
                             title={t('groups.removeMember')}
                           >
                             {removingMemberId === m.user_id ? (

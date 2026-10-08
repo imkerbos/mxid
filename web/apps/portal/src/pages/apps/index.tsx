@@ -791,8 +791,8 @@ function AppCard({
         title={isFavorite ? t('portal.favoriteRemoved') : t('portal.favoriteAdded')}
         className={`absolute right-4 bottom-4 rounded-full p-1.5 transition ${
           isFavorite
-            ? 'text-amber-500 hover:bg-amber-50'
-            : 'text-faint opacity-0 hover:text-amber-500 hover:bg-amber-50 group-hover:opacity-100'
+            ? 'text-warning hover:bg-warning/10'
+            : 'text-faint opacity-0 hover:text-warning hover:bg-warning/10 group-hover:opacity-100'
         }`}
       >
         <Star className={`h-4 w-4 ${isFavorite ? 'fill-current' : ''}`} />
@@ -802,7 +802,7 @@ function AppCard({
           type="button"
           onClick={onManageCred}
           title={t('portal.formCred.manage')}
-          className="absolute right-12 bottom-4 rounded-full p-1.5 text-faint opacity-0 transition hover:bg-emerald-50 hover:text-emerald-600 group-hover:opacity-100"
+          className="absolute right-12 bottom-4 rounded-full p-1.5 text-faint opacity-0 transition hover:bg-success/10 hover:text-success group-hover:opacity-100"
         >
           <KeyRound className="h-4 w-4" />
         </button>

@@ -139,7 +139,7 @@ export default function AppRolesTab({
                   <button onClick={() => { setEditingRole(r); setShowRoleForm(true) }} className="rounded p-1 text-faint hover:bg-surface-muted hover:text-ink" title={t('common.edit')}>
                     <Edit2 className="h-3.5 w-3.5" />
                   </button>
-                  <button onClick={() => setDelRole(r)} className="rounded p-1 text-faint hover:bg-red-50 hover:text-red-500" title={t('common.delete')}>
+                  <button onClick={() => setDelRole(r)} className="rounded p-1 text-faint hover:bg-danger/10 hover:text-danger" title={t('common.delete')}>
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -256,7 +256,7 @@ function BindingRow({ binding, onDelete }: { binding: AppRoleBinding; onDelete: 
 
       <button
         onClick={() => onDelete(binding)}
-        className="shrink-0 rounded-md p-1.5 text-faint hover:bg-red-50 hover:text-red-500"
+        className="shrink-0 rounded-md p-1.5 text-faint hover:bg-danger/10 hover:text-danger"
         title={t('apps.roles.unbindTitle')}
       >
         <Trash2 className="h-4 w-4" />
