@@ -444,7 +444,7 @@ function GroupDetail({
                 <button
                   onClick={() => setConfirmRemoveApp(a)}
                   disabled={busy === a.id}
-                  className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-faint hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+                  className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-faint hover:bg-danger/10 hover:text-danger disabled:opacity-50"
                 >
                   {busy === a.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
                   {t('common.remove')}

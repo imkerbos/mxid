@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Keyboard and screen-reader access to the list pages. The application cards
+  and every clickable `DataTable` row carried an `onClick` on a bare `div` /
+  `tr`: focusable by nobody, activated by no key, and announced as plain text.
+  Opening an application — the primary action on that page — was mouse-only.
+  They now expose a button's contract (`role`, `tabIndex`, Enter and Space, a
+  visible focus ring) through a shared `clickableProps` helper; a real
+  `<button>` is not an option because both contain their own buttons. The two
+  captcha "click to reload" placeholders became actual buttons.
+- Escape closes the application detail drawer and the portal's MFA enrolment
+  dialog. Both are hand-rolled rather than built on the shared `Modal` (which
+  binds Escape and traps focus), so the only way out of a panel covering the
+  page was a mouse click on the backdrop or the X.
 - Token-endpoint rejections are now attributable and alertable. A refused token
   exchange adds `oidc_client_id` and `oidc_error` to its access-log line and
   raises an `oidc.grant_rejected` audit event, so one record carries the client,
@@ -67,6 +79,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which app and which user but not which kind of credential was exposed. A new
   guard now fails the build when any subscribed event type lacks an explicit
   schema entry, since the fallback makes the omission invisible.
+- Destructive and status controls no longer depend on a dark-mode override to
+  be readable. 31 call sites used raw Tailwind light tints (`hover:bg-red-50`
+  and friends) with raw text colours, which `index.css` remaps under `.dark`
+  with `[class~=]` rules scoped to `main` — so anything rendered outside `main`,
+  a portalled dialog for instance, would keep the light fill. They now use the
+  semantic `danger` / `success` / `warning` / `info` tokens, which carry their
+  own dark values and need no override. Measured on the emergency-revoke
+  button: 3.81:1 contrast before, 6.27:1 after (WCAG AA wants 4.5:1).
 - The console's "my account" page let an external-IdP account set a first
   password. It only ever offered the change-password form, which demands the
   current password — an account provisioned through Lark has none, so there was

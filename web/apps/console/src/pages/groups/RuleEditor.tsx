@@ -160,7 +160,7 @@ export default function RuleEditor({ value, onChange }: RuleEditorProps) {
               <button
                 type="button"
                 onClick={() => removeCondition(i)}
-                className="rounded-md p-1 text-faint hover:bg-red-50 hover:text-red-500"
+                className="rounded-md p-1 text-faint hover:bg-danger/10 hover:text-danger"
                 title={t('groupRules.deleteCondition')}
               >
                 <Trash2 className="h-3.5 w-3.5" />

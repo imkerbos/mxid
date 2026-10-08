@@ -338,12 +338,13 @@ export default function LoginPage() {
                       title={t('login.captchaClickRefresh')}
                     />
                   ) : (
-                    <div
+                    <button
+                      type="button"
                       onClick={loadCaptcha}
                       className="flex h-[42px] w-[120px] cursor-pointer items-center justify-center rounded-lg border border-white/25 bg-surface/[0.08] px-1 text-center text-[10px] leading-tight text-white/60"
                     >
                       {captchaFailed ? t('login.captchaLoadFailed') : t('login.captchaLoading')}
-                    </div>
+                    </button>
                   )}
                   <button
                     type="button"

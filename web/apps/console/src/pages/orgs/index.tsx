@@ -527,7 +527,7 @@ export default function OrgsPage() {
                   </button>
                   <button
                     onClick={() => setShowDeleteOrg(true)}
-                    className="rounded-lg border border-border p-2 text-muted hover:bg-red-50 hover:text-red-500"
+                    className="rounded-lg border border-border p-2 text-muted hover:bg-danger/10 hover:text-danger"
                     title={t('orgs.delete')}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -658,7 +658,7 @@ export default function OrgsPage() {
                                   <td className="px-4 py-3 text-right">
                                     <button
                                       onClick={() => setDelMemberId(userId)}
-                                      className="rounded p-1 text-faint hover:bg-red-50 hover:text-red-500"
+                                      className="rounded p-1 text-faint hover:bg-danger/10 hover:text-danger"
                                       title={t('orgs.removeMember')}
                                     >
                                       <UserMinus className="h-4 w-4" />

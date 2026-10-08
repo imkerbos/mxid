@@ -400,7 +400,7 @@ function MFASection() {
                 {mfa.type === 'totp' && mfa.verified && (
                   <button
                     onClick={() => setShowDisable(true)}
-                    className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50"
+                    className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium text-danger transition-colors hover:bg-danger/10"
                   >
                     <Trash2 className="h-3.5 w-3.5" /> {t('account.mfa.disable')}
                   </button>
@@ -449,6 +449,17 @@ function EnrollTOTPModal({
   const [loading, setLoading] = useState(true)
   const [verifying, setVerifying] = useState(false)
   const [err, setErr] = useState('')
+
+  // Escape closes the enrolment dialog. It is hand-rolled rather than built on
+  // the shared Modal, so nothing bound this: the only way out of a dialog that
+  // covers the page was a mouse click on the backdrop or the X.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
 
   useEffect(() => {
     let alive = true
@@ -829,7 +840,7 @@ function SessionsSection() {
               <button
                 onClick={() => setConfirmKick(session.id)}
                 disabled={revoking === session.id}
-                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-danger transition-colors hover:bg-danger/10 disabled:opacity-50"
               >
                 {revoking === session.id ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -921,7 +932,7 @@ function ConnectedExtensionsSection() {
               <button
                 onClick={() => setConfirmRevoke(tk.id)}
                 disabled={revoking === tk.id}
-                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-danger transition-colors hover:bg-danger/10 disabled:opacity-50"
               >
                 {revoking === tk.id ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />

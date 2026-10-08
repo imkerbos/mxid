@@ -149,7 +149,7 @@ function PolicyRow({ policy, onDelete }: { policy: AccessPolicy; onDelete: (p: A
       </div>
       <button
         onClick={() => onDelete(policy)}
-        className="rounded-md p-1.5 text-faint hover:bg-red-50 hover:text-red-500"
+        className="rounded-md p-1.5 text-faint hover:bg-danger/10 hover:text-danger"
         title={t('common.delete')}
       >
         <Trash2 className="h-4 w-4" />
