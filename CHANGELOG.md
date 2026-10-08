@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Frontend lockfile refresh, clearing 23 advisories (13 high). `axios` 1.18.1 →
+  1.20.0 is the only one in the shipped bundle — among its twelve, a `NO_PROXY`
+  entry in CIDR form was ignored, so proxy exclusion for internal ranges did not
+  apply. The rest are build- and test-time transitives (`postcss`, `nanoid`,
+  `browserslist`, `source-map-js`, `brace-expansion`, `vitest`). Every bump fell
+  inside the ranges already declared, so no `package.json` changed.
+  `golang.org/x/crypto` stops at v0.55.0 deliberately. v0.56.0 declares
+  `go 1.26.0`, which would raise this module's own `go` directive and leave the
+  pinned `golang:1.25.14-alpine` builder and the three CI workflows unable to
+  compile it — a toolchain migration wearing a dependency bump's clothes. The
+  two findings it would additionally fix (GO-2026-6354, GO-2026-6355) are not
+  reachable from this code. They move with the toolchain, not before it.
+
 ### Added
 - Keyboard and screen-reader access to the list pages. The application cards
   and every clickable `DataTable` row carried an `onClick` on a bare `div` /
