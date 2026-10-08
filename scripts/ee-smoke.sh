@@ -19,7 +19,12 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-GO_IMAGE="${MXID_EE_SMOKE_IMAGE:-golang:1.26-alpine}"
+# Exact patch, not the floating 1.26-alpine: that tag lags the release by a
+# patch or two, so the moment go.mod's directive moves ahead of it this script
+# fails with "go.mod requires go >= X (running go Y)" — which is exactly how it
+# broke when the toolchain went to 1.26.8. Keep in lockstep with go.mod and the
+# Dockerfiles.
+GO_IMAGE="${MXID_EE_SMOKE_IMAGE:-golang:1.26.8-alpine}"
 GARBLE_VER="${MXID_GARBLE_VERSION:-v0.16.0}"
 
 # Build the DSN the test uses. From inside the container the host DB is reached
