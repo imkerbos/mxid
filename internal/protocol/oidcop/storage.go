@@ -102,6 +102,13 @@ func kToken(id string) string     { return "oidc:token:" + id }
 func kRefresh(tok string) string  { return "oidc:refresh:" + tok }
 func kUserTok(u, c string) string { return "oidc:utk:" + u + ":" + c }
 
+// kClientUsers indexes which users currently hold tokens for a client, so an
+// operator can revoke a whole client's tokens without a Redis SCAN. The
+// per-(user, client) sets alone cannot be enumerated by client — recovering the
+// user half would mean scanning a keyspace shared with sessions and tickets,
+// on a live instance, at the moment containment is most urgent.
+func kClientUsers(c string) string { return "oidc:clientusers:" + c }
+
 // kRefreshConsumed marks a refresh token as spent (see renewRefreshToken):
 // its presence for a token no longer live is the reuse/theft signal.
 func kRefreshConsumed(tok string) string { return "oidc:refreshconsumed:" + tok }
@@ -668,6 +675,61 @@ func (s *Storage) indexAdd(ctx context.Context, userID, clientID, tokenKey strin
 	idx := kUserTok(userID, clientID)
 	_ = s.rdb.SAdd(ctx, idx, tokenKey).Err()
 	_ = s.rdb.Expire(ctx, idx, s.cfg.RefreshTokenLifetime).Err()
+
+	// Reverse index for RevokeAllForClient. Same TTL as the forward index, so
+	// it self-cleans with the longest-lived token it can describe and never
+	// grows into a permanent record of who ever used an app.
+	cidx := kClientUsers(clientID)
+	_ = s.rdb.SAdd(ctx, cidx, userID).Err()
+	_ = s.rdb.Expire(ctx, cidx, s.cfg.RefreshTokenLifetime).Err()
+}
+
+// RevokeAllForClient deletes every access and refresh token this IdP currently
+// holds for one client, across all users. Returns how many users were affected.
+//
+// This is the operator action for a leaked client secret, which nothing else
+// covered. RevokeToken is the RFC 7009 endpoint and needs the token string,
+// which an operator does not have; TerminateSession covers one user at a time;
+// consent revocation revokes consent, not tokens. The only lever left was
+// disabling the whole application, which also stops every legitimate login —
+// correct when the application itself is compromised, far too blunt when only
+// its tokens are.
+//
+// Already-issued ACCESS tokens are not all reachable this way: they are
+// self-contained JWTs that relying parties verify by signature, so one that is
+// cached at an RP stays valid until it expires (one hour by default). Nothing
+// at the IdP can shorten that. What this does guarantee is that no NEW token
+// can be minted from a refresh token we previously issued.
+//
+// Errors from individual users are collected rather than returned early: a
+// partial revoke must not stop at the first bad key, and the
+// caller needs to know it was partial.
+func (s *Storage) RevokeAllForClient(ctx context.Context, clientID string) (int, error) {
+	if clientID == "" {
+		return 0, nil
+	}
+	cidx := kClientUsers(clientID)
+	users, err := s.rdb.SMembers(ctx, cidx).Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return 0, err
+	}
+	var firstErr error
+	revoked := 0
+	for _, u := range users {
+		if err := s.TerminateSession(ctx, u, clientID); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		revoked++
+	}
+	// Drop the index last: a failed revoke above must stay discoverable on a
+	// retry rather than being forgotten because the index was cleared.
+	if firstErr == nil {
+		_ = s.rdb.Del(ctx, cidx).Err()
+	}
+	return revoked, firstErr
 }
 
 // getInfoFromRequest extracts client_id, auth_time, amr and the shared

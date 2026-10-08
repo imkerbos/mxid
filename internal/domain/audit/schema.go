@@ -128,14 +128,14 @@ var detailSchemas = map[string]detailSchema{
 	event.UserSuperAdminRevoke: {allow: []string{"user_id", "target_id", "tenant_id", "username"}},
 	event.UserOffboarded:       {allow: []string{"user_id", "tenant_id", "username", "actor_id", "sessions_killed"}},
 
-	event.AppCreated:  {allow: []string{"app_id", "tenant_id", "name", "code", "protocol", "actor_id"}},
+	event.AppCreated: {allow: []string{"app_id", "tenant_id", "name", "code", "protocol", "actor_id"}},
 	// config_before / config_after carry the app's protocol_config either side of
 	// a change. They are here because the app table keeps no history: without
 	// them a mistaken overwrite of protocol_config is unrecoverable, which is
 	// exactly what happened when the console's partial form replaced the whole
 	// document. protocol_config holds no secrets (the client secret is a
 	// separate bcrypt column; jwks is public key material).
-	event.AppUpdated: {allow: []string{"app_id", "tenant_id", "fields", "action", "status", "actor_id", "changed_keys", "config_before", "config_after"}},
+	event.AppUpdated:  {allow: []string{"app_id", "tenant_id", "fields", "action", "status", "actor_id", "changed_keys", "config_before", "config_after"}},
 	event.AppDeleted:  {allow: []string{"app_id", "tenant_id", "name", "code", "actor_id"}},
 	event.AppLaunched: {allow: []string{"app_id", "tenant_id", "user_id", "name", "session_id"}},
 
@@ -197,6 +197,21 @@ var detailSchemas = map[string]detailSchema{
 	event.MFAEnabled:    {allow: []string{"user_id", "tenant_id", "type"}},
 	event.MFADisabled:   {allow: []string{"user_id", "tenant_id", "type", "actor_id"}},
 
+	event.AppEmergencyRevoked: {allow: []string{"app_id", "tenant_id", "client_id", "tokens_revoked", "complete", "actor_id"}},
+
+	// Form-fill credential vault (EE feature=form_fill; the publishers live in
+	// the private repo, which is why these went unregistered until a guard
+	// looked — see schema_registration_test.go). All five emit
+	// {app_id, user_id, mode}; "mode" says shared-vault vs per-user, and
+	// fallbackSchema does not name it, so until now every reveal and every
+	// DENIED reveal recorded which app and which user but not which kind of
+	// credential was exposed.
+	event.AppCredentialStored:       {allow: []string{"app_id", "user_id", "tenant_id", "mode"}},
+	event.AppCredentialDeleted:      {allow: []string{"app_id", "user_id", "tenant_id", "mode"}},
+	event.AppSharedCredentialSet:    {allow: []string{"app_id", "user_id", "tenant_id", "mode"}},
+	event.AppCredentialRevealed:     {allow: []string{"app_id", "user_id", "tenant_id", "mode"}},
+	event.AppCredentialRevealDenied: {allow: []string{"app_id", "user_id", "tenant_id", "mode"}},
+
 	event.OIDCTokenIssued:       {allow: []string{"user_id", "tenant_id", "client_id", "app_id", "scope"}},
 	event.OIDCTokenRefreshed:    {allow: []string{"user_id", "tenant_id", "client_id", "app_id"}},
 	event.OIDCTokenRevoked:      {allow: []string{"user_id", "tenant_id", "client_id", "app_id"}},
@@ -204,6 +219,16 @@ var detailSchemas = map[string]detailSchema{
 	event.OIDCConsentGranted:    {allow: []string{"user_id", "tenant_id", "client_id", "app_id", "scope"}},
 	event.OIDCConsentRevoked:    {allow: []string{"user_id", "tenant_id", "client_id", "app_id", "actor_id"}},
 	event.OIDCBackchannelLogout: {allow: []string{"user_id", "tenant_id", "client_id", "app_id", "session_id"}},
+
+	// "ip" is in the payload here, unlike every other event above, because the
+	// token endpoint is a server-to-server call with no session cookie: no auth
+	// middleware runs, so enrich() has no auditctx to read the IP column from.
+	// The observer stamps one, but keeping it in the detail too means the row is
+	// still attributable if that stamping is ever lost.
+	event.OIDCGrantRejected: {allow: []string{"tenant_id", "client_id", "app_id", "error", "ip"}},
+	// "count" and "window_seconds" say how bad it is; without them the row
+	// cannot be told apart from a single rejection.
+	event.OIDCGrantRejectedBurst: {allow: []string{"tenant_id", "client_id", "app_id", "error", "ip", "count", "window_seconds"}},
 
 	// JIT privileged-access (temporary elevation) lifecycle. Literal event_type
 	// strings (not the access package consts) to keep audit free of a domain

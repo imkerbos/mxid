@@ -100,14 +100,20 @@ func CallbackURL(provider op.OpenIDProvider) func(context.Context, string) strin
 // so the implicit-flow values zitadel/oidc's discovery handler hardcodes
 // (see discovery.go) never reach a client — without touching op's own
 // routing or the hand-rolled engine's separate /protocol/oidc surface.
-func Mount(group *gin.RouterGroup, stripPrefix string, provider http.Handler) {
+// mw are gin middlewares to run ahead of the provider on this subtree. They
+// are variadic so existing callers and tests mount unchanged; the token
+// observer (WithTokenObserver) needs this layer rather than an http.Handler
+// wrap because it has to reach the gin context — that is where the request
+// logger reads its optional fields from, and gin's context is not available
+// below Mount's gin.WrapH.
+func Mount(group *gin.RouterGroup, stripPrefix string, provider http.Handler, mw ...gin.HandlerFunc) {
 	// withIdpInitiated runs OUTSIDE op so it can read the raw idp_initiated
 	// query param before op's schema decoder discards it (IgnoreUnknownKeys) —
 	// see withIdpInitiated. It stashes the flag on the request context, which
 	// op propagates into Storage.CreateAuthRequest (pkg/op's Authorize derives
 	// its ctx from r.Context()), where it is persisted onto the auth request.
 	wrapped := gin.WrapH(http.StripPrefix(stripPrefix, withIdpInitiated(filterDiscoveryResponse(provider))))
-	group.Any("/oidc/*any", wrapped)
+	group.Any("/oidc/*any", append(mw, wrapped)...)
 }
 
 // idpInitiatedCtxKey keys the idp_initiated flag on the request context.

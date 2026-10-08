@@ -66,6 +66,18 @@ var (
 		Help: "External-IdP login round trips, by provider and phase.",
 	}, []string{"provider", "phase"})
 
+	// Token-endpoint rejections, by OAuth error code. Deliberately NOT labelled
+	// by client_id: the client_id on a token request is whatever the caller
+	// asserted, so an attacker could mint a new label value per attempt and turn
+	// this counter into unbounded cardinality. The error code comes from our own
+	// engine and is a closed set, and oidcErrorLabel folds anything unexpected
+	// into "other" so that stays true. Per-client detail belongs in the audit
+	// event, which is bounded by storage rather than by series count.
+	oidcGrantRejected = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "mxid_oidc_grant_rejected_total",
+		Help: "Rejected OIDC token-endpoint exchanges, by OAuth error code.",
+	}, []string{"error"})
+
 	// dlock leadership: 1 when this replica currently holds the advisory lock for
 	// a key, else 0 — lets an operator see which pod runs each singleton job.
 	dlockLeader = prometheus.NewGaugeVec(prometheus.GaugeOpts{
@@ -143,7 +155,7 @@ func init() {
 	reg.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	reg.MustRegister(reqTotal, reqDuration, buildInfo, workerRuns, workerLastSuccess, outboxDispatch, dlockLeader, authzCache,
 		auditWriteFailed, auditForward, partitionsAhead, partitionDefaultRows, partitionsDropped,
-		auditPendingDepth, auditAnchorLag, extLoginPhase)
+		auditPendingDepth, auditAnchorLag, extLoginPhase, oidcGrantRejected)
 }
 
 // WorkerRun records that a background worker completed a pass; WorkerSuccess
@@ -151,6 +163,40 @@ func init() {
 // WorkerSuccess only when the pass did its job without error.
 func WorkerRun(worker string)     { workerRuns.WithLabelValues(worker).Inc() }
 func WorkerSuccess(worker string) { workerLastSuccess.WithLabelValues(worker).SetToCurrentTime() }
+
+// knownOIDCErrors is the closed set of OAuth/OIDC error codes this IdP emits
+// (RFC 6749 §5.2, RFC 8628 §3.5 for slow_down). It exists purely to bound the
+// metric's label values — see the comment on oidcGrantRejected.
+var knownOIDCErrors = map[string]struct{}{
+	"invalid_request":         {},
+	"invalid_client":          {},
+	"invalid_grant":           {},
+	"unauthorized_client":     {},
+	"unsupported_grant_type":  {},
+	"invalid_scope":           {},
+	"slow_down":               {},
+	"server_error":            {},
+	"temporarily_unavailable": {},
+	"invalid_target":          {},
+	"invalid_dpop_proof":      {},
+	"unsupported_token_type":  {},
+}
+
+// OIDCGrantRejected records one rejected token exchange. An unrecognised or
+// missing code is folded into "other"/"unknown" so the label set stays closed.
+func OIDCGrantRejected(oauthError string) {
+	oidcGrantRejected.WithLabelValues(oidcErrorLabel(oauthError)).Inc()
+}
+
+func oidcErrorLabel(oauthError string) string {
+	if oauthError == "" {
+		return "unknown"
+	}
+	if _, ok := knownOIDCErrors[oauthError]; ok {
+		return oauthError
+	}
+	return "other"
+}
 
 // OutboxDispatch records one dispatch outcome: "success", "retry" or "deadletter".
 func OutboxDispatch(result string) { outboxDispatch.WithLabelValues(result).Inc() }

@@ -7,18 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- The console's "my account" page let an external-IdP account set a first
-  password. It only ever offered the change-password form, which demands the
-  current password — an account provisioned through Lark has none, so there was
-  no way to add one from the console at all. The backend endpoint and both
-  locales' strings already existed; only this page never used them. The portal's
-  security page was never affected. Everything the section says now follows the
-  same branch: the title ("Set password"), the note about other sessions (a first
-  set signs none out — there is no old credential to invalidate) and the success
-  message.
-
 ### Added
+- Token-endpoint rejections are now attributable and alertable. A refused token
+  exchange adds `oidc_client_id` and `oidc_error` to its access-log line and
+  raises an `oidc.grant_rejected` audit event, so one record carries the client,
+  the reason, the source IP and the request id. Previously the OIDC library
+  logged protocol rejections through its own logger with no request context, and
+  nothing produced an audit event at all — which meant the console's alert
+  webhook, which dispatches off event types, could not cover a client secret
+  being probed. A `mxid_oidc_grant_rejected_total` counter is exported
+  alongside, labelled by error code only (the asserted client_id on a token
+  request is attacker-chosen and would be unbounded label cardinality).
+- `oidc.grant_rejected_burst`, raised once per window when a single client
+  crosses ten rejected exchanges in five minutes. The per-request event alone is
+  not enough to alert on: the alert dispatcher suppresses by tenant and event
+  type, so one misconfigured relying party looping on a bad secret would bury
+  the alerts for every other client. The counter is per client_id so it cannot.
+  The token endpoint's existing rate limit does not cover this either — at
+  300/min per client it is a capacity guard, and a credential-abuse run sits far
+  below it.
+- Emergency credential containment, as one console action on an app's
+  credentials tab: rotate the `client_secret` and drop every token the IdP holds
+  for that client. Rotation alone leaves outstanding refresh tokens in place,
+  and until now the only lever that covered them was disabling the whole
+  application, which also stops every legitimate login. The order is
+  rotate-then-revoke, because revoking first leaves a window in which a holder
+  of the old secret refreshes its way back in. Step-up gated, audited as
+  `app.emergency_revoked`, and the result reports how many users were affected —
+  and says so explicitly when the token store could not be reached, instead of
+  implying a cleanup that did not happen. Access tokens already issued are
+  self-contained JWTs and stay valid until they expire (one hour by default);
+  the UI says that too.
 - `local.mk`: an optional, gitignored file included at the top of the Makefile.
   It overrides `MIGRATE` and `EE_SMOKE`, so `make migrate-*` and `make ee-smoke`
   (which the EE pre-push hook runs) can target a developer's own database
@@ -39,6 +58,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   federated login ("start" / "callback"). Alert on the gap between the two
   rates, not on an error rate: a provider failing on its own pages produces no
   errors here at all.
+
+### Fixed
+- Five form-fill credential events (`app.credential.stored` / `.deleted` /
+  `.shared_set` / `.revealed` / `.reveal_denied`) were never registered in the
+  audit detail schema, so every row fell back to the generic field list and
+  silently dropped `mode`. A credential reveal — and a DENIED reveal — recorded
+  which app and which user but not which kind of credential was exposed. A new
+  guard now fails the build when any subscribed event type lacks an explicit
+  schema entry, since the fallback makes the omission invisible.
+- The console's "my account" page let an external-IdP account set a first
+  password. It only ever offered the change-password form, which demands the
+  current password — an account provisioned through Lark has none, so there was
+  no way to add one from the console at all. The backend endpoint and both
+  locales' strings already existed; only this page never used them. The portal's
+  security page was never affected. Everything the section says now follows the
+  same branch: the title ("Set password"), the note about other sessions (a first
+  set signs none out — there is no old credential to invalidate) and the success
+  message.
 
 ### Changed
 - The vite dev servers read the front door's port from `MXID_DEV_HMR_PORT`

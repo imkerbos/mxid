@@ -63,6 +63,16 @@ export const appApi = {
     client.put<ApiResponse<{ saved: boolean }>>(`/apps/${id}/provisioning`, data).then(r => r.data),
   regenerateSecret: (id: string) =>
     client.post<ApiResponse<{ client_secret: string }>>(`/apps/${id}/regenerate-secret`).then(r => r.data.data),
+  // Credential-compromise action: rotate the secret AND drop every token the
+  // IdP holds for this client, in one step. tokens_revoked is a USER count, and
+  // revoke_supported is false when the server could not reach the token store —
+  // the UI must say so rather than imply a cleanup that did not run.
+  emergencyRevoke: (id: string) =>
+    client
+      .post<ApiResponse<{ client_secret: string; tokens_revoked: number; revoke_supported: boolean }>>(
+        `/apps/${id}/emergency-revoke`,
+      )
+      .then(r => r.data.data),
   quickstart: (id: string, lang: string) =>
     client.get<ApiResponse<{ language: string; sample: string }>>(`/apps/${id}/quickstart/${lang}`).then(r => r.data.data),
   listTemplates: () =>

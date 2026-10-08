@@ -115,6 +115,13 @@ const (
 	// highest-signal audit anchor: a plaintext downstream password was handed to
 	// the browser extension. reveal_denied records a blocked attempt (no step-up
 	// / not authorized / rate-limited).
+	// AppEmergencyRevoked records the credential-containment action: an app's
+	// client secret rotated AND its outstanding tokens dropped, in one
+	// operator step. "complete" distinguishes a full run from one where the
+	// token revoke failed or was unavailable — the rotation stands either way,
+	// so the row must say which.
+	AppEmergencyRevoked = "app.emergency_revoked"
+
 	AppCredentialStored       = "app.credential.stored"
 	AppCredentialDeleted      = "app.credential.deleted"
 	AppSharedCredentialSet    = "app.credential.shared_set"
@@ -170,6 +177,40 @@ const (
 	OIDCConsentGranted    = "oidc.consent.granted"
 	OIDCConsentRevoked    = "oidc.consent.revoked"
 	OIDCBackchannelLogout = "oidc.backchannel_logout"
+
+	// OIDCGrantRejected records a token-endpoint request the engine refused:
+	// a wrong client secret, an invalid or expired authorization code, a
+	// disabled client.
+	//
+	// These used to be invisible. zitadel writes protocol rejections to its
+	// own slog with no request context — no client_id, no IP, no request id —
+	// so a probing run against a leaked client_secret produced only
+	// unattributable text lines, and the console's alert webhook (which
+	// dispatches off audit event types) could not cover it at all: rejected
+	// token exchanges accumulated in the log with nothing able to alert on
+	// them and no way to say afterwards which client had been probed.
+	//
+	// Published from the token-endpoint observer, so it is a protocol-layer
+	// signal, NOT a user action: there is no session behind it and the actor
+	// is the calling client.
+	OIDCGrantRejected = "oidc.grant_rejected"
+
+	// OIDCGrantRejectedBurst fires once per window when ONE client crosses a
+	// low count of rejected token exchanges.
+	//
+	// It exists because OIDCGrantRejected alone is not enough to alert on.
+	// The alert dispatcher's suppression gate is keyed by tenant + event type
+	// (auditalert.Dispatcher), so a single misconfigured RP looping on a bad
+	// secret would suppress the alerts for every OTHER client's rejections —
+	// including the one actually being probed. This event is counted per
+	// client_id, so a burst against one client cannot be masked by noise from
+	// another.
+	//
+	// The token endpoint's rate limit does not cover this either: it caps
+	// volume at 300/min per client, two orders of magnitude above the 38
+	// attempts in 15 minutes that a real credential replay produced. A
+	// capacity limit is not a credential-abuse signal.
+	OIDCGrantRejectedBurst = "oidc.grant_rejected_burst"
 
 	// Tenant lifecycle (super-admin operations).
 	TenantCreated = "tenant.created"

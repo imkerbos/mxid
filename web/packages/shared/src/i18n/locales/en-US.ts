@@ -997,6 +997,13 @@ export default {
         jwks: 'JWKS URI',
         confirmRotate: 'Rotate client_secret for "{{name}}"? The old secret stops working immediately.',
         rotated: 'client_secret rotated',
+        emergency: 'Emergency revoke',
+        emergencyHint: 'Use when the client_secret may be leaked: rotates the secret and drops every token issued to this app.',
+        confirmEmergency: 'Run emergency revoke for "{{name}}"?',
+        confirmEmergencyDesc: 'Rotates the client_secret and revokes every token already issued. The application must be reconfigured with the new secret before logins work again; access tokens already issued stay valid for up to one hour.',
+        emergencyDone: 'client_secret rotated; tokens dropped for {{count}} user(s)',
+        emergencyDoneNone: 'client_secret rotated. The app held no live tokens to drop.',
+        emergencyPartial: 'client_secret rotated, but tokens were NOT revoked (the server could not reach the token store)',
         noneForProtocol: 'No external credentials for this protocol.',
         saml: {
           entityID: 'IdP Entity ID',
