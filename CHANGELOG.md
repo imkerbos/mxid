@@ -8,6 +8,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- The Go toolchain moved from 1.25.14 to 1.26.8 across both editions. The 1.25
+  series ended at 1.25.14 — Go supports only its two newest majors, so the
+  builder was on a branch that will receive no further security patches. Nine
+  pins moved together (both `go.mod` files, the CE runtime and dev Dockerfiles,
+  the dev compose and cluster manifests, and the three CI workflows), and CE and
+  EE now sit on the same patch instead of the 1.25.14 / 1.26.2 / 1.26.0 spread
+  that had accumulated.
+  `golang.org/x/crypto` follows to v0.56.0 — it declares `go 1.26.0`, which is
+  what deferred it out of the dependency refresh — clearing GO-2026-6354 and
+  GO-2026-6355. One advisory remains in a required module, unreachable from this
+  code and with no fixed version published.
+  A toolchain floor propagates to every tool that parses the module: the
+  `tools/gormtaglint` helper is its own module and was pinned to `go 1.25.11`
+  with `x/tools` v0.30.0, so the garble-safe GORM-tag guard refused to analyse
+  the tree ("package requires newer Go version") rather than running. It moves
+  to 1.26.8 / x/tools v0.51.0. Anything built from an older toolchain does the
+  same, which is worth knowing before the next bump.
+- Base images moved off end-of-life branches. The web image's `nginx:1.29-alpine`
+  reached end of life on 2026-05-13 and receives no further patches; it is now
+  `nginx:1.30-alpine`. The config needed no changes — it already uses the modern
+  `http2 on;` form rather than the `listen ... http2` parameter dropped in 1.25 —
+  and the built image was exercised end to end: config test, portal and console
+  roots, SPA deep-link fallback, the API proxy, the :80 → :443 redirect, gzip on
+  a real bundle, and the HSTS / CSP / X-Frame / nosniff headers.
+- The EE builder image moved from `golang:1.26.2-alpine` to `1.26.8-alpine`, and
+  the EE CI toolchain pin from 1.26.0 to 1.26.8, keeping the two in step. EE
+  stays ahead of CE's 1.25.14 on purpose: garble needs go 1.26, and that
+  divergence is the subject of its own change, not this one. Verified by
+  building the image — which is the only place the obfuscated build runs, since
+  garble refuses a toolchain living under GOMODCACHE.
+- Dependency refresh clearing every reachable advisory. `golang.org/x/text`
+  v0.40.0 → v0.41.0 is the one that mattered: GO-2026-6629 panics on crafted
+  input in `x/text/secure/precis`, and govulncheck traced a live path to it from
+  both editions through the database driver (`bootstrap.ensureDatabase` →
+  `sql.Open`, and EE's form-fill repository → `gorm.DB.Scan`). Also
+  `golang.org/x/mod` v0.38.0 → v0.40.0, `golang.org/x/image` v0.43.0 → v0.45.0
+  and `golang.org/x/crypto` v0.54.0 → v0.55.0; both modules are now clean of
+  reachable findings.
 - Frontend lockfile refresh, clearing 23 advisories (13 high). `axios` 1.18.1 →
   1.20.0 is the only one in the shipped bundle — among its twelve, a `NO_PROXY`
   entry in CIDR form was ignored, so proxy exclusion for internal ranges did not

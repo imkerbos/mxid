@@ -59,7 +59,7 @@ services:
       start_period: 5s
 
   nginx:
-    image: nginx:1.29-alpine
+    image: nginx:1.30-alpine
     # Suffixed -dev: container_name is daemon-global, and the prod stack's nginx
     # also uses `mxid-nginx`. Without the suffix, running dev + prod on one host
     # collides (and every other dev container already carries a -dev/-vite tag).
@@ -75,9 +75,9 @@ services:
     restart: unless-stopped
 
   mxid:
-    # Pin patch version to satisfy go.mod's `go 1.25.14` (floating 1.25-alpine
+    # Pin patch version to satisfy go.mod's `go 1.26.8` (floating 1.25-alpine
     # lagged at 1.25.10, which broke air's in-container build).
-    image: golang:1.25.14-alpine
+    image: golang:1.26.8-alpine
     container_name: mxid-dev
     working_dir: /app
     command: >
