@@ -1,6 +1,6 @@
 module github.com/imkerbos/mxid/tools/gormtaglint
 
-go 1.26.8
+go 1.26.9
 
 require golang.org/x/tools v0.51.0
 

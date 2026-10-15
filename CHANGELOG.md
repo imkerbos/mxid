@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.11.0] — 2026-10-15
 
 ### Security
+- The Go toolchain moved from 1.26.8 to 1.26.9 and `golang.org/x/net` from
+  v0.57.0 to v0.60.0, clearing seven advisories across `net/http`,
+  `net/textproto`, `crypto/tls` and `x/net`. The call paths were reachable, not
+  theoretical: the SAML metadata import and the CAS attribute encoder both reach
+  the affected HTTP/2 writer. Thirteen pins move together — both editions'
+  `go.mod`, the `gormtaglint` helper module, the runtime and dev Dockerfiles, the
+  dev compose and cluster manifests, the EE smoke image and the four CI
+  workflows — because letting any one of them lag is how the editions drifted
+  three patches apart once before. `x/sync`, `x/sys`, `x/term` and `x/text`
+  follow as transitive updates.
 - CORS on the OIDC endpoints is now decided by the registered applications
   instead of being open to every origin. The upstream library ships
   `AllowOriginFunc` returning true for ALL origins together with
