@@ -311,15 +311,6 @@ export interface AppGroup {
   updated_at: string
 }
 
-// AppAccess — 授权某主体（用户/组/部门/角色）访问指定 app
-export interface AppAccess {
-  id: string
-  app_id: string
-  subject_type: string
-  subject_id: string
-  created_at: string
-}
-
 // AppCert — 应用证书 / 签名密钥
 export interface AppCert {
   id: string

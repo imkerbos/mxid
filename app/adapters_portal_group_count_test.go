@@ -84,7 +84,7 @@ func newGroupCountTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	if err := db.AutoMigrate(&app.App{}, &app.AppGroup{}, &app.AppGroupRel{}, &app.AppAccess{}); err != nil {
+	if err := db.AutoMigrate(&app.App{}, &app.AppGroup{}, &app.AppGroupRel{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return db

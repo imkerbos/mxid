@@ -50,12 +50,6 @@ type Repository interface {
 	RemoveAppFromGroup(ctx context.Context, appID, groupID int64) error
 	ListAppsByGroup(ctx context.Context, groupID int64) ([]*AppGroupRel, error)
 
-	// AppAccess
-	AddAccess(ctx context.Context, access *AppAccess) error
-	GetAccessByID(ctx context.Context, id int64) (*AppAccess, error)
-	RemoveAccess(ctx context.Context, id int64) error
-	ListAccessByApp(ctx context.Context, appID int64) ([]*AppAccess, error)
-
 	// AppCert
 	CreateCert(ctx context.Context, cert *AppCert) error
 	GetCertByID(ctx context.Context, id int64) (*AppCert, error)

@@ -78,12 +78,6 @@ type UpdateProtocolConfigRequest struct {
 	ProtocolConfig map[string]any `json:"protocol_config" binding:"required"`
 }
 
-// AddAccessRequest is the request body for adding an access authorization.
-type AddAccessRequest struct {
-	SubjectType string `json:"subject_type" binding:"required,max=16"`
-	SubjectID   int64  `json:"subject_id,string" binding:"required"`
-}
-
 // AppGroupRequest is the request body for creating an app group.
 type AppGroupRequest struct {
 	Name      string `json:"name" binding:"required,max=128"`
@@ -152,16 +146,6 @@ type AppGroupResponse struct {
 	SortOrder int       `json:"sort_order"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
-}
-
-// AppAccessResponse is the API response for an access authorization.
-type AppAccessResponse struct {
-	ID          int64     `json:"id,string"`
-	AppID       int64     `json:"app_id,string"`
-	SubjectType string    `json:"subject_type"`
-	SubjectID   int64     `json:"subject_id,string"`
-	CreatedAt   time.Time `json:"created_at"`
-	CreatedBy   *int64    `json:"created_by,string,omitempty"`
 }
 
 // AppCertResponse is the API response for an app certificate.
@@ -244,18 +228,6 @@ func ToAppGroupResponse(g *AppGroup) *AppGroupResponse {
 		SortOrder: g.SortOrder,
 		CreatedAt: g.CreatedAt,
 		UpdatedAt: g.UpdatedAt,
-	}
-}
-
-// ToAppAccessResponse converts an AppAccess model to an AppAccessResponse.
-func ToAppAccessResponse(a *AppAccess) *AppAccessResponse {
-	return &AppAccessResponse{
-		ID:          a.ID,
-		AppID:       a.AppID,
-		SubjectType: a.SubjectType,
-		SubjectID:   a.SubjectID,
-		CreatedAt:   a.CreatedAt,
-		CreatedBy:   a.CreatedBy,
 	}
 }
 

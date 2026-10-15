@@ -382,52 +382,6 @@ func (r *gormRepository) ListAppsByGroup(ctx context.Context, groupID int64) ([]
 	return rels, nil
 }
 
-// --- AppAccess ---
-
-// AddAccess inserts a new access authorization.
-func (r *gormRepository) AddAccess(ctx context.Context, access *AppAccess) error {
-	if err := r.db.WithContext(ctx).Create(access).Error; err != nil {
-		return fmt.Errorf("add access: %w", err)
-	}
-	return nil
-}
-
-// GetAccessByID finds an access authorization by primary key. The row carries
-// no tenant_id; callers derive tenancy via the parent app (AppID) and must run
-// the tenant-scoped app GetByID before acting on it.
-func (r *gormRepository) GetAccessByID(ctx context.Context, id int64) (*AppAccess, error) {
-	var access AppAccess
-	if err := r.db.WithContext(ctx).First(&access, id).Error; err != nil {
-		return nil, err
-	}
-	return &access, nil
-}
-
-// RemoveAccess deletes an access authorization by ID.
-func (r *gormRepository) RemoveAccess(ctx context.Context, id int64) error {
-	result := r.db.WithContext(ctx).Delete(&AppAccess{}, id)
-	if result.Error != nil {
-		return fmt.Errorf("remove access: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	return nil
-}
-
-// ListAccessByApp returns all access authorizations for an app.
-func (r *gormRepository) ListAccessByApp(ctx context.Context, appID int64) ([]*AppAccess, error) {
-	var accesses []*AppAccess
-	err := r.db.WithContext(ctx).
-		Where("app_id = ?", appID).
-		Order("created_at DESC").
-		Find(&accesses).Error
-	if err != nil {
-		return nil, fmt.Errorf("list access by app: %w", err)
-	}
-	return accesses, nil
-}
-
 // --- AppCert ---
 
 // CreateCert inserts a new app certificate record.
