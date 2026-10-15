@@ -48,6 +48,9 @@ func (f *fakeAppResolver) ListCerts(_ context.Context, _ int64) ([]*resolver.Cer
 func (f *fakeAppResolver) ListAllActiveSigningCerts(_ context.Context) ([]*resolver.CertConfig, error) {
 	return nil, nil
 }
+func (f *fakeAppResolver) ListBrowserOrigins(_ context.Context) ([]string, error) {
+	return nil, nil
+}
 func (f *fakeAppResolver) MintSigningCert(_ context.Context, _ int64) (*resolver.CertConfig, error) {
 	return nil, nil
 }

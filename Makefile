@@ -38,6 +38,8 @@ GOVULNCHECK_VERSION := v1.7.0
 # is v1-format config, and a v2 binary refuses to read it ("unsupported version
 # of the configuration"). Whatever is on PATH is therefore NOT trusted — a
 # developer with v2 installed had a permanently broken `make verify-lint`.
+# Read from go.mod so the pin never drifts from the module's own declaration.
+GO_TOOLCHAIN := go$(shell awk '/^go /{print $$2; exit}' go.mod)
 GOLANGCI_VERSION := v1.64.8
 
 # Development — Go backend (air hot reload)
@@ -314,9 +316,16 @@ verify-gormtags:
 # the config is v1-format and a v2 binary hard-errors on it, so "install
 # golangci-lint" is not a reproducible instruction. Slow only on the first run;
 # the build is cached afterwards. Matches the CI action's version + goinstall.
+# GOTOOLCHAIN pins the compiler golangci-lint itself is built with to the one
+# go.mod declares. Without it the linter picks up whatever Go the machine has;
+# a newer one makes its bundled type-checker disagree with the module's own
+# language version and every import resolves to "undefined: <pkg>". The run
+# then fails with hundreds of errors in files nobody touched, which reads as a
+# broken tree rather than a toolchain mismatch — and the obvious reaction,
+# skipping the gate, is the wrong one.
 verify-lint:
-	@echo "==> verify-lint (golangci-lint $(GOLANGCI_VERSION))"
-	go run github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_VERSION) run ./...
+	@echo "==> verify-lint (golangci-lint $(GOLANGCI_VERSION), toolchain $(GO_TOOLCHAIN))"
+	GOTOOLCHAIN=$(GO_TOOLCHAIN) go run github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_VERSION) run ./...
 
 # govulncheck — reachable known vulnerabilities in the stdlib and the module
 # graph. NOT part of `verify` and NOT a push gate: it goes red when the

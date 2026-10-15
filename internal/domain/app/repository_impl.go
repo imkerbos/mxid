@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -147,6 +148,39 @@ func (r *gormRepository) ListDistinctEnvs(ctx context.Context, tenantID int64) (
 		return nil, fmt.Errorf("list distinct envs: %w", err)
 	}
 	return envs, nil
+}
+
+// ListRedirectURIs collects the redirect URIs of every enabled OIDC app.
+//
+// Reads the redirect_uris COLUMN — the allow-list the protocol engine actually
+// enforces. A redirect_uris key inside protocol_config is dead weight and must
+// not be consulted here either (see oidcop's redirect_source_test.go).
+//
+// Disabled apps are excluded: ClientStore refuses them at the client lookup, so
+// an origin that could not complete an exchange has no reason to be told it may
+// try. Same tenant/shared visibility as List.
+func (r *gormRepository) ListRedirectURIs(ctx context.Context, tenantID int64) ([]string, error) {
+	var raw []json.RawMessage
+	if err := r.db.WithContext(ctx).Model(&App{}).
+		Where("(tenant_id = ? OR scope = ?) AND protocol = ? AND status = ?",
+			tenantID, ScopeShared, ProtocolOIDC, StatusEnabled).
+		Pluck("redirect_uris", &raw).Error; err != nil {
+		return nil, fmt.Errorf("list redirect uris: %w", err)
+	}
+	out := make([]string, 0, len(raw))
+	for _, r := range raw {
+		if len(r) == 0 {
+			continue
+		}
+		var uris []string
+		if err := json.Unmarshal(r, &uris); err != nil {
+			// One app with a malformed column must not deny CORS to every
+			// other relying party.
+			continue
+		}
+		out = append(out, uris...)
+	}
+	return out, nil
 }
 
 // UpdateStatus updates only the status field of an app.

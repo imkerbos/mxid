@@ -115,6 +115,18 @@ type AppResolver interface {
 	// apps created before auto-mint existed, and by /admin "rotate cert"
 	// surfaces. Returns the new cert config.
 	MintSigningCert(ctx context.Context, appID int64) (*CertConfig, error)
+	// ListBrowserOrigins returns the web origins (scheme://host[:port]) that
+	// registered, enabled applications are allowed to call the protocol
+	// endpoints from, derived from their registered redirect URIs.
+	//
+	// This is the CORS allow-list for the OIDC endpoints a browser talks to
+	// directly — a public client exchanges its code at /token from page
+	// JavaScript. Deriving it from the redirect URIs is what keeps MXID from
+	// needing a hand-maintained list of every relying party's domain: an
+	// origin is already trusted enough to receive an authorization code, so it
+	// is trusted enough to present that code back. Keycloak ("+" web origins),
+	// Auth0 and Okta all take the registered URLs as the source in the same way.
+	ListBrowserOrigins(ctx context.Context) ([]string, error)
 }
 
 // IdentityResolver resolves user identity for protocol claims.

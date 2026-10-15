@@ -121,3 +121,124 @@ func TestRevokeAllForClient_EmptyClientIDIsANoop(t *testing.T) {
 		t.Error("an empty client_id revoked something")
 	}
 }
+
+// The reverse index is written only when a token is ISSUED, so every token that
+// existed before the index did is absent from it. Revoking on the index alone
+// reported zero users and returned success while those tokens stayed live —
+// and the operator reading that zero could not tell it apart from "nothing to
+// revoke". These tests pin the scan that closes it.
+
+// A token with ONLY the forward key — exactly the shape of one issued before
+// the reverse index existed — must still be revoked.
+func TestRevokeAllForClient_RevokesTokensMissingFromTheIndex(t *testing.T) {
+	s, rdb := revokeStore(t)
+	ctx := context.Background()
+
+	// Hand-built: forward per-(user, client) set and the token key, no
+	// kClientUsers entry. indexAdd is deliberately NOT used.
+	if err := rdb.SAdd(ctx, kUserTok("100", "client_old"), kRefresh("rt-old")).Err(); err != nil {
+		t.Fatal(err)
+	}
+	if err := rdb.Set(ctx, kRefresh("rt-old"), "{}", 0).Err(); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := rdb.Exists(ctx, kClientUsers("client_old")).Result(); n != 0 {
+		t.Fatal("precondition: the reverse index must be absent for this test to mean anything")
+	}
+
+	n, err := s.RevokeAllForClient(ctx, "client_old")
+	if err != nil {
+		t.Fatalf("RevokeAllForClient: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("revoked %d users, want 1: a token predating the reverse index was not found", n)
+	}
+	if ok, _ := rdb.Exists(ctx, kRefresh("rt-old")).Result(); ok != 0 {
+		t.Error("the token survived: the scan did not reach it")
+	}
+}
+
+// The MATCH pattern alone is not a safe parse. "oidc:utk:*:demo" also matches
+// "oidc:utk:7:other:demo", whose client is "other:demo" — revoking on that would
+// drop a DIFFERENT client's tokens.
+func TestRevokeAllForClient_ScanMatchesTheClientExactly(t *testing.T) {
+	s, rdb := revokeStore(t)
+	ctx := context.Background()
+
+	// Target: user 100 holds a token for "demo".
+	if err := rdb.SAdd(ctx, kUserTok("100", "demo"), kRefresh("rt-target")).Err(); err != nil {
+		t.Fatal(err)
+	}
+	// Decoy: a client id that merely ENDS with ":demo".
+	if err := rdb.SAdd(ctx, kUserTok("200", "other:demo"), kRefresh("rt-decoy")).Err(); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{kRefresh("rt-target"), kRefresh("rt-decoy")} {
+		if err := rdb.Set(ctx, k, "{}", 0).Err(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	n, err := s.RevokeAllForClient(ctx, "demo")
+	if err != nil {
+		t.Fatalf("RevokeAllForClient: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("revoked %d users, want 1", n)
+	}
+	if ok, _ := rdb.Exists(ctx, kRefresh("rt-target")).Result(); ok != 0 {
+		t.Error("the target token survived")
+	}
+	if ok, _ := rdb.Exists(ctx, kRefresh("rt-decoy")).Result(); ok != 1 {
+		t.Error("a different client's token was revoked: the key parse trusted MATCH instead of the exact suffix")
+	}
+}
+
+// Index and scan must not double-count the same user.
+func TestRevokeAllForClient_IndexAndScanAreUnioned(t *testing.T) {
+	s, rdb := revokeStore(t)
+	ctx := context.Background()
+
+	// user 100 is in BOTH (normal, post-index issuance); user 200 only in the
+	// forward keys (pre-index).
+	s.indexAdd(ctx, "100", "client_abc", kRefresh("rt-1"))
+	if err := rdb.SAdd(ctx, kUserTok("200", "client_abc"), kRefresh("rt-2")).Err(); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{kRefresh("rt-1"), kRefresh("rt-2")} {
+		if err := rdb.Set(ctx, k, "{}", 0).Err(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	n, err := s.RevokeAllForClient(ctx, "client_abc")
+	if err != nil {
+		t.Fatalf("RevokeAllForClient: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("revoked %d users, want 2 (one counted twice, or one missed)", n)
+	}
+	for _, k := range []string{kRefresh("rt-1"), kRefresh("rt-2")} {
+		if ok, _ := rdb.Exists(ctx, k).Result(); ok != 0 {
+			t.Errorf("token %s survived", k)
+		}
+	}
+}
+
+// With neither index nor forward keys, zero now means zero.
+func TestRevokeAllForClient_ZeroMeansNoLiveTokens(t *testing.T) {
+	s, rdb := revokeStore(t)
+	ctx := context.Background()
+	// Another client's token exists, to prove the scan is scoped.
+	if err := rdb.SAdd(ctx, kUserTok("100", "client_other"), kRefresh("rt-x")).Err(); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := s.RevokeAllForClient(ctx, "client_quiet")
+	if err != nil {
+		t.Fatalf("RevokeAllForClient: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("revoked %d, want 0", n)
+	}
+}

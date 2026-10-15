@@ -27,6 +27,10 @@ type appListAllActiveSigningCerts func(ctx context.Context) ([]*CertConfig, erro
 // appMintSigningCert mints a fresh signing keypair for an app and persists it.
 type appMintSigningCert func(ctx context.Context, appID int64) (*CertConfig, error)
 
+// appListBrowserOrigins lists the web origins derived from every enabled app's
+// registered redirect URIs.
+type appListBrowserOrigins func(ctx context.Context) ([]string, error)
+
 // appResolverImpl implements AppResolver using injected functions.
 type appResolverImpl struct {
 	getByCode            appGetByCode
@@ -36,6 +40,7 @@ type appResolverImpl struct {
 	listCerts            appListCerts
 	listAllActiveSigning appListAllActiveSigningCerts
 	mintSigningCert      appMintSigningCert
+	listBrowserOrigins   appListBrowserOrigins
 }
 
 // NewAppResolver creates an AppResolver from adapter functions.
@@ -47,6 +52,7 @@ func NewAppResolver(
 	listCerts appListCerts,
 	listAllActiveSigning appListAllActiveSigningCerts,
 	mintSigningCert appMintSigningCert,
+	listBrowserOrigins appListBrowserOrigins,
 ) AppResolver {
 	return &appResolverImpl{
 		getByCode:            getByCode,
@@ -56,7 +62,19 @@ func NewAppResolver(
 		listCerts:            listCerts,
 		listAllActiveSigning: listAllActiveSigning,
 		mintSigningCert:      mintSigningCert,
+		listBrowserOrigins:   listBrowserOrigins,
 	}
+}
+
+func (r *appResolverImpl) ListBrowserOrigins(ctx context.Context) ([]string, error) {
+	if r.listBrowserOrigins == nil {
+		return nil, nil
+	}
+	origins, err := r.listBrowserOrigins(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list browser origins: %w", err)
+	}
+	return origins, nil
 }
 
 func (r *appResolverImpl) GetAppByID(ctx context.Context, appID int64) (*AppConfig, error) {

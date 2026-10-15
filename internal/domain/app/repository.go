@@ -30,6 +30,11 @@ type Repository interface {
 	// by the tenant's apps (plus shared apps), so the console can offer
 	// previously-typed custom envs in the dropdown instead of forcing re-entry.
 	ListDistinctEnvs(ctx context.Context, tenantID int64) ([]string, error)
+	// ListRedirectURIs returns the registered redirect URIs of every ENABLED
+	// OIDC application, flattened. The protocol layer turns them into the CORS
+	// allow-list for the endpoints a browser calls directly, so that adding a
+	// relying party needs no change to MXID's own configuration.
+	ListRedirectURIs(ctx context.Context, tenantID int64) ([]string, error)
 	UpdateStatus(ctx context.Context, id int64, status int) error
 	UpdateProtocolConfig(ctx context.Context, id int64, config []byte) error
 

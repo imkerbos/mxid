@@ -158,6 +158,7 @@ func setupSAMLLogoutHarness(t *testing.T) (*Handler, *SessionIndexStore, *record
 		},
 		func(ctx context.Context) ([]*resolver.CertConfig, error) { return []*resolver.CertConfig{cert}, nil },
 		func(ctx context.Context, id int64) (*resolver.CertConfig, error) { return cert, nil },
+		func(context.Context) ([]string, error) { return nil, nil },
 	)
 
 	idxStore := NewSessionIndexStore(miniredisClient(t))

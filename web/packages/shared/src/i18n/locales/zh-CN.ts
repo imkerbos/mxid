@@ -689,12 +689,12 @@ export default {
         scopes: { label: 'Scopes（授权范围）' },
         grant_types: { label: 'Grant Types（授权类型）' },
         response_types: { label: 'Response Types（响应类型）' },
-        token_endpoint_auth_mode: { label: 'Token 端点认证方式' },
+        token_endpoint_auth_method: { label: 'Token 端点认证方式' },
         pkce_required: {
           label: '强制 PKCE',
           hint: '拒绝不带 code_challenge 的授权请求，并拒绝 plain 方式。公开客户端（SPA / 原生）本就强制 PKCE；打开这个可以把保密客户端也约束到同一标准。',
         },
-        id_token_ttl: { label: 'ID Token 有效期（秒）' },
+        id_token_lifetime: { label: 'ID Token 有效期（秒）' },
         rate_limit_per_min: { label: '限流（次/分钟）' },
         backchannel_logout_uri: { label: '后台通道登出地址' },
         claim_mappers: { label: 'Claim 映射（JSON）' },
@@ -1005,6 +1005,7 @@ export default {
         confirmEmergencyDesc: '将重置 client_secret 并吊销已签发的全部 token。应用方必须用新密钥重新配置才能恢复登录；已签发的 access token 最长 1 小时内仍然有效。',
         emergencyDone: '已重置 client_secret，并吊销 {{count}} 个用户的 token',
         emergencyDoneNone: '已重置 client_secret。该应用当时没有未过期的 token 需要吊销。',
+        emergencyNoSecret: '公开客户端没有 client_secret,只执行了 token 吊销。',
         emergencyPartial: '已重置 client_secret，但 token 未吊销（服务端无法访问 token 存储）',
         noneForProtocol: '该协议类型无需对外凭证',
         saml: {

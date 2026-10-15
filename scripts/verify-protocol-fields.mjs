@@ -15,7 +15,7 @@
 // Not covered: form-fill, whose config struct lives in the private EE repo and
 // is absent from a CE checkout.
 
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -109,6 +109,47 @@ for (const [protocol, keys] of Object.entries(fields)) {
     }
   }
 }
+
+// Second edge: the onboarding templates write protocol_config too, and their
+// keys have to reach the engine just as the console form's do. Checking only
+// the form left this one open — the form and the engine agreed on
+// token_endpoint_auth_mode while the templates, the create path and the OIDC
+// registration metadata all said token_endpoint_auth_method. The guard was
+// green the whole time, and every public client created from a template was
+// read as confidential and refused with invalid_client.
+//
+// Keys that are deliberately informational (consumed by the console or the docs
+// rather than the engine) go in TEMPLATE_NON_ENGINE with the reason.
+const TEMPLATE_DIR = 'internal/domain/app/templates'
+const TEMPLATE_NON_ENGINE = {
+  access_token_lifetime: 'documented for the RP; the engine takes its own default',
+  refresh_token_lifetime: 'documented for the RP; the engine takes its own default',
+  id_token_signing_alg: 'advertised in discovery, not per-app configurable',
+  subject_type: 'stored on the app row, not in protocol_config',
+}
+
+function templateProblems() {
+  const dir = join(root, TEMPLATE_DIR)
+  if (!existsSync(dir)) return []
+  const allowed = backendKeys(BACKEND_SOURCES.oidc)
+  const found = []
+  for (const name of readdirSync(dir)) {
+    if (!name.endsWith('.json')) continue
+    const tpl = JSON.parse(readFileSync(join(dir, name), 'utf8'))
+    if (tpl.protocol !== 'oidc') continue
+    for (const key of Object.keys(tpl.defaults ?? {})) {
+      if (allowed.has(key) || TEMPLATE_NON_ENGINE[key]) continue
+      found.push(
+        `template ${name}: defaults key "${key}" matches no json tag in ` +
+          `${BACKEND_SOURCES.oidc.join(', ')} — an app onboarded from this ` +
+          `template carries a setting the engine never reads`
+      )
+    }
+  }
+  return found
+}
+
+problems.push(...templateProblems())
 
 if (problems.length) {
   console.error('✗ verify-protocol-fields: console offers settings the backend ignores\n')

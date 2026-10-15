@@ -5,6 +5,72 @@ All notable changes to MXID are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+- CORS on the OIDC endpoints is now decided by the registered applications
+  instead of being open to every origin. The upstream library ships
+  `AllowOriginFunc` returning true for ALL origins together with
+  `AllowCredentials` — credentialed cross-origin access to the protocol
+  endpoints from any site on the internet — and that default was in effect. It
+  is replaced with an allow-list derived from the registered redirect URIs,
+  which also means onboarding a relying party needs no change to MXID's own
+  configuration: an origin already trusted to receive an authorization code is
+  trusted to present it back. `Access-Control-Allow-Credentials` is never set
+  here; these endpoints authenticate with a code, a client secret or a bearer
+  token, never the session cookie, so withholding it means a mistake in the
+  origin comparison still cannot hand a session to a third party.
+
+### Fixed
+- Public clients could not exchange their authorization code at all. The engine
+  read `token_endpoint_auth_mode` and `id_token_ttl` from `protocol_config`,
+  while the console, the onboarding templates and the OIDC registration
+  metadata all use `token_endpoint_auth_method` and `id_token_lifetime`. Close
+  enough to pass review, different enough that the value never arrived: every
+  SPA and native client — which the console creates with `"none"` — fell
+  through to the `client_secret_post` default and was rejected with
+  `invalid_client`, a correctly configured app that could not work and no error
+  naming the cause. The engine now reads the registration names and keeps
+  reading the old ones, so existing apps lose nothing.
+  `verify-protocol-fields` gained the edge it was missing: it compared the
+  console form against the engine (both said `mode`) but never the onboarding
+  templates, which is where the mismatch lived.
+- The OIDC CORS allow-list was empty in practice. It is built from the
+  registered redirect URIs, and that query runs under a preflight — a
+  cross-origin request with no session, therefore no tenant in the context.
+  `tenantscope` is fail-closed for tenant-scoped models, so the query errored
+  and every registered origin was refused. It now runs with a system scope, as
+  the other IdP-level reads do, and a failed lookup is logged rather than
+  silently leaving the list empty: the symptom was a generic browser CORS block
+  with nothing on the server pointing at the cause.
+- A public client could not complete its code exchange from the browser. The
+  global CORS middleware aborted every `OPTIONS` before the protocol layer saw
+  it, so the token endpoint's preflight came back `204` with no
+  `Access-Control-*` headers and the browser never sent the POST. `GET` requests
+  reached the protocol layer and looked correct, which made the failure look
+  specific to the token endpoint. The middleware now leaves `/protocol/` to the
+  subtree that answers for it.
+- Emergency revoke missed every token issued before it existed. It drove off a
+  reverse index that `indexAdd` writes only when a token is ISSUED, so tokens
+  minted by an earlier version had no entry: the revoke reported zero users and
+  returned success while those tokens stayed live, and the operator reading that
+  zero could not tell it apart from "nothing to revoke" — during exactly the
+  incident the action exists for. It now takes the union of that index and a
+  cursor scan of the forward `oidc:utk:*:<client_id>` keys, so a zero means
+  zero. The scan is `SCAN`, never `KEYS` (the keyspace is shared with sessions
+  and tickets), bounded in cursors, confined to this operator-triggered path,
+  and every key is re-checked against the exact `:<client_id>` suffix before its
+  user half is used — `MATCH` alone also matches a client whose id merely ends
+  with the same text, and acting on that would revoke a different client's
+  tokens.
+- Emergency revoke was unusable for a public client. It rotated the client
+  secret first and only then revoked, but a SPA or native client has no secret
+  to rotate, so the request failed with `invalid client_type for protocol` and
+  nothing was revoked — for exactly the clients whose tokens are most exposed,
+  since they live in a browser or on a device. Rotation is now skipped for
+  them and the revoke still runs; the response carries `secret_rotated` so an
+  absent secret cannot read as a failure to an operator working an incident.
+
 ## [1.10.0] — 2026-10-08
 
 ### Security

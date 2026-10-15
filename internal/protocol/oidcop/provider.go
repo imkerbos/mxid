@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rs/cors"
 	"github.com/zitadel/oidc/v3/pkg/op"
 	"golang.org/x/text/language"
 )
@@ -54,6 +55,15 @@ func NewProvider(issuer string, storage op.Storage, cryptoKey [32]byte, allowIns
 		op.WithCustomKeysEndpoint(op.NewEndpoint("jwks")),
 		op.WithCustomEndSessionEndpoint(op.NewEndpoint("end-session")),
 		op.WithCustomIntrospectionEndpoint(op.NewEndpoint("introspect")),
+		// Disable the library's own CORS. Its default is AllowOriginFunc
+		// returning true for EVERY origin together with AllowCredentials — any
+		// site on the internet may make credentialed cross-origin calls to the
+		// protocol endpoints. CORS for this subtree is decided by oidcop.CORS
+		// instead, which reflects only origins derived from registered redirect
+		// URIs and never sets Allow-Credentials. An empty AllowedOrigins with
+		// no AllowOriginFunc matches nothing, so rs/cors adds no headers and
+		// leaves the response to ours.
+		op.WithCORSOptions(&cors.Options{}),
 	}
 	if allowInsecure {
 		// We terminate TLS at nginx; the internal issuer is http. Allow it.

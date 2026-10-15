@@ -687,12 +687,12 @@ export default {
         scopes: { label: 'Scopes' },
         grant_types: { label: 'Grant Types' },
         response_types: { label: 'Response Types' },
-        token_endpoint_auth_mode: { label: 'Token Endpoint Auth Method' },
+        token_endpoint_auth_method: { label: 'Token Endpoint Auth Method' },
         pkce_required: {
           label: 'Require PKCE',
           hint: 'Rejects an authorization request with no code_challenge, and refuses the "plain" method. Public clients (SPA / native) already require PKCE; turn this on to hold a confidential client to the same bar.',
         },
-        id_token_ttl: { label: 'ID Token Lifetime (sec)' },
+        id_token_lifetime: { label: 'ID Token Lifetime (sec)' },
         rate_limit_per_min: { label: 'Rate Limit (req/min)' },
         backchannel_logout_uri: { label: 'Back-Channel Logout URI' },
         claim_mappers: { label: 'Claim Mappers (JSON)' },
@@ -1003,6 +1003,7 @@ export default {
         confirmEmergencyDesc: 'Rotates the client_secret and revokes every token already issued. The application must be reconfigured with the new secret before logins work again; access tokens already issued stay valid for up to one hour.',
         emergencyDone: 'client_secret rotated; tokens dropped for {{count}} user(s)',
         emergencyDoneNone: 'client_secret rotated. The app held no live tokens to drop.',
+        emergencyNoSecret: 'A public client has no client_secret; only the tokens were revoked.',
         emergencyPartial: 'client_secret rotated, but tokens were NOT revoked (the server could not reach the token store)',
         noneForProtocol: 'No external credentials for this protocol.',
         saml: {

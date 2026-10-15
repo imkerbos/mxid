@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	jose "github.com/go-jose/go-jose/v4"
@@ -666,6 +667,57 @@ func (s *Storage) checkReuse(ctx context.Context, token string) bool {
 	return true
 }
 
+// scanClientUsers finds the users holding tokens for a client by walking the
+// forward index keys, oidc:utk:<user>:<client>.
+//
+// SCAN, not KEYS: this runs against the shared production keyspace (sessions,
+// tickets, auth requests all live there), and KEYS blocks the server for the
+// length of that walk. SCAN is cursor-based and yields. It is still O(keyspace),
+// which is why it is confined to this operator-triggered action and never the
+// request path, and why the cursor loop is bounded — a revoke that never
+// returns is its own kind of failure during an incident.
+//
+// The MATCH pattern cannot be trusted on its own. "oidc:utk:*:demo" also
+// matches "oidc:utk:7:other:demo", and a client id is attacker-influenced only
+// in the sense that an operator typed it — but a wrong parse here revokes
+// SOMEONE ELSE'S tokens. So every key is re-checked against the exact
+// ":"+clientID suffix before its user half is taken.
+func (s *Storage) scanClientUsers(ctx context.Context, clientID string) ([]string, error) {
+	const (
+		scanBatch  = 500
+		maxCursors = 10000
+		keyPrefix  = "oidc:utk:"
+	)
+	suffix := ":" + clientID
+	var (
+		out    []string
+		cursor uint64
+	)
+	for i := 0; i < maxCursors; i++ {
+		keys, next, err := s.rdb.Scan(ctx, cursor, keyPrefix+"*"+suffix, scanBatch).Result()
+		if err != nil {
+			return out, err
+		}
+		for _, k := range keys {
+			if !strings.HasPrefix(k, keyPrefix) || !strings.HasSuffix(k, suffix) {
+				continue
+			}
+			user := k[len(keyPrefix) : len(k)-len(suffix)]
+			// A user id never contains ":"; anything that does is a key whose
+			// client half merely ends with this client id.
+			if user == "" || strings.Contains(user, ":") {
+				continue
+			}
+			out = append(out, user)
+		}
+		cursor = next
+		if cursor == 0 {
+			return out, nil
+		}
+	}
+	return out, fmt.Errorf("scan for client %s did not finish within %d cursors", clientID, maxCursors)
+}
+
 // indexAdd tracks a token key under (user, client) so TerminateSession can
 // revoke all of a user's tokens for a client on logout.
 func (s *Storage) indexAdd(ctx context.Context, userID, clientID, tokenKey string) {
@@ -704,16 +756,46 @@ func (s *Storage) indexAdd(ctx context.Context, userID, clientID, tokenKey strin
 // Errors from individual users are collected rather than returned early: a
 // partial revoke must not stop at the first bad key, and the
 // caller needs to know it was partial.
+//
+// The user set is the UNION of the reverse index and a scan of the forward
+// per-(user, client) keys. The index alone is not enough: indexAdd writes it
+// only when a token is ISSUED, so every token minted before this index existed
+// is invisible to it. A revoke driven by the index alone would then report zero
+// users and succeed, while those tokens stayed live — and "no live tokens" and
+// "no record of them" would be indistinguishable to the operator reading that
+// zero, during exactly the incident the action exists for. With the scan, a
+// zero means zero.
 func (s *Storage) RevokeAllForClient(ctx context.Context, clientID string) (int, error) {
 	if clientID == "" {
 		return 0, nil
 	}
 	cidx := kClientUsers(clientID)
-	users, err := s.rdb.SMembers(ctx, cidx).Result()
+	indexed, err := s.rdb.SMembers(ctx, cidx).Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
 		return 0, err
 	}
+	seen := make(map[string]struct{}, len(indexed))
+	users := make([]string, 0, len(indexed))
+	for _, u := range indexed {
+		if _, dup := seen[u]; !dup {
+			seen[u] = struct{}{}
+			users = append(users, u)
+		}
+	}
+	scanned, scanErr := s.scanClientUsers(ctx, clientID)
+	for _, u := range scanned {
+		if _, dup := seen[u]; !dup {
+			seen[u] = struct{}{}
+			users = append(users, u)
+		}
+	}
+
 	var firstErr error
+	if scanErr != nil {
+		// Report it, but still revoke what the index knows: a partial
+		// containment beats refusing to act.
+		firstErr = scanErr
+	}
 	revoked := 0
 	for _, u := range users {
 		if err := s.TerminateSession(ctx, u, clientID); err != nil {

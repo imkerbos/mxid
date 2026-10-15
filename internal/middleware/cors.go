@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -9,6 +10,18 @@ import (
 // CORSConfig holds CORS configuration.
 type CORSConfig struct {
 	AllowOrigins []string
+	// SkipPrefixes are request-path prefixes this middleware must not answer
+	// for. It still runs — the chain is global — but it adds no headers and,
+	// crucially, does not short-circuit the preflight.
+	//
+	// The OIDC subtree needs this. Its CORS is decided per registered
+	// application rather than by this deployment-wide list, and the OPTIONS
+	// handling below used to abort every preflight before the protocol layer
+	// could answer: a public client's token exchange got a bare 204 with no
+	// Access-Control-* headers at all, so the browser refused to send the POST.
+	// The endpoints looked CORS-enabled on GET (the library answered those) and
+	// broken only on preflight, which is a confusing way to fail.
+	SkipPrefixes []string
 }
 
 // CORS returns a middleware that handles Cross-Origin Resource Sharing.
@@ -19,6 +32,13 @@ func CORS(cfg CORSConfig) gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
+		for _, p := range cfg.SkipPrefixes {
+			if strings.HasPrefix(c.Request.URL.Path, p) {
+				c.Next()
+				return
+			}
+		}
+
 		origin := c.GetHeader("Origin")
 
 		// Reflect the origin only if it is explicitly allow-listed. An empty

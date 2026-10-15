@@ -438,6 +438,10 @@ func (s *Service) RotateClientSecret(ctx context.Context, id int64) (*RotateSecr
 type EmergencyRevokeResult struct {
 	ClientSecretPlain string `json:"client_secret"`
 	TokensRevoked     int    `json:"tokens_revoked"`
+	// SecretRotated is false for a public client, which has no secret. Without
+	// it an empty client_secret is ambiguous between "nothing to rotate" and
+	// "rotation failed", and the operator is reading this mid-incident.
+	SecretRotated bool `json:"secret_rotated"`
 	// RevokeSupported is false when no revoker is wired, so the caller can say
 	// "secret rotated, tokens NOT revoked" instead of implying both ran.
 	RevokeSupported bool `json:"revoke_supported"`
@@ -475,15 +479,24 @@ func (s *Service) EmergencyRevoke(ctx context.Context, id int64) (*EmergencyRevo
 		clientID = *application.ClientID
 	}
 
-	rotated, err := s.RotateClientSecret(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-
+	// A public client (SPA, native) has no secret to rotate, and demanding one
+	// made the whole action unusable for exactly the clients whose tokens are
+	// most exposed — they live in a browser or on a device. Rotation is skipped
+	// for them and the revoke still runs; SecretRotated says which happened, so
+	// the caller never reads an absent secret as a failure.
 	res := &EmergencyRevokeResult{
-		ClientSecretPlain: rotated.ClientSecretPlain,
+		ClientSecretPlain: "",
 		TokensRevoked:     0,
 		RevokeSupported:   s.tokenRevoker != nil,
+		SecretRotated:     false,
+	}
+	if needsClientSecret(application.Protocol, application.ClientType) {
+		rotated, err := s.RotateClientSecret(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		res.ClientSecretPlain = rotated.ClientSecretPlain
+		res.SecretRotated = true
 	}
 	if s.tokenRevoker != nil && clientID != "" {
 		n, revokeErr := s.tokenRevoker(ctx, clientID)
