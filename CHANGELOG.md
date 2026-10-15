@@ -21,6 +21,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   token, never the session cookie, so withholding it means a mistake in the
   origin comparison still cannot hand a session to a third party.
 
+### Removed
+- The legacy `/apps/:id/access` console endpoints are gone. They wrote the
+  pre-policy `mxid_app_access` table, which no authorization decision has read
+  since access policies arrived: granting through them returned 200, recorded an
+  audit entry, and changed nothing. A no-op authorization API is worse than an
+  absent one — the operator believes access was granted and the user is still
+  refused, with nothing in the response saying so. Access policies
+  (`/apps/:id/access-policies`, `/app-groups/:id/access-policies`) are the only
+  path and have been what the console uses throughout. The table and its rows
+  are left in place; the decision to drop them is separate from removing the
+  code that writes them.
+
 ### Fixed
 - Public clients could not exchange their authorization code at all. The engine
   read `token_endpoint_auth_mode` and `id_token_ttl` from `protocol_config`,

@@ -25,43 +25,12 @@ var (
 	ErrAppCodeExists     = errors.New("app code already exists")
 	ErrAppGroupNotFound  = errors.New("app group not found")
 	ErrGroupCodeExists   = errors.New("app group code already exists")
-	ErrAccessNotFound    = errors.New("access authorization not found")
 	ErrCertNotFound      = errors.New("certificate not found")
 	ErrInvalidClientType = errors.New("invalid client_type for protocol")
 	// ErrFormFillNotLicensed is returned when a form-fill (SWA) app is created
 	// without the EE form_fill license feature.
 	ErrFormFillNotLicensed = errors.New("form-fill requires an EE license")
-	// ErrSubjectNotInTenant is returned when AddAccess is asked to authorize a
-	// subject (user/group/org/role) that does not exist in the caller's tenant
-	// — including a cross-tenant id, which the injected validator (tenant-scoped
-	// repo) reports as absent. The parent app is already guarded; this closes
-	// the residual referenced-entity IDOR on the subject.
-	ErrSubjectNotInTenant = errors.New("subject not found in tenant")
 )
-
-// Access subject type constants for AddAccess. Mirror the appaccess module's
-// subject vocabulary (user|group|org|role).
-const (
-	AccessSubjectUser  = "user"
-	AccessSubjectGroup = "group"
-	AccessSubjectOrg   = "org"
-	AccessSubjectRole  = "role"
-)
-
-// EntityValidator reports whether a referenced entity id exists within the
-// caller's tenant. Backed by the referent's tenant-scoped GetByID (the
-// tenantscope plugin appends tenant_id=?, so a cross-tenant id resolves to
-// false). Injected so the app service does not import user/group/org/role.
-type EntityValidator func(ctx context.Context, id int64) (bool, error)
-
-// AccessSubjectValidators bundles the per-type tenant-scoped existence checks
-// AddAccess needs to validate the request-body subject.
-type AccessSubjectValidators struct {
-	User  EntityValidator
-	Group EntityValidator
-	Org   EntityValidator
-	Role  EntityValidator
-}
 
 // Service provides business logic for application management.
 // ProtocolDefaults carries the admin-configured per-protocol defaults
@@ -102,13 +71,12 @@ func (d ProtocolDefaults) subjectFor(protocol string) string {
 type ProtocolDefaultsProvider func(ctx context.Context, tenantID int64) ProtocolDefaults
 
 type Service struct {
-	repo              Repository
-	idGen             *snowflake.Generator
-	eventBus          *event.Bus
-	keyService        *KeyService
-	protoDefaultsP    ProtocolDefaultsProvider
-	subjectValidators AccessSubjectValidators
-	tokenRevoker      TokenRevoker
+	repo           Repository
+	idGen          *snowflake.Generator
+	eventBus       *event.Bus
+	keyService     *KeyService
+	protoDefaultsP ProtocolDefaultsProvider
+	tokenRevoker   TokenRevoker
 }
 
 // TokenRevoker drops every token the IdP holds for one OIDC client, returning
@@ -116,42 +84,6 @@ type Service struct {
 // injected, because the token store is Redis state owned by the protocol layer
 // — a domain service must not reach into it directly.
 type TokenRevoker func(ctx context.Context, clientID string) (int, error)
-
-// SetAccessSubjectValidators injects the tenant-scoped subject existence checks
-// used by AddAccess. Wired in cmd/server/main.go once the domains exist.
-func (s *Service) SetAccessSubjectValidators(v AccessSubjectValidators) {
-	s.subjectValidators = v
-}
-
-// validateAccessSubject proves the request-body subject belongs to the caller's
-// tenant. A cross-tenant id resolves to false via the tenant-scoped validator
-// → ErrSubjectNotInTenant. Fails closed if no validator was wired.
-func (s *Service) validateAccessSubject(ctx context.Context, subjectType string, subjectID int64) error {
-	var v EntityValidator
-	switch subjectType {
-	case AccessSubjectUser:
-		v = s.subjectValidators.User
-	case AccessSubjectGroup:
-		v = s.subjectValidators.Group
-	case AccessSubjectOrg:
-		v = s.subjectValidators.Org
-	case AccessSubjectRole:
-		v = s.subjectValidators.Role
-	default:
-		return fmt.Errorf("app: unknown access subject_type %q", subjectType)
-	}
-	if v == nil {
-		return fmt.Errorf("app: validator for %q not configured", subjectType)
-	}
-	ok, err := v(ctx, subjectID)
-	if err != nil {
-		return fmt.Errorf("validate subject: %w", err)
-	}
-	if !ok {
-		return ErrSubjectNotInTenant
-	}
-	return nil
-}
 
 // SetProtocolDefaultsProvider injects the runtime defaults lookup. Called
 // by main.go after the setting service is built.
@@ -1140,90 +1072,6 @@ func (s *Service) RemoveAppFromGroup(ctx context.Context, groupID, appID int64) 
 		Payload: map[string]any{"id": groupID, "app_id": appID},
 	})
 	return nil
-}
-
-// --- AppAccess ---
-
-// AddAccess adds an access authorization for an app.
-func (s *Service) AddAccess(ctx context.Context, appID int64, req *AddAccessRequest) (*AppAccess, error) {
-	// Verify app exists
-	if _, err := s.repo.GetByID(ctx, appID); err != nil {
-		if dberr.IsNotFound(err) {
-			return nil, ErrAppNotFound
-		}
-		return nil, fmt.Errorf("get app: %w", err)
-	}
-
-	// Referenced-entity guard: the subject id comes from the request body.
-	// Reject a subject that is not in the caller's tenant so a foreign
-	// user/group/org/role cannot be authorized onto this app.
-	if err := s.validateAccessSubject(ctx, req.SubjectType, req.SubjectID); err != nil {
-		return nil, err
-	}
-
-	access := &AppAccess{
-		ID:          s.idGen.Generate(),
-		AppID:       appID,
-		SubjectType: req.SubjectType,
-		SubjectID:   req.SubjectID,
-		CreatedAt:   time.Now(),
-	}
-
-	if err := s.repo.AddAccess(ctx, access); err != nil {
-		return nil, fmt.Errorf("add access: %w", err)
-	}
-
-	s.eventBus.Publish(ctx, event.Event{
-		Type:    event.AppAccessGranted,
-		Payload: map[string]any{"app_id": appID, "subject_type": req.SubjectType, "subject_id": req.SubjectID},
-	})
-
-	return access, nil
-}
-
-// RemoveAccess removes an access authorization. The request FK is the child
-// row id, so we load the access row, then run the tenant-ownership guard on its
-// parent app before deleting — a cross-tenant access id resolves to a
-// cross-tenant app that requireApp 404s.
-func (s *Service) RemoveAccess(ctx context.Context, id int64) error {
-	access, err := s.repo.GetAccessByID(ctx, id)
-	if err != nil {
-		if dberr.IsNotFound(err) {
-			return ErrAccessNotFound
-		}
-		return fmt.Errorf("get access: %w", err)
-	}
-	if err := s.requireApp(ctx, access.AppID); err != nil {
-		// Parent app not in caller's tenant — treat the access row as not found.
-		if errors.Is(err, ErrAppNotFound) {
-			return ErrAccessNotFound
-		}
-		return err
-	}
-	if err := s.repo.RemoveAccess(ctx, id); err != nil {
-		if dberr.IsNotFound(err) {
-			return ErrAccessNotFound
-		}
-		return fmt.Errorf("remove access: %w", err)
-	}
-
-	s.eventBus.Publish(ctx, event.Event{
-		Type:    event.AppAccessRevoked,
-		Payload: map[string]any{"app_id": access.AppID, "subject_type": access.SubjectType, "subject_id": access.SubjectID},
-	})
-	return nil
-}
-
-// ListAccess returns all access authorizations for an app.
-func (s *Service) ListAccess(ctx context.Context, appID int64) ([]*AppAccess, error) {
-	if err := s.requireApp(ctx, appID); err != nil {
-		return nil, err
-	}
-	accesses, err := s.repo.ListAccessByApp(ctx, appID)
-	if err != nil {
-		return nil, fmt.Errorf("list access: %w", err)
-	}
-	return accesses, nil
 }
 
 // --- AppCert ---

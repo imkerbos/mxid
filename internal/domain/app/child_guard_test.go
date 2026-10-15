@@ -20,7 +20,7 @@ func newAppChildGuardDB(t *testing.T) *gorm.DB {
 	if err := db.Use(tenantscope.NewPlugin()); err != nil {
 		t.Fatalf("plugin: %v", err)
 	}
-	if err := db.AutoMigrate(&App{}, &AppGroup{}, &AppGroupRel{}, &AppAccess{}, &AppCert{}); err != nil {
+	if err := db.AutoMigrate(&App{}, &AppGroup{}, &AppGroupRel{}, &AppCert{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return db
@@ -47,9 +47,6 @@ func seedAppWithChildren(t *testing.T, db *gorm.DB) {
 		t.Fatalf("seed app groups: %v", err)
 	}
 	// tenant B's child rows (parent app=2 / group=12)
-	if err := db.WithContext(sys).Create(&AppAccess{ID: 30, AppID: 2, SubjectType: "user", SubjectID: 9, CreatedAt: now}).Error; err != nil {
-		t.Fatalf("seed access: %v", err)
-	}
 	if err := db.WithContext(sys).Create(&AppCert{ID: 40, AppID: 2, CertType: "signing", Algorithm: "RS256", PublicKey: "pk", PrivateKey: "sk", NotBefore: now, CreatedAt: now}).Error; err != nil {
 		t.Fatalf("seed cert: %v", err)
 	}
@@ -59,23 +56,14 @@ func seedAppWithChildren(t *testing.T, db *gorm.DB) {
 }
 
 // Tenant A (100) must not reach tenant B's tenant-less child rows
-// (mxid_app_access, mxid_app_cert, mxid_app_group_rel) by tampering the parent
-// :id (app/group) or the child :aid/:cid row id.
+// (mxid_app_cert, mxid_app_group_rel) by tampering the parent :id (app/group)
+// or the child :cid row id.
 func TestService_AppChildGuard_CrossTenantBlocked(t *testing.T) {
 	db := newAppChildGuardDB(t)
 	seedAppWithChildren(t, db)
 	svc := &Service{repo: NewGormRepository(db)}
 
 	ctxA := tenantscope.WithTenant(context.Background(), 100)
-
-	// mxid_app_access list by parent app id
-	if _, err := svc.ListAccess(ctxA, 2); !errors.Is(err, ErrAppNotFound) {
-		t.Fatalf("ListAccess cross-tenant: got %v want ErrAppNotFound", err)
-	}
-	// mxid_app_access delete by child row id (:aid) — parent derived from the row
-	if err := svc.RemoveAccess(ctxA, 30); !errors.Is(err, ErrAccessNotFound) {
-		t.Fatalf("RemoveAccess cross-tenant: got %v want ErrAccessNotFound", err)
-	}
 
 	// mxid_app_cert list by parent app id
 	if _, err := svc.ListCerts(ctxA, 2); !errors.Is(err, ErrAppNotFound) {
@@ -102,7 +90,6 @@ func TestService_AppChildGuard_CrossTenantBlocked(t *testing.T) {
 		model interface{}
 		id    int64
 	}{
-		{"access", &AppAccess{}, 30},
 		{"cert", &AppCert{}, 40},
 		{"rel", &AppGroupRel{}, 50},
 	} {
@@ -125,12 +112,6 @@ func TestService_AppChildGuard_SameTenantAllowed(t *testing.T) {
 
 	ctxB := tenantscope.WithTenant(context.Background(), 200)
 
-	if _, err := svc.ListAccess(ctxB, 2); err != nil {
-		t.Fatalf("ListAccess same-tenant: %v", err)
-	}
-	if err := svc.RemoveAccess(ctxB, 30); err != nil {
-		t.Fatalf("RemoveAccess same-tenant: %v", err)
-	}
 	if err := svc.DeleteCert(ctxB, 40); err != nil {
 		t.Fatalf("DeleteCert same-tenant: %v", err)
 	}

@@ -174,21 +174,6 @@ func (AppGroupRel) TableName() string {
 	return "mxid_app_group_rel"
 }
 
-// AppAccess represents the mxid_app_access table.
-type AppAccess struct {
-	ID          int64     `gorm:"column:id;primaryKey" json:"id"`
-	AppID       int64     `gorm:"column:app_id;not null" json:"app_id"`
-	SubjectType string    `gorm:"column:subject_type;not null;size:16" json:"subject_type"`
-	SubjectID   int64     `gorm:"column:subject_id;not null" json:"subject_id"`
-	CreatedAt   time.Time `gorm:"column:created_at;not null" json:"created_at"`
-	CreatedBy   *int64    `gorm:"column:created_by" json:"created_by"`
-}
-
-// TableName returns the table name for AppAccess.
-func (AppAccess) TableName() string {
-	return "mxid_app_access"
-}
-
 // AppCert represents the mxid_app_cert table.
 //
 // PrivateKey stores either plaintext PEM (legacy) or AES-256-GCM ciphertext

@@ -40,9 +40,6 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 		apps.GET("/:id/config", authz.Require("app.read", nil), h.GetProtocolConfig)
 		apps.PUT("/:id/config", authz.Require("app.update", nil), h.UpdateProtocolConfig)
 		apps.PATCH("/:id/config", authz.Require("app.update", nil), h.PatchProtocolConfig)
-		apps.GET("/:id/access", authz.Require("app.read", nil), h.ListAccess)
-		apps.POST("/:id/access", authz.Require("app.access.manage", nil), h.AddAccess)
-		apps.DELETE("/:id/access/:aid", authz.Require("app.access.manage", nil), h.RemoveAccess)
 		apps.GET("/:id/certs", authz.Require("app.read", nil), h.ListCerts)
 		apps.POST("/:id/certs", authz.Require("app.cert.manage", nil), h.CreateCert)
 		apps.DELETE("/:id/certs/:cid", authz.Require("app.cert.manage", nil), h.DeleteCert)
@@ -316,66 +313,6 @@ func (h *Handler) PatchProtocolConfig(c *gin.Context) {
 	}
 
 	if err := h.svc.PatchProtocolConfig(c.Request.Context(), id, req.ProtocolConfig); err != nil {
-		h.handleServiceError(c, err)
-		return
-	}
-
-	response.OK(c, nil)
-}
-
-// --- Access Handlers ---
-
-// ListAccess handles GET /apps/:id/access.
-func (h *Handler) ListAccess(c *gin.Context) {
-	id, ok := ginutil.ParseInt64Param(c, "id")
-	if !ok {
-		return
-	}
-
-	accesses, err := h.svc.ListAccess(c.Request.Context(), id)
-	if err != nil {
-		h.handleServiceError(c, err)
-		return
-	}
-
-	items := make([]*AppAccessResponse, len(accesses))
-	for i, a := range accesses {
-		items[i] = ToAppAccessResponse(a)
-	}
-
-	response.OK(c, items)
-}
-
-// AddAccess handles POST /apps/:id/access.
-func (h *Handler) AddAccess(c *gin.Context) {
-	id, ok := ginutil.ParseInt64Param(c, "id")
-	if !ok {
-		return
-	}
-
-	var req AddAccessRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
-		return
-	}
-
-	access, err := h.svc.AddAccess(c.Request.Context(), id, &req)
-	if err != nil {
-		h.handleServiceError(c, err)
-		return
-	}
-
-	response.Created(c, ToAppAccessResponse(access))
-}
-
-// RemoveAccess handles DELETE /apps/:id/access/:aid.
-func (h *Handler) RemoveAccess(c *gin.Context) {
-	aid, ok := ginutil.ParseInt64Param(c, "aid")
-	if !ok {
-		return
-	}
-
-	if err := h.svc.RemoveAccess(c.Request.Context(), aid); err != nil {
 		h.handleServiceError(c, err)
 		return
 	}

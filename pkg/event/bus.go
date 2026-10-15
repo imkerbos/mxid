@@ -98,8 +98,6 @@ const (
 	// app (resource_id = app_id) so the trail reads "who changed access/keys on
 	// which app". Distinct from the SSE cache-bust events (EventAppRoleChanged,
 	// EventAccessPolicyChanged) which carry no actor.
-	AppAccessGranted       = "app.access_granted"
-	AppAccessRevoked       = "app.access_revoked"
 	AppCertCreated         = "app.cert_created"
 	AppCertDeleted         = "app.cert_deleted"
 	AppRoleCreated         = "app.role_created"

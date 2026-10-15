@@ -1390,12 +1390,6 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	// The built-in super_admin role is a façade over mxid_user.is_super_admin:
 	// add/remove/list a member there grants/revokes/lists that flag.
 	permissionModule.Service.SetSuperAdminManager(superAdminManagerAdapter{userM: userModule})
-	appModule.Service.SetAccessSubjectValidators(app.AccessSubjectValidators{
-		User:  userValidator,
-		Group: groupValidator,
-		Org:   orgValidator,
-		Role:  roleValidator,
-	})
 	accessSvc.SetRefValidators(appaccess.RefValidators{
 		App:      appValidator,
 		AppGroup: appGroupValidator,

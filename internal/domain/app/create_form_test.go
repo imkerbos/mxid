@@ -5,8 +5,18 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/imkerbos/mxid/pkg/snowflake"
 	"github.com/imkerbos/mxid/pkg/tenantscope"
 )
+
+func testIDGen(t *testing.T) *snowflake.Generator {
+	t.Helper()
+	g, err := snowflake.New(1)
+	if err != nil {
+		t.Fatalf("snowflake: %v", err)
+	}
+	return g
+}
 
 // A form-fill (SWA) app is an EE capability. In CE (no license) creating one must
 // be rejected — the credential vault must not exist without the form_fill feature.

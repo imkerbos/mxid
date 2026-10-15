@@ -122,8 +122,6 @@ func (s *Service) SubscribeEvents() {
 	// carry app_id so resolve to resource_type "app"; role/binding/policy can
 	// hang off an app OR an app-group, so handleAppOwnedEvent picks the right
 	// resource_type from the payload.
-	s.eventBus.Subscribe(event.AppAccessGranted, s.handleResourceEvent(event.AppAccessGranted, "app"))
-	s.eventBus.Subscribe(event.AppAccessRevoked, s.handleResourceEvent(event.AppAccessRevoked, "app"))
 	s.eventBus.Subscribe(event.AppCertCreated, s.handleResourceEvent(event.AppCertCreated, "app"))
 	s.eventBus.Subscribe(event.AppCertDeleted, s.handleResourceEvent(event.AppCertDeleted, "app"))
 	s.eventBus.Subscribe(event.AppRoleCreated, s.handleAppOwnedEvent(event.AppRoleCreated))

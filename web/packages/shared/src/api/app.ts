@@ -1,5 +1,5 @@
 import { client } from './client'
-import type { ApiResponse, PaginatedData, App, AppGroup, AppAccess, AppCert, AppTemplate, AppTemplateListItem } from '../types'
+import type { ApiResponse, PaginatedData, App, AppGroup, AppCert, AppTemplate, AppTemplateListItem } from '../types'
 
 // Outbound provisioning config (L2 offboarding). token_set flags whether a
 // secret is stored without echoing it.
@@ -86,14 +86,6 @@ export const appApi = {
     client.get<ApiResponse<AppTemplateListItem[]>>('/app-templates').then(r => r.data.data),
   getTemplate: (key: string) =>
     client.get<ApiResponse<AppTemplate>>(`/app-templates/${key}`).then(r => r.data.data),
-
-  // Access policy bindings
-  listAccess: (id: string) =>
-    client.get<ApiResponse<AppAccess[]>>(`/apps/${id}/access`).then(r => r.data.data),
-  addAccess: (id: string, data: { subject_type: string; subject_id: string }) =>
-    client.post<ApiResponse<AppAccess>>(`/apps/${id}/access`, data).then(r => r.data.data),
-  removeAccess: (id: string, accessId: string) =>
-    client.delete<ApiResponse<null>>(`/apps/${id}/access/${accessId}`).then(r => r.data),
 
   // Certificates
   listCerts: (id: string) =>

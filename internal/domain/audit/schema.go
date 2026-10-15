@@ -140,8 +140,6 @@ var detailSchemas = map[string]detailSchema{
 	event.AppLaunched: {allow: []string{"app_id", "tenant_id", "user_id", "name", "session_id"}},
 
 	// Security-sensitive app sub-resource changes.
-	event.AppAccessGranted:       {allow: []string{"app_id", "tenant_id", "subject_type", "subject_id", "actor_id"}},
-	event.AppAccessRevoked:       {allow: []string{"app_id", "tenant_id", "subject_type", "subject_id", "actor_id"}},
 	event.AppCertCreated:         {allow: []string{"app_id", "tenant_id", "kid", "actor_id"}},
 	event.AppCertDeleted:         {allow: []string{"app_id", "tenant_id", "kid", "cert_id", "actor_id"}},
 	event.AppRoleCreated:         {allow: []string{"app_id", "app_group_id", "tenant_id", "role_id", "code", "name", "actor_id"}},
