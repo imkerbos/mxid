@@ -124,12 +124,16 @@ function buildProtocolConfigFields(t: (k: string) => string): Record<string, Con
       { key: 'response_types', label: p('oidc', 'response_types', 'label'), type: 'text', coerce: 'string_array_csv', placeholder: 'code' },
       // Every key below must exist in the engine's clientConfig / oidcProtocolConfig
       // struct tags — scripts/verify-protocol-fields.mjs fails the build otherwise.
-      // Five fields used to sit here that the engine never read
+      // Three fields used to sit here that the engine never read
       // (access_token_lifetime, refresh_token_lifetime, id_token_signing_alg,
-      // subject_type, and id_token_lifetime / token_endpoint_auth_method spelled
-      // differently from the engine's id_token_ttl / token_endpoint_auth_mode).
-      // Operators set them and nothing happened.
-      { key: 'token_endpoint_auth_mode', label: p('oidc', 'token_endpoint_auth_mode', 'label'), type: 'text', placeholder: 'client_secret_basic | client_secret_post | none' },
+      // subject_type). Operators set them and nothing happened.
+      //
+      // Two more looked like the same problem but were a spelling mismatch:
+      // this form wrote token_endpoint_auth_mode / id_token_ttl while the app
+      // creation path, the onboarding templates and discovery all use the OIDC
+      // registration names. The engine now reads the registration names, and so
+      // does this form — one spelling, the spec's.
+      { key: 'token_endpoint_auth_method', label: p('oidc', 'token_endpoint_auth_method', 'label'), type: 'text', placeholder: 'client_secret_basic | client_secret_post | none' },
       {
         key: 'pkce_required',
         label: p('oidc', 'pkce_required', 'label'),
@@ -141,7 +145,7 @@ function buildProtocolConfigFields(t: (k: string) => string): Record<string, Con
         ],
         hint: p('oidc', 'pkce_required', 'hint'),
       },
-      { key: 'id_token_ttl', label: p('oidc', 'id_token_ttl', 'label'), type: 'text', coerce: 'int', placeholder: '3600' },
+      { key: 'id_token_lifetime', label: p('oidc', 'id_token_lifetime', 'label'), type: 'text', coerce: 'int', placeholder: '3600' },
       { key: 'rate_limit_per_min', label: p('oidc', 'rate_limit_per_min', 'label'), type: 'text', coerce: 'int', placeholder: '0 = unlimited' },
       { key: 'backchannel_logout_uri', label: p('oidc', 'backchannel_logout_uri', 'label'), type: 'text', placeholder: 'https://app.example.com/backchannel-logout' },
       { key: 'claim_mappers', label: p('oidc', 'claim_mappers', 'label'), type: 'textarea', coerce: 'json', placeholder: '[{"claim":"dept","source":"user.detail.department"}]' },
@@ -946,15 +950,20 @@ export default function AppsPage() {
         : result.tokens_revoked === 0
           ? t('apps.detail.credentials.emergencyDoneNone')
           : t('apps.detail.credentials.emergencyDone', { count: result.tokens_revoked })
-      setRevealedSecret({
-        clientId: app.client_id || '',
-        clientSecret: result.client_secret,
-        revokeNote: note,
-        revokeOk: result.revoke_supported,
-      })
+      // A public client has no secret, so there is nothing to show and the
+      // "save this secret" dialog would be an empty box. The toast carries the
+      // outcome instead.
+      if (result.secret_rotated) {
+        setRevealedSecret({
+          clientId: app.client_id || '',
+          clientSecret: result.client_secret,
+          revokeNote: note,
+          revokeOk: result.revoke_supported,
+        })
+      }
       setEmergencyApp(null)
       if (result.revoke_supported) {
-        toast.success(note)
+        toast.success(note, result.secret_rotated ? undefined : t('apps.detail.credentials.emergencyNoSecret'))
       } else {
         toast.error(note)
       }

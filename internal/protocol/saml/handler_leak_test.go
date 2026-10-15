@@ -38,6 +38,7 @@ func TestMetadata_SigningCertLoadFailure_DoesNotLeakInternalError(t *testing.T) 
 		func(ctx context.Context, id int64) (*resolver.CertConfig, error) {
 			return nil, errors.New(sensitive)
 		},
+		func(context.Context) ([]string, error) { return nil, nil },
 	)
 
 	h := NewHandler("https://idp.example", "", appRes, nil, nil, nil, nil, zap.NewNop())
@@ -77,6 +78,7 @@ func TestSSORedirect_InvalidSAMLRequest_DoesNotLeakInternalError(t *testing.T) {
 		func(ctx context.Context, id int64) ([]*resolver.CertConfig, error) { return nil, nil },
 		func(ctx context.Context) ([]*resolver.CertConfig, error) { return nil, nil },
 		func(ctx context.Context, id int64) (*resolver.CertConfig, error) { return nil, nil },
+		func(context.Context) ([]string, error) { return nil, nil },
 	)
 	h := NewHandler("https://idp.example", "", appRes, nil, nil, nil, nil, zap.NewNop())
 	r := gin.New()

@@ -69,7 +69,14 @@ export const appApi = {
   // the UI must say so rather than imply a cleanup that did not run.
   emergencyRevoke: (id: string) =>
     client
-      .post<ApiResponse<{ client_secret: string; tokens_revoked: number; revoke_supported: boolean }>>(
+      .post<
+        ApiResponse<{
+          client_secret: string
+          tokens_revoked: number
+          revoke_supported: boolean
+          secret_rotated: boolean
+        }>
+      >(
         `/apps/${id}/emergency-revoke`,
       )
       .then(r => r.data.data),

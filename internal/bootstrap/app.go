@@ -175,7 +175,12 @@ func NewApp(configPath string) (*App, error) {
 		metrics.Middleware(),
 		middleware.Logger(logger),
 		middleware.SecurityHeaders(cfg.Server.Mode == "release"),
-		middleware.CORS(middleware.CORSConfig{AllowOrigins: origins}),
+		middleware.CORS(middleware.CORSConfig{
+			AllowOrigins: origins,
+			// /protocol/ answers for itself: its allow-list comes from the
+			// registered applications, not from this deployment's origins.
+			SkipPrefixes: []string{"/protocol/"},
+		}),
 		middleware.CSRF(middleware.CSRFConfig{
 			TrustedOrigins: origins,
 			SkipPaths: []string{

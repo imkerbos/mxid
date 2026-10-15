@@ -25,6 +25,9 @@ type stubAppResolver struct{ app *resolver.AppConfig }
 func (s stubAppResolver) GetApp(context.Context, string) (*resolver.AppConfig, error) {
 	return s.app, nil
 }
+func (s stubAppResolver) ListBrowserOrigins(context.Context) ([]string, error) {
+	return nil, nil
+}
 func (s stubAppResolver) GetAppByID(context.Context, int64) (*resolver.AppConfig, error) {
 	return s.app, nil
 }

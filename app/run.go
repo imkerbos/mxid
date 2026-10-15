@@ -1798,7 +1798,7 @@ func buildLimiter(a *bootstrap.App, cfg ratelimit.Config) *ratelimit.Limiter {
 // Cert adapters decrypt the at-rest private_key via the bootstrap master key
 // before handing it to the protocol layer. The protocol layer never sees
 // the ciphertext.
-func buildAppResolver(appModule *app.Module, _ int64, masterKey *crypto.MasterKey, logger *zap.Logger) resolver.AppResolver {
+func buildAppResolver(appModule *app.Module, tenantID int64, masterKey *crypto.MasterKey, logger *zap.Logger) resolver.AppResolver {
 	convertCert := func(c *app.AppCert) (*resolver.CertConfig, error) {
 		cfg := &resolver.CertConfig{
 			ID:         c.ID,
@@ -1913,6 +1913,9 @@ func buildAppResolver(appModule *app.Module, _ int64, masterKey *crypto.MasterKe
 			}
 			return result, nil
 		},
+		// ListBrowserOrigins — CORS allow-list for the OIDC endpoints a browser
+		// calls directly, derived from the registered redirect URIs so that
+		// onboarding a relying party needs no change to MXID's own config.
 		// MintSigningCert — lazy bootstrap for SAML/CAS apps created before
 		// auto-mint existed. Called from the SAML metadata handler when no
 		// signing cert is present, so /metadata never returns 500.
@@ -1922,6 +1925,15 @@ func buildAppResolver(appModule *app.Module, _ int64, masterKey *crypto.MasterKe
 				return nil, err
 			}
 			return convertCert(cert)
+		},
+		func(ctx context.Context) ([]string, error) {
+			// System scope: this is an IdP-level read, and its caller is a CORS
+			// preflight — a cross-origin request with no session, hence no
+			// tenant in the context. tenantscope is fail-closed for tenant
+			// models, so without this the query errors and the allow-list comes
+			// back empty: every registered origin is refused and the browser
+			// blocks a token exchange that should have worked.
+			return appModule.Repo.ListRedirectURIs(tenantscope.WithSystem(ctx), tenantID)
 		},
 	)
 }

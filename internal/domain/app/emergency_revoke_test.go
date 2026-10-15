@@ -29,7 +29,8 @@ import (
 
 type fakeRevokeRepo struct {
 	Repository
-	clientID string
+	clientID   string
+	clientType string
 	// updates appends a marker per Update, so ordering against the revoke call
 	// is observable.
 	trace *[]string
@@ -37,7 +38,11 @@ type fakeRevokeRepo struct {
 
 func (f *fakeRevokeRepo) GetByID(_ context.Context, id int64) (*App, error) {
 	cid := f.clientID
-	return &App{ID: id, Protocol: "oidc", ClientType: "web_app", ClientID: &cid}, nil
+	ct := f.clientType
+	if ct == "" {
+		ct = "web_app"
+	}
+	return &App{ID: id, Protocol: "oidc", ClientType: ct, ClientID: &cid}, nil
 }
 
 func (f *fakeRevokeRepo) Update(_ context.Context, _ *App) error {
@@ -169,5 +174,57 @@ func TestEmergencyRevoke_PublishesEventIncludingOnPartialFailure(t *testing.T) {
 				t.Errorf("tokens_revoked = %v, want %d", p["tokens_revoked"], tc.wantRevoked)
 			}
 		})
+	}
+}
+
+// A public client has no secret. Requiring one made the action unusable for
+// exactly the clients whose tokens are most exposed — an SPA keeps them in the
+// browser — and it failed at the rotation step, so the revoke never ran at all.
+func TestEmergencyRevoke_PublicClientRevokesWithoutRotating(t *testing.T) {
+	trace := &[]string{}
+	svc := NewService(&fakeRevokeRepo{clientID: "client_spa", clientType: "spa", trace: trace}, nil, event.NewBus(zap.NewNop()))
+	revoked := false
+	svc.SetTokenRevoker(func(_ context.Context, clientID string) (int, error) {
+		revoked = true
+		if clientID != "client_spa" {
+			t.Errorf("revoker got %q, want client_spa", clientID)
+		}
+		return 2, nil
+	})
+
+	res, err := svc.EmergencyRevoke(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("EmergencyRevoke on a public client: %v", err)
+	}
+	if !revoked {
+		t.Error("tokens were not revoked: the action stopped at the rotation step")
+	}
+	if res.TokensRevoked != 2 {
+		t.Errorf("TokensRevoked = %d, want 2", res.TokensRevoked)
+	}
+	if res.SecretRotated {
+		t.Error("SecretRotated = true for a public client, which has no secret")
+	}
+	if res.ClientSecretPlain != "" {
+		t.Error("a secret was returned for a public client")
+	}
+	if got := strings.Join(*trace, ","); got != "" {
+		t.Errorf("trace = %q, want no rotation for a public client", got)
+	}
+}
+
+// A confidential client still rotates, and says so.
+func TestEmergencyRevoke_ConfidentialClientReportsRotation(t *testing.T) {
+	svc, _, ctx := newRevokeService(t, func(context.Context, string) (int, error) { return 1, nil })
+
+	res, err := svc.EmergencyRevoke(ctx, 1)
+	if err != nil {
+		t.Fatalf("EmergencyRevoke: %v", err)
+	}
+	if !res.SecretRotated {
+		t.Error("SecretRotated = false for a confidential client")
+	}
+	if res.ClientSecretPlain == "" {
+		t.Error("no secret returned; the RP can never be reconfigured")
 	}
 }

@@ -47,6 +47,7 @@ func TestProcessSSO_DeniedByAccessPolicy(t *testing.T) {
 		func(context.Context, int64) ([]*resolver.CertConfig, error) { return nil, nil },
 		func(context.Context) ([]*resolver.CertConfig, error) { return nil, nil },
 		func(context.Context, int64) (*resolver.CertConfig, error) { return nil, nil },
+		func(context.Context) ([]string, error) { return nil, nil },
 	)
 	sess := stubSessRes{sess: &resolver.SSOSession{ID: "s", UserID: 5, TenantID: 1}}
 

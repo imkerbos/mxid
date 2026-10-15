@@ -111,6 +111,12 @@ func wireOIDCOP(
 	// self-contained request/response wrappers.
 	rateLimited := oidcop.WithTokenRateLimit(a.Redis, appResolver)(provider)
 
+	// CORS for the whole protocol subtree, ahead of every protocol route.
+	// Registered via the group so SAML and CAS inherit it too — they are
+	// browser-facing in the same way and were covered by the global middleware
+	// before it started skipping this prefix.
+	a.ProtocolGroup.Use(oidcop.CORS(appResolver, a.Logger))
+
 	// op endpoints under the issuer path; login bridge at the sibling path.
 	//
 	// The token observer runs at the gin layer (above Mount's StripPrefix), so

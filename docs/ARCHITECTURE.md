@@ -154,6 +154,23 @@ templates both target the column) and nothing reads it. The two can disagree, an
 the wrong one yields a confident but wrong answer to "what callbacks does this app accept?"
 — a question asked exactly when it matters most. Pinned by `redirect_source_test.go`.
 
+### CORS on the protocol endpoints
+
+`oidcop.CORS` owns the `/protocol/` subtree; the global middleware
+(`middleware.CORS`) skips that prefix via `SkipPrefixes`. Two separate questions
+were being answered by one deployment-wide origin list: which sites may call
+MXID's own cookie-authenticated SPAs, and which may complete an OIDC exchange.
+
+The protocol answer comes from the registered applications —
+`AppResolver.ListBrowserOrigins` derives it from their redirect URIs, cached for
+a minute — so adding a relying party needs no change to MXID's configuration. It
+never sets `Access-Control-Allow-Credentials`: these endpoints authenticate with
+a code, a client secret or a bearer token, never the session cookie.
+
+zitadel/oidc's own CORS is disabled (`op.WithCORSOptions(&cors.Options{})`). Its
+default is `AllowOriginFunc` returning true for every origin *with*
+`AllowCredentials`, which is credentialed cross-origin access from anywhere.
+
 ### Token-endpoint observability
 
 `WithTokenObserver` (gin middleware, above `Mount`'s `StripPrefix`) makes a refused token
@@ -588,6 +605,7 @@ so they are asserted by tests rather than documented and hoped for:
 | Every subscribed event has an explicit allow-list (the fallback schema makes an omission invisible — it keeps the row and drops the fields it does not name) | `internal/domain/audit/subscription_coverage_test.go` |
 | A token-endpoint rejection names its client and reason, and a SUCCESSFUL exchange puts no token anywhere observable | `internal/protocol/oidcop/tokenobs_test.go` |
 | The OIDC redirect_uri allow-list comes from the `redirect_uris` column, never from a `redirect_uris` key inside `protocol_config` | `internal/protocol/oidcop/redirect_source_test.go` |
+| The protocol endpoints' CORS reflects only registered origins and never sets `Allow-Credentials`; the global middleware does not answer their preflights | `internal/protocol/oidcop/cors_test.go`, `internal/middleware/cors_skip_test.go` |
 | Emergency credential containment rotates the secret BEFORE revoking tokens, and a failed revoke does not roll the rotation back | `internal/domain/app/emergency_revoke_test.go` |
 | No allow-listed audit field is silently removed by the sensitive-key filter | `internal/domain/audit/schema_honesty_test.go` |
 | A snowflake id survives the trip to the client with every digit intact | `internal/domain/audit/id_precision_test.go` |

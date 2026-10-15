@@ -19,12 +19,24 @@ import (
 // to oidcop (a copy of the fields we need) so this package does not depend on
 // the hand-rolled internal/protocol/oidc package that P7 retires.
 type clientConfig struct {
-	GrantTypes            []string      `json:"grant_types"`
-	ResponseTypes         []string      `json:"response_types"`
-	Scopes                []string      `json:"scopes"`
-	PKCERequired          bool          `json:"pkce_required"`
-	IDTokenTTL            int           `json:"id_token_ttl"`
-	TokenEndpointAuthMode string        `json:"token_endpoint_auth_mode"`
+	GrantTypes    []string `json:"grant_types"`
+	ResponseTypes []string `json:"response_types"`
+	Scopes        []string `json:"scopes"`
+	PKCERequired  bool     `json:"pkce_required"`
+	// The canonical spelling is the OIDC registration metadata name
+	// (token_endpoint_auth_method / id_token_lifetime), which is what the
+	// console writes, what the onboarding templates carry and what discovery
+	// advertises. The engine used to read token_endpoint_auth_mode and
+	// id_token_ttl instead: close enough to look right in review, different
+	// enough that the value never arrived. A public client configured with
+	// "none" silently fell through to the client_secret_post default and was
+	// rejected with invalid_client — a working configuration that could not
+	// work. legacy* keeps reading the old spellings so apps whose
+	// protocol_config still carries them keep their settings.
+	IDTokenTTL            int           `json:"id_token_lifetime"`
+	LegacyIDTokenTTL      int           `json:"id_token_ttl"`
+	TokenEndpointAuthMode string        `json:"token_endpoint_auth_method"`
+	LegacyAuthMode        string        `json:"token_endpoint_auth_mode"`
 	JWKS                  string        `json:"jwks"`
 	JWKSURI               string        `json:"jwks_uri"`
 	ClaimMappers          []claimMapper `json:"claim_mappers"`
@@ -64,14 +76,28 @@ const defaultIDTokenTTLSeconds = 3600
 
 func parseClientConfig(raw json.RawMessage) clientConfig {
 	cfg := clientConfig{
-		GrantTypes:            []string{"authorization_code", "refresh_token"},
-		ResponseTypes:         []string{"code"},
-		Scopes:                []string{"openid", "profile", "email"},
-		IDTokenTTL:            defaultIDTokenTTLSeconds,
-		TokenEndpointAuthMode: "client_secret_post",
+		GrantTypes:    []string{"authorization_code", "refresh_token"},
+		ResponseTypes: []string{"code"},
+		Scopes:        []string{"openid", "profile", "email"},
 	}
+	// Neither default is seeded before the decode: pre-seeding makes "the app
+	// explicitly chose client_secret_post" indistinguishable from "the app said
+	// nothing", and the legacy-key fallback below needs to tell them apart.
 	if len(raw) > 0 {
 		_ = json.Unmarshal(raw, &cfg)
+	}
+	// Canonical key wins; the legacy one only fills a gap it left.
+	if cfg.TokenEndpointAuthMode == "" {
+		cfg.TokenEndpointAuthMode = cfg.LegacyAuthMode
+	}
+	if cfg.TokenEndpointAuthMode == "" {
+		cfg.TokenEndpointAuthMode = "client_secret_post"
+	}
+	if cfg.IDTokenTTL <= 0 {
+		cfg.IDTokenTTL = cfg.LegacyIDTokenTTL
+	}
+	if cfg.IDTokenTTL <= 0 {
+		cfg.IDTokenTTL = defaultIDTokenTTLSeconds
 	}
 	return cfg
 }
