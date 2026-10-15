@@ -5,7 +5,7 @@ All notable changes to MXID are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.11.0] — 2026-10-15
 
 ### Security
 - CORS on the OIDC endpoints is now decided by the registered applications
@@ -1447,7 +1447,8 @@ Initial public preview. Two integrations verified end-to-end: **Grafana (OIDC)**
 - pnpm workspaces (`console` / `portal` / `shared`).
 - Tailwind v4 monorepo `@source` directive so shared package UI compiles into both SPAs.
 
-[Unreleased]: https://github.com/imkerbos/mxid/compare/v1.9.3...HEAD
+[Unreleased]: https://github.com/imkerbos/mxid/compare/v1.11.0...HEAD
+[1.11.0]: https://github.com/imkerbos/mxid/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/imkerbos/mxid/compare/v1.9.3...v1.10.0
 [1.9.3]: https://github.com/imkerbos/mxid/compare/v1.9.2...v1.9.3
 [1.9.2]: https://github.com/imkerbos/mxid/compare/v1.9.1...v1.9.2
