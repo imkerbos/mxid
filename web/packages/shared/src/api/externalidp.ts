@@ -75,6 +75,32 @@ export const externalIdpApi = {
       .post<ApiResponse<{ redirect: string }>>('/auth/external/mfa/verify', data)
       .then(r => r.data.data),
 
+  // Portal (public) — the identity-link pair. A federated sign-in whose
+  // external identity has no binding, but whose email matches an existing
+  // account, lands on the login page with ?ext_link=<token> instead of a new
+  // account being created.
+  //
+  // linkPreview says WHICH account, as masked hints: enough for its owner to
+  // recognise, not enough for anyone else to learn one. Deliberately not in
+  // the redirect URL — even masked, that lands in browser history and access
+  // logs.
+  linkPreview: (token: string) =>
+    portalPublicRoot
+      .get<ApiResponse<{ username: string; email: string; provider: string }>>(
+        '/auth/external/link/preview',
+        { params: { token } },
+      )
+      .then(r => r.data.data),
+
+  // verifyLink proves ownership of that account with its TOTP code and only
+  // then writes the binding. The code is the authorization — the email match
+  // merely produced the prompt — so a wrong code changes nothing and is
+  // retryable within the token's TTL.
+  verifyLink: (data: { token: string; code: string }) =>
+    portalPublicRoot
+      .post<ApiResponse<{ redirect: string }>>('/auth/external/link/verify', data)
+      .then(r => r.data.data),
+
   // Console (public) — same shape as the portal variants but the OAuth dance
   // lands a console session (admin-gated server-side). Used by the console
   // login page to offer "sign in with Lark" to admins.

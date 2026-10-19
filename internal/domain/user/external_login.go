@@ -48,6 +48,87 @@ type ExternalLoginInput struct {
 // ErrExternalUserNotLinked instead; see ResolveExternalLogin.
 var ErrExternalUserDeleted = errors.New("external identity belongs to a deleted account")
 
+// ErrExternalLinkAmbiguous means more than one live local account matches the
+// external identity's email, so there is no single account to offer. Two
+// accounts sharing an address is a data problem an administrator has to settle;
+// guessing one here could hand the external identity to the wrong person.
+var ErrExternalLinkAmbiguous = errors.New("more than one local account matches this identity")
+
+// ErrExternalLinkRequired is the sentinel behind *ExternalLinkRequired, so
+// callers can match with errors.Is without depending on the concrete type.
+var ErrExternalLinkRequired = errors.New("external identity matches an existing account and must be linked")
+
+// ExternalLinkRequired reports that this external identity has no binding but
+// a local account with the same email does exist. It carries the candidate so
+// the caller can park the pending identity against it — and nothing more: the
+// caller must still make the user prove they hold that account before any
+// binding is written.
+type ExternalLinkRequired struct {
+	// UserID is the matched local account. NOT an authorization to bind: the
+	// portal flow re-verifies the holder with MFA or a password first.
+	UserID int64
+	// Username and Email are for the prompt. Both should be masked before
+	// they reach a browser — an unmasked value turns this flow into a check
+	// for "does this person have an account here".
+	Username string
+	Email    string
+}
+
+func (e *ExternalLinkRequired) Error() string {
+	// No identifying values: this string reaches logs.
+	return "external identity matches an existing local account; linking required"
+}
+
+// Unwrap lets errors.Is(err, ErrExternalLinkRequired) succeed.
+func (e *ExternalLinkRequired) Unwrap() error { return ErrExternalLinkRequired }
+
+// findLinkCandidate returns a non-nil *ExternalLinkRequired when exactly one
+// live local account shares this identity's email, nil when there is nothing
+// to offer, and an error when the situation is ambiguous or the lookup failed.
+//
+// Returns nil (fall through to the caller's auto-create decision) when:
+//   - the IdP reported no email — there is nothing to match on, and matching
+//     on the username instead is what this function deliberately avoids
+//   - no local account has that email
+//
+// The candidate is rejected when it already holds a live binding for this same
+// provider type. The same person signing in from a second account at the same
+// provider is indistinguishable here from two different people, and the
+// account that already has a working binding is the one with more to lose.
+func (s *Service) findLinkCandidate(ctx context.Context, in *ExternalLoginInput) (*ExternalLinkRequired, error) {
+	email := strings.TrimSpace(in.Email)
+	if email == "" {
+		return nil, nil
+	}
+	// Two is enough to tell "one match" from "ambiguous"; the rest would only
+	// be rows nobody is allowed to act on anyway.
+	matches, err := s.repo.FindByEmailFold(ctx, in.TenantID, email, 2)
+	if err != nil {
+		return nil, fmt.Errorf("find link candidate: %w", err)
+	}
+	if len(matches) == 0 {
+		return nil, nil
+	}
+	if len(matches) > 1 {
+		return nil, ErrExternalLinkAmbiguous
+	}
+	candidate := matches[0]
+	existing, err := s.repo.ListIdentities(ctx, candidate.ID)
+	if err != nil {
+		return nil, fmt.Errorf("list candidate identities: %w", err)
+	}
+	for _, id := range existing {
+		if id.ProviderType == in.ProviderType {
+			return nil, ErrExternalLinkAmbiguous
+		}
+	}
+	e := ""
+	if candidate.Email != nil {
+		e = *candidate.Email
+	}
+	return &ExternalLinkRequired{UserID: candidate.ID, Username: candidate.Username, Email: e}, nil
+}
+
 // ResolveExternalLogin maps an external identity to a local user ID.
 //
 //	live binding, user loads fine        → return its UserID (refresh attrs)
@@ -137,9 +218,28 @@ func (s *Service) ResolveExternalLogin(ctx context.Context, in *ExternalLoginInp
 		return nil, ErrExternalUserNotLinked
 	case dberr.IsNotFound(perr):
 		// No binding ever existed for this external id — the genuinely fresh
-		// case. Fall through to AutoCreate below.
+		// case. Look for an account this person already has before creating a
+		// second one.
 	default:
 		return nil, fmt.Errorf("check prior binding: %w", perr)
+	}
+
+	// Is there already a local account for this person? Matching is on email,
+	// NOT on username: the username an IdP reports follows that IdP's own
+	// conventions (Lark sends en_name or a mobile number, Microsoft sends a
+	// userPrincipalName with a domain attached), so two records for the same
+	// human routinely disagree. Email is the one attribute both sides carry
+	// for the same reason.
+	//
+	// Critically, a match does NOT authenticate anything. It only means "offer
+	// to link", and the link itself is gated on proving ownership of the local
+	// account (MFA or password) in the portal flow that consumes this error.
+	// That is what makes it safe to key off an attribute the IdP controls: a
+	// forged email buys an attacker a prompt, not an account.
+	if link, lerr := s.findLinkCandidate(ctx, in); lerr != nil {
+		return nil, lerr
+	} else if link != nil {
+		return nil, link
 	}
 
 	if !in.AutoCreate {
@@ -319,6 +419,25 @@ type BindIdentityInput struct {
 	ExternalID   string
 	DisplayName  string
 	Raw          map[string]any
+	// LinkedAtLogin marks the bind as having come from the login-time link
+	// flow rather than from a signed-in user binding a provider in the portal.
+	// It only changes the audit action, but that distinction is the point: one
+	// is an authenticated person adding a login method to their own account,
+	// the other is an unauthenticated caller who proved ownership with a TOTP
+	// code. Flattening them would leave an operator unable to tell which trust
+	// path a binding came through.
+	LinkedAtLogin bool
+}
+
+// bindAuditAction names the trust path a binding arrived through. Applies to
+// the plain create and to the same-owner reclaim alike: the login-time link
+// flow can reach either, since a candidate whose binding an administrator
+// unbound is still a legitimate match.
+func bindAuditAction(in *BindIdentityInput) string {
+	if in.LinkedAtLogin {
+		return "identity_linked_at_login"
+	}
+	return "identity_bound"
 }
 
 // BindExternalIdentity attaches an external account to an existing local user.
@@ -441,7 +560,7 @@ func (s *Service) BindExternalIdentity(ctx context.Context, in *BindIdentityInpu
 	}
 	s.eventBus.Publish(ctx, event.Event{
 		Type:    event.UserUpdated,
-		Payload: map[string]any{"user_id": in.UserID, "action": "identity_bound", "provider": in.ProviderType},
+		Payload: map[string]any{"user_id": in.UserID, "action": bindAuditAction(in), "provider": in.ProviderType},
 	})
 	return nil
 }
@@ -481,7 +600,7 @@ func (s *Service) reclaimIdentity(ctx context.Context, existing *UserIdentity, i
 	}
 	s.eventBus.Publish(ctx, event.Event{
 		Type:    event.UserUpdated,
-		Payload: map[string]any{"user_id": in.UserID, "action": "identity_bound", "provider": in.ProviderType},
+		Payload: map[string]any{"user_id": in.UserID, "action": bindAuditAction(in), "provider": in.ProviderType},
 	})
 	return nil
 }

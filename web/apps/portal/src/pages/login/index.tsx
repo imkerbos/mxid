@@ -84,7 +84,27 @@ export default function LoginPage() {
   // show the SAME TOTP step, but finish via the external verify endpoint instead
   // of the local password-login challenge.
   const [extMfaToken, setExtMfaToken] = useState(() => searchParams.get('ext_mfa') || '')
-  const showMfa = !!mfaChallenge || !!extMfaToken
+  // External-IdP identity link: the federated identity authenticated fine but
+  // has no binding, and an existing account carries the same email — the shape
+  // of a provider migration. The callback bounces back with ?ext_link=<token>
+  // rather than creating a second account. Same TOTP step as above, because
+  // the TOTP code is what proves the person holds that existing account; the
+  // email match only decided which account to ask about.
+  const [extLinkToken, setExtLinkToken] = useState(() => searchParams.get('ext_link') || '')
+  const [linkHint, setLinkHint] = useState<{ username: string; email: string; provider: string } | null>(null)
+  const showMfa = !!mfaChallenge || !!extMfaToken || !!extLinkToken
+
+  // Masked hints for the link prompt, fetched rather than read from the URL.
+  useEffect(() => {
+    if (!extLinkToken) return
+    externalIdpApi
+      .linkPreview(extLinkToken)
+      .then(setLinkHint)
+      // An expired token leaves the hint empty; the TOTP submit below reports
+      // it properly. Showing a scary banner for an expired link would say
+      // nothing useful about what to do next.
+      .catch(() => setLinkHint(null))
+  }, [extLinkToken])
 
   // External IdPs (social login). Empty array = no buttons rendered.
   // Filtered to the current tenant when ?tenant= is set.
@@ -205,6 +225,13 @@ export default function LoginPage() {
       // External-IdP challenge: finish the parked federated login. The verify
       // response sets the session cookies and returns where to send the browser
       // (may be an SSO resume URL captured when the login started).
+      if (extLinkToken) {
+        // Proving ownership of the matched account AND binding the new identity
+        // to it, in one step: the response sets the session cookies.
+        const res = await externalIdpApi.verifyLink({ token: extLinkToken, code: mfaCode })
+        window.location.assign(res?.redirect || '/apps')
+        return
+      }
       if (extMfaToken) {
         const res = await externalIdpApi.verifyMFA({ token: extMfaToken, code: mfaCode })
         window.location.assign(res?.redirect || '/apps')
@@ -222,7 +249,7 @@ export default function LoginPage() {
       navigate(from, { replace: true })
     } catch (err: unknown) {
       setError(loginErrorMessage(err, t))
-      if (extMfaToken) {
+      if (extMfaToken || extLinkToken) {
         // External verify keeps the pending token on a wrong code (retryable
         // within the TTL, rate-limited) — just clear the code to re-enter.
         setMfaCode('')
@@ -250,11 +277,17 @@ export default function LoginPage() {
     setMfaChallenge('')
     setMfaCode('')
     setError('')
-    if (extMfaToken) {
+    if (extMfaToken || extLinkToken) {
       // Drop the parked federated login and strip the token from the URL so a
-      // refresh doesn't drop straight back into the MFA step.
+      // refresh doesn't drop straight back into the MFA step. The parked entry
+      // itself is left to expire: deleting it here would need an endpoint that
+      // takes a token and destroys state, which is a worse thing to expose
+      // than a ten-minute TTL.
       setExtMfaToken('')
+      setExtLinkToken('')
+      setLinkHint(null)
       searchParams.delete('ext_mfa')
+      searchParams.delete('ext_link')
       setSearchParams(searchParams, { replace: true })
     } else {
       loadCaptcha()
@@ -290,12 +323,21 @@ export default function LoginPage() {
 
           <div className="mb-8">
             <h2 className="text-3xl font-semibold tracking-tight text-white">
-              {showMfa ? t('login.mfa') : (bootstrap.branding.login_page_title || t('login.welcomePortal'))}
+              {/* The link step reuses the TOTP input but is not a two-step
+                  verification: titling it that way tells the person nothing
+                  about the account change they are approving. */}
+              {extLinkToken
+                ? t('login.linkIdentity.title')
+                : showMfa
+                  ? t('login.mfa')
+                  : (bootstrap.branding.login_page_title || t('login.welcomePortal'))}
             </h2>
             <p className="mt-2 text-sm text-white/55">
-              {showMfa
-                ? t('login.mfaHint')
-                : t('login.subtitlePortal')}
+              {extLinkToken
+                ? t('login.linkIdentity.subtitle')
+                : showMfa
+                  ? t('login.mfaHint')
+                  : t('login.subtitlePortal')}
             </p>
           </div>
 
@@ -309,6 +351,24 @@ export default function LoginPage() {
 
           {showMfa ? (
             <form onSubmit={handleVerifyMfa} className="flex flex-col gap-4">
+              {/* Why the code is being asked for. Without this the step reads
+                  as an ordinary MFA prompt, and the person has no idea an
+                  account link is about to happen — or which account. */}
+              {extLinkToken && (
+                <div className="rounded-lg border border-white/20 bg-surface/[0.08] px-3 py-2.5 text-sm text-white/80">
+                  <p>{t('login.linkIdentity.intro')}</p>
+                  {linkHint && (
+                    // The one thing the person has to recognise, so it is the
+                    // most readable line here rather than the faintest. It was
+                    // the other way round first, and the masked address — the
+                    // whole point of the prompt — read as a footnote.
+                    <p className="mt-2 font-mono text-sm font-medium tracking-wide text-white">
+                      {linkHint.email || linkHint.username}
+                    </p>
+                  )}
+                  <p className="mt-2 text-xs text-white/55">{t('login.linkIdentity.proof')}</p>
+                </div>
+              )}
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-white/90">
 {t('account.mfa.verifyCode')}

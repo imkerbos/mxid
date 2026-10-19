@@ -140,6 +140,14 @@ const (
 	// LOGIN: this one is addressed to an administrator who can fix it, and its
 	// sentence has to name the fix (restore the account first).
 	NumIdentityOwnerDeleted = 40910 // errors.identityOwnerDeleted
+	// NumLinkNeedsMFAFactor refuses a login-time identity link because the
+	// matched account holds no MFA factor, so there is nothing it can prove
+	// ownership with. Localized, and its own number, because the honest advice
+	// is a dead end the person cannot act on alone: they cannot enrol a factor
+	// without signing in, and signing in is what they were trying to do. The
+	// sentence has to send them to an administrator rather than invite a retry
+	// — which is what NumInvalidMFACode or NumMFAEnrollRequired would do.
+	NumLinkNeedsMFAFactor = 40335 // errors.linkNeedsMFAFactor
 )
 
 // Numbers that replaced a collided use of a localized code. Kept as named
@@ -237,6 +245,7 @@ var Catalog = map[int]struct {
 	NumIdentityAlreadyBound: {Localized, "identity binding is already active"},
 	NumExternalUserDeleted:  {Localized, "the account behind this external identity was deleted"},
 	NumIdentityOwnerDeleted: {Localized, "the account this binding belongs to is deleted; restore it first"},
+	NumLinkNeedsMFAFactor:   {Localized, "login-time identity link needs an MFA factor the account does not have"},
 
 	// Localized: every domain whose resource is keyed by an operator-chosen
 	// `code` reports a duplicate with THIS number, so the SPA can say "that

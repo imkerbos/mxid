@@ -38,13 +38,14 @@ func (a *userExternalResolver) Resolve(ctx context.Context, in *registry.Resolve
 func bindIdentityAdapter(svc *user.Service) registry.BindIdentityFunc {
 	return func(ctx context.Context, in *registry.BindIdentityInput) error {
 		err := svc.BindExternalIdentity(ctx, &user.BindIdentityInput{
-			TenantID:     in.TenantID,
-			UserID:       in.UserID,
-			ProviderType: in.ProviderType,
-			ProviderID:   in.ProviderID,
-			ExternalID:   in.ExternalID,
-			DisplayName:  in.DisplayName,
-			Raw:          in.Raw,
+			TenantID:      in.TenantID,
+			UserID:        in.UserID,
+			ProviderType:  in.ProviderType,
+			ProviderID:    in.ProviderID,
+			ExternalID:    in.ExternalID,
+			DisplayName:   in.DisplayName,
+			Raw:           in.Raw,
+			LinkedAtLogin: in.LinkedAtLogin,
 		})
 		return translateSeamErr(err)
 	}
@@ -68,7 +69,20 @@ func translateSeamErr(err error) error {
 		return registry.ErrIdentityAlreadyBound
 	case errors.Is(err, user.ErrExternalUserDeleted):
 		return registry.ErrExternalUserDeleted
+	case errors.Is(err, user.ErrExternalLinkAmbiguous):
+		return registry.ErrExternalLinkAmbiguous
 	default:
+		// The link offer carries the candidate account, so it crosses the seam
+		// as a value rather than a bare sentinel. errors.As and not a type
+		// assertion: ResolveExternalLogin may wrap it on the way out.
+		var link *user.ExternalLinkRequired
+		if errors.As(err, &link) {
+			return &registry.ExternalLinkRequired{
+				UserID:   link.UserID,
+				Username: link.Username,
+				Email:    link.Email,
+			}
+		}
 		return err
 	}
 }

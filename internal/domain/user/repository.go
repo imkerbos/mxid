@@ -44,6 +44,13 @@ type Repository interface {
 	GetAnyByID(ctx context.Context, id int64) (*User, error)
 	GetByUsername(ctx context.Context, tenantID int64, username string) (*User, error)
 	GetByEmail(ctx context.Context, tenantID int64, email string) (*User, error)
+	// FindByEmailFold returns the live users in the tenant whose email matches
+	// case-insensitively, capped at limit. Distinct from GetByEmail, which is
+	// an exact match returning First: a case-insensitive lookup can legitimately
+	// hit more than one row (the unique index is on the raw value), and a caller
+	// deciding whether to offer an account link must be able to SEE that
+	// ambiguity rather than silently act on whichever row sorted first.
+	FindByEmailFold(ctx context.Context, tenantID int64, email string, limit int) ([]*User, error)
 	GetByPhone(ctx context.Context, tenantID int64, phone string) (*User, error)
 	Update(ctx context.Context, user *User) error
 	Delete(ctx context.Context, id int64) error

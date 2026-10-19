@@ -754,6 +754,34 @@ fields are narrow one-off hooks; three are architecturally significant enough to
   graft a colleague's external account onto an account they control, and step-up plus audit only
   tell you about it afterwards. `ExternalLoginFunc` already put this class of decision in CE for
   login; `BindIdentityFunc` mirrors it for self-service binding.
+- **`ExternalLinkRequired`** (a seam *value*, not a func) — the login-time counterpart to
+  `BindIdentityFunc`. When an external identity authenticates, holds no binding, and an existing
+  local account carries the same email, `ExternalLoginFunc` returns this instead of
+  auto-provisioning a second account. The EE portal handler parks the pending identity in Redis
+  (`mxid:extidp:link:`, 10-minute TTL, single-use) and bounces the browser to the login page with
+  `?ext_link=<token>`; the link completes only after a TOTP code belonging to the *matched* account
+  verifies.
+
+  **The match is a hint; the TOTP code is the authorization.** This is what makes it safe to key
+  off an attribute the IdP reports: anyone who can set an email at the IdP can reach the prompt,
+  and the prompt is all they get. The account id comes from the parked entry and never from the
+  request — that field is the whole vulnerability if it is ever honoured, and
+  `TestIdentityLink_RequestCannotChooseTheAccount` exists to keep it that way.
+
+  Matching is on **email only**, never username: Lark reports an `en_name` or a mobile number,
+  Microsoft reports a `userPrincipalName` with a domain attached, so two records for one person
+  routinely disagree, and `UNIQUE(tenant_id, username)` is case-sensitive — `alice` and
+  `Alice` can both exist. Two accounts matching, or a matched account that already signs in
+  through the *same* provider, both refuse (`ErrExternalLinkAmbiguous`) rather than pick a side.
+
+  Detection runs **before** the `auto_create` decision, deliberately: otherwise turning
+  auto-provisioning off — the safe setting during a provider migration — would also block every
+  user, pushing an operator toward the unsafe one.
+
+  Bindings written this way audit as `action=identity_linked_at_login` rather than
+  `identity_bound` (`BindIdentityInput.LinkedAtLogin`). The row in `mxid_user_identity` is
+  identical either way, so the action is the only place the difference between "a signed-in person
+  added a login method" and "an unauthenticated caller proved ownership with a code" survives.
 - **`OptionalSessionMiddlewareFunc`** — builds gin middleware that resolves a session cookie when
   one is present and does nothing otherwise (it never rejects). Wraps CE's
   `internal/domain/authn.OptionalAuthMiddleware`. The external-IdP callback route serves two

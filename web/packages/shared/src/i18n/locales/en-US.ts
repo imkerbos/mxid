@@ -47,6 +47,10 @@ export default {
     externalUserDeleted: 'The account behind this external identity has been deleted.',
     identityOwnerDeleted:
       'This account is deleted. Restore the account first, then restore its binding.',
+    linkNeedsMFAFactor:
+      'This account has no authenticator set up, so it cannot be linked at sign-in. Ask an administrator to connect it for you.',
+    linkAmbiguous:
+      'More than one account matches this identity. Ask an administrator to sort it out.',
   },
   common: {
     validation: {
@@ -197,6 +201,12 @@ export default {
     mfaSubmit: 'Verify',
     mfaSubmitting: 'Verifying…',
     mfaBack: 'Back to password',
+    linkIdentity: {
+      title: 'Link your existing account',
+      subtitle: 'Confirm this sign-in method is yours',
+      intro: 'This sign-in method is not linked to an account yet. It matches this one:',
+      proof: 'Enter the 6-digit code from that account\'s authenticator to confirm it is you, and this sign-in method will be added to it.',
+    },
     socialDivider: 'Social sign-in',
     externalFailed: 'External sign-in failed, use a local account',
     externalIncomplete: "External sign-in did not finish. If the provider showed an error page, try again shortly or sign in with your password.",

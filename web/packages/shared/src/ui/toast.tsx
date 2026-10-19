@@ -20,6 +20,7 @@ import {
   CODE_IDENTITY_ALREADY_BOUND,
   CODE_EXTERNAL_USER_DELETED,
   CODE_IDENTITY_OWNER_DELETED,
+  CODE_LINK_NEEDS_MFA_FACTOR,
 } from '../api/client'
 import { cn } from '../utils'
 
@@ -96,6 +97,10 @@ const LOCALIZED_CODES: Record<number, string> = {
   // Admin-facing sibling of externalUserDeleted: the restore was refused
   // because the binding's OWNER is deleted, and the console can fix that.
   [CODE_IDENTITY_OWNER_DELETED]: 'errors.identityOwnerDeleted',
+  // The person is mid-login and cannot act on this alone: enrolling a factor
+  // needs a session, and a session is what they were trying to get. The
+  // sentence points at an administrator instead of inviting a retry.
+  [CODE_LINK_NEEDS_MFA_FACTOR]: 'errors.linkNeedsMFAFactor',
 }
 
 // extractMessage pulls a human-readable error message from an axios / ApiError

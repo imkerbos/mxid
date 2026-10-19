@@ -516,3 +516,40 @@ func TestBindSurfacesTypedErrorOnCreateRace(t *testing.T) {
 		t.Fatalf("want the index violation surfaced as ErrExternalIDTaken, got %v", err)
 	}
 }
+
+// A binding that came through the login-time link flow must audit differently
+// from one a signed-in user made in the portal. The table state is identical —
+// same row, same owner — so the audit action is the only place the difference
+// survives, and an operator asking "how did this identity get attached?" has
+// nowhere else to look.
+func TestBindExternalIdentity_AuditActionDistinguishesLoginTimeLink(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		linkedAtLogin bool
+		wantAction    string
+	}{
+		{"portal self-service", false, "identity_bound"},
+		{"login-time link", true, "identity_linked_at_login"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, _, events := newBindTestFixtureWithEvents(t)
+			in := bindInput(1)
+			in.LinkedAtLogin = tc.linkedAtLogin
+			if err := svc.BindExternalIdentity(context.Background(), in); err != nil {
+				t.Fatalf("bind: %v", err)
+			}
+			select {
+			case e := <-events:
+				payload, ok := e.Payload.(map[string]any)
+				if !ok {
+					t.Fatalf("unexpected payload type %T", e.Payload)
+				}
+				if got := payload["action"]; got != tc.wantAction {
+					t.Fatalf("audit action = %v, want %q", got, tc.wantAction)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("no UserUpdated event published")
+			}
+		})
+	}
+}

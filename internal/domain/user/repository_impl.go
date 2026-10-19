@@ -244,6 +244,24 @@ func (r *gormRepository) GetByEmail(ctx context.Context, tenantID int64, email s
 	return &user, nil
 }
 
+// FindByEmailFold finds live users by case-insensitive email, capped at limit.
+//
+// lower(email) cannot use the plain index on email, which is fine at this
+// scale and deliberate: the alternative is an expression index that every
+// other email lookup would have to agree to use. The cap exists so the caller
+// pays for at most "is it ambiguous?" rather than for every duplicate.
+func (r *gormRepository) FindByEmailFold(ctx context.Context, tenantID int64, email string, limit int) ([]*User, error) {
+	var users []*User
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND lower(email) = lower(?)", tenantID, email).
+		Limit(limit).
+		Find(&users).Error
+	if err != nil {
+		return nil, fmt.Errorf("find users by email fold: %w", err)
+	}
+	return users, nil
+}
+
 // GetByPhone finds a user by tenant and phone.
 func (r *gormRepository) GetByPhone(ctx context.Context, tenantID int64, phone string) (*User, error) {
 	var user User

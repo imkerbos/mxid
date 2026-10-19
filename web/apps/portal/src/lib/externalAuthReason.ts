@@ -15,17 +15,22 @@
 //     or — rarer — a bind round-trip whose portal session didn't survive it)
 //   - the security page's ?bindErr=... (App.tsx's RedirectIfAuth forwards a
 //     still-authenticated bind failure here instead of silently dropping it)
-// so only the three conflicts meaningful in EITHER context are mapped here;
+// so only the conflicts meaningful in EITHER context are mapped here;
 // each caller supplies its own text for a reason this map doesn't know and for
 // its own bind-specific guard slugs (bind_session_mismatch, bind_unconfigured).
 const KNOWN_REASON_KEYS: Record<string, string> = {
   external_id_taken: 'errors.externalIDTaken',
   identity_already_bound: 'errors.identityAlreadyBound',
   external_user_deleted: 'errors.externalUserDeleted',
+  // The sign-in matched more than one local account, or matched one that
+  // already uses this provider. Mapped rather than left to the generic
+  // sentence because the generic one invites a retry, and retrying cannot
+  // help: only an administrator can untangle it.
+  link_ambiguous: 'errors.linkAmbiguous',
 }
 
 // externalAuthReasonKey resolves a backend reason slug to an i18n key, or null
-// when it isn't one of the three conflicts above — including the backend's own
+// when it isn't one of the conflicts above — including the backend's own
 // generic fallback slug and any bind-specific guard slug. The caller decides
 // what to say for null (a generic message appropriate to its own context).
 export function externalAuthReasonKey(reason: string): string | null {

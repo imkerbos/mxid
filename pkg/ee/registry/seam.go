@@ -54,6 +54,10 @@ type BindIdentityInput struct {
 	ExternalID   string
 	DisplayName  string
 	Raw          map[string]any
+	// LinkedAtLogin marks a bind that came from the login-time link flow,
+	// where the caller held no session and proved ownership with a TOTP code.
+	// Carried across the seam so the audit action can say which path it was.
+	LinkedAtLogin bool
 }
 
 // BindIdentityFunc links an already-authenticated external identity to an
@@ -84,7 +88,43 @@ var (
 	ErrExternalIDTaken      = errors.New("external account already bound to a live user")
 	ErrIdentityAlreadyBound = errors.New("identity binding is already active")
 	ErrExternalUserDeleted  = errors.New("the account behind this external identity was deleted")
+	// ErrExternalLinkAmbiguous means the identity matched more than one local
+	// account, or matched one that already signs in through this same
+	// provider. Both are situations where picking a side would be picking who
+	// receives the identity, so the caller must refuse and point at an
+	// administrator.
+	ErrExternalLinkAmbiguous = errors.New("more than one local account matches this identity")
+	// ErrExternalLinkRequired is the sentinel behind *ExternalLinkRequired.
+	ErrExternalLinkRequired = errors.New("external identity matches an existing account and must be linked")
 )
+
+// ExternalLinkRequired reports that an external identity has no binding, but a
+// local account carrying the same email does exist — the shape of a provider
+// migration, where someone's second IdP meets the account their first one
+// created.
+//
+// It is NOT an authorization to bind. The caller must make the user prove they
+// hold the candidate account (a fresh MFA factor, or its password) before any
+// binding is written; without that step, matching on an attribute the IdP
+// reports would let anyone who can set that attribute claim the account.
+//
+// Carries identifiers because the caller has to park the pending identity
+// against the candidate and name the account in a prompt. Mask them before
+// they reach a browser: unmasked, the prompt answers "does this person have an
+// account here" for anyone who can reach the login page.
+type ExternalLinkRequired struct {
+	UserID   int64
+	Username string
+	Email    string
+}
+
+func (e *ExternalLinkRequired) Error() string {
+	// Deliberately carries no identifiers: this string reaches logs.
+	return "external identity matches an existing local account; linking required"
+}
+
+// Unwrap lets errors.Is(err, ErrExternalLinkRequired) succeed.
+func (e *ExternalLinkRequired) Unwrap() error { return ErrExternalLinkRequired }
 
 // TenantByCodeFunc maps a tenant code to its id (0 when unknown). Implemented by
 // the CE tenant domain.

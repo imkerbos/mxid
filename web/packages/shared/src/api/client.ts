@@ -60,6 +60,10 @@ export const CODE_EXTERNAL_ID_TAKEN = 40907
 export const CODE_IDENTITY_ALREADY_BOUND = 40908
 export const CODE_EXTERNAL_USER_DELETED = 40909
 export const CODE_IDENTITY_OWNER_DELETED = 40910
+// Login-time identity link refused: the matched account holds no MFA factor,
+// so it has nothing to prove ownership with. Only an administrator can resolve
+// it, which is why this is not a retryable MFA error.
+export const CODE_LINK_NEEDS_MFA_FACTOR = 40335
 
 // Step-up handler: the console registers a callback (a modal) that resolves
 // once the user passes an MFA challenge. The 403/step_up_required interceptor

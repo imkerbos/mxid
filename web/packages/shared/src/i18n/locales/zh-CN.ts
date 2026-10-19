@@ -49,6 +49,8 @@ export default {
     identityAlreadyBound: '该绑定已生效,无需重复操作。',
     externalUserDeleted: '该外部身份对应的账号已被删除。',
     identityOwnerDeleted: '该账号已被删除，请先恢复账号，再恢复其身份绑定。',
+    linkNeedsMFAFactor: '该账号没有配置验证器，无法在登录时完成关联。请联系管理员代为关联。',
+    linkAmbiguous: '有多个账号与该身份匹配，请联系管理员处理。',
   },
   common: {
     validation: {
@@ -199,6 +201,12 @@ export default {
     mfaSubmit: '验证',
     mfaSubmitting: '验证中...',
     mfaBack: '返回密码登录',
+    linkIdentity: {
+      title: '关联已有账号',
+      subtitle: '确认这个登录方式属于你',
+      intro: '这个登录方式还没有关联到账号。它匹配到了下面这个账号：',
+      proof: '输入该账号验证器里的 6 位代码，确认是你本人，然后就会把这个登录方式加到它上面。',
+    },
     socialDivider: '第三方登录',
     externalFailed: '第三方登录失败，请用本地账号登录',
     externalIncomplete: '第三方登录未完成。如果跳转后看到对方的报错页面，请稍后重试，或先用密码登录。',

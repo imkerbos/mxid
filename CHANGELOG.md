@@ -8,6 +8,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- A federated sign-in whose external identity matches an existing account now
+  offers to link it instead of quietly creating a second one. The shape this
+  exists for is a provider migration: someone's new IdP meets the account their
+  old one created, and under the previous behaviour they got a brand-new empty
+  profile while their roles, groups and app access stayed on an account they
+  could no longer reach — and the relying parties downstream saw a different
+  `sub`, so their records pointed at the orphan.
+  Matching is on email, never username. The username an IdP reports follows
+  that IdP's own conventions (an `en_name` or a mobile number from one, a
+  `userPrincipalName` with a domain attached from another), so two records for
+  the same human routinely disagree; `UNIQUE(tenant_id, username)` is also
+  case-sensitive, so `alice` and `Alice` can both exist and "obviously
+  the same person" stops being obvious. Two accounts on one address, or a match
+  that already signs in through the same provider, are refused rather than
+  guessed.
+  **The match only produces a prompt; a TOTP code belonging to the matched
+  account is what authorizes the link.** That is deliberate, and it is what
+  makes it safe to key off an attribute the identity provider reports: someone
+  who can set that email at the IdP reaches a prompt, not an account. The
+  pending identity is parked server-side for ten minutes, single-use, and the
+  account it will bind to is read from that parked entry — never from the
+  request. Detection runs before the auto-provisioning decision, so turning
+  auto-provisioning off (the right setting during a migration) no longer also
+  blocks everyone it was meant to protect.
+  Proof is a TOTP code and not a password on purpose: an account provisioned by
+  an external IdP has no usable local password at all, so offering one would
+  cover a fraction of the people who need this while adding a password-guessing
+  surface to a route that has no session yet. A matched account with no enrolled
+  factor is a dead end it cannot solve alone — enrolling needs a session, and a
+  session is what it was trying to get — so that case says to ask an
+  administrator rather than returning a server error or inviting a retry that
+  cannot succeed.
+  Bindings made this way are audited distinctly from a portal self-service
+  bind. The stored row is identical, so the audit action is the only place the
+  difference between the two trust paths survives.
 - A claim mapper can now read a user's external identity ids:
   `user.identity.<provider>.<field>`, where provider is a `provider_type`
   (`lark`, `feishu`, `github`, …) and field is one of `external_id`, `user_id`
