@@ -5,7 +5,7 @@ All notable changes to MXID are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.12.0] — 2026-10-19
 
 ### Added
 - A federated sign-in whose external identity matches an existing account now
@@ -1531,7 +1531,8 @@ Initial public preview. Two integrations verified end-to-end: **Grafana (OIDC)**
 - pnpm workspaces (`console` / `portal` / `shared`).
 - Tailwind v4 monorepo `@source` directive so shared package UI compiles into both SPAs.
 
-[Unreleased]: https://github.com/imkerbos/mxid/compare/v1.11.0...HEAD
+[Unreleased]: https://github.com/imkerbos/mxid/compare/v1.12.0...HEAD
+[1.12.0]: https://github.com/imkerbos/mxid/compare/v1.11.0...v1.12.0
 [1.11.0]: https://github.com/imkerbos/mxid/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/imkerbos/mxid/compare/v1.9.3...v1.10.0
 [1.9.3]: https://github.com/imkerbos/mxid/compare/v1.9.2...v1.9.3
