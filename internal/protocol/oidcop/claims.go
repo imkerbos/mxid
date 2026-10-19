@@ -212,7 +212,42 @@ func (s *ClaimsStore) identityAppAndMappers(ctx context.Context, uid int64, clie
 	if err != nil || app == nil {
 		return info, nil, nil
 	}
-	return info, app, parseClientConfig(app.ProtocolConfig).ClaimMappers
+	mappers := parseClientConfig(app.ProtocolConfig).ClaimMappers
+	s.loadIdentityBindings(ctx, info, mappers)
+	return info, app, mappers
+}
+
+// loadIdentityBindings fills info.Identities, but only when one of this app's
+// mappers actually addresses `user.identity.*`. Every id_token, userinfo and
+// introspection response passes through here, so an unconditional lookup would
+// put a query on the hot path of every app — including the ones that have no
+// use for an external id.
+//
+// A failed lookup leaves Identities nil rather than failing the token: the
+// mapper then emits no claim, which is the same outcome as an unlinked user.
+// Claim assembly must not break on an optional projection, for the same reason
+// resolveSubject falls back instead of erroring.
+func (s *ClaimsStore) loadIdentityBindings(ctx context.Context, info *resolver.IdentityInfo, mappers []claimMapper) {
+	if info == nil || !mappersNeedIdentities(mappers) {
+		return
+	}
+	br, ok := s.identity.(resolver.IdentityBindingResolver)
+	if !ok {
+		return
+	}
+	if bindings, err := br.ResolveIdentityBindings(ctx, info.ID); err == nil {
+		info.Identities = bindings
+	}
+}
+
+// mappersNeedIdentities reports whether any mapper reads an external binding.
+func mappersNeedIdentities(mappers []claimMapper) bool {
+	for _, m := range mappers {
+		if strings.HasPrefix(m.Source, identitySourcePrefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // applySubjectAndRoles overrides `sub` per the app's subject_strategy and
@@ -306,8 +341,19 @@ func applyClaimMappers(claims map[string]any, mappers []claimMapper, info *resol
 	return claims
 }
 
+// identitySourcePrefix is the claim-mapper source namespace for external
+// identity bindings: user.identity.<provider>.<field>.
+const identitySourcePrefix = "user.identity."
+
 // resolveClaimSource walks dotted path segments rooted at "user": e.g.
-// user.email, user.groups, user.detail.<key>, user.tenant_id.
+// user.email, user.groups, user.detail.<key>, user.tenant_id,
+// user.identity.<provider>.<field>.
+//
+// An unrecognised path returns false and the mapper emits nothing. That is
+// deliberate — a typo must not fabricate a claim — but it is also silent, so
+// the integration docs are the only place a wrong path gets caught. Keep
+// docs/integrations/README.md's list of valid sources in step with this
+// function.
 func resolveClaimSource(path string, info *resolver.IdentityInfo) (any, bool) {
 	parts := strings.Split(path, ".")
 	if len(parts) < 2 || parts[0] != "user" {
@@ -320,12 +366,30 @@ func resolveClaimSource(path string, info *resolver.IdentityInfo) (any, bool) {
 		v, ok := info.Detail[parts[2]]
 		return v, ok
 	}
+	if parts[1] == "identity" {
+		// user.identity.<provider>.<field>
+		if len(parts) != 4 || info.Identities == nil {
+			return nil, false
+		}
+		fields, ok := info.Identities[parts[2]]
+		if !ok {
+			return nil, false
+		}
+		return zeroToNil(fields[parts[3]])
+	}
 	if len(parts) != 2 {
 		return nil, false
 	}
 	switch parts[1] {
 	case "id":
+		// A JSON number, which is what this has always emitted — and wrong for
+		// any relying party that parses with JavaScript: a snowflake id is
+		// ~3.9e17, past 2^53, so JSON.parse silently returns a neighbouring
+		// integer. Kept as-is because apps are configured against it; new
+		// configuration should use id_string below.
 		return info.ID, true
+	case "id_string":
+		return strconv.FormatInt(info.ID, 10), true
 	case "tenant_id":
 		return info.TenantID, true
 	case "username":

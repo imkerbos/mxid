@@ -344,7 +344,7 @@ The \`access_token\` is an **opaque bearer token**, not a JWT. Do not try to par
 - \`sid\` — session ID; the back-channel \`logout_token\` carries the same value, so an RP can match the session to terminate.
 - \`groups\` — the user's group codes. **Not emitted by default.** Add a claim mapper in the app's protocol config:
   \`\`\`json
-  {"claim_mappers": [{"claim": "groups", "source": "user.groups.codes"}]}
+  {"claim_mappers": [{"claim": "groups", "source": "user.groups"}]}
   \`\`\`
 - \`tenant_code\` — always injected. Shared (cross-tenant) apps should read it to disambiguate users.`,
       },
@@ -884,7 +884,7 @@ JumpServer fetches \`{{ISSUER}}/protocol/oidc/.well-known/openid-configuration\`
 \`\`\`json
 {
   "claim_mappers": [
-    {"claim": "groups", "source": "user.groups.codes"},
+    {"claim": "groups", "source": "user.groups"},
     {"claim": "email",  "source": "user.email"},
     {"claim": "name",   "source": "user.display_name"}
   ]
@@ -951,17 +951,17 @@ For \`docker login\`, users must first open **User Profile → CLI secret** in H
 
 Access policy: add at least an \`allow public\` rule, or \`allow group=grafana-users\`.
 
-**Protocol config — key: add the claim_mapper to push groups into userinfo**:
+**Protocol config — key: request the \`groups\` scope**. The scope emits \`groups\` on its own; no claim_mapper is needed. Add one only to rename the claim:
 
 \`\`\`json
 {
   "claim_mappers": [
-    {"claim": "groups", "source": "user.groups.codes"}
+    {"claim": "groups", "source": "user.groups"}
   ]
 }
 \`\`\`
 
-Without this, userinfo has no \`groups\` array, Grafana's \`role_attribute_path\` cannot find a group list, and every user falls back to Viewer.`,
+Without the \`groups\` scope, neither userinfo nor the id_token carries a \`groups\` array, Grafana's \`role_attribute_path\` cannot find a group list, and every user falls back to Viewer.`,
       },
       {
         title: '2. Grafana configuration (env or grafana.ini)',
@@ -998,7 +998,7 @@ extra_hosts:
       },
     ],
     notes: [
-      '⚠️ The MXID app must include the claim_mapper {claim:"groups", source:"user.groups.codes"}, otherwise Grafana never sees groups and everyone is Viewer.',
+      '⚠️ The MXID app must request the groups scope, otherwise Grafana never sees groups and everyone is Viewer. A claim_mapper is not required — and its source only accepts two-segment paths like user.groups; a three-segment one (user.groups.codes) is silently ignored.',
       '⚠️ In docker, auth_url must be browser-reachable and token/api container-reachable (on Linux add extra_hosts: host.docker.internal:host-gateway).',
       'role_attribute_path is JMESPath; contains(groups[*], "x") matches a group code.',
       'For JIT-aware roles, point role_attribute_path at `app_roles` instead of `groups` (e.g. `app_roles[0] == \'admin\' && \'Admin\' || \'Viewer\'`). The JIT-elevated app role sits first in app_roles, so Grafana promotes to Admin for the grant window and drops back when it expires — no claim_mapper needed.',
@@ -1036,7 +1036,7 @@ OpenID Connect Auto Discovery URL:
    {{ISSUER}}/protocol/oidc/.well-known/openid-configuration
 \`\`\`
 
-Leave the additional scopes field empty unless you need groups; if you do want group-based team sync, add \`groups\` to the scopes and add the \`{"claim":"groups","source":"user.groups.codes"}\` claim mapper on the MXID app.
+Leave the additional scopes field empty unless you need groups; if you do want group-based team sync, add \`groups\` to the scopes and add the \`{"claim":"groups","source":"user.groups"}\` claim mapper on the MXID app.
 
 After saving, the login page shows a **Sign in with MXID** button.`,
       },

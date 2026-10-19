@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -2060,6 +2061,68 @@ func buildIdentityResolver(userModule *user.Module, a *bootstrap.App) resolver.I
 			}
 
 			return info, nil
+		},
+		// External identity bindings, for apps whose claim mappers read
+		// user.identity.<provider>.<field>. Only reached when such a mapper
+		// exists — see ClaimsStore.loadIdentityBindings.
+		func(ctx context.Context, userID int64) (map[string]map[string]string, error) {
+			// Anonymous scan struct: every field needs an explicit gorm column
+			// tag. The EE release build runs garble -tiny, which renames struct
+			// fields, and an untagged field silently scans empty — a resolver
+			// that returns nothing instead of failing. Enforced by verify-gormtags.
+			var rows []struct {
+				ProviderType string  `gorm:"column:provider_type"`
+				ExternalID   string  `gorm:"column:external_id"`
+				Extra        *string `gorm:"column:extra"`
+			}
+			// deleted_at IS NULL: unbinding an identity is an administrator
+			// deciding it no longer represents this user, so a token must stop
+			// handing it to a relying party (migration 000068).
+			//
+			// Keyed by user_id with no tenant predicate: userID is the
+			// authenticated subject carried by the token, not a request
+			// parameter, so there is nothing here for a caller to forge. Declared
+			// in tenantscope's table_guard allow-list for that reason.
+			//
+			// Newest first, so the per-provider pick below is deterministic when
+			// a user has bound the same provider twice under two provider_ids.
+			if err := a.DB.WithContext(ctx).
+				Table("mxid_user_identity").
+				Select("provider_type, external_id, extra").
+				Where("user_id = ? AND deleted_at IS NULL", userID).
+				Order("updated_at DESC").
+				Find(&rows).Error; err != nil {
+				return nil, err
+			}
+			if len(rows) == 0 {
+				return nil, nil
+			}
+			out := make(map[string]map[string]string, len(rows))
+			for _, r := range rows {
+				if r.ProviderType == "" {
+					continue
+				}
+				if _, seen := out[r.ProviderType]; seen {
+					continue // newest already taken, per the ORDER BY above
+				}
+				// An ALLOW-LIST, not a passthrough of extra. The provider profile
+				// stashed there also carries the subject's email, phone and name;
+				// letting a claim mapper address arbitrary keys in it would turn
+				// per-app configuration into a data-export surface.
+				fields := map[string]string{"external_id": r.ExternalID}
+				if r.Extra != nil {
+					var profile map[string]any
+					if json.Unmarshal([]byte(*r.Extra), &profile) == nil {
+						for _, k := range []string{"user_id", "union_id", "open_id"} {
+							if v, ok := profile[k].(string); ok && v != "" {
+								fields[k] = v
+							}
+						}
+					}
+				}
+				out[r.ProviderType] = fields
+			}
+			return out, nil
 		},
 	)
 }

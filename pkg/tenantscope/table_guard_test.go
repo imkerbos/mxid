@@ -68,6 +68,7 @@ var allowedTableCalls = map[string]string{
 	// Has a tenant_id, but is reached only by the authenticated user's own id,
 	// which the request cannot choose.
 	"app/adapters_conditionalaccess.go:mxid_login_record": "scoped by the session's own user_id",
+	"app/run.go:mxid_user_identity":                       "scoped by the token subject's own user_id; the claim mapper cannot name another user",
 
 	// Deliberately cross-tenant: this builds the global Casbin policy set and
 	// its whole job is to enumerate which tenants hold a super admin.

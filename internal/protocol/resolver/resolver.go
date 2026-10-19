@@ -60,6 +60,14 @@ type CertConfig struct {
 // job_title, address, custom extras) sourced from mxid_user_detail. Empty
 // when no detail row exists. The map keys mirror the column names so claim
 // mappers can address them with `user.detail.<col>` paths.
+//
+// Identities maps an external provider type ("lark", "github", …) to that
+// binding's ids, addressable as `user.identity.<provider>.<field>`. It is
+// populated ONLY when an app's claim mappers ask for it (see
+// ClaimsStore.identityAppAndMappers) — an extra query per token issuance is
+// not worth paying for the apps that never reference it. Nil otherwise, which
+// callers must treat as "no binding", never as "not loaded": a missing claim
+// is the correct outcome for a user who has not linked that provider.
 type IdentityInfo struct {
 	ID            int64
 	TenantID      int64
@@ -74,6 +82,22 @@ type IdentityInfo struct {
 	Groups        []string
 	Status        int
 	Detail        map[string]any
+	Identities    map[string]map[string]string
+}
+
+// IdentityBindingResolver is the optional capability of loading a user's
+// external identity bindings. Optional rather than part of IdentityResolver so
+// the test fakes that embed that interface keep compiling, and so the lookup
+// stays off the hot path for every app that does not configure an
+// `user.identity.*` claim mapper.
+type IdentityBindingResolver interface {
+	// ResolveIdentityBindings returns provider type → {field: value} for the
+	// user's live bindings. The field set is a fixed allow-list chosen by the
+	// adapter, NOT the raw provider profile: the profile JSON also carries the
+	// subject's email, phone and name, and letting a claim mapper address
+	// arbitrary keys in it would turn per-app configuration into a data-export
+	// surface.
+	ResolveIdentityBindings(ctx context.Context, userID int64) (map[string]map[string]string, error)
 }
 
 // SSOSession represents a protocol-level SSO session. The field tags match

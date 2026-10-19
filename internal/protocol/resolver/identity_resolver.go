@@ -8,14 +8,34 @@ import (
 // userGetByID fetches user info by ID.
 type userGetByID func(ctx context.Context, userID int64) (*IdentityInfo, error)
 
+// userGetIdentityBindings fetches the user's external identity bindings as
+// provider type → {field: value}.
+type userGetIdentityBindings func(ctx context.Context, userID int64) (map[string]map[string]string, error)
+
 // identityResolverImpl implements IdentityResolver using injected functions.
 type identityResolverImpl struct {
-	getByID userGetByID
+	getByID     userGetByID
+	getBindings userGetIdentityBindings
 }
 
 // NewIdentityResolver creates an IdentityResolver from adapter functions.
-func NewIdentityResolver(getByID userGetByID) IdentityResolver {
-	return &identityResolverImpl{getByID: getByID}
+// getBindings may be nil: the resolver then reports no external bindings, so a
+// deployment that never wires it degrades to "no such claim" rather than to an
+// error on every token.
+func NewIdentityResolver(getByID userGetByID, getBindings userGetIdentityBindings) IdentityResolver {
+	return &identityResolverImpl{getByID: getByID, getBindings: getBindings}
+}
+
+// ResolveIdentityBindings implements IdentityBindingResolver.
+func (r *identityResolverImpl) ResolveIdentityBindings(ctx context.Context, userID int64) (map[string]map[string]string, error) {
+	if r.getBindings == nil {
+		return nil, nil
+	}
+	out, err := r.getBindings(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve identity bindings: %w", err)
+	}
+	return out, nil
 }
 
 func (r *identityResolverImpl) ResolveUser(ctx context.Context, userID int64) (*IdentityInfo, error) {

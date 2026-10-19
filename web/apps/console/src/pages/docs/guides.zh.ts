@@ -771,7 +771,7 @@ JumpServer 自动拉 \`{{ISSUER}}/protocol/oidc/.well-known/openid-configuration
 \`\`\`json
 {
   "claim_mappers": [
-    {"claim": "groups", "source": "user.groups.codes"},
+    {"claim": "groups", "source": "user.groups"},
     {"claim": "email", "source": "user.email"},
     {"claim": "name", "source": "user.display_name"}
   ]
@@ -826,17 +826,17 @@ Harbor 自动按用户的 groups claim 创建对应项目（如 \`mxid-admins\` 
 
 访问策略：至少一条 \`allow public\` 或 \`allow group=grafana-users\`.
 
-**协议配置 — 关键: 加 claim_mapper 把 groups 推到 userinfo**:
+**协议配置 — 关键: 申请 \`groups\` scope**。\`groups\` 由 scope 发出, 不需要 claim_mapper。只有想换 claim 名时才加 mapper:
 
 \`\`\`json
 {
   "claim_mappers": [
-    {"claim": "groups", "source": "user.groups.codes"}
+    {"claim": "groups", "source": "user.groups"}
   ]
 }
 \`\`\`
 
-不加这一条, userinfo 默认没 \`groups\` 数组, Grafana 的 \`role_attribute_path\` 会拿不到 group 列表, role 永远 fallback Viewer.`,
+没申请 \`groups\` scope, userinfo 和 id_token 都不会有 \`groups\` 数组, Grafana 的 \`role_attribute_path\` 拿不到 group 列表, role 永远 fallback Viewer.`,
       },
       {
         title: '2. Grafana 配置 (env 或 grafana.ini)',
@@ -873,7 +873,7 @@ extra_hosts:
       },
     ],
     notes: [
-      '⚠️ MXID app 必须加 claim_mapper {claim:"groups", source:"user.groups.codes"}, 否则 userinfo 无 groups, Grafana 永远 Viewer',
+      '⚠️ MXID app 必须申请 groups scope, 否则 userinfo 无 groups, Grafana 永远 Viewer。claim_mapper 不是必须的 —— source 只认 user.groups 这类两段式路径, 三段式(如 user.groups.codes)会被静默忽略',
       '⚠️ docker 环境下 auth_url=localhost, token/api=host.docker.internal (Linux 加 extra_hosts: host-gateway)',
       'role_attribute_path 是 JMESPath, contains(groups[*], "x") 检查 group code 命中',
       'JIT 感知的角色映射: 把 role_attribute_path 指向 `app_roles` 而非 `groups`(如 `app_roles[0] == \'admin\' && \'Admin\' || \'Viewer\'`)。JIT 提权的应用角色排在 app_roles 最前, 授权期内 Grafana 升为 Admin, 到期自动回落 —— 无需 claim_mapper',

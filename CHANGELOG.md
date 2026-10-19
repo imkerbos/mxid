@@ -5,6 +5,45 @@ All notable changes to MXID are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- A claim mapper can now read a user's external identity ids:
+  `user.identity.<provider>.<field>`, where provider is a `provider_type`
+  (`lark`, `feishu`, `github`, …) and field is one of `external_id`, `user_id`
+  or `union_id`. This closes a gap that made an otherwise-present id
+  unreachable: a Lark id has been stored on every binding all along, but the
+  only nested source a mapper could address was `user.detail.*`, which reads
+  `mxid_user_detail` and nothing else. The immediate use is a relying party
+  @-mentioning someone in a Lark bot message, which the Lark API will only do
+  for an `open_id` or a `user_id` — never an email address.
+  Deliberately an allow-list of three id fields rather than the stored
+  provider profile, which also holds the subject's email, phone and name:
+  addressable arbitrary keys would turn per-app configuration into a
+  data-export surface. The lookup runs only for an app that configures such a
+  mapper — every id_token, userinfo and introspection response passes through
+  this code, and the apps with no use for an external id should not pay a
+  query for it. A missing binding, or a failed lookup, emits no claim rather
+  than failing the token.
+- `user.id_string` emits the user id as a decimal string. `user.id` keeps
+  emitting a JSON number, which is wrong for any relying party that parses
+  with JavaScript — a snowflake is ~3.9e17, past 2^53, so `JSON.parse`
+  silently returns a neighbouring integer. The old source is left alone
+  because apps are configured against it; new configuration should use this
+  one. Both shapes are now asserted by tests, so neither can be "tidied" into
+  the other.
+
+### Fixed
+- The console's own integration guides told operators to configure
+  `{"claim":"groups","source":"user.groups.codes"}` in six places, and the
+  Grafana guide flagged it as required ("otherwise everyone is Viewer"). That
+  path has three segments, which claim-source resolution has always ignored,
+  so the instruction was silently inert — and the claim it was supposed to
+  produce comes from requesting the `groups` scope, needing no mapper at all.
+  The guides now say to request the scope, and `docs/integrations/README.md`
+  carries the full list of valid sources, which had already recorded that this
+  path was invalid while the in-app guides contradicted it.
+
 ## [1.11.0] — 2026-10-15
 
 ### Security

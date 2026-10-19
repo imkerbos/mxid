@@ -47,9 +47,24 @@ OIDC 引擎基于 [`zitadel/oidc`](https://github.com/zitadel/oidc) v3，是标�
 
 > 要让 `groups` 出现在 token，把 `groups` 加进应用的 scope 列表即可。
 >
-> claim mapper 只在需要**换个 claim 名**时才用，且 source 是两段式 `user.<字段>`
-> （`user.groups`、`user.email`、`user.display_name` …）或 `user.detail.<自定义字段>`。
-> 三段式的 `user.groups.codes` 不是合法路径，写了会被静默忽略。
+> claim mapper 只在需要**换个 claim 名**、或取下面这些非标准字段时才用。合法 source：
+>
+> - 两段式 `user.<字段>`：`user.groups`、`user.email`、`user.phone`、`user.username`、
+>   `user.display_name`、`user.avatar`、`user.locale`、`user.status`、`user.tenant_id`、
+>   `user.updated_at`、`user.id`、`user.id_string`
+> - 三段式 `user.detail.<列名>`：`employee_no`、`job_title`、`department`、`gender`、
+>   `birthday`、`address`（来自 `mxid_user_detail`）
+> - 四段式 `user.identity.<provider>.<字段>`：外部身份（飞书/GitHub…）的 ID。
+>   provider 是 `lark` / `feishu` / `github` 这类 provider_type；字段只有三个：
+>   `external_id`（飞书这里就是 open_id）、`user_id`、`union_id`。
+>   **故意只开放 ID 字段** —— IdP 返回的完整 profile 还含邮箱、手机、姓名，
+>   放开任意 key 等于把每应用配置变成数据导出接口。
+>
+> **`user.id` 对 JS 客户端是坏的**：snowflake ≈ 3.9×10¹⁷ 超过 2^53，`JSON.parse`
+> 会返回一个邻近的整数。新配置一律用 `user.id_string`；`user.id` 只为兼容既有应用保留。
+>
+> **路径写错不会报错，只会没有这条 claim。** 不在上面列表里的一律静默忽略 ——
+> 比如三段式的 `user.groups.codes`（console 的接入指南曾经错写过它好几个月）。
 
 ### 登录确认行为
 
