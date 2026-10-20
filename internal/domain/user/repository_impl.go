@@ -221,10 +221,18 @@ func (r *gormRepository) GetAnyByID(ctx context.Context, id int64) (*User, error
 }
 
 // GetByUsername finds a user by tenant and username.
+// GetByUsername finds a user by tenant and username, WITHOUT regard to case.
+//
+// `alice` and `Alice` are the same person, so they are the same account —
+// migration 000070 makes that true in the schema, and this makes it true at
+// every lookup. Sign-in therefore accepts whichever casing the person typed,
+// and the duplicate check in Create rejects a name that differs from an
+// existing one only by case, instead of minting the second account the index
+// would then refuse.
 func (r *gormRepository) GetByUsername(ctx context.Context, tenantID int64, username string) (*User, error) {
 	var user User
 	err := r.db.WithContext(ctx).
-		Where("tenant_id = ? AND username = ?", tenantID, username).
+		Where("tenant_id = ? AND lower(username) = lower(?)", tenantID, username).
 		First(&user).Error
 	if err != nil {
 		return nil, fmt.Errorf("get user by username: %w", err)
