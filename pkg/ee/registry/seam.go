@@ -137,6 +137,61 @@ type TenantByCodeFunc func(ctx context.Context, code string) int64
 // never reflects a federated sign-in. Implemented by the CE user domain.
 type UpdateLastLoginFunc func(ctx context.Context, userID int64, ip string) error
 
+// RecordLoginFunc writes one row to the login history. Same reason
+// UpdateLastLoginFunc exists: the CE password engine records its own attempts,
+// and a federated sign-in never goes through that engine, so without this call
+// a user who only ever signs in through an external IdP has an empty login
+// history — and `mxid_login_record` is also what conditional access reads to
+// decide whether a sign-in comes from a new country, an impossible journey or
+// an unseen device. No history, no basis to compare against.
+//
+// Best-effort by contract: the implementation logs and swallows its own
+// failures, and the caller must not fail a sign-in because the history write
+// did. It returns no error for that reason.
+type RecordLoginFunc func(ctx context.Context, in *LoginRecordInput)
+
+// LoginRecordInput is one login attempt, in terms the EE side can supply
+// without importing CE internals.
+type LoginRecordInput struct {
+	TenantID int64
+	UserID   int64
+	Username string
+	// AuthType names the provider the sign-in came through ("lark", "teams",
+	// …) rather than a generic "external": an operator reading the history has
+	// to be able to tell which directory a person actually used, and the
+	// local-password path already writes its own "local" here.
+	AuthType  string
+	Success   bool
+	Stage     string
+	Reason    string
+	IP        string
+	UserAgent string
+}
+
+// AssessLoginRiskFunc runs conditional access over a federated login that has
+// just succeeded, and records the device it came from. Takes the gin context
+// rather than plain values so the device-cookie semantics (name, max-age,
+// SameSite, httpOnly) stay in one place in CE: a second cookie name on this
+// path would give federated users a permanently empty device history, which
+// reads as "unseen device" on every single sign-in.
+//
+// secondFactorCleared says whether this login already passed an interactive
+// TOTP challenge. It decides how a risk signal is handled: cleared means the
+// risk was already mitigated, not cleared means the assessment records the
+// risky sign-in (the "allow but audit" path) because THIS path has no way to
+// challenge afterwards.
+//
+// Deliberately returns nothing. Conditional access currently never forces a
+// factor on any login path — the local path discards the same verdict — so
+// enforcing it here would make federated logins the only place it bites, and
+// with an empty device history the first thing it would do is challenge
+// everyone. Wiring enforcement is a separate decision; when it happens, the
+// verdict has to come back through here AND secondFactorCleared has to become
+// the real answer, or risky logins silently stop being recorded.
+//
+// Best-effort by contract: swallows its own failures, never fails a sign-in.
+type AssessLoginRiskFunc func(c *gin.Context, tenantID, userID int64, secondFactorCleared bool)
+
 // ConsoleGateFunc authorizes an external identity for console login: it must
 // reject break-glass built-in accounts and users without any console
 // permission. Implemented in CE (authz + user repo).
@@ -235,6 +290,11 @@ type InitContext struct {
 	// UpdateLastLogin stamps last-login after a federated sign-in (external IdP
 	// runs outside the CE password engine that normally owns the stamp).
 	UpdateLastLogin UpdateLastLoginFunc
+	// RecordLogin appends the sign-in to the login history. Federated logins
+	// bypass the password engine that records its own, so without this the
+	// history — and the baseline conditional access compares against — has a
+	// hole exactly the size of the users who never type a password.
+	RecordLogin RecordLoginFunc
 	// OutboxRegister binds an EE outbox handler (e.g. SCIM deprovision delivery).
 	OutboxRegister OutboxRegisterFunc
 	// ProvisioningConfig reads an app's outbound-provisioning credentials at
@@ -255,6 +315,10 @@ type InitContext struct {
 	// VerifyStepUpTOTP validates the TOTP code the external-IdP MFA challenge
 	// collects, sharing the local-login verifier + rate limiter.
 	VerifyStepUpTOTP VerifyStepUpTOTPFunc
+	// AssessLoginRisk runs conditional access over a completed federated login
+	// and remembers the device, so an external-only user is not invisible to
+	// the risk signals the local path already feeds.
+	AssessLoginRisk AssessLoginRiskFunc
 }
 
 // Initializer wires one EE feature. Returning an error aborts startup.

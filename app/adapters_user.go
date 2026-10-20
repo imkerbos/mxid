@@ -34,6 +34,33 @@ func (a *userExternalResolver) Resolve(ctx context.Context, in *registry.Resolve
 	return u.ID, u.Username, nil
 }
 
+// recordLoginAdapter exposes the local path's login recorder to the EE seam, so
+// a federated sign-in lands in the same table — and in the same shape — as a
+// password login. Delegating rather than re-mapping is deliberate: two
+// independent mappings of the same row are two things to keep in step, and the
+// history is only useful to conditional access if both paths agree on it.
+//
+// Swallows its own failure (RecordAttempt logs): a history row is worth having,
+// never worth refusing a sign-in over.
+func recordLoginAdapter(rec *userLoginRecorderAdapter) registry.RecordLoginFunc {
+	return func(ctx context.Context, in *registry.LoginRecordInput) {
+		if in == nil {
+			return
+		}
+		rec.RecordAttempt(ctx, authn.LoginAttempt{
+			TenantID:  in.TenantID,
+			UserID:    in.UserID,
+			Username:  in.Username,
+			Success:   in.Success,
+			Stage:     in.Stage,
+			AuthType:  in.AuthType,
+			Reason:    in.Reason,
+			IP:        in.IP,
+			UserAgent: in.UserAgent,
+		})
+	}
+}
+
 // bindIdentityAdapter maps the neutral EE seam type onto the CE user service.
 func bindIdentityAdapter(svc *user.Service) registry.BindIdentityFunc {
 	return func(ctx context.Context, in *registry.BindIdentityInput) error {

@@ -386,7 +386,8 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 
 	mfaVerifier := newUserMFAVerifierAdapter(userModule)
 	authnModule := authn.Register(a, sessionMgr, authQuerier, userQuerier, mfaVerifier)
-	authnModule.Engine.SetLoginRecorder(newUserLoginRecorderAdapter(userModule, a.Logger))
+	loginRecorder := newUserLoginRecorderAdapter(userModule, a.Logger)
+	authnModule.Engine.SetLoginRecorder(loginRecorder)
 
 	revokeSessions := func(ctx context.Context, userID int64, why string) {
 		revokeUserSessions(ctx, sessionMgr, a.Logger, userID, why)
@@ -894,7 +895,12 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	// Disabled by default (policy.Enabled=false) so this is inert until an admin
 	// turns it on; device history still accumulates so the new-device signal is
 	// meaningful once enabled.
-	authnModule.Handler.SetConditionalAccess(buildConditionalAccess(a, settingService, geoResolver))
+	// One instance, two login paths: the local handler and (through the seam
+	// below) the EE federated callback. Two instances would mean two device
+	// repositories' worth of state in theory and, in practice, two places to
+	// keep the policy reading in step.
+	conditionalAccess := buildConditionalAccess(a, settingService, geoResolver)
+	authnModule.Handler.SetConditionalAccess(conditionalAccess)
 	// Retention cron — purges audit_log rows older than AuditPolicy.RetentionDays
 	// every 6h. Hourly would be wasteful (no SLA on prompt deletion); daily
 	// risks losing the window during long maintenance. Default-tenant scope
@@ -1130,6 +1136,7 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 		SessionMgr:    sessionMgr,
 		ExternalLogin: newUserExternalResolver(userModule).Resolve,
 		BindIdentity:  bindIdentityAdapter(userModule.Service),
+		RecordLogin:   recordLoginAdapter(loginRecorder),
 		UpdateLastLogin: func(ctx context.Context, userID int64, ip string) error {
 			return userModule.Repo.UpdateLastLogin(ctx, userID, ip)
 		},
@@ -1223,6 +1230,10 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 		},
 		// Shared TOTP verifier + rate limiter for the external-IdP MFA challenge.
 		VerifyStepUpTOTP: authnModule.Engine.VerifyStepUp,
+		// Conditional access over federated logins: feeds the device history and
+		// records a risky sign-in. Same service instance the local path uses.
+		AssessLoginRisk: assessLoginRiskAdapter(conditionalAccess,
+			a.Config.Session.CookieDomain, a.Config.Session.CookieSecure, a.Logger),
 	}); err != nil {
 		a.Logger.Fatal("init EE features", zap.Error(err))
 	}

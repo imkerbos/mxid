@@ -4,12 +4,15 @@ import (
 	"context"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
 	"github.com/imkerbos/mxid/internal/bootstrap"
+	"github.com/imkerbos/mxid/internal/domain/authn"
 	"github.com/imkerbos/mxid/internal/domain/conditionalaccess"
 	"github.com/imkerbos/mxid/internal/domain/setting"
+	"github.com/imkerbos/mxid/pkg/ee/registry"
 	"github.com/imkerbos/mxid/pkg/event"
 	"github.com/imkerbos/mxid/pkg/geoip"
 )
@@ -97,4 +100,53 @@ func buildConditionalAccess(a *bootstrap.App, settings *setting.Service, geo geo
 	}
 
 	return conditionalaccess.NewService(cfg, computer, deviceSvc, caRiskLogger{logger: a.Logger, bus: a.EventBus})
+}
+
+// assessLoginRiskAdapter exposes conditional access to the EE federated-login
+// path. Two gaps it closes, both of which made an external-only user invisible
+// to adaptive authentication:
+//
+//   - the device was never remembered, so the device history stayed empty and
+//     every federated sign-in would read as an unseen device;
+//   - the assessment never ran, so a risky sign-in (new country, impossible
+//     journey) left no record at all for a user who signs in only this way.
+//
+// The verdict is discarded, exactly as the local path discards it — see
+// registry.AssessLoginRiskFunc for why forcing a factor here is a separate
+// decision rather than an oversight.
+func assessLoginRiskAdapter(ca *conditionalaccess.Service, cookieDomain string, cookieSecure bool, logger *zap.Logger) registry.AssessLoginRiskFunc {
+	return func(c *gin.Context, tenantID, userID int64, secondFactorCleared bool) {
+		if ca == nil || userID == 0 || c == nil {
+			return
+		}
+		ctx := c.Request.Context()
+		deviceID := authn.ReadOrMintDeviceID(c)
+
+		if _, err := ca.Assess(ctx, conditionalaccess.AssessInput{
+			UserID:          userID,
+			TenantID:        tenantID,
+			IP:              c.ClientIP(),
+			UserAgent:       c.Request.UserAgent(),
+			DeviceID:        deviceID,
+			CanSecondFactor: secondFactorCleared,
+		}); err != nil {
+			// A signal that cannot be computed (geo lookup down, history
+			// unreadable) must not cost the user their session.
+			logger.Warn("conditional access: assess federated login failed",
+				zap.Int64("user_id", userID), zap.Error(err))
+		}
+
+		// Remember the device even when the policy is off, so history has
+		// accumulated by the time an admin turns it on — the same reason
+		// RememberDevice runs unconditionally on the local path.
+		if deviceID == "" {
+			return
+		}
+		if err := ca.RememberDevice(ctx, tenantID, userID, deviceID, c.Request.UserAgent()); err != nil {
+			logger.Warn("conditional access: remember device failed",
+				zap.Int64("user_id", userID), zap.Error(err))
+			return
+		}
+		authn.SetDeviceCookie(c, deviceID, cookieDomain, cookieSecure)
+	}
 }

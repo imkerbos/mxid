@@ -13,13 +13,20 @@ import (
 // Stage values:
 //   - "password" — first-factor result (LocalProvider.Authenticate)
 //   - "mfa"      — second-factor result (Engine.VerifyMFAChallenge)
+//   - "login"    — a federated sign-in, which has no separate factor steps
 type LoginRecord struct {
-	ID        int64     `gorm:"column:id;primaryKey" json:"id,string"`
-	TenantID  int64     `gorm:"column:tenant_id;not null" json:"tenant_id,string"`
-	UserID    *int64    `gorm:"column:user_id" json:"user_id,omitempty,string"`
-	Username  *string   `gorm:"column:username;size:128" json:"username,omitempty"`
-	Success   bool      `gorm:"column:success;not null" json:"success"`
-	Stage     string    `gorm:"column:stage;not null;size:16;default:password" json:"stage"`
+	ID       int64   `gorm:"column:id;primaryKey" json:"id,string"`
+	TenantID int64   `gorm:"column:tenant_id;not null" json:"tenant_id,string"`
+	UserID   *int64  `gorm:"column:user_id" json:"user_id,omitempty,string"`
+	Username *string `gorm:"column:username;size:128" json:"username,omitempty"`
+	Success  bool    `gorm:"column:success;not null" json:"success"`
+	// No gorm `default`, deliberately: GORM drops a field holding the zero
+	// value from the INSERT when it carries one, so a caller that forgot to set
+	// Stage would have its row filed as "password" — a federated sign-in
+	// disguised as a local one, which is worse than a missing value because
+	// nothing about it looks wrong. The column default stays for rows written
+	// outside this model.
+	Stage     string    `gorm:"column:stage;not null;size:16" json:"stage"`
 	AuthType  string    `gorm:"column:auth_type;not null;size:32" json:"auth_type"`
 	Reason    *string   `gorm:"column:reason;size:256" json:"reason,omitempty"`
 	IP        *string   `gorm:"column:ip;size:64" json:"ip,omitempty"`

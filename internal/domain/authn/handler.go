@@ -882,6 +882,18 @@ func (h *Handler) clearSessionCookie(c *gin.Context, name string) {
 // fresh opaque id when absent (which itself is the new-device signal). The
 // cookie is (re)set by rememberDevice only after a fully successful login.
 func (h *Handler) readOrMintDeviceID(c *gin.Context) string {
+	return ReadOrMintDeviceID(c)
+}
+
+// ReadOrMintDeviceID returns the request's conditional-access device id,
+// minting a fresh one when the cookie is absent. Exported because a federated
+// login completes outside this package and must land in the SAME device
+// history: a second cookie name, or a second id shape, would make every
+// external sign-in look like an unseen device forever.
+//
+// Returns "" when the id cannot be generated — callers treat that as "no
+// device recognition", never as a recognised device.
+func ReadOrMintDeviceID(c *gin.Context) string {
 	if v, err := c.Cookie(CookieDevice); err == nil && v != "" {
 		return v
 	}
@@ -892,6 +904,17 @@ func (h *Handler) readOrMintDeviceID(c *gin.Context) string {
 	return id
 }
 
+// SetDeviceCookie (re)sets the long-lived device cookie. Exported alongside
+// ReadOrMintDeviceID so the external-IdP path cannot drift on max-age,
+// SameSite or httpOnly.
+func SetDeviceCookie(c *gin.Context, deviceID, cookieDomain string, cookieSecure bool) {
+	if deviceID == "" {
+		return
+	}
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(CookieDevice, deviceID, deviceCookieMaxAge, "/", cookieDomain, cookieSecure, true)
+}
+
 // rememberDevice records the device for the user and (re)sets the long-lived
 // device cookie after a successful login. No-op when conditional access is
 // unwired. Runs regardless of policy state so device history accumulates.
@@ -900,8 +923,7 @@ func (h *Handler) rememberDevice(c *gin.Context, tenantID, userID int64, deviceI
 		return
 	}
 	_ = h.ca.RememberDevice(c.Request.Context(), tenantID, userID, deviceID, c.Request.UserAgent())
-	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie(CookieDevice, deviceID, deviceCookieMaxAge, "/", h.cookieDomain, h.cookieSecure, true)
+	SetDeviceCookie(c, deviceID, h.cookieDomain, h.cookieSecure)
 }
 
 // handleAuthError maps engine errors to HTTP responses.

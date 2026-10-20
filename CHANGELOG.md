@@ -5,6 +5,52 @@ All notable changes to MXID are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] — 2026-10-20
+
+### Fixed
+- A user who only ever signed in through an external identity provider had an
+  empty login history: the history table is written by the password engine, and
+  a federated sign-in never reaches it. Login history now records federated
+  sign-ins too — on both the portal and the admin-console paths — filed under
+  the provider ("lark", "teams") rather than a generic "external", so an
+  operator can tell which directory was used. This matters beyond the screen:
+  conditional access reads the same table to decide whether a sign-in comes
+  from a new country, an impossible journey or an unseen device, so a
+  federated-only user gave it no baseline at all and every sign-in of theirs
+  was silently assessed as the first one. The console path was the starker
+  half — the account with the most privilege was the one leaving the least
+  trace.
+- Conditional access never saw a federated login. The device was never
+  remembered, so an external-only user's device history stayed empty and each
+  of their sign-ins read as an unseen device; and the assessment never ran, so
+  a sign-in from a new country or an implausible journey left no record.
+  Federated logins now feed the same device history and the same assessment as
+  local ones, sharing the device cookie rather than starting a second one. Note
+  what this does NOT change: the verdict is still discarded, exactly as the
+  local login path discards it — conditional access has never forced a second
+  factor on any path, and making federated logins the first place it does is a
+  separate decision, not a side effect of giving it data.
+- Three flags did not survive being stored. Each carried a GORM `default` tag,
+  and GORM treats a field holding the Go zero value as "not supplied" when it
+  has one: the column is dropped from the INSERT and the database default wins,
+  so the value an administrator chose never reached the table and nothing
+  anywhere reported the disagreement. The defaults now live in the service
+  layer, which already applied them when a request omits the field; the column
+  defaults stay for rows written outside it. Existing rows are unchanged.
+  - An external IdP created with automatic account creation turned OFF stored
+    it ON. This is the one that decided something: it is the safety catch
+    during a directory migration, and it was being quietly re-armed. (EE)
+  - An application registered as third-party stored as first-party. Nothing
+    reads that flag today — the consent screen runs off a one-time
+    confirmation token — so no authorization decision was affected; what was
+    affected is every stored row, on the day the flag does start deciding
+    something.
+  - A login-history row written without a stage was filed as a password login.
+    Nothing about such a row looks wrong on sight, which is what made it worse
+    than an empty value: a federated sign-in would read as a local one. No
+    caller omits the stage today; this removes the way a future one would be
+    disguised rather than caught.
+
 ## [1.13.1] — 2026-10-20
 
 ### Fixed
@@ -1597,6 +1643,7 @@ Initial public preview. Two integrations verified end-to-end: **Grafana (OIDC)**
 - Tailwind v4 monorepo `@source` directive so shared package UI compiles into both SPAs.
 
 [Unreleased]: https://github.com/imkerbos/mxid/compare/v1.13.1...HEAD
+[1.14.0]: https://github.com/imkerbos/mxid/compare/v1.13.1...v1.14.0
 [1.13.1]: https://github.com/imkerbos/mxid/compare/v1.13.0...v1.13.1
 [1.13.0]: https://github.com/imkerbos/mxid/compare/v1.12.0...v1.13.0
 [1.12.0]: https://github.com/imkerbos/mxid/compare/v1.11.0...v1.12.0
