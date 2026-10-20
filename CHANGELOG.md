@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.12.0] — 2026-10-19
 
+### Fixed
+- Native controls stayed light on the dark theme. A `<select>`'s option list,
+  the date picker and the scrollbar are painted by the browser, not by CSS, so
+  no class reaches them — only `color-scheme` does, and neither app declared
+  it. The closed control looked right (Tailwind's preflight leaves it
+  transparent, so it took the surface behind it) and the mismatch appeared the
+  moment the list opened: an option list on white, with the dark theme's pale
+  ink on it. Both apps now declare `color-scheme` alongside their palettes.
+  Ten hand-written `<select>` elements also carried no surface or ink token —
+  including the provider picker in the add-identity-source dialog, which is
+  the one control an operator meets before any IdP exists. The app-management
+  page's local copy of `INPUT_CLASS` had drifted from the shared one by
+  exactly those two classes; the copy is gone.
+
+
 ### Added
 - A federated sign-in whose external identity matches an existing account now
   offers to link it instead of quietly creating a second one. The shape this
