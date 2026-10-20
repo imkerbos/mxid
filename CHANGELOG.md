@@ -5,7 +5,35 @@ All notable changes to MXID are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.12.0] — 2026-10-19
+## [1.13.0] — 2026-10-20
+
+### Changed
+- An external identity is now matched to an existing account by USERNAME,
+  case-insensitively, after dropping any domain the provider attached. It was
+  matched on the full email address, which fails precisely when it is needed:
+  an organisation moving between identity providers routinely moves mail
+  domains at the same time, so the same person is `someone@old.example` in one
+  directory and `someone@new.example` in the other, and no address ever
+  matches. The username survives that move.
+  The key is wider than an email address, and that is affordable here for one
+  reason: the match decides whether to SHOW a prompt, and the prompt is
+  answered with the candidate account's own TOTP code. A wider key cannot hand
+  anyone an account; it can only offer the wrong one, and a wrong offer dies at
+  the code. An account with no email address is linkable now too, which the
+  previous key silently excluded.
+
+### Added
+- Usernames are unique per tenant without regard to case, and sign-in accepts
+  whichever casing was typed. `alice` and `Alice` are one person, so they are
+  one account — the previous constraint was case-sensitive, so both could
+  exist, and once they do every lookup has to guess which one was meant. The
+  state is now unreachable rather than handled. An account created as `Alice`
+  that refuses `alice` at sign-in is, to the person in front of it,
+  indistinguishable from a wrong password.
+  The migration fails rather than proceeds if a tenant already holds two such
+  usernames: which of the two is the person is a question only an administrator
+  can answer, and answering it here would mean deleting an account inside a
+  migration.
 
 ### Fixed
 - Native controls stayed light on the dark theme. A `<select>`'s option list,
@@ -21,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   page's local copy of `INPUT_CLASS` had drifted from the shared one by
   exactly those two classes; the copy is gone.
 
+## [1.12.0] — 2026-10-19
 
 ### Added
 - A federated sign-in whose external identity matches an existing account now
@@ -1546,7 +1575,8 @@ Initial public preview. Two integrations verified end-to-end: **Grafana (OIDC)**
 - pnpm workspaces (`console` / `portal` / `shared`).
 - Tailwind v4 monorepo `@source` directive so shared package UI compiles into both SPAs.
 
-[Unreleased]: https://github.com/imkerbos/mxid/compare/v1.12.0...HEAD
+[Unreleased]: https://github.com/imkerbos/mxid/compare/v1.13.0...HEAD
+[1.13.0]: https://github.com/imkerbos/mxid/compare/v1.12.0...v1.13.0
 [1.12.0]: https://github.com/imkerbos/mxid/compare/v1.11.0...v1.12.0
 [1.11.0]: https://github.com/imkerbos/mxid/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/imkerbos/mxid/compare/v1.9.3...v1.10.0
