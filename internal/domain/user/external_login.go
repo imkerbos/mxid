@@ -381,7 +381,14 @@ var ErrExternalUserNotLinked = errors.New("no local account linked to this exter
 // pickUsername chooses the best candidate username from the external profile.
 // Falls back through username → email local part → provider-prefixed externalID.
 func pickUsername(in *ExternalLoginInput) string {
-	u := strings.TrimSpace(in.Username)
+	// Same reduction the link matcher uses: whatever the IdP calls a username,
+	// the local account is keyed by its bare form. Microsoft sends a
+	// userPrincipalName, so without this a provisioned account came out as
+	// `someone_example.net`: the domain survived and the `@` became an
+	// underscore, so the account the link matcher would later look for
+	// (`someone`) was not the one that had been created. One notion of "the
+	// username this IdP reported", used by both paths.
+	u := linkMatchName(in.Username)
 	if u == "" && in.Email != "" {
 		u = strings.SplitN(in.Email, "@", 2)[0]
 	}

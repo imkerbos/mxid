@@ -282,3 +282,23 @@ func TestResolveExternalLogin_NoMatchAutoCreateOffStillNotLinked(t *testing.T) {
 		t.Fatalf("err = %v, want ErrExternalUserNotLinked", err)
 	}
 }
+
+// Provisioning and linking must agree on what the IdP's username is. They did
+// not: the link matcher stripped the domain off a userPrincipalName while
+// auto-create kept it and turned the `@` into an underscore, so an account
+// provisioned as `someone_example.net` was invisible to a later match on
+// `someone`.
+func TestResolveExternalLogin_AutoCreateUsesTheBareUsername(t *testing.T) {
+	svc, db := newLinkTestService(t)
+
+	if _, err := svc.ResolveExternalLogin(context.Background(), teamsLogin("alice@newdomain.example")); err != nil {
+		t.Fatalf("expected auto-create, got %v", err)
+	}
+	var created User
+	if err := db.Where("id <> ?", 0).First(&created).Error; err != nil {
+		t.Fatalf("load created user: %v", err)
+	}
+	if created.Username != "alice" {
+		t.Fatalf("provisioned username = %q, want %q — the domain must not survive", created.Username, "alice")
+	}
+}
