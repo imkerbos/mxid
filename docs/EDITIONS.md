@@ -17,7 +17,7 @@ with a signed license.
 | **Single-tenant** (one identity domain per deployment) | ✅ | ✅ |
 | **External IdP login** (social / enterprise SSO) | ❌ | ✅ |
 | **Branding / white-label** (logo, colors, login page) | ❌ | ✅ |
-| **Conditional access** (risk-based / adaptive access policies) | ❌ | ✅ |
+| **Conditional access** (risk signals: new country, impossible travel, unseen device — recorded and audited for local and federated sign-ins alike; **not yet used to force a second factor**) | ❌ | ✅ |
 | **JIT privileged access** (eligibility → request → approval → time-boxed elevation; gated via `conditional_access`) | ❌ | ✅ |
 | **SCIM outbound deprovisioning** (offboarding L2 connector) | ❌ | ✅ |
 | **Form-fill SSO (SWA)** — browser-extension auto-login for password-only web apps | ❌ | ✅ |

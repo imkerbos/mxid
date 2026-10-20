@@ -1,7 +1,5 @@
 # 身份绑定恢复 + 204 信封修复 — 实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** 消除"执行成功却报告失败"的信封缺陷,并给外部身份绑定补上恢复能力,使误删/误解绑可以纯功能路径修复。
 
 **Architecture:** 四个阶段,每个阶段结束都是一个可独立发版的完整状态。Phase A 统一 HTTP 信封;Phase B 让身份绑定可软删可恢复;Phase C 修软删用户导致的外部 IdP 锁死;Phase D 加自助绑定(身份关联规则在 CE,OAuth 协议在 EE)。

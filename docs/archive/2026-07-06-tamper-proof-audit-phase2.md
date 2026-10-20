@@ -1,7 +1,5 @@
 # Tamper-Proof Audit — Phase 2 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Make audit capture unbypassable and the chained log physically append-only: a gorm plugin auto-captures before/after for every write to an audited-model whitelist (in the caller's transaction, aborting the write if capture fails), and a Postgres trigger rejects UPDATE/DELETE on `mxid_audit_entry` for all roles.
 
 **Architecture:** A gorm plugin registers `Before` callbacks on Create/Update/Delete. For any model implementing the `audit.Audited` marker, the callback snapshots before-state (Model-based re-query with the statement's WHERE) and after-state (create → the Dest struct; update → the SET delta; delete → nil), redacts secrets, and writes an `AuditPending` row via a `NewDB` session on the SAME connection (same transaction, no recursion). Capturing in `Before` means a capture error aborts the mutation via `db.AddError`. A Postgres RULE/trigger on `mxid_audit_entry` blocks UPDATE/DELETE regardless of DB role — the append-only hard floor (defense beyond the app-role GRANT deferred to later ops hardening).

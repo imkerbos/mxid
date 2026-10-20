@@ -3,7 +3,7 @@
 **Status**: Superseded — this spec describes the original hand-rolled
 `internal/protocol/oidc` engine, which was fully replaced by the
 zitadel/oidc-based engine (`internal/protocol/oidcop`) and deleted in WS9 of
-the migration (see `docs/superpowers/plans/2026-07-08-zitadel-oidc-migration.md`).
+the migration (see the v1.2.0 entry in `CHANGELOG.md`).
 Kept for historical reference only; do not use as a guide to the current
 architecture (in particular, JWKS is now a single provider keyset, not a
 per-app aggregate — see §5.5 below).

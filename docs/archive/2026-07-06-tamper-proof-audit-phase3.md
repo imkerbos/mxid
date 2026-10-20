@@ -1,7 +1,5 @@
 # Tamper-Proof Audit — Phase 3 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Add external Merkle-root anchoring with Ed25519 signatures so the audit chain gains non-repudiation beyond the HMAC key: signed Merkle roots of chain segments are written to a pluggable sink outside the DB, and verification recomputes + checks them.
 
 **Architecture:** An `Anchorer` periodically takes the un-anchored tail of each `(tenant_id, chain_class)` chain, builds a Merkle root over the entries' `entry_hash` leaves, signs `(tenant, class, from_seq, to_seq, root)` with an operator-provided Ed25519 key, writes the signed record to a pluggable `AnchorSink` (local append-only file by default; S3 Object Lock in production), and records it in `mxid_audit_anchor`. Verification recomputes each anchor's Merkle root from the stored entries and checks the signature — so tampering is caught even by someone who holds the HMAC key, as long as they don't also control the external sink + Ed25519 private key.

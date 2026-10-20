@@ -54,11 +54,21 @@ OIDC 引擎基于 [`zitadel/oidc`](https://github.com/zitadel/oidc) v3，是标�
 >   `user.updated_at`、`user.id`、`user.id_string`
 > - 三段式 `user.detail.<列名>`：`employee_no`、`job_title`、`department`、`gender`、
 >   `birthday`、`address`（来自 `mxid_user_detail`）
-> - 四段式 `user.identity.<provider>.<字段>`：外部身份（飞书/GitHub…）的 ID。
->   provider 是 `lark` / `feishu` / `github` 这类 provider_type；字段只有三个：
->   `external_id`（飞书这里就是 open_id）、`user_id`、`union_id`。
->   **故意只开放 ID 字段** —— IdP 返回的完整 profile 还含邮箱、手机、姓名，
->   放开任意 key 等于把每应用配置变成数据导出接口。
+> - 四段式 `user.identity.<provider>.<字段>`：外部身份（飞书 / Teams / GitHub…）的 ID。
+>   provider 是 `lark` / `feishu` / `teams` / `github` 这类 provider_type；
+>   字段只有三个：`external_id`、`user_id`、`union_id`。
+>   **故意只开放 ID 字段** —— IdP 返回的完整 profile 还含邮箱、手机、姓名、
+>   职位、办公地点，放开任意 key 等于把每应用配置变成数据导出接口。
+>
+>   **字段名按 provider 不同，不要照抄另一个 provider 的配置**：
+>
+>   | provider | 用这个 | 是什么 | 注意 |
+>   |---|---|---|---|
+>   | `lark` / `feishu` | `user.identity.lark.user_id` | 飞书的企业内通用 user_id | `external_id` 是 open_id（按应用区分，跨应用不通用）；`union_id` 也在 |
+>   | `teams` | `user.identity.teams.external_id` | Entra objectId（36 位 UUID） | **`user_id` / `union_id` 在 Teams 上永远为空** —— 那是飞书的字段名 |
+>
+>   Teams 群里 @ 人，bot 侧要的往往是 `29:` 开头的**会话成员 id**，那是 Teams
+>   的会话状态，SSO 拿不到也不该拿。用这里给的 objectId 自行换取。
 >
 > **`user.id` 对 JS 客户端是坏的**：snowflake ≈ 3.9×10¹⁷ 超过 2^53，`JSON.parse`
 > 会返回一个邻近的整数。新配置一律用 `user.id_string`；`user.id` 只为兼容既有应用保留。

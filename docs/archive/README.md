@@ -28,3 +28,4 @@ Current documentation lives one directory up:
 | `FORM-FILL-SSO-DESIGN.md` | v1.5.0 — form-fill (SWA) design; still the only written record of the per-user vs shared credential-mode rationale | `ARCHITECTURE.md` (form-fill seam) |
 | `FORM-FILL-SSO-B0-SECURITY-SPEC.md` | v1.5.0 — form-fill threat model and security requirements | — |
 | `2026-07-05-tamper-proof-audit-phase1.md` … `phase5-provability.md` | v1.1.0 — the five-phase audit-chain build plan | `AUDIT-CHAIN-DESIGN.md` |
+| `2026-08-10-identity-rebind-and-204-envelope-design.md` + `-plan.md` | v1.9.x — identity rebind (soft-deletable, recoverable bindings) and the 204-envelope fix, where a successful admin write reported as a failure | `ARCHITECTURE.md` (`BindIdentityFunc` seam), `CHANGELOG.md` |

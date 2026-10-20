@@ -1,7 +1,5 @@
 # Tamper-Proof Audit — Phase 1 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Build the cryptographic tamper-evident core: capture audit events into a durable pending table, chain them with an HMAC hash chain via a single ordered consumer into an append-only log, and verify the chain detects any tampering or deletion.
 
 **Architecture:** Producers write an event into `audit_pending` (in the caller's DB transaction — atomic with the state change). A single-goroutine `Chainer` drains `audit_pending` in FIFO order, computes `entry_hash = HMAC-SHA256(key, seq ‖ prev_hash ‖ canonical_json(payload))` per `(tenant_id, chain_class)` chain, and inserts into the strictly-append-only `audit_log`. `chain_head` holds each chain's tip (last_seq, last_entry_hash). `VerifyChain` recomputes the chain from genesis and flags any hash mismatch or `seq` gap.

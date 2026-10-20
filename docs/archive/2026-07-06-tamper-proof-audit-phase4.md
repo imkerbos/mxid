@@ -1,7 +1,5 @@
 # Tamper-Proof Audit — Phase 4 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Bring auth/session/token/consent events (login, MFA, OIDC token, consent, logout) and sensitive reads (PII view) into the tamper-proof hash chain, so the security events auditors care most about gain the same tamper-evidence as data mutations — without disrupting the existing legacy `mxid_audit_log` UI.
 
 **Architecture:** A single, selective bridge at the audit service's one write chokepoint (`Service.createLog`) also emits chosen events into the chain via the Phase 1 `Capturer` (chain_class `auth` or `sensitive_read`). The bridge is SELECTIVE: data-mutation events (`user.created`, `app.*`, …) are already captured by the Phase 2 ORM callback (chain_class `data`), so they are NOT bridged (would duplicate). Only events with no audited-table equivalent — the auth/session/token/consent set, plus `user.pii_view` — flow through the bridge. The legacy `mxid_audit_log` write is unchanged (the current console audit UI keeps working); the chain write is additive and post-hoc (auth events are recorded after the fact, so there is no business-transaction / abort coupling).

@@ -1,7 +1,5 @@
 # Tamper-Proof Audit — Provability Phase Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Make the audit chain third-party-provable and close the two Phase-3 residuals: (1) an **export** producing a self-contained, offline-verifiable proof of a chain segment (Ed25519 anchors + public key — no secret needed), (2) **sink-diff verification** that detects deleted anchor rows by cross-checking the DB against the external sink, (3) **multi-key verification** so anchor-key rotation doesn't break historical verification.
 
 **Architecture:** Third-party proof rests on the Ed25519-signed Merkle anchors (public-key verifiable), NOT the HMAC chain (which needs the secret key). `ExportChain` writes the entries of a seq range + the signed anchors covering them + the public key to a directory; `VerifyExport` re-verifies that WITHOUT a DB or secret. `VerifyAnchorsWithSink` reads the sink back (new `AnchorSink.List`) and flags any DB anchor missing from the sink or sink anchor missing from the DB. A key registry maps `key_id → ed25519.PublicKey` (current seed's public key + operator-configured retired keys) so each anchor verifies against the key that signed it.
