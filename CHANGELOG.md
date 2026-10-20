@@ -5,6 +5,27 @@ All notable changes to MXID are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.1] — 2026-10-20
+
+### Fixed
+- An account provisioned from a federated login kept the domain the provider
+  attached to the username, with the `@` turned into an underscore:
+  `someone@example.net` became the account `someone_example.net`. Provisioning
+  and linking disagreed about what the identity provider's username is — the
+  link matcher reduces it to its bare form, auto-create did not — so an account
+  created one way was invisible to a match made the other way. Both now use the
+  same reduction.
+- The case-insensitive username index shipped in 1.13.0 also covered
+  soft-deleted rows, so a deleted account kept its username forever and the
+  name could never be reused. That is the defect 000047 had already removed
+  once, reintroduced by a migration whose comment claimed to mirror the
+  existing scope and did not: the app-level pre-check excludes soft-deleted
+  rows, so it passes, and the insert then hits the index and reaches the caller
+  as a generic 500 rather than "username exists". The index is now partial on
+  `deleted_at IS NULL`, matching the plain-username, email and phone indexes
+  beside it. Live accounts still collide case-insensitively, which was the
+  point of 1.13.0.
+
 ## [1.13.0] — 2026-10-20
 
 ### Changed
@@ -1575,7 +1596,8 @@ Initial public preview. Two integrations verified end-to-end: **Grafana (OIDC)**
 - pnpm workspaces (`console` / `portal` / `shared`).
 - Tailwind v4 monorepo `@source` directive so shared package UI compiles into both SPAs.
 
-[Unreleased]: https://github.com/imkerbos/mxid/compare/v1.13.0...HEAD
+[Unreleased]: https://github.com/imkerbos/mxid/compare/v1.13.1...HEAD
+[1.13.1]: https://github.com/imkerbos/mxid/compare/v1.13.0...v1.13.1
 [1.13.0]: https://github.com/imkerbos/mxid/compare/v1.12.0...v1.13.0
 [1.12.0]: https://github.com/imkerbos/mxid/compare/v1.11.0...v1.12.0
 [1.11.0]: https://github.com/imkerbos/mxid/compare/v1.10.0...v1.11.0
