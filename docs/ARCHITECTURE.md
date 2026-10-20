@@ -463,6 +463,41 @@ Configuration is split deliberately: the collector address is boot-time config
 administrator who can silently redirect it into a black hole has undone the
 reason for having it), while the alert webhook is a runtime setting.
 
+## Login history and conditional access
+
+Two tables, one feeding the other. `mxid_login_record` holds one row per login attempt — who,
+when, from where, success or failure, and which *stage* ("password", "mfa", or "login" for a
+federated sign-in, which has no separate factor steps). `mxid_known_device` holds the devices a
+user has been seen on, keyed by an opaque id in a long-lived httpOnly cookie.
+
+`internal/domain/conditionalaccess` reads both to derive three signals — new country, impossible
+travel, unseen device — and `Evaluate` maps (policy, signals) to a verdict. The function is pure;
+every lookup lives in adapters, so the security-critical decision is trivially testable.
+
+**Both login paths must write both tables, and for a long only one did.** The password engine
+records its own attempts; a federated sign-in bypasses that engine entirely, so a user who only
+ever signed in through an external directory had an empty history, no remembered device, and
+therefore no baseline for any of the three signals. The EE external-IdP handlers now call
+`RecordLoginFunc` and `AssessLoginRiskFunc` (see *Named cross-module seams*) on **both** the portal
+and the admin-console callbacks — the console half was missed first time round, which left the
+account with the most privilege leaving the least trace.
+
+The federated path shares the local path's device cookie rather than minting its own; CE exports
+`authn.ReadOrMintDeviceID` and `authn.SetDeviceCookie` for exactly that reason. A unit test cannot
+see this — it takes one browser signing in both ways and observing the same device id in both
+rows.
+
+**What conditional access does NOT do: force a second factor.** It never has, on any path. The
+local handler discards the verdict (`_, _ = h.ca.Assess(...)`), and it only reaches that call when
+the user holds *no* factor — a user who holds one was already challenged by the engine and never
+enters the branch. So the feature today is "record a risky sign-in that cannot be challenged, and
+accumulate device history". Wiring enforcement is a separate decision with a visible first-day
+cost: device history starts empty, so enabling the unseen-device rule challenges everyone at once,
+including users who have no factor to be challenged with.
+
+Device history accumulates whether or not the policy is enabled, so the signals mean something on
+the day an administrator turns it on rather than starting from zero then.
+
 ## Credential bootstrap and forced password change
 
 Migration 000009 seeds an `admin` account with a password written in plaintext
@@ -599,6 +634,8 @@ so they are asserted by tests rather than documented and hoped for:
 | A release deployment never serves with the seeded administrator password | `internal/bootstrap/admin_credential_test.go` |
 | A session owing a password change reaches nothing but the change-password route | `internal/domain/authn/password_gate_test.go` |
 | No goroutine is started without a recover (an unrecovered panic terminates the process) | `pkg/safego/no_bare_goroutines_test.go` |
+| A flag an administrator set to its zero value survives being stored (GORM drops a zero-valued field that carries a `default` tag, so the column default silently wins) | `features/externalidp/auto_create_persist_test.go` (EE), `internal/domain/app/first_party_persist_test.go`, `internal/domain/user/login_record_persist_test.go` |
+| Every seam the external-IdP handlers need is actually passed to them at registration (each is nil-checked, so a missing one is absent at runtime with nothing failing) | `features/externalidp/register_wiring_test.go` (EE) |
 | Every error response carries a traceId (no hand-written body) | `pkg/response/no_bypass_test.go` |
 | No handler answers `204 No Content` — an empty body can't carry the `{code,message,data}` envelope, so the SPA's success interceptor reads `data.code` off nothing, sees `undefined`, and reports the write as failed even though it succeeded | `internal/httpguard/no_204_test.go` |
 | Every event with an audit allow-list is actually subscribed to | `internal/domain/audit/subscription_coverage_test.go` |
@@ -727,7 +764,7 @@ packages, and runs the same `app.Run()`.
 
 `registry.InitContext` (`pkg/ee/registry/seam.go`) carries the handful of CE-domain decisions an
 EE feature needs but cannot import directly (internal packages, separate Go module). Most of its
-fields are narrow one-off hooks; three are architecturally significant enough to call out by name:
+fields are narrow one-off hooks; five are architecturally significant enough to call out by name:
 
 - **`ExternalLoginFunc`** — resolves an external identity to a local user on an ordinary
   external-IdP login (find the linked user, or auto-provision one). Implemented by the CE user
@@ -756,23 +793,38 @@ fields are narrow one-off hooks; three are architecturally significant enough to
   login; `BindIdentityFunc` mirrors it for self-service binding.
 - **`ExternalLinkRequired`** (a seam *value*, not a func) — the login-time counterpart to
   `BindIdentityFunc`. When an external identity authenticates, holds no binding, and an existing
-  local account carries the same email, `ExternalLoginFunc` returns this instead of
+  local account carries the same username, `ExternalLoginFunc` returns this instead of
   auto-provisioning a second account. The EE portal handler parks the pending identity in Redis
   (`mxid:extidp:link:`, 10-minute TTL, single-use) and bounces the browser to the login page with
   `?ext_link=<token>`; the link completes only after a TOTP code belonging to the *matched* account
   verifies.
 
   **The match is a hint; the TOTP code is the authorization.** This is what makes it safe to key
-  off an attribute the IdP reports: anyone who can set an email at the IdP can reach the prompt,
-  and the prompt is all they get. The account id comes from the parked entry and never from the
+  off an attribute the IdP reports: anyone who can set that attribute at the IdP can reach the
+  prompt, and the prompt is all they get. The account id comes from the parked entry and never from the
   request — that field is the whole vulnerability if it is ever honoured, and
   `TestIdentityLink_RequestCannotChooseTheAccount` exists to keep it that way.
 
-  Matching is on **email only**, never username: Lark reports an `en_name` or a mobile number,
-  Microsoft reports a `userPrincipalName` with a domain attached, so two records for one person
-  routinely disagree, and `UNIQUE(tenant_id, username)` is case-sensitive — `alice` and
-  `Alice` can both exist. Two accounts matching, or a matched account that already signs in
-  through the *same* provider, both refuse (`ErrExternalLinkAmbiguous`) rather than pick a side.
+  Matching is on **username, case-insensitively**, never email. Email looks like the obvious key
+  and is the wrong one: two directories in the same migration routinely sit on different mail
+  domains, so the same person is `someone@old.example` in one and `someone@new.example` in the
+  other, and an email match finds nobody precisely when the migration needs it most. The username
+  survives that, and the three objections to using it have each been answered rather than argued
+  with:
+
+  - a provider reports a username with its domain attached (Microsoft sends a
+    `userPrincipalName`), so `linkMatchName` reduces whatever the IdP calls a username to its bare
+    form before comparing. Provisioning uses the same reduction, so an account created one way is
+    findable by a match made the other.
+  - casing differs between directories and between one sign-in and the next, so the lookup folds
+    case (`FindByUsernameFold`).
+  - `UNIQUE(tenant_id, username)` was case-sensitive, which would have let `alice` and `Alice` be
+    two people and made a case-folded match ambiguous by construction. Migration `000070` replaced
+    it with a unique index on `lower(username)` (`000071` scoped it to live rows, as the plain
+    username, email and phone indexes beside it already were).
+
+  Two accounts matching, or a matched account that already signs in through the *same* provider,
+  both refuse (`ErrExternalLinkAmbiguous`) rather than pick a side.
 
   Detection runs **before** the `auto_create` decision, deliberately: otherwise turning
   auto-provisioning off — the safe setting during a provider migration — would also block every
@@ -782,6 +834,30 @@ fields are narrow one-off hooks; three are architecturally significant enough to
   `identity_bound` (`BindIdentityInput.LinkedAtLogin`). The row in `mxid_user_identity` is
   identical either way, so the action is the only place the difference between "a signed-in person
   added a login method" and "an unauthenticated caller proved ownership with a code" survives.
+- **`RecordLoginFunc`** — appends a sign-in to the login history (`mxid_login_record`). The table
+  is written by the CE password engine, which a federated sign-in never reaches, so without this
+  seam a user who only ever signs in through an external directory had no history at all — and
+  conditional access reads the same table, so it had no baseline for them either. The CE adapter
+  delegates to the *same* recorder the local path uses rather than mapping the row a second time:
+  two independent mappings of one row are two things to keep in step, and the history is only
+  useful to risk assessment if both paths agree on its shape. `AuthType` carries the provider
+  ("lark", "teams"), not a generic "external", because the local path writes "local" there and an
+  operator has to be able to tell which directory a person actually used. Best-effort by contract:
+  the implementation logs and swallows its own failures, and a sign-in is never refused because a
+  history row could not be written.
+- **`AssessLoginRiskFunc`** — runs conditional access over a completed federated sign-in and
+  remembers the device it came from. It takes the gin context rather than plain values, which is
+  the point of the seam: the device-cookie semantics (name, max-age, SameSite, httpOnly) stay in
+  one place in CE. A second cookie name on this path would give federated users a permanently
+  empty device history, so every sign-in of theirs would read as an unseen device — a signal that
+  is always on is the same as no signal. `secondFactorCleared` says whether the login already
+  passed an interactive TOTP challenge, which decides whether a risk signal is treated as
+  mitigated or recorded.
+
+  **The verdict is deliberately discarded**, exactly as the local login path discards it. See
+  *Conditional access* below: it has never forced a second factor anywhere, and making federated
+  logins the first place it does is a decision to take on its own, not a side effect of giving it
+  data.
 - **`OptionalSessionMiddlewareFunc`** — builds gin middleware that resolves a session cookie when
   one is present and does nothing otherwise (it never rejects). Wraps CE's
   `internal/domain/authn.OptionalAuthMiddleware`. The external-IdP callback route serves two

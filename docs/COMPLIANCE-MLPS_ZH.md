@@ -34,6 +34,7 @@ MXID 当前使用 bcrypt / AES-GCM / Ed25519 / SHA-256,**未使用 SM2/SM3/SM4 �
 | 登录用户应进行身份标识和鉴别,标识唯一 | 用户名租户内唯一(数据库唯一约束);口令 bcrypt 加盐存储 | 控制台 → 用户;`mxid_user` 表 |
 | 口令有复杂度要求并定期更换 | 长度/大小写/数字/特殊字符策略 + 历史重用检查 + 过期天数,均可配 | 控制台 → 设置 → 安全策略 |
 | 具有登录失败处理功能(结束会话、限制次数、超时退出) | 失败 5 次锁定 15 分钟(可配),失败 3 次起要求验证码;会话同时受**空闲超时**与**绝对超时**约束 | 设置 → 安全策略;登录页实测 |
+| 登录行为留痕(可追溯到人、时间、来源) | 每次登录尝试(成功与失败)写入独立的登录历史,含时间、用户、方式、IP、User-Agent;**外部身份源(飞书 / Teams 等)登录与本地口令登录一视同仁**,按身份源记录而非笼统的"外部",门户与管理控制台两条登录路径都覆盖 | 门户 → 安全 → 登录历史;`mxid_login_record` 表 |
 | 远程管理时防止鉴别信息在网络传输中被窃听 | 全站 HTTPS;应用层与 nginx 双写 HSTS;release 模式强制 `cookie_secure`,否则拒绝启动 | `internal/middleware/security_headers.go`;`deploy/nginx/prod.conf` |
 | **应采用两种或两种以上鉴别技术,其中一种至少应使用密码技术来实现** | 口令 + 第二因素(TOTP / 短信 / 邮件),可按策略强制全员启用;未绑定因素的会话被**强制注册闸门**挡住 | 设置 → MFA 策略;`internal/domain/authn/enroll_gate.go` |
 
@@ -67,7 +68,7 @@ MXID 当前使用 bcrypt / AES-GCM / Ed25519 / SHA-256,**未使用 SM2/SM3/SM4 �
 | 要求 | 实现 | 取证位置 |
 |---|---|---|
 | 应能发现可能存在的已知漏洞,并在充分测试评估后及时修补 | CI 每次提交跑 `govulncheck` + `golangci-lint`;依赖告警按锁文件实际版本区间逐条核实 | `.github/workflows/` |
-| 应能够检测到对重要节点进行入侵的行为,并在发生严重入侵事件时提供报警 | 条件访问产生 `login.risk` 风险事件(异地/不可能旅行/新设备);暴力破解锁定、超管授予、OIDC 令牌重放均为独立安全事件;**命中的事件类型可推送到告警 Webhook**(经 outbox 保证不丢,五分钟冷却窗口合并风暴) | 设置 → 审计策略 → 告警 Webhook;`internal/domain/auditalert/` |
+| 应能够检测到对重要节点进行入侵的行为,并在发生严重入侵事件时提供报警 | 条件访问产生 `login.risk` 风险事件(异地/不可能旅行/新设备),**本地与外部身份源登录均覆盖**(外部身份源登录此前不进入该评估,也不留设备记录,风险信号对这类用户形同虚设);暴力破解锁定、超管授予、OIDC 令牌重放均为独立安全事件;**命中的事件类型可推送到告警 Webhook**(经 outbox 保证不丢,五分钟冷却窗口合并风暴) | 设置 → 审计策略 → 告警 Webhook;`internal/domain/auditalert/` |
 | 应遵循最小安装的原则 | 运行镜像为 alpine + 静态二进制,**以 uid 1000 非特权用户运行**,`/app` 只读;compose 编排额外 `read_only` 根文件系统、`cap_drop: ALL`、`no-new-privileges`;Helm 同等 securityContext | `deploy/dockerfile/Dockerfile`;`deploy/compose/docker-compose.yml` |
 
 ### 8.1.4.7 / 8.1.4.8 数据完整性与保密性

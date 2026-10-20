@@ -171,7 +171,8 @@ activation and limits: **[docs/EDITIONS.md](docs/EDITIONS.md)**.
 | External IdP login (Lark / Feishu / Teams) | ❌ | ✅ |
 | SMS OTP login | ✅ | ✅ |
 | Step-up MFA (sudo mode) | ✅ | ✅ |
-| Conditional / risk-based access — currently gates JIT privileged access (self-service time-bound elevation with approvals) | ❌ | ✅ |
+| Conditional / risk-based access — risk signals (new country, impossible travel, unseen device) recorded for every sign-in, local and federated; gates JIT privileged access (self-service time-bound elevation with approvals). Signals are recorded and audited, **not yet used to force a second factor** | ❌ | ✅ |
+| Login history — every sign-in recorded with its method, including federated ones, filed under the provider rather than a generic "external" | ✅ | ✅ |
 | WebAuthn / Passkeys | ❌ | ✅ ¹ |
 | **Identity & Access** | | |
 | Users | ✅ up to 100 | ✅ unlimited |
