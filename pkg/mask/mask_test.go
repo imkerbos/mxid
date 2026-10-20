@@ -26,7 +26,7 @@ func TestEmail(t *testing.T) {
 		{"@nolocal.com", "***"},
 		{"a@b.com", "a*@b.com"},
 		{"ab@b.com", "a*@b.com"},
-		{"alice@gmail.com", "k****s@gmail.com"},
+		{"alice@gmail.com", "a***e@gmail.com"},
 		{"a.b.c@example.org", "a***c@example.org"},
 		{"张三@example.cn", "张*@example.cn"},
 	}

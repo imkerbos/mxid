@@ -76,3 +76,7 @@ backups/
 # Offline install bundles from `make offline-bundle`
 mxid-offline-*.tar.gz
 mxid-offline/
+
+# 泄漏门禁的本项目模式。这份文件本身含真实域名、命名空间和人名 ——
+# 它是用来挡泄漏的，自己进了仓库就是泄漏源。
+hack/*.local.txt

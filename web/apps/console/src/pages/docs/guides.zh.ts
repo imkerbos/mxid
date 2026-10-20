@@ -271,10 +271,10 @@ curl -X POST {{ISSUER}}/protocol/oidc/token \\
 
 \`\`\`json
 {
-  "sub": "alice@Acme",
+  "sub": "alice@acme",
   "preferred_username": "alice",
-  "email": "alice@Acme.com",
-  "tenant_code": "Acme",
+  "email": "alice@example.com",
+  "tenant_code": "acme",
   "iss": "{{ISSUER}}/protocol/oidc",
   "aud": "<client_id>",
   "iat": 1733678400,
@@ -289,7 +289,7 @@ curl -X POST {{ISSUER}}/protocol/oidc/token \\
         body: `用户对该应用的**有效角色 code** 以 \`app_roles\` claim（字符串数组）注入 id_token 和 userinfo：
 
 \`\`\`json
-{ "sub": "alice@Acme", "app_roles": ["admin", "dev"] }
+{ "sub": "alice@acme", "app_roles": ["admin", "dev"] }
 \`\`\`
 
 - **JIT 临时提权的角色排在数组最前**（\`app_roles[0]\`）。取"单个主角色"的 SP（如 Grafana 的 \`role_attribute_path\`）读 \`app_roles[0]\` 即拿到当前提权角色；求权限并集的 SP（如 Jenkins matrix）遍历整个数组即可。
@@ -397,7 +397,7 @@ console 端 app.\`protocol_config\` 填：
     <saml:AttributeValue>alice</saml:AttributeValue>
   </saml:Attribute>
   <saml:Attribute Name="mail">
-    <saml:AttributeValue>alice@Acme.com</saml:AttributeValue>
+    <saml:AttributeValue>alice@example.com</saml:AttributeValue>
   </saml:Attribute>
   <saml:Attribute Name="displayName">
     <saml:AttributeValue>Alice</saml:AttributeValue>
@@ -406,7 +406,7 @@ console 端 app.\`protocol_config\` 填：
     <saml:AttributeValue>alice</saml:AttributeValue>
   </saml:Attribute>
   <saml:Attribute Name="tenant_code">
-    <saml:AttributeValue>Acme</saml:AttributeValue>
+    <saml:AttributeValue>acme</saml:AttributeValue>
   </saml:Attribute>
 </saml:AttributeStatement>
 \`\`\`
@@ -507,9 +507,9 @@ GET {{ISSUER}}/protocol/cas/<app_code>/p3/serviceValidate?
     <cas:user>alice</cas:user>
     <cas:attributes>
       <cas:uid>alice</cas:uid>
-      <cas:mail>alice@Acme.com</cas:mail>
+      <cas:mail>alice@example.com</cas:mail>
       <cas:displayName>Alice</cas:displayName>
-      <cas:tenant_code>Acme</cas:tenant_code>
+      <cas:tenant_code>acme</cas:tenant_code>
       <cas:roles>admin</cas:roles>
       <cas:roles>dev</cas:roles>
     </cas:attributes>

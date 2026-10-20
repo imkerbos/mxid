@@ -44,7 +44,7 @@ func Phone(s string) string {
 // remains useful for support / debugging context.
 //
 //	"k@gmail.com"            → "*@gmail.com"
-//	"alice@gmail.com"       → "k****s@gmail.com"
+//	"alice@gmail.com"        → "a***e@gmail.com"
 //	"very.long@example.com"  → "v*******g@example.com"
 //
 // Inputs without an "@" return three asterisks (treat as opaque token).

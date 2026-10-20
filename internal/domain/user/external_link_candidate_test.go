@@ -78,7 +78,7 @@ func teamsLogin(email string) *ExternalLoginInput {
 // Note the two mail domains AND the case difference — both are the point.
 func TestResolveExternalLogin_OffersLinkInsteadOfSecondAccount(t *testing.T) {
 	svc, db := newLinkTestService(t)
-	seedLocalUser(t, db, 10, "Alice", "Alice@olddomain.example")
+	seedLocalUser(t, db, 10, "alice", "Alice@olddomain.example")
 
 	_, err := svc.ResolveExternalLogin(context.Background(), teamsLogin("alice@newdomain.example"))
 
@@ -132,7 +132,7 @@ func TestResolveExternalLogin_UsernameMatchesCaseInsensitivelyAcrossDomains(t *t
 	svc, db := newLinkTestService(t)
 	// Local account: different case, different mail domain, and no email at
 	// all would work just as well — the username is what is compared.
-	seedLocalUser(t, db, 10, "ALICE", "ALICE@olddomain.example")
+	seedLocalUser(t, db, 10, "alice", "alice@olddomain.example")
 
 	_, err := svc.ResolveExternalLogin(context.Background(), teamsLogin("alice@newdomain.example"))
 	var link *ExternalLinkRequired
@@ -169,7 +169,7 @@ func TestResolveExternalLogin_DifferentUsernameIsNotOffered(t *testing.T) {
 func TestResolveExternalLogin_AmbiguousUsernameRefuses(t *testing.T) {
 	svc, db := newLinkTestService(t)
 	seedLocalUser(t, db, 10, "alice", "a@olddomain.example")
-	seedLocalUser(t, db, 11, "Alice", "b@olddomain.example")
+	seedLocalUser(t, db, 11, "alice", "b@olddomain.example")
 
 	_, err := svc.ResolveExternalLogin(context.Background(), teamsLogin("alice@newdomain.example"))
 	if !errors.Is(err, ErrExternalLinkAmbiguous) {

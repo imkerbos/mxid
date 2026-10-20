@@ -1,6 +1,6 @@
 -- Intentionally empty.
 --
--- This slot previously seeded demo tenants (Acme / MatrixPlus) plus
+-- This slot previously seeded demo tenants (acme / MatrixPlus) plus
 -- dev-scenario fixups. Demo/seed data must NOT ship in the migration chain that
 -- runs in production — a fresh prod DB should contain only the Default tenant
 -- (seeded in 000001). The version number is kept (not deleted) so already-
