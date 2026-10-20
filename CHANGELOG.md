@@ -5,7 +5,7 @@ All notable changes to MXID are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.14.1] — 2026-10-20
 
 ### Fixed
 - The dashboard reported MFA coverage above 100% — a figure that is not merely
@@ -1658,6 +1658,7 @@ Initial public preview. Two integrations verified end-to-end: **Grafana (OIDC)**
 - Tailwind v4 monorepo `@source` directive so shared package UI compiles into both SPAs.
 
 [Unreleased]: https://github.com/imkerbos/mxid/compare/v1.13.1...HEAD
+[1.14.1]: https://github.com/imkerbos/mxid/compare/v1.14.0...v1.14.1
 [1.14.0]: https://github.com/imkerbos/mxid/compare/v1.13.1...v1.14.0
 [1.13.1]: https://github.com/imkerbos/mxid/compare/v1.13.0...v1.13.1
 [1.13.0]: https://github.com/imkerbos/mxid/compare/v1.12.0...v1.13.0
