@@ -5,9 +5,11 @@
 -- — and once both exist, every lookup has to decide which one it meant. The
 -- answer is to make the state unreachable rather than to handle it.
 --
--- Mirrors the existing constraint's scope deliberately: it covers soft-deleted
--- rows too, so a deleted account keeps holding its name under every casing,
--- exactly as it already held the one it was created with.
+-- NOTE: this file claimed to mirror the existing constraint's scope and did
+-- not — idx_user_tenant_username is partial (WHERE deleted_at IS NULL) since
+-- 000047, and the index created below is not, so it stopped soft-deleted
+-- usernames from being reused. 000071 corrects the scope. Kept as it ran
+-- rather than edited, because it is already applied where this is read.
 --
 -- This CREATE fails if any tenant already holds two usernames differing only
 -- by case. That is the intended behaviour: such a pair is a question only an
