@@ -363,7 +363,11 @@ export default function LoginPage() {
                     // the other way round first, and the masked address — the
                     // whole point of the prompt — read as a footnote.
                     <p className="mt-2 font-mono text-sm font-medium tracking-wide text-white">
-                      {linkHint.email || linkHint.username}
+                      {/* The username first: it is what the match was made on.
+                          The email can sit on a different mail domain from the
+                          one this person signs in with, so leading with it
+                          would show them something they may not recognise. */}
+                      {linkHint.username || linkHint.email}
                     </p>
                   )}
                   <p className="mt-2 text-xs text-white/55">{t('login.linkIdentity.proof')}</p>

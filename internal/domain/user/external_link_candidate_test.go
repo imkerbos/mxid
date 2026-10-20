@@ -5,10 +5,11 @@ package user
 // silently creates a second account; get it wrong in the other and it hands an
 // external identity a prompt pointing at somebody else's account.
 //
-// Matching deliberately keys on email, not username. The suite pins that
-// choice, because "alice and Alice are obviously the same person" is
-// exactly the intuition that makes username matching look workable until two
-// IdPs disagree on what a username is.
+// Matching keys on the USERNAME, case-insensitively, after stripping any
+// domain the IdP attached. The suite pins that choice: the two directories in
+// play sit on different mail domains, so the same person is alice@olddomain
+// in one and alice@newdomain in the other, and an email comparison matches
+// nobody exactly when it is needed most.
 
 import (
 	"context"
@@ -56,13 +57,16 @@ func seedLocalUser(t *testing.T, db *gorm.DB, id int64, username, email string) 
 	}
 }
 
+// teamsLogin models what the Microsoft provider hands over: a
+// userPrincipalName with a domain attached, and an email on a DIFFERENT domain
+// from the one the local account carries.
 func teamsLogin(email string) *ExternalLoginInput {
 	return &ExternalLoginInput{
 		TenantID:     1,
 		ProviderType: "teams",
 		ProviderID:   "teams",
 		ExternalID:   "7f3c9b10-aaaa-bbbb",
-		Username:     "alice@contoso.onmicrosoft.com",
+		Username:     "alice@newdomain.example",
 		Email:        email,
 		AutoCreate:   true,
 	}
@@ -70,11 +74,13 @@ func teamsLogin(email string) *ExternalLoginInput {
 
 // The migration case this exists for: a Lark-provisioned account meets a
 // Teams login. Auto-create is ON, and must still not fire.
+//
+// Note the two mail domains AND the case difference — both are the point.
 func TestResolveExternalLogin_OffersLinkInsteadOfSecondAccount(t *testing.T) {
 	svc, db := newLinkTestService(t)
-	seedLocalUser(t, db, 10, "Alice", "Alice@Example.COM")
+	seedLocalUser(t, db, 10, "Alice", "Alice@olddomain.example")
 
-	_, err := svc.ResolveExternalLogin(context.Background(), teamsLogin("alice@example.com"))
+	_, err := svc.ResolveExternalLogin(context.Background(), teamsLogin("alice@newdomain.example"))
 
 	var link *ExternalLinkRequired
 	if !errors.As(err, &link) {
@@ -119,33 +125,53 @@ func contains(haystack, needle string) bool {
 		}()
 }
 
-// Username agreement is not enough, and that is the design: the two IdPs in
-// play report usernames in different shapes, so a username match would be
-// both missed here and spurious elsewhere.
-func TestResolveExternalLogin_UsernameMatchAloneDoesNotOfferLink(t *testing.T) {
+// Case is not significant, and neither is the mail domain. This is the whole
+// point of the key: the directories disagree on the domain, and nobody types
+// their own name with consistent capitalisation.
+func TestResolveExternalLogin_UsernameMatchesCaseInsensitivelyAcrossDomains(t *testing.T) {
 	svc, db := newLinkTestService(t)
-	// Same username, modulo case. No email at all on the local account.
-	seedLocalUser(t, db, 10, "alice", "")
+	// Local account: different case, different mail domain, and no email at
+	// all would work just as well — the username is what is compared.
+	seedLocalUser(t, db, 10, "ALICE", "ALICE@olddomain.example")
 
-	in := teamsLogin("alice@example.com")
-	if _, err := svc.ResolveExternalLogin(context.Background(), in); err != nil {
+	_, err := svc.ResolveExternalLogin(context.Background(), teamsLogin("alice@newdomain.example"))
+	var link *ExternalLinkRequired
+	if !errors.As(err, &link) || link.UserID != 10 {
+		t.Fatalf("err = %v, want a link offer for user 10", err)
+	}
+	var users int64
+	db.Model(&User{}).Count(&users)
+	if users != 1 {
+		t.Fatalf("users = %d, want 1 — a second account was created despite the match", users)
+	}
+}
+
+// A different username must NOT be offered, however close the emails are. The
+// key is the username; an email that happens to collide is not a match.
+func TestResolveExternalLogin_DifferentUsernameIsNotOffered(t *testing.T) {
+	svc, db := newLinkTestService(t)
+	seedLocalUser(t, db, 10, "someone-else", "alice@newdomain.example")
+
+	if _, err := svc.ResolveExternalLogin(context.Background(), teamsLogin("alice@newdomain.example")); err != nil {
 		t.Fatalf("expected auto-create, got %v", err)
 	}
 	var users int64
 	db.Model(&User{}).Count(&users)
 	if users != 2 {
-		t.Fatalf("users = %d, want 2 (a username match must not be treated as the same person)", users)
+		t.Fatalf("users = %d, want 2", users)
 	}
 }
 
-// Two accounts on one address is a data problem an administrator settles.
-// Picking one would be picking who receives the identity.
-func TestResolveExternalLogin_AmbiguousEmailRefuses(t *testing.T) {
+// Two accounts whose usernames differ only by case is a data problem an
+// administrator settles. UNIQUE(tenant_id, username) is case-SENSITIVE, so
+// this is a shape the database allows; picking one would be picking who
+// receives the identity.
+func TestResolveExternalLogin_AmbiguousUsernameRefuses(t *testing.T) {
 	svc, db := newLinkTestService(t)
-	seedLocalUser(t, db, 10, "alice", "dup@example.com")
-	seedLocalUser(t, db, 11, "alice2", "DUP@example.com")
+	seedLocalUser(t, db, 10, "alice", "a@olddomain.example")
+	seedLocalUser(t, db, 11, "Alice", "b@olddomain.example")
 
-	_, err := svc.ResolveExternalLogin(context.Background(), teamsLogin("dup@example.com"))
+	_, err := svc.ResolveExternalLogin(context.Background(), teamsLogin("alice@newdomain.example"))
 	if !errors.Is(err, ErrExternalLinkAmbiguous) {
 		t.Fatalf("err = %v, want ErrExternalLinkAmbiguous", err)
 	}
@@ -199,13 +225,13 @@ func TestResolveExternalLogin_CandidateBoundToOtherProviderIsOffered(t *testing.
 	}
 }
 
-// No email from the IdP means nothing to match on. Falling back to the
-// username here is the thing this design rejects.
-func TestResolveExternalLogin_NoEmailFallsThroughToAutoCreate(t *testing.T) {
+// No usable username from the IdP means nothing to match on.
+func TestResolveExternalLogin_NoUsernameFallsThroughToAutoCreate(t *testing.T) {
 	svc, db := newLinkTestService(t)
-	seedLocalUser(t, db, 10, "alice", "alice@example.com")
+	seedLocalUser(t, db, 10, "alice", "alice@olddomain.example")
 
-	in := teamsLogin("")
+	in := teamsLogin("alice@newdomain.example")
+	in.Username = ""
 	if _, err := svc.ResolveExternalLogin(context.Background(), in); err != nil {
 		t.Fatalf("expected auto-create, got %v", err)
 	}
@@ -213,6 +239,19 @@ func TestResolveExternalLogin_NoEmailFallsThroughToAutoCreate(t *testing.T) {
 	db.Model(&User{}).Count(&users)
 	if users != 2 {
 		t.Fatalf("users = %d, want 2", users)
+	}
+}
+
+// An account with NO email still links. Email plays no part in the decision,
+// and the 2 production accounts without one must not be excluded.
+func TestResolveExternalLogin_LinksAccountWithNoEmail(t *testing.T) {
+	svc, db := newLinkTestService(t)
+	seedLocalUser(t, db, 10, "alice", "")
+
+	_, err := svc.ResolveExternalLogin(context.Background(), teamsLogin("alice@newdomain.example"))
+	var link *ExternalLinkRequired
+	if !errors.As(err, &link) || link.UserID != 10 {
+		t.Fatalf("err = %v, want a link offer for user 10", err)
 	}
 }
 

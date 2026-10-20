@@ -48,6 +48,29 @@ type ExternalLoginInput struct {
 // ErrExternalUserNotLinked instead; see ResolveExternalLogin.
 var ErrExternalUserDeleted = errors.New("external identity belongs to a deleted account")
 
+// linkMatchName reduces the username an IdP reports to the bare form local
+// accounts are keyed by.
+//
+// Microsoft sends a userPrincipalName, which carries a domain
+// (alice@contoso.onmicrosoft.com); a local account is just `alice`. The
+// domain is dropped rather than compared because the two directories do not
+// have to agree on it — an organisation moving between mail domains has the
+// same person under two, which is exactly when linking matters.
+//
+// Dropping the domain widens what counts as a match, and that is acceptable
+// here for one reason only: the match decides whether to SHOW a prompt, and
+// the prompt is answered with the candidate account's own TOTP code. A wider
+// key cannot hand anyone an account; it can only offer the wrong one, and a
+// wrong offer dies at the code. Ambiguity — more than one account under the
+// same bare name — is refused outright rather than guessed.
+func linkMatchName(raw string) string {
+	name := strings.TrimSpace(raw)
+	if at := strings.LastIndex(name, "@"); at > 0 {
+		name = name[:at]
+	}
+	return strings.TrimSpace(name)
+}
+
 // ErrExternalLinkAmbiguous means more than one live local account matches the
 // external identity's email, so there is no single account to offer. Two
 // accounts sharing an address is a data problem an administrator has to settle;
@@ -83,26 +106,32 @@ func (e *ExternalLinkRequired) Error() string {
 func (e *ExternalLinkRequired) Unwrap() error { return ErrExternalLinkRequired }
 
 // findLinkCandidate returns a non-nil *ExternalLinkRequired when exactly one
-// live local account shares this identity's email, nil when there is nothing
-// to offer, and an error when the situation is ambiguous or the lookup failed.
+// live local account shares this identity's username, nil when there is
+// nothing to offer, and an error when the situation is ambiguous or the lookup
+// failed.
+//
+// Matching is on the username, case-insensitively, after reducing what the IdP
+// reported to its bare form (see linkMatchName). Email is NOT the key: the two
+// directories in play can sit on different mail domains — the same person is
+// alice@olddomain in one and alice@newdomain in the other — so a full-address
+// comparison matches nobody exactly when it is needed most.
 //
 // Returns nil (fall through to the caller's auto-create decision) when:
-//   - the IdP reported no email — there is nothing to match on, and matching
-//     on the username instead is what this function deliberately avoids
-//   - no local account has that email
+//   - the IdP reported no usable username
+//   - no local account carries that username
 //
 // The candidate is rejected when it already holds a live binding for this same
 // provider type. The same person signing in from a second account at the same
 // provider is indistinguishable here from two different people, and the
 // account that already has a working binding is the one with more to lose.
 func (s *Service) findLinkCandidate(ctx context.Context, in *ExternalLoginInput) (*ExternalLinkRequired, error) {
-	email := strings.TrimSpace(in.Email)
-	if email == "" {
+	name := linkMatchName(in.Username)
+	if name == "" {
 		return nil, nil
 	}
 	// Two is enough to tell "one match" from "ambiguous"; the rest would only
 	// be rows nobody is allowed to act on anyway.
-	matches, err := s.repo.FindByEmailFold(ctx, in.TenantID, email, 2)
+	matches, err := s.repo.FindByUsernameFold(ctx, in.TenantID, name, 2)
 	if err != nil {
 		return nil, fmt.Errorf("find link candidate: %w", err)
 	}

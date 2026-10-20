@@ -262,6 +262,26 @@ func (r *gormRepository) FindByEmailFold(ctx context.Context, tenantID int64, em
 	return users, nil
 }
 
+// FindByUsernameFold finds live users by case-insensitive username, capped at
+// limit.
+//
+// lower(username) cannot use the plain index behind UNIQUE(tenant_id,
+// username), which is fine at this scale and deliberate: the alternative is an
+// expression index every other username lookup would have to agree to use. The
+// cap exists so the caller pays for at most "is it ambiguous?" rather than for
+// every duplicate.
+func (r *gormRepository) FindByUsernameFold(ctx context.Context, tenantID int64, username string, limit int) ([]*User, error) {
+	var users []*User
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND lower(username) = lower(?)", tenantID, username).
+		Limit(limit).
+		Find(&users).Error
+	if err != nil {
+		return nil, fmt.Errorf("find users by username fold: %w", err)
+	}
+	return users, nil
+}
+
 // GetByPhone finds a user by tenant and phone.
 func (r *gormRepository) GetByPhone(ctx context.Context, tenantID int64, phone string) (*User, error) {
 	var user User
