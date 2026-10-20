@@ -5,6 +5,21 @@ All notable changes to MXID are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- The dashboard reported MFA coverage above 100% — a figure that is not merely
+  wrong but visibly impossible. The numerator counted every non-deleted user
+  holding a verified factor while the denominator counted only ACTIVE users, so
+  a disabled or locked account that had enrolled padded one side alone. The
+  metric answers "of the people who could sign in, how many hold a second
+  factor", so an account that cannot sign in belongs on neither side.
+- Dashboard counts of applications, organizations, groups and identity sources
+  included soft-deleted rows, as did the apps-by-protocol chart. These are
+  `.Table()` lookups and GORM's soft-delete scope keys off the model type, so
+  it never applied. An operator who deleted two identity sources kept reading
+  the old number with nothing to suggest it was stale.
+
 ## [1.14.0] — 2026-10-20
 
 ### Fixed

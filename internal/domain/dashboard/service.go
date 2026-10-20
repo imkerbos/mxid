@@ -90,29 +90,37 @@ func (s *Service) fillCounts(ctx context.Context, tenantID int64, rangeStart tim
 		return err
 	}
 	// Apps: tenant-owned OR shared (tenant_id IS NULL is visible everywhere).
-	if err := db.Table("mxid_app").Where("tenant_id = ? OR tenant_id IS NULL", tenantID).Count(&c.Apps).Error; err != nil {
+	// deleted_at IS NULL on every count below: these are .Table() lookups, which
+	// bypass GORM's soft-delete scope (it keys off the model type), so a deleted
+	// row stays in the figure until it is excluded by hand.
+	if err := db.Table("mxid_app").Where("(tenant_id = ? OR tenant_id IS NULL) AND deleted_at IS NULL", tenantID).Count(&c.Apps).Error; err != nil {
 		return err
 	}
 	if err := db.Table("mxid_app").
 		Select("protocol AS name, count(*) AS value").
-		Where("tenant_id = ? OR tenant_id IS NULL", tenantID).
+		Where("(tenant_id = ? OR tenant_id IS NULL) AND deleted_at IS NULL", tenantID).
 		Group("protocol").Order("value DESC").
 		Scan(&c.AppsByProtocol).Error; err != nil {
 		return err
 	}
-	if err := db.Table("mxid_organization").Where("tenant_id = ?", tenantID).Count(&c.Orgs).Error; err != nil {
+	if err := db.Table("mxid_organization").Where("tenant_id = ? AND deleted_at IS NULL", tenantID).Count(&c.Orgs).Error; err != nil {
 		return err
 	}
-	if err := db.Table("mxid_user_group").Where("tenant_id = ?", tenantID).Count(&c.Groups).Error; err != nil {
+	if err := db.Table("mxid_user_group").Where("tenant_id = ? AND deleted_at IS NULL", tenantID).Count(&c.Groups).Error; err != nil {
 		return err
 	}
-	if err := db.Table("mxid_external_idp").Where("tenant_id = ?", tenantID).Count(&c.IdentitySources).Error; err != nil {
+	if err := db.Table("mxid_external_idp").Where("tenant_id = ? AND deleted_at IS NULL", tenantID).Count(&c.IdentitySources).Error; err != nil {
 		return err
 	}
-	// MFA-enrolled = distinct users in this tenant with a verified factor.
+	// MFA-enrolled = distinct ACTIVE users in this tenant with a verified factor.
+	// The status filter has to match UsersActive above, which is the
+	// denominator: counting a disabled account here produced a coverage figure
+	// over 100%, padding the numerator with people who cannot sign in at all.
+	// The metric answers "of the people who could log in, how many hold a
+	// second factor", so a locked or disabled account belongs on neither side.
 	if err := db.Table("mxid_user_mfa AS m").
 		Joins("JOIN mxid_user u ON u.id = m.user_id AND u.deleted_at IS NULL").
-		Where("u.tenant_id = ? AND m.verified = true", tenantID).
+		Where("u.tenant_id = ? AND u.status = ? AND m.verified = true", tenantID, statusActive).
 		Distinct("m.user_id").Count(&c.MFAEnrolled).Error; err != nil {
 		return err
 	}
