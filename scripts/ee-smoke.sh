@@ -24,7 +24,7 @@ cd "$ROOT"
 # fails with "go.mod requires go >= X (running go Y)" — which is exactly how it
 # broke when the toolchain went to 1.26.9. Keep in lockstep with go.mod and the
 # Dockerfiles.
-GO_IMAGE="${MXID_EE_SMOKE_IMAGE:-golang:1.26.9-alpine}"
+GO_IMAGE="${MXID_EE_SMOKE_IMAGE:-golang:1.26.10-alpine}"
 GARBLE_VER="${MXID_GARBLE_VERSION:-v0.16.0}"
 
 # Build the DSN the test uses. From inside the container the host DB is reached
