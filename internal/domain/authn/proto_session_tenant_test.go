@@ -33,7 +33,7 @@ func finalizeAndReadProtoSession(t *testing.T, h *Handler, sm *session.Manager, 
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/portal/auth/login", nil)
 
-	h.finalizeLoginCookies(c, CookiePortal, resp, "password", false)
+	h.finalizeLoginCookies(c, session.NamespacePortal, CookiePortal, resp, "password", false)
 
 	// Pull the proto-session id out of the Set-Cookie the handler emitted.
 	var protoID string

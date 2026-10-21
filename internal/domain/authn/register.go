@@ -32,7 +32,9 @@ func Register(
 	mfaVerifier MFAVerifier,
 ) *Module {
 	// Create local provider
-	localProvider := NewLocalProvider(authQuerier, app.Config.Security.Password.ExpireDays)
+	// Expiry is no longer the provider's business: it does not refuse a login,
+	// it attaches an obligation to the session (see session.PwdChangeDecider).
+	localProvider := NewLocalProvider(authQuerier)
 
 	// Create engine
 	engine := NewEngine(

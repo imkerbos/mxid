@@ -693,11 +693,7 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 			Namespace:  ns,
 			SessionMgr: authnModule.SessionMgr,
 			MustChange: func(ctx context.Context, userID int64) (bool, error) {
-				u, err := userModule.Repo.GetByID(ctx, userID)
-				if err != nil || u == nil {
-					return false, err
-				}
-				return u.MustChangePwd, nil
+				return pwdChangeOwed(ctx, &userModule.Repo, settingService, userID, a.Logger)
 			},
 		})
 	}
@@ -1109,14 +1105,18 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	// Fails CLOSED on a lookup error. The flag exists because an administrator
 	// reset the password or the account still carries a seeded one, and letting
 	// a database blip wave that session through is the wrong way to be wrong.
-	sessionMgr.SetPwdChangeDecider(func(ctx context.Context, tenantID, userID int64) bool {
-		u, err := userModule.Repo.GetByID(ctx, userID)
+	// Both halves of the forced-password-change obligation go through
+	// pwdChangeOwed, so the mark set at login and the re-check on every request
+	// cannot disagree. They did once, and an expired password was marked and
+	// then immediately un-marked by the next request.
+	sessionMgr.SetPwdChangeDecider(func(ctx context.Context, _, userID int64) bool {
+		owed, err := pwdChangeOwed(ctx, &userModule.Repo, settingService, userID, a.Logger)
 		if err != nil {
 			a.Logger.Warn("forced-password-change lookup failed, gating the session",
 				zap.Int64("user_id", userID), zap.Error(err))
 			return true
 		}
-		return u != nil && u.MustChangePwd
+		return owed
 	})
 
 	// External IdP is an EE feature: the implementation lives ONLY in the

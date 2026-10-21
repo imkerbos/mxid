@@ -5,6 +5,42 @@ All notable changes to MXID are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- An expired password no longer refuses the login. It used to answer 403 and
+  stop there, which was a dead end for the person at the prompt: the
+  self-service change needs a session they were never given, the reset link
+  needs SMTP a deployment may not have configured, and what remained was an
+  administrator resetting it by hand — which does not scale and is not
+  available at 2am. Relying on the user having linked an external directory is
+  no answer either, since many have not. Someone whose password has expired has
+  just proved they know the current one, which makes them precisely who may
+  choose the next one. So the login now succeeds and the obligation rides on
+  the session: the forced-change gate confines them to the change-password
+  route until they pick a new one, after which the gate clears itself. MFA is
+  unaffected — the second factor is still required before any session exists.
+
+### Fixed
+- A session owing a forced password change was still bridged into a protocol
+  SSO session, so the gate held the user out of their own profile page while
+  letting them single-sign-on into every downstream application — the one place
+  the forced change actually matters. The gate guards MXID's own SPA surfaces;
+  the protocol endpoints read a different session and could not see the
+  obligation. Such a session is no longer bridged; a protocol session is issued
+  on the next login, once the debt is settled. This affects every
+  administrative password reset, not only expiry.
+- The forced-password-change gate re-checks the debt on every request so it can
+  clear itself once settled, and that re-check knew only about the
+  `must_change_pwd` column. An expired password therefore marked the session at
+  login and had the mark cleared by the very next request, sailing past a gate
+  that believed nothing was owed. Both halves now compute the answer in one
+  place.
+- The password-expiry window was read from the boot configuration, so an
+  administrator who changed it in the console found it took effect only after a
+  restart. It now reads the runtime setting, like the rest of the password
+  policy.
+
 ## [1.14.1] — 2026-10-20
 
 ### Fixed

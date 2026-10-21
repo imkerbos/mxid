@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"time"
 
 	"github.com/imkerbos/mxid/pkg/crypto"
 )
@@ -52,15 +51,13 @@ const (
 
 // LocalProvider authenticates users via username and password stored locally.
 type LocalProvider struct {
-	userRepo       UserAuthQuerier
-	passwordExpiry int // days; 0 means no expiry
+	userRepo UserAuthQuerier
 }
 
 // NewLocalProvider creates a local authentication provider.
-func NewLocalProvider(userRepo UserAuthQuerier, passwordExpiryDays int) *LocalProvider {
+func NewLocalProvider(userRepo UserAuthQuerier) *LocalProvider {
 	return &LocalProvider{
-		userRepo:       userRepo,
-		passwordExpiry: passwordExpiryDays,
+		userRepo: userRepo,
 	}
 }
 
@@ -135,18 +132,19 @@ func (p *LocalProvider) Authenticate(ctx context.Context, req *AuthRequest) (*Au
 		}, nil
 	}
 
-	// Check password expiry
-	if p.passwordExpiry > 0 && u.PasswordChangedAt != nil {
-		expiry := u.PasswordChangedAt.Add(time.Duration(p.passwordExpiry) * 24 * time.Hour)
-		if time.Now().After(expiry) {
-			return &AuthResult{
-				UserID:      u.ID,
-				Username:    u.Username,
-				DisplayName: u.DisplayName,
-				Status:      AuthPasswordExpired,
-			}, nil
-		}
-	}
+	// Password expiry is deliberately NOT a refusal. Reaching this line means
+	// the person just proved they know the current password, which makes them
+	// the one party who can safely be allowed to choose the next one. Refusing
+	// here left them with no route at all: self-service change needs a session
+	// they were never given, the reset link needs SMTP the deployment may not
+	// have, and the only remaining path was an administrator doing it by hand —
+	// which does not scale and is not available at 2am.
+	//
+	// So an expired password authenticates normally and the obligation is
+	// carried on the session instead (session.Manager's PwdChangeDecider marks
+	// it; PwdGateMiddleware confines such a session to the change-password
+	// route). MFA still applies: the AuthSuccess path below runs the second
+	// factor before any session exists.
 
 	return &AuthResult{
 		UserID:      u.ID,

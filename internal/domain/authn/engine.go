@@ -24,7 +24,6 @@ var (
 	ErrAuthFailed      = errors.New("authentication failed")
 	ErrAccountLocked   = errors.New("account is locked")
 	ErrAccountDisabled = errors.New("account is disabled")
-	ErrPasswordExpired = errors.New("password has expired")
 	ErrMFARequired     = errors.New("mfa verification required")
 	ErrSessionNotFound = errors.New("session not found")
 	// ErrMFACodeReused — the TOTP code was CORRECT but already spent this
@@ -202,10 +201,6 @@ func (e *Engine) Login(ctx context.Context, req *AuthRequest, namespace string) 
 	case AuthDisabled:
 		e.publishLoginEvent(ctx, result, req, false)
 		return nil, ErrAccountDisabled
-
-	case AuthPasswordExpired:
-		e.publishLoginEvent(ctx, result, req, false)
-		return nil, ErrPasswordExpired
 
 	case AuthMFARequired:
 		// Return without creating a session; MFA step needed
@@ -433,7 +428,7 @@ func (e *Engine) VerifyPasswordStepUp(ctx context.Context, tenantID, userID int6
 		ClientIP:    clientIP,
 		UserAgent:   "",
 	})
-	// Only an outright success counts. AuthPasswordExpired / AuthDisabled /
+	// Only an outright success counts. AuthDisabled /
 	// AuthLocked all mean the account may not act right now, and AuthFailed is a
 	// wrong password — none of them is a valid proof of presence.
 	if err != nil || result == nil || result.Status != AuthSuccess || result.UserID != userID {
@@ -754,8 +749,6 @@ func (e *Engine) publishLoginEvent(ctx context.Context, result *AuthResult, req 
 			reason = "account locked"
 		case AuthDisabled:
 			reason = "account disabled"
-		case AuthPasswordExpired:
-			reason = "password expired"
 		case AuthMFARequired:
 			reason = "mfa required"
 		}

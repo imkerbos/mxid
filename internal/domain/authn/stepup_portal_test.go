@@ -106,7 +106,7 @@ func newPortalStepUpEnv(t *testing.T, password string, mfaEnrolled bool) *portal
 	mfa := &stubMFAVerifier{enrolled: mfaEnrolled, code: "123456", backup: "", spent: ""}
 
 	e := &Engine{
-		providers:      map[string]Provider{LocalProviderType: NewLocalProvider(users, 0)},
+		providers:      map[string]Provider{LocalProviderType: NewLocalProvider(users)},
 		sessionMgr:     mgr,
 		eventBus:       event.NewBus(zap.NewNop()),
 		userRepo:       users,

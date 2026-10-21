@@ -12,7 +12,6 @@ const (
 	AuthSuccess AuthStatus = iota
 	AuthMFARequired
 	AuthLocked
-	AuthPasswordExpired
 	AuthFailed
 	// AuthDisabled marks a correct-credentials login against a disabled
 	// account (e.g. an offboarded user). Distinguished from AuthFailed ONLY

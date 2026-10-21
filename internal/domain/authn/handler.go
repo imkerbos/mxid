@@ -372,7 +372,7 @@ func (h *Handler) loginHandler(namespace, cookieName string) gin.HandlerFunc {
 			})
 		}
 
-		h.finalizeLoginCookies(c, cookieName, loginResp, authType, req.Remember)
+		h.finalizeLoginCookies(c, namespace, cookieName, loginResp, authType, req.Remember)
 		h.rememberDevice(c, effectiveTenant, loginResp.UserID, deviceID)
 
 		// Mandatory MFA enrollment: this branch means the user has no factor
@@ -421,7 +421,7 @@ func (h *Handler) verifyMFAHandler(namespace, cookieName string) gin.HandlerFunc
 		// tenant-scoped (this route runs before AuthMiddleware).
 		pinSessionTenant(c, loginResp.TenantID)
 
-		h.finalizeLoginCookies(c, cookieName, loginResp, "totp", req.Remember)
+		h.finalizeLoginCookies(c, namespace, cookieName, loginResp, "totp", req.Remember)
 		// The user just passed MFA at login — stamp the SPA session so an
 		// immediate high-risk operation falls inside the step-up grace window.
 		_ = h.engine.SessionManager().MarkMFAVerified(c.Request.Context(), namespace, loginResp.SessionID)
@@ -438,10 +438,25 @@ func (h *Handler) verifyMFAHandler(namespace, cookieName string) gin.HandlerFunc
 // Splitting this out lets /auth/login and /auth/mfa/verify share identical
 // cookie semantics — including the "proto-session bridge failure is non-fatal"
 // rule below.
-func (h *Handler) finalizeLoginCookies(c *gin.Context, cookieName string, loginResp *LoginResponse, authType string, remember bool) {
+func (h *Handler) finalizeLoginCookies(c *gin.Context, namespace, cookieName string, loginResp *LoginResponse, authType string, remember bool) {
 	// Set SPA-scope session cookie (portal / console). Remember Me upgrades
 	// to a persistent cookie instead of a session cookie.
 	h.setSessionCookieWithRemember(c, cookieName, loginResp.SessionID, remember)
+
+	// A session that still owes a password change does NOT get bridged to the
+	// protocol namespace. PwdGateMiddleware confines such a session to the
+	// change-password route, but that middleware only guards MXID's own SPA
+	// surfaces — the protocol endpoints read the protocol-scope session and
+	// have no view of the obligation. Bridging anyway meant the gate stopped
+	// the user from reaching their own profile page while silently letting
+	// them single-sign-on into every downstream application, which is the one
+	// place the forced change actually matters.
+	//
+	// They get a protocol session on the next login, once the debt is settled.
+	if sess, err := h.engine.GetSession(c.Request.Context(), namespace, loginResp.SessionID); err == nil &&
+		sess != nil && sess.PwdChangePending {
+		return
+	}
 
 	// Bridge to protocol-scope SSO session. Failure here MUST NOT block the
 	// SPA login — the user is still authenticated for the SPA; they just
@@ -945,8 +960,6 @@ func (h *Handler) handleAuthError(c *gin.Context, err error) {
 		response.Error(c, http.StatusForbidden, errcode.NumAccountLocked, "account is locked", "")
 	case errors.Is(err, ErrAccountDisabled):
 		response.Error(c, http.StatusForbidden, errcode.NumAccountDisabled, "account is disabled", "")
-	case errors.Is(err, ErrPasswordExpired):
-		response.Error(c, http.StatusForbidden, errcode.NumAccessDenied, "password has expired", "")
 	case errors.Is(err, ErrMFARequired):
 		response.OK(c, map[string]any{
 			"mfa_required": true,

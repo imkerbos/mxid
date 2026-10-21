@@ -44,7 +44,7 @@ func TestAuthenticate_UnknownUserRunsBcrypt(t *testing.T) {
 			ID: 1, Username: "alice", PasswordHash: hash, Status: statusActive,
 		},
 	}
-	p := NewLocalProvider(q, 0)
+	p := NewLocalProvider(q)
 	ctx := context.Background()
 
 	mk := func(user string) *AuthRequest {
@@ -99,7 +99,7 @@ func TestAuthenticate_LockedRunsBcrypt(t *testing.T) {
 		known: "locked",
 		user:  &UserAuth{ID: 2, Username: "locked", PasswordHash: hash, Status: statusLocked},
 	}
-	p := NewLocalProvider(q, 0)
+	p := NewLocalProvider(q)
 	req := &AuthRequest{TenantID: 1, Credentials: map[string]string{"username": "locked", "password": "x"}}
 
 	_, _ = p.Authenticate(context.Background(), req) // warm

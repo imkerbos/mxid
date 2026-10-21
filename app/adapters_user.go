@@ -7,9 +7,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/imkerbos/mxid/internal/bootstrap"
 	"github.com/imkerbos/mxid/internal/domain/authn"
+	"github.com/imkerbos/mxid/internal/domain/setting"
 	"github.com/imkerbos/mxid/internal/domain/user"
 	"github.com/imkerbos/mxid/pkg/ee/registry"
 	"go.uber.org/zap"
@@ -32,6 +34,48 @@ func (a *userExternalResolver) Resolve(ctx context.Context, in *registry.Resolve
 		return 0, "", translateSeamErr(err)
 	}
 	return u.ID, u.Username, nil
+}
+
+// pwdChangeOwed reports whether a user still owes a password change, for the
+// two places that must agree on the answer: session.Manager's decider (which
+// marks a session at login) and the forced-change gate's stillOwes (which
+// re-checks on every request and clears the mark once the debt is settled).
+//
+// They were two separate answers once, and the gate's half only knew about the
+// must_change_pwd column. An expired password therefore marked the session and
+// then had the mark cleared by the very next request — the user sailed past a
+// gate that believed nothing was owed. Both now call this.
+//
+// Expiry is computed, never stored: once the password is changed,
+// password_changed_at moves and the debt disappears on its own.
+func pwdChangeOwed(ctx context.Context, repo *user.Repository, settings *setting.Service, userID int64, logger *zap.Logger) (bool, error) {
+	u, err := (*repo).GetByID(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+	if u == nil {
+		return false, nil
+	}
+	if u.MustChangePwd {
+		return true, nil
+	}
+	if u.PasswordChangedAt == nil {
+		return false, nil
+	}
+	pol, err := settings.SecurityPolicy(ctx, u.TenantID)
+	if err != nil {
+		// A policy that cannot be read must not gate anyone: failing closed here
+		// would hold every user on the change-password screen of a working
+		// deployment over a settings read, and unlike a failed user lookup it
+		// says nothing about this particular account.
+		logger.Warn("password policy read failed; not gating on expiry",
+			zap.Int64("user_id", userID), zap.Error(err))
+		return false, nil
+	}
+	if pol.Password.ExpireDays <= 0 {
+		return false, nil
+	}
+	return time.Now().After(u.PasswordChangedAt.Add(time.Duration(pol.Password.ExpireDays) * 24 * time.Hour)), nil
 }
 
 // recordLoginAdapter exposes the local path's login recorder to the EE seam, so

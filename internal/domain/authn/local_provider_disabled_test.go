@@ -17,7 +17,7 @@ func TestAuthenticate_DisabledRevealedOnlyWithCorrectPassword(t *testing.T) {
 		known: "bob",
 		user:  &UserAuth{ID: 9, Username: "bob", PasswordHash: hash, Status: statusDisabled},
 	}
-	p := NewLocalProvider(q, 0)
+	p := NewLocalProvider(q)
 	ctx := context.Background()
 
 	// Correct password against a disabled account → AuthDisabled.
