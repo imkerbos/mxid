@@ -5,7 +5,7 @@ All notable changes to MXID are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.15.0] — 2026-10-21
 
 ### Changed
 - An expired password no longer refuses the login. It used to answer 403 and
@@ -30,6 +30,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   obligation. Such a session is no longer bridged; a protocol session is issued
   on the next login, once the debt is settled. This affects every
   administrative password reset, not only expiry.
+- Go toolchain raised to 1.26.10 for GO-2026-6809 (`crypto/x509` distrusting
+  compromised intermediate certificates), which the TLS handshake in the mailer
+  reaches. Disclosed between 1.14.1 and this release.
+- The vulnerability scan ran against whatever Go the developer happened to have
+  installed rather than the one the release images are built with, so a newer
+  local Go that already carried a fix would hide a standard-library
+  vulnerability the shipped binary still had. It now pins the toolchain to the
+  one in `go.mod` and prints which it used.
 - The forced-password-change gate re-checks the debt on every request so it can
   clear itself once settled, and that re-check knew only about the
   `must_change_pwd` column. An expired password therefore marked the session at
@@ -1694,6 +1702,7 @@ Initial public preview. Two integrations verified end-to-end: **Grafana (OIDC)**
 - Tailwind v4 monorepo `@source` directive so shared package UI compiles into both SPAs.
 
 [Unreleased]: https://github.com/imkerbos/mxid/compare/v1.13.1...HEAD
+[1.15.0]: https://github.com/imkerbos/mxid/compare/v1.14.1...v1.15.0
 [1.14.1]: https://github.com/imkerbos/mxid/compare/v1.14.0...v1.14.1
 [1.14.0]: https://github.com/imkerbos/mxid/compare/v1.13.1...v1.14.0
 [1.13.1]: https://github.com/imkerbos/mxid/compare/v1.13.0...v1.13.1

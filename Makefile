@@ -334,8 +334,12 @@ verify-lint:
 # (.github/workflows/vuln.yml) and blocks the release workflow, which is the
 # point where shipping a known-vulnerable binary actually matters.
 verify-vuln:
-	@echo "==> verify-vuln (govulncheck $(GOVULNCHECK_VERSION))"
-	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
+	@echo "==> verify-vuln (govulncheck $(GOVULNCHECK_VERSION), toolchain $(GO_TOOLCHAIN))"
+	@# Pin the toolchain to go.mod's, which is what the release images are built
+	@# with. Without this the scan reports on whatever Go the developer happens
+	@# to have: a newer local Go that already carries the fix hides a standard
+	@# library vulnerability that the shipped binary still has.
+	GOTOOLCHAIN=$(GO_TOOLCHAIN) go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
 # package.json `exports` map paths must exist on disk.
 verify-exports:
