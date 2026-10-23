@@ -31,6 +31,30 @@ permissions:
   contents: read
 
 jobs:
+  leak-scan:
+    name: Leak scan (content · messages)
+    runs-on: ubuntu-latest
+    steps:
+      # Full history: a name added in one commit and removed in the next leaves
+      # nothing in the net diff but stays in what anyone can clone.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan tracked files and pushed commits
+        run: |
+          # Runs with the shipped rule list only. The machine-local list of
+          # actual host and account names is deliberately not available here:
+          # putting it in CI would publish the very strings it exists to keep
+          # out. Local hooks carry that half; this job is the backstop that no
+          # client-side flag can skip.
+          range=""
+          if [ "${{ github.event_name }}" = "push" ] \
+             && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            range="${{ github.event.before }}..${{ github.sha }}"
+          fi
+          ./scripts/leak-scan.sh $range
+
   backend:
     name: Go (build · vet · lint · gormtaglint · test)
     runs-on: ubuntu-latest

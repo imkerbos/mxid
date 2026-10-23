@@ -1,0 +1,32 @@
+# Patterns this repository must never contain. Checked by the local pre-commit
+# and pre-push hooks and, as a backstop that no client-side flag can skip, by
+# the leak-scan CI job.
+#
+# This file ships in the repository, so it holds only patterns that are safe to
+# publish: shapes of things (a key header, a token prefix), never actual values.
+# Real host names, account names and the like live in
+# internal-data-patterns.local.txt, which .gitignore keeps out of the repository
+# — a list of the exact strings to look for would itself be the disclosure.
+# That is also why the CI job runs with the shipped list only.
+#
+# Format: name|regex[|skip=<path regex>]
+#   - matched case-insensitively against file contents, commit messages and
+#     the lines a push adds
+#   - a line "-name" switches off a rule of that name loaded earlier
+
+# ── Credentials and keys ────────────────────────────────────────────────
+私钥|-----BEGIN (RSA |EC |OPENSSH |PGP |DSA )?PRIVATE KEY-----
+云厂商密钥|\b(AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35})\b
+GitHub 令牌|\bgh[pousr]_[A-Za-z0-9]{36,}\b
+Slack 令牌|\bxox[baprs]-[0-9A-Za-z-]{10,}\b
+kubeconfig|\bcurrent-context:\s*\S
+
+# ── Attribution that must not appear in this repository's history ───────
+# Keep these narrow: the words themselves are ordinary English and appear in
+# unrelated contexts (a "co-author" in a licence, "generated" code comments).
+#
+# The vendor names are written with a character class so that this file does
+# not contain the literal word it exists to look for — otherwise the rule
+# matches its own definition and the gate refuses the rule file.
+AI 署名|Co-Authored-By:\s*(C[l]aude|AI|Assistant|Copilot|GPT)
+AI 生成标记|(Generated|Authored) with .{0,20}(C[l]aude|Copilot|Cursor|GPT)
