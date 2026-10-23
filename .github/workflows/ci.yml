@@ -53,7 +53,7 @@ jobs:
              && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
             range="${{ github.event.before }}..${{ github.sha }}"
           fi
-          ./scripts/leak-scan.sh $range
+          python3 scripts/leak_scan.py tree $range
 
   backend:
     name: Go (build · vet · lint · gormtaglint · test)

@@ -1,6 +1,6 @@
 .PHONY: dev dev-console dev-portal dev-web dev-docker-up dev-docker-up-d dev-docker-down dev-docker-logs dev-docker-ps dev-docker-restart dev-docker-reload dev-docker-watch dev-docker-clean \
        build run test lint migrate-up migrate-down migrate-create clean deps \
-       verify verify-mod verify-vet verify-build verify-lint verify-web verify-exports verify-i18n-keys verify-i18n-markers verify-error-extraction verify-toaster-mount verify-protocol-fields verify-csp-hash verify-pinned-tag verify-vuln smoke install-hooks \
+       audit-remote leak-scan verify verify-mod verify-vet verify-build verify-lint verify-web verify-exports verify-i18n-keys verify-i18n-markers verify-error-extraction verify-toaster-mount verify-protocol-fields verify-csp-hash verify-pinned-tag verify-vuln smoke install-hooks \
        docker-build prod-up prod-down prod-logs standalone-up standalone-down standalone-logs
 
 # Machine-local overrides, never committed (local.mk is gitignored). A developer
@@ -333,6 +333,14 @@ verify-lint:
 # commit on it punishes whoever happens to push that day. It runs daily
 # (.github/workflows/vuln.yml) and blocks the release workflow, which is the
 # point where shipping a known-vulnerable binary actually matters.
+# 远端体检：匿名克隆，看外人实际能取到什么。本地钩子看不见服务端还在发什么，
+# 尤其是 refs/pull/*——强推不会改写它，清掉 main 和 tag 也动不到。发版后跑。
+audit-remote:
+	@python3 scripts/leak_scan.py remote
+
+leak-scan:
+	@python3 scripts/leak_scan.py tree
+
 verify-vuln:
 	@echo "==> verify-vuln (govulncheck $(GOVULNCHECK_VERSION), toolchain $(GO_TOOLCHAIN))"
 	@# Pin the toolchain to go.mod's, which is what the release images are built

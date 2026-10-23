@@ -32,12 +32,16 @@ KEEP_BELOW="# ── 手工补充（生成时保留）────────�
 # "a.b" shape it saw and produced rules for https, local.mk and golangci.yml —
 # the gate then fired on the README and would have been disabled within a day.
 TOO_COMMON='^(com|net|org|local|localhost|default|kubernetes|docker|desktop|cluster|admin|test|dev|prod|staging|internal|svc|api|app|www|github|gitlab|https|http|example|invalid)$'
+# Loopback and wildcard addresses come out of a kubeconfig server URL and then
+# match half the repository — config defaults, docs, tests. A rule that fires
+# on configs/config.yaml teaches people to ignore the gate.
+TOO_COMMON_ADDR='^(127\.0\.0\.1|0\.0\.0\.0|::1|localhost|host\.docker\.internal|kubernetes\.default)$'
 # File names are not environment identifiers.
 FILE_EXT='\.(md|ya?ml|toml|mk|json|go|ts|tsx|js|sh|txt|sql|lock|mod|sum|env|conf|cfg|ini|log|png|svg|html|css)$'
 
 collect() {
   tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9.-' '\n' \
-    | grep -vE "$TOO_COMMON" | grep -vE "$FILE_EXT" | sort -u
+    | grep -vE "$TOO_COMMON" | grep -vE "$TOO_COMMON_ADDR" | grep -vE "$FILE_EXT" | sort -u
 }
 
 tmp=$(mktemp); trap 'rm -f "$tmp"' EXIT
