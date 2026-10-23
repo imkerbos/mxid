@@ -1,5 +1,13 @@
 # Contributing
 
+## How changes reach this repository
+
+This repository does not accept pull requests. Development happens upstream and
+lands here directly; the pull-request surface is disabled.
+
+Found a bug or have a suggestion? Please raise it through the contact listed in
+[SECURITY.md](SECURITY.md) rather than opening a code change.
+
 ## Verify gates
 
 Five gates run before code merges. Each catches a distinct class of silent

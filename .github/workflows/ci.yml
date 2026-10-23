@@ -20,8 +20,6 @@ name: CI
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [dev, main]
   workflow_call:
 
 # Cancel superseded runs on the same ref to save CI minutes.
