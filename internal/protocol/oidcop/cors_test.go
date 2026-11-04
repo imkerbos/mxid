@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/zitadel/oidc/v3/pkg/oidc"
 	"go.uber.org/zap"
 
 	"github.com/imkerbos/mxid/internal/protocol/resolver"
@@ -174,5 +175,45 @@ func TestNormalizeOrigin(t *testing.T) {
 		if got := NormalizeOrigin(tc.in); got != tc.want {
 			t.Errorf("NormalizeOrigin(%q) = %q, want %q", tc.in, got, tc.want)
 		}
+	}
+}
+
+// The whole chain as it runs in production: oidcop.CORS decides the origin,
+// Mount's recorder buffers discovery to strip implicit-flow entries, and the
+// mounted handler stands in for the library writing its own CORS header.
+//
+// Each piece was correct alone, which is why unit tests on either side passed
+// while the deployed endpoint was broken. Only assembling them shows that the
+// recorder replayed the inner header beside the one already set, and that a
+// browser then refuses the response. Assert on the assembled chain, not the
+// parts.
+func TestChain_DiscoveryCarriesExactlyOneAllowOrigin(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const sp = "https://sp.example.com"
+	apps := &corsApps{origins: []string{sp}}
+
+	// Stands in for zitadel/oidc's own CORS, which wrote `*` whenever its
+	// options were non-nil — the state this repository was in.
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"issuer":"https://issuer.example.com"}`))
+	})
+
+	r := gin.New()
+	r.Use(CORS(apps, zap.NewNop()))
+	Mount(r.Group("/protocol"), "/protocol/oidc", inner)
+
+	req := httptest.NewRequest(http.MethodGet, "/protocol/oidc"+oidc.DiscoveryEndpoint, nil)
+	req.Header.Set("Origin", sp)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	got := w.Result().Header.Values("Access-Control-Allow-Origin")
+	if len(got) != 1 {
+		t.Fatalf("Access-Control-Allow-Origin appears %d times (%v); a browser rejects the response and the relying party fails with a fetch error", len(got), got)
+	}
+	if got[0] != sp {
+		t.Errorf("Access-Control-Allow-Origin = %q, want the registered origin %q", got[0], sp)
 	}
 }

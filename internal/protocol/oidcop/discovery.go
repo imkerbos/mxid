@@ -49,7 +49,25 @@ func filterDiscoveryResponse(inner http.Handler) http.Handler {
 
 		body := rec.body.Bytes()
 		filtered, ok := filterDiscoveryBody(body)
+
+		// Set, not Add, and never over a header the outer chain already
+		// decided. Replaying with Add appended the recorder's values to
+		// whatever was on the real writer: oidcop.CORS had already put the
+		// requesting origin there, the library's CORS put `*` on the
+		// recorder, and discovery went out with TWO
+		// Access-Control-Allow-Origin lines. A browser rejects a response
+		// with two of them, so every SP whose origin we allow — the ones we
+		// deliberately support — broke, while the endpoints without this
+		// recorder kept working. Reported from production as
+		// "oidc: failed to fetch".
+		//
+		// This is the general rule, not a patch for one header: a recorder
+		// replaying a response must not overrule middleware that ran outside
+		// it. Anything the outer chain set, stays.
 		for k, vv := range rec.header {
+			if len(w.Header().Values(k)) > 0 {
+				continue
+			}
 			for _, v := range vv {
 				w.Header().Add(k, v)
 			}

@@ -5,6 +5,40 @@ All notable changes to MXID are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.1] — 2026-11-04
+
+### Fixed
+- The OIDC discovery document went out with two `Access-Control-Allow-Origin`
+  headers, and a browser refuses a response carrying more than one — every
+  relying party whose origin is allowed failed at discovery, before it could
+  reach the authorization endpoint. Reported from a deployment as
+  "oidc: failed to fetch".
+
+  Two faults combined, both now fixed:
+
+  - Discovery is buffered so implicit-flow entries can be stripped from it, and
+    the buffered headers were replayed onto the real response with `Add`.
+    Anything the surrounding middleware had already set stayed, and the
+    buffered copy was appended beside it. A buffered response must not overrule
+    middleware that ran outside it, so the replay now leaves such headers
+    alone — this is the general rule, not a patch for one header.
+  - The library's own CORS was never actually switched off. The option meant to
+    disable it was passed an empty options struct, which the library treats as
+    "configured" and the CORS package treats as "allow every origin", so the
+    protocol endpoints answered `*` to anyone who asked. Passing nil is what
+    disables it.
+
+  Only discovery showed the doubled header, because only discovery is buffered.
+  The other protocol endpoints were quietly answering `*` instead.
+
+### Changed
+- `/jwks`, `/userinfo` and discovery no longer answer `Access-Control-Allow-Origin: *`.
+  They reflect only origins derived from registered redirect URIs, which is what
+  the CORS middleware was always meant to decide alone. A browser-side client
+  whose page origin is not covered by its own registered redirect URI loses
+  access it previously had by accident; a server-side relying party sends no
+  Origin header and is unaffected.
+
 ## [1.15.0] — 2026-10-21
 
 ### Changed
@@ -1702,6 +1736,7 @@ Initial public preview. Two integrations verified end-to-end: **Grafana (OIDC)**
 - Tailwind v4 monorepo `@source` directive so shared package UI compiles into both SPAs.
 
 [Unreleased]: https://github.com/imkerbos/mxid/compare/v1.13.1...HEAD
+[1.15.1]: https://github.com/imkerbos/mxid/compare/v1.15.0...v1.15.1
 [1.15.0]: https://github.com/imkerbos/mxid/compare/v1.14.1...v1.15.0
 [1.14.1]: https://github.com/imkerbos/mxid/compare/v1.14.0...v1.14.1
 [1.14.0]: https://github.com/imkerbos/mxid/compare/v1.13.1...v1.14.0

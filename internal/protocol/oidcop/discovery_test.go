@@ -173,3 +173,65 @@ func TestMount_DiscoveryEndpoint_HidesImplicit(t *testing.T) {
 		}
 	}
 }
+
+// A response may carry exactly one Access-Control-Allow-Origin. Two of them is
+// not a merge a browser performs — it refuses the response outright, and the
+// request fails before anything reads the body.
+//
+// filterDiscoveryResponse buffers discovery so it can strip implicit-flow
+// entries, then replayed the buffered headers onto the real writer with Add.
+// Anything the outer chain had already set stayed, and the recorder's copy was
+// appended beside it: oidcop.CORS reflects the requesting origin on the real
+// writer, the library's own CORS answered `*` on the recorder, and discovery
+// went out with both. The SPs whose origins we deliberately allow were exactly
+// the ones that broke; the endpoints without a recorder were unaffected, which
+// is why this looked like a gateway problem for a day.
+func TestFilterDiscoveryResponse_SingleAllowOriginHeader(t *testing.T) {
+	// The inner handler stands in for the library's CORS writing onto the
+	// recorder — the same thing rs/cors did when its options were non-nil.
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"issuer":"https://issuer.example.com"}`))
+	})
+	wrapped := filterDiscoveryResponse(inner)
+
+	req := httptest.NewRequest(http.MethodGet, oidc.DiscoveryEndpoint, nil)
+	rec := httptest.NewRecorder()
+	// The outer middleware's decision, made before the recorder exists.
+	rec.Header().Set("Access-Control-Allow-Origin", "https://sp.example.com")
+
+	wrapped.ServeHTTP(rec, req)
+
+	got := rec.Result().Header.Values("Access-Control-Allow-Origin")
+	if len(got) != 1 {
+		t.Fatalf("Access-Control-Allow-Origin appears %d times (%v); a browser rejects any response carrying more than one", len(got), got)
+	}
+	if got[0] != "https://sp.example.com" {
+		t.Errorf("Access-Control-Allow-Origin = %q, want the outer middleware's value — a buffered replay must not overrule a decision made outside it", got[0])
+	}
+}
+
+// The converse: a header the outer chain did NOT set must still come through,
+// or buffering would silently drop whatever the inner handler sets.
+func TestFilterDiscoveryResponse_ReplaysHeadersTheOuterChainDidNotSet(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"issuer":"https://issuer.example.com"}`))
+	})
+	wrapped := filterDiscoveryResponse(inner)
+
+	req := httptest.NewRequest(http.MethodGet, oidc.DiscoveryEndpoint, nil)
+	rec := httptest.NewRecorder()
+	wrapped.ServeHTTP(rec, req)
+
+	if got := rec.Result().Header.Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store — headers only the inner handler sets must survive the replay", got)
+	}
+	if got := rec.Result().Header.Get("Content-Type"); got != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", got)
+	}
+}

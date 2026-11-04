@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/rs/cors"
 	"github.com/zitadel/oidc/v3/pkg/op"
 	"golang.org/x/text/language"
 )
@@ -60,10 +59,16 @@ func NewProvider(issuer string, storage op.Storage, cryptoKey [32]byte, allowIns
 		// site on the internet may make credentialed cross-origin calls to the
 		// protocol endpoints. CORS for this subtree is decided by oidcop.CORS
 		// instead, which reflects only origins derived from registered redirect
-		// URIs and never sets Allow-Credentials. An empty AllowedOrigins with
-		// no AllowOriginFunc matches nothing, so rs/cors adds no headers and
-		// leaves the response to ours.
-		op.WithCORSOptions(&cors.Options{}),
+		// URIs and never sets Allow-Credentials.
+		//
+		// nil, not &cors.Options{}. This read "an empty AllowedOrigins matches
+		// nothing" for a year and was exactly backwards: op installs rs/cors
+		// whenever the options are non-nil (pkg/op/op.go, pkg/op/server_http.go
+		// both test `!= nil`), and rs/cors treats an empty AllowedOrigins as
+		// "Default is all origins" (cors.go, its own comment). So the option
+		// meant to switch the library's CORS off switched it on, answering `*`
+		// to every origin on /jwks, /userinfo and discovery.
+		op.WithCORSOptions(nil),
 	}
 	if allowInsecure {
 		// We terminate TLS at nginx; the internal issuer is http. Allow it.
