@@ -42,10 +42,13 @@ def repo_root():
 
 def load_rules(root):
     rules = []
+    seen_local = False
     for name in RULE_FILES:
         p = root / name
         if not p.exists():
             continue
+        if name.endswith(".local.txt"):
+            seen_local = True
         for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
             line = line.strip()
             if not line or line.startswith("#") or "|" not in line:
@@ -63,6 +66,19 @@ def load_rules(root):
     if not rules:
         print(f"{RED}没有任何规则，拒绝以空检查冒充通过{OFF}", file=sys.stderr)
         sys.exit(2)
+    if not seen_local:
+        # The shipped file holds shapes — key headers, token prefixes. The names
+        # of actual hosts, namespaces and people live only in the .local file,
+        # which by design never leaves the machine that generated it. A fresh
+        # clone therefore starts with a scanner that cannot recognise any of the
+        # strings it exists to stop, and would report a clean run while doing so.
+        #
+        # Say it out loud rather than pass quietly. The previous disclosure
+        # happened exactly here: the hooks ran, reported success, and this
+        # repository had no rule file at all.
+        print(f"{DIM}注意：只加载到随仓库发布的形状规则，没有本机那份"
+              f"（{RULE_FILES[1]}）。真实主机名、命名空间、人名都不在检查范围内。"
+              f"跑一次 hack/gen-local-patterns.sh 生成它。{OFF}", file=sys.stderr)
     return rules
 
 

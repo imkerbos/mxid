@@ -59,6 +59,13 @@ web/packages/*/dist/
 # Local-only working notes (never published)
 TODO.local.md
 *.local.md
+# Cross-session handover notes: environment names, who is doing what, where to
+# verify. Ignored here rather than only in .git/info/exclude, because that file
+# is per-clone — on a fresh clone the directory would be ignored by nothing,
+# and the pattern file the hooks match against is itself local, so the gate
+# would have no rules for these strings either. Both defences absent at once is
+# how the last disclosure happened.
+docs/internal/
 # Machine-local Makefile overrides (see the top of Makefile).
 local.mk
 
