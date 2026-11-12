@@ -112,6 +112,26 @@ type SSOSession struct {
 	UserAgent string    `json:"user_agent"`
 	CreatedAt time.Time `json:"created_at"`
 	ExpiresAt time.Time `json:"expires_at"`
+	// PwdChangePending / MFAEnrollPending mirror pkg/session.Session. They are
+	// read here because an unsettled obligation is the one case where an
+	// authenticated session must NOT be an SSO session: the SPA obligation
+	// gates confine such a session to its remediation route, but the protocol
+	// endpoints read the session store directly, so the gate was stopping the
+	// user from reaching their own profile page while letting them sign in to
+	// every downstream application — the one place a forced password change or
+	// a mandatory MFA enrollment actually matters.
+	//
+	// The tags must stay byte-identical to pkg/session.Session's: a typo
+	// decodes as false, which is silently fail-open. session_obligation_test.go
+	// pins that by round-tripping records written by the real session.Manager.
+	PwdChangePending bool `json:"pwd_change_pending,omitempty"`
+	MFAEnrollPending bool `json:"mfa_enroll_pending,omitempty"`
+}
+
+// HasPendingObligation reports whether the session owes a password change or an
+// MFA enrollment, i.e. may not be used to authenticate to a relying party.
+func (s *SSOSession) HasPendingObligation() bool {
+	return s.PwdChangePending || s.MFAEnrollPending
 }
 
 // TenantResolver looks up tenant metadata for use in subject strategies
@@ -164,6 +184,8 @@ type SessionResolver interface {
 	// GetSSOSession resolves a session id, checking the protocol namespace
 	// first then falling back to the portal namespace (IdP-initiated logins
 	// that only hold a portal session). Use this for "is the user logged in".
+	// A session with a pending obligation (password change / MFA enrollment)
+	// resolves to (nil, nil): authenticated, but not usable for SSO.
 	GetSSOSession(ctx context.Context, sessionID string) (*SSOSession, error)
 	// GetProtocolSSOSession resolves a session id ONLY within the protocol
 	// namespace (no portal fallback). Use this when the caller must be certain

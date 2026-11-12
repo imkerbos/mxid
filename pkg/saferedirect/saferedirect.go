@@ -1,29 +1,57 @@
-// Package saferedirect provides FAIL-CLOSED validators for the non-OIDC
-// redirect sinks in the platform: post-login return_to, SAML RelayState,
-// CAS service URLs, and consent return_to. These sinks all feed into an
-// HTTP redirect (or an auto-submitting form) at the end of a flow, so an
-// unvalidated value is an open-redirect / token-leak primitive.
+// Package saferedirect provides FAIL-CLOSED validators for redirect sinks:
+// values that end a flow in an HTTP redirect (or an auto-submitting form), so
+// that an unvalidated one is an open-redirect / token-leak primitive.
 //
-// Two validators are offered, each for a different trust model:
+// # Who actually calls this (keep this list honest)
 //
-//   - ValidateRelativeOrOrigin: for return_to-style values that the user
-//     agent supplies. Accepts a same-origin relative path OR an absolute
+// One production caller, and it uses the weakest of the three validators:
+// the portal consent handler passes `return_to` to ValidateShape. The other
+// two validators currently have no caller outside this package's tests.
+//
+// The other redirect sinks named by this package's original comment do NOT
+// come through here; each protocol validates its own, and at a different
+// strength:
+//
+//   - SAML RelayState on /slo — Handler.isAllowedSLORedirect in
+//     internal/protocol/saml. Fail-closed when the issuing SP cannot be
+//     resolved from the LogoutRequest. When it can, RelayState must match the
+//     SP's registered SLOURL or ACSURL on SCHEME + HOST ONLY: path, port-less
+//     host comparison aside, query and fragment are not compared. Weaker than
+//     the exact match ValidateAgainstRegistered would impose — any path on the
+//     SP's own host is accepted.
+//
+//   - CAS `service` — Handler.isValidService in internal/protocol/cas.
+//     Fail-closed on an empty registered list. Otherwise scheme + host (incl.
+//     port, via url.Host) must match a registered entry exactly, and the path
+//     must equal the registered path or sit beneath it — a deliberate PREFIX
+//     match, not an exact one, so one registered entry covers an SP's
+//     sub-paths.
+//
+// Before citing a guarantee from this package, check the call graph: a
+// validator with no caller guarantees nothing.
+//
+// # The validators
+//
+//   - ValidateShape: shape-only floor. Rejects control characters,
+//     protocol-relative and backslash-smuggled paths, non-http(s) schemes and
+//     userinfo. It does NOT check the origin, so it does not stop
+//     https://attacker.example.
+//
+//   - ValidateRelativeOrOrigin: a same-origin relative path OR an absolute
 //     URL whose origin (scheme+host+port) exactly matches a configured
-//     allow-list. Used for post-login return_to and consent return_to,
-//     where the legitimate destination is "back into our own app".
+//     allow-list. The validator to reach for wherever the legitimate origins
+//     are knowable.
 //
-//   - ValidateAgainstRegistered: for values bound to a pre-registered
-//     service provider (CAS `service`, SAML RelayState that carries an
-//     ACS/landing URL). Requires an exact full-URL match against the SP's
-//     registered list, mirroring the OIDC redirect_uri exact-match rule
+//   - ValidateAgainstRegistered: exact full-URL match (incl. query) against a
+//     pre-registered list, mirroring the OIDC redirect_uri exact-match rule
 //     (RFC 6749 §3.1.2).
 //
-// Both validators fail closed: empty, unparseable, or unmatched input
-// returns an error and the safe string is "". Callers MUST treat any
-// error as "do not redirect" and render a local page instead. There is
-// deliberately no permissive fallback (no "default to /", no "strip the
-// host and keep the path") because such fallbacks have historically been
-// the bug, not the feature.
+// All three fail closed: empty, unparseable, or unmatched input returns an
+// error and the safe string is "". Callers MUST treat any error as "do not
+// redirect" and render a local page instead. There is deliberately no
+// permissive fallback (no "default to /", no "strip the host and keep the
+// path") because such fallbacks have historically been the bug, not the
+// feature.
 package saferedirect
 
 import (

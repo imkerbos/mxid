@@ -49,6 +49,20 @@ end
 return 0
 `)
 
+// countScript increments the failure counter and arms its window expiry on the
+// first failure, WITHOUT ever setting the lock key. It backs
+// RecordFailureCount, for a dimension that is counted but must never become a
+// binary lock. Returns the post-increment count.
+//
+// KEYS[1]=counter. ARGV[1]=window ms.
+var countScript = redis.NewScript(`
+local c = redis.call('INCR', KEYS[1])
+if c == 1 then
+  redis.call('PEXPIRE', KEYS[1], ARGV[1])
+end
+return c
+`)
+
 // keyPrefix namespaces every key this package writes. Kept distinct from
 // the middleware's "rl:" fixed-window keys so the two limiters never alias.
 const keyPrefix = "mxid:rl"
@@ -157,6 +171,15 @@ func (l *Limiter) lockKey(identifier string) string {
 	return l.counterKey(identifier) + ":locked"
 }
 
+// cooldownKey is the short self-expiring "refuse for now" window key for one
+// identifier. Kept apart from lockKey because it is a different control: a
+// cooldown is armed for a caller-chosen duration and is NOT reported as a
+// *RateLimitError, so a caller can refuse an attempt without the refusal being
+// distinguishable from an ordinary failure.
+func (l *Limiter) cooldownKey(identifier string) string {
+	return l.counterKey(identifier) + ":cooldown"
+}
+
 // failResult is returned on a Redis store error: nil when FailOpen, otherwise a
 // conservative lock (fail-closed) so the brute-force control holds during an
 // outage instead of silently admitting unlimited attempts.
@@ -226,14 +249,59 @@ func (l *Limiter) RecordFailure(ctx context.Context, identifier string) error {
 	return nil
 }
 
-// Reset clears the failure counter and lock for the identifier — call on
-// a successful attempt so a legitimate user isn't penalised for earlier
+// RecordFailureCount increments the failure counter for the identifier and
+// returns the resulting count. Unlike RecordFailure it NEVER arms the lock, so
+// the identifier can be counted without ever becoming lockable. Use it for a
+// dimension where a binary lock would be a denial of service — a per-account
+// login dimension, where anyone who knows a username could otherwise lock its
+// owner out. Returns 0 on a store error (the caller cannot distinguish an
+// outage from a first failure, which is the conservative reading for a control
+// that only throttles).
+func (l *Limiter) RecordFailureCount(ctx context.Context, identifier string) int {
+	if l == nil || l.rdb == nil || identifier == "" {
+		return 0
+	}
+	n, err := countScript.Run(ctx, l.rdb,
+		[]string{l.counterKey(identifier)}, l.cfg.Window.Milliseconds()).Int()
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// ArmCooldown starts (or restarts) a cooldown window of d on the identifier.
+// InCooldown reports it until the TTL elapses; Redis expiry releases it, so a
+// missed Reset never strands the caller. A non-positive d is a no-op.
+func (l *Limiter) ArmCooldown(ctx context.Context, identifier string, d time.Duration) {
+	if l == nil || l.rdb == nil || identifier == "" || d <= 0 {
+		return
+	}
+	l.rdb.Set(ctx, l.cooldownKey(identifier), "1", d)
+}
+
+// InCooldown reports whether a cooldown window is currently armed on the
+// identifier.
+//
+// A store error reports false, NOT true: this control refuses attempts, so
+// failing it closed would turn a Redis outage into "every login is refused".
+// The callers that must fail closed on an outage (Check / RecordFailure) still
+// do, and in the login flow they run first.
+func (l *Limiter) InCooldown(ctx context.Context, identifier string) bool {
+	if l == nil || l.rdb == nil || identifier == "" {
+		return false
+	}
+	n, err := l.rdb.Exists(ctx, l.cooldownKey(identifier)).Result()
+	return err == nil && n > 0
+}
+
+// Reset clears the failure counter, lock and cooldown for the identifier —
+// call on a successful attempt so a legitimate user isn't penalised for earlier
 // typos.
 func (l *Limiter) Reset(ctx context.Context, identifier string) {
 	if l == nil || l.rdb == nil || identifier == "" {
 		return
 	}
-	l.rdb.Del(ctx, l.counterKey(identifier), l.lockKey(identifier))
+	l.rdb.Del(ctx, l.counterKey(identifier), l.lockKey(identifier), l.cooldownKey(identifier))
 }
 
 // FailureCount returns the current failure count recorded for the identifier
@@ -272,8 +340,9 @@ func (l *Limiter) CheckMany(ctx context.Context, identifiers ...string) error {
 }
 
 // RecordFailureMany records a failure against every identifier and
-// returns the first lock that resulted. Use alongside CheckMany so a
-// single bad login burns both the per-IP and per-user budgets.
+// returns the first lock that resulted. Use alongside CheckMany when every
+// dimension of a flow is lockable; a dimension that must be counted but never
+// locked takes RecordFailureCount instead.
 func (l *Limiter) RecordFailureMany(ctx context.Context, identifiers ...string) error {
 	if l == nil || l.rdb == nil {
 		return nil

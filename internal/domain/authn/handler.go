@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/internal/domain/conditionalaccess"
@@ -246,8 +247,19 @@ func (h *Handler) RegisterPortalRoutes(rg *gin.RouterGroup) {
 // captchaHandler returns a gin.HandlerFunc that generates a new captcha.
 func (h *Handler) captchaHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		captcha, err := h.captchaSvc.Generate()
+		// Issuance is rate-limited per client IP: without it an attacker can
+		// pre-fetch captchas in bulk and have them solved offline, which turns
+		// the gate into a queue rather than a cost.
+		captcha, err := h.captchaSvc.GenerateFor(c.Request.Context(), c.ClientIP())
 		if err != nil {
+			var rle *ratelimit.RateLimitError
+			if errors.As(err, &rle) {
+				if rle.RetryAfter > 0 {
+					c.Header("Retry-After", strconv.Itoa(int(rle.RetryAfter.Seconds())))
+				}
+				response.Error(c, http.StatusTooManyRequests, errcode.NumTooManyAttempts, "too many captcha requests", "")
+				return
+			}
 			response.InternalError(c, "failed to generate captcha", err)
 			return
 		}
@@ -278,7 +290,8 @@ func (h *Handler) loginHandler(namespace, cookieName string) gin.HandlerFunc {
 			}
 		}
 		if requireCaptcha {
-			if req.CaptchaID == "" || req.CaptchaCode == "" {
+			// Trim first: a whitespace-only code is a missing code, not a guess.
+			if req.CaptchaID == "" || strings.TrimSpace(req.CaptchaCode) == "" {
 				// Was 40003, which the SPA renders as "that code was just used".
 				response.BadRequest(c, errcode.NumCaptchaRequired, "captcha is required")
 				return
@@ -443,21 +456,13 @@ func (h *Handler) finalizeLoginCookies(c *gin.Context, namespace, cookieName str
 	// to a persistent cookie instead of a session cookie.
 	h.setSessionCookieWithRemember(c, cookieName, loginResp.SessionID, remember)
 
-	// A session that still owes a password change does NOT get bridged to the
-	// protocol namespace. PwdGateMiddleware confines such a session to the
-	// change-password route, but that middleware only guards MXID's own SPA
-	// surfaces — the protocol endpoints read the protocol-scope session and
-	// have no view of the obligation. Bridging anyway meant the gate stopped
-	// the user from reaching their own profile page while silently letting
-	// them single-sign-on into every downstream application, which is the one
-	// place the forced change actually matters.
+	// Sessions owing a password change or MFA enrolment ARE bridged: the
+	// protocol resolver treats any session with an open obligation as no
+	// session at all, so no assertion, ticket or code is issued until the debt
+	// is settled. Skipping the bridge here was a second, narrower copy of that
+	// rule (it missed MFAEnrollPending) and it cost the user their SSO session
+	// until the next login.
 	//
-	// They get a protocol session on the next login, once the debt is settled.
-	if sess, err := h.engine.GetSession(c.Request.Context(), namespace, loginResp.SessionID); err == nil &&
-		sess != nil && sess.PwdChangePending {
-		return
-	}
-
 	// Bridge to protocol-scope SSO session. Failure here MUST NOT block the
 	// SPA login — the user is still authenticated for the SPA; they just
 	// lose SSO short-circuit and will have to re-auth at /protocol/oidc/authorize

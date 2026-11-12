@@ -20,6 +20,12 @@ import (
 // not a 500. The AppQuerier adapter returns it.
 var ErrNoLaunchURL = errors.New("app has no launch URL configured")
 
+// ErrAppAccessDenied means the caller does not pass the app's access policy.
+// The app id arrives as a path param, so launch must re-decide access rather
+// than trust that the caller got the id from their own app list. The AppQuerier
+// adapter returns it; the handler maps it to 403 and publishes no audit event.
+var ErrAppAccessDenied = errors.New("app access denied")
+
 // appsHandler serves portal app-related endpoints.
 //
 // Layout: a single AppQuerier interface aggregates app catalogue + favorites
@@ -217,8 +223,12 @@ func (h *appsHandler) launchApp(c *gin.Context) {
 		return
 	}
 
-	url, err := h.appQuerier.GetAppLaunchURL(c.Request.Context(), appID, userID)
+	url, err := h.appQuerier.GetAppLaunchURL(c.Request.Context(), appID, userID, tenantID)
 	if err != nil {
+		if errors.Is(err, ErrAppAccessDenied) {
+			response.Forbidden(c, errcode.NumAccessDenied, "not authorized to launch this app")
+			return
+		}
 		if dberr.IsNotFound(err) {
 			response.NotFound(c, errcode.NumNotFound, "app not found")
 			return

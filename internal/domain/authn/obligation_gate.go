@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/imkerbos/mxid/pkg/response"
+	"github.com/imkerbos/mxid/pkg/session"
 )
 
 // An obligation gate holds a session until its owner settles a debt: pick a new
@@ -28,7 +29,8 @@ import (
 // forgetting to permit the other two: allowance is computed in one place, over
 // one list.
 type obligationGate struct {
-	// namespace and sessionMgr locate the session whose flag gets cleared.
+	// namespace, with the request's session id, locates the session whose flag
+	// gets cleared.
 	namespace string
 	// ctxFlag is the request-context key AuthMiddleware sets when this debt is
 	// outstanding for the session.
@@ -39,6 +41,17 @@ type obligationGate struct {
 	stillOwes func(ctx context.Context, userID int64) (bool, error)
 	// clearFlag writes the settled state back to the session.
 	clearFlag func(ctx context.Context, namespace, sessionID string, pending bool) error
+	// peerNamespaces are the other namespaces holding sessions of the SAME
+	// user that carry the same flag. One login writes both an SPA session and
+	// the shared protocol session the SSO bridge hands to SAML/CAS/OIDC, and
+	// Manager.Create stamps the obligation on both. Clearing only the SPA one
+	// leaves the protocol one flagged, which the protocol resolver reports as
+	// no session at all — so the user who just settled the debt is sent
+	// through authentication again at the next RP hop.
+	peerNamespaces []string
+	// sessionsByUser lists one user's sessions in a namespace. Optional; nil
+	// (or an empty peerNamespaces) means peers are not propagated to.
+	sessionsByUser func(ctx context.Context, namespace string, userID int64) ([]*session.Session, error)
 	// code and message are what a refused caller receives. The SPA switches on
 	// the code to decide which blocking screen to show.
 	code    int
@@ -68,6 +81,38 @@ func isRemediationPath(fullPath string) bool {
 	return false
 }
 
+// clearPeers takes the same flag off this user's sessions in the peer
+// namespaces, so a debt settled on one surface releases the others.
+//
+// Best-effort on purpose, and safe to be: a peer whose flag survives stays
+// blocked exactly as it is today — the protocol resolver keeps reporting it as
+// no session and the user authenticates once more at the next RP hop. The
+// failure mode is a lost convenience, never a reopened gate, so it must not
+// refuse the request that settled the debt.
+//
+// Scoped to userID by construction: sessionsByUser reads the per-user index,
+// so no other account's sessions are reachable from here.
+func (g obligationGate) clearPeers(ctx context.Context, userID int64) {
+	if g.sessionsByUser == nil || userID == 0 {
+		return
+	}
+	for _, ns := range g.peerNamespaces {
+		if ns == g.namespace {
+			continue // already cleared as the request's own session
+		}
+		sessions, err := g.sessionsByUser(ctx, ns, userID)
+		if err != nil {
+			continue
+		}
+		for _, sess := range sessions {
+			if sess == nil {
+				continue
+			}
+			_ = g.clearFlag(ctx, ns, sess.ID, false)
+		}
+	}
+}
+
 // handler builds the gin middleware. It must run AFTER AuthMiddleware, which is
 // what puts the pending flag in the request context.
 //
@@ -86,10 +131,22 @@ func (g obligationGate) handler() gin.HandlerFunc {
 		// very request which settles the debt still passes below, and the one
 		// after it comes back clean.
 		if g.stillOwes != nil {
-			if owes, err := g.stillOwes(c.Request.Context(), c.GetInt64(CtxUserID)); err == nil && !owes {
-				_ = g.clearFlag(c.Request.Context(), g.namespace, c.GetString(CtxSessionID), false)
-				c.Next()
-				return
+			userID := c.GetInt64(CtxUserID)
+			if owes, err := g.stillOwes(c.Request.Context(), userID); err == nil && !owes {
+				// Only now — with the debt confirmed settled against durable
+				// state, not merely claimed — may the flag come off. Clearing
+				// it is a relaxation, so it never runs ahead of that check.
+				//
+				// Fail closed if the write-back does not land: letting the
+				// request through on an unwritten promise would hold the gate
+				// open for a session that still reads as pending. The
+				// remediation allowance below stays reachable, so this cannot
+				// deadlock, and the next request retries the write.
+				if err := g.clearFlag(c.Request.Context(), g.namespace, c.GetString(CtxSessionID), false); err == nil {
+					g.clearPeers(c.Request.Context(), userID)
+					c.Next()
+					return
+				}
 			}
 		}
 

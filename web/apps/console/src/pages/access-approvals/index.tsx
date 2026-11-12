@@ -115,11 +115,15 @@ export default function AccessApprovalsPage() {
     {
       key: 'requester',
       title: t('approvals.columns.requester'),
+      // Widths pin the fixed-shape columns at 1280px; the justification column
+      // stays flexible (it already truncates at max-w-xs).
+      width: '160px',
       render: (r) => <span className="font-medium text-ink">{r.requester_name || r.requester_id}</span>,
     },
     {
       key: 'target',
       title: t('approvals.columns.target'),
+      width: '104px',
       render: (r) => <span className="text-muted">{r.target_kind === AccessTargetKind.Console ? t('access.targetConsole') : t('access.targetApp')}</span>,
     },
     {
@@ -138,6 +142,7 @@ export default function AccessApprovalsPage() {
     {
       key: 'duration',
       title: t('approvals.columns.duration'),
+      width: '112px',
       render: (r) => <span className="whitespace-nowrap text-muted">{humanizeDuration(r.requested_seconds)}</span>,
     },
     {
@@ -148,17 +153,21 @@ export default function AccessApprovalsPage() {
     {
       key: 'expires_at',
       title: t('approvals.columns.expiresAt'),
+      width: '180px',
       render: (r) => <span className="whitespace-nowrap text-muted">{r.expires_at ? formatDate(r.expires_at) : '—'}</span>,
     },
     {
       key: 'created_at',
       title: t('approvals.columns.requestedAt'),
+      width: '180px',
       render: (r) => <span className="whitespace-nowrap text-muted">{formatDate(r.created_at)}</span>,
     },
     {
       key: 'actions',
       title: t('common.actions'),
       align: 'right',
+      // Two side-by-side sm buttons (Approve / Reject).
+      width: '180px',
       render: (r) => {
         const isOwn = !!myUserId && r.requester_id === myUserId
         return (

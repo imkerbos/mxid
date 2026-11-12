@@ -54,7 +54,12 @@ func PwdGateMiddleware(d PwdGateDeps) gin.HandlerFunc {
 			return d.MustChange(ctx, userID)
 		},
 		clearFlag: d.SessionMgr.SetPwdChangePending,
-		code:      errcode.NumPasswordChangeRequired,
-		message:   "password change required",
+		// The same login also minted the shared protocol session, flagged the
+		// same way; clear it here or the SSO hop after the password change
+		// still re-authenticates the user.
+		peerNamespaces: []string{session.NamespaceProtocol},
+		sessionsByUser: d.SessionMgr.ListByUser,
+		code:           errcode.NumPasswordChangeRequired,
+		message:        "password change required",
 	}.handler()
 }

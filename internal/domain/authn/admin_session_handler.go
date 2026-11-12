@@ -101,6 +101,12 @@ func (h *AdminSessionHandler) revokeAll(c *gin.Context) {
 	if !ok {
 		return
 	}
+	// user.session.manage alone only says what the caller holds. The seeded
+	// user_manager role holds it globally, so without a target check it could
+	// keep the super_admin signed out indefinitely.
+	if !authz.MayAdministerTarget(c, uid) {
+		return
+	}
 	for _, ns := range []string{session.NamespaceConsole, session.NamespacePortal, session.NamespaceProtocol} {
 		// Best-effort across namespaces; one failure should not abort.
 		_ = h.sessionMgr.DeleteAllByUser(c.Request.Context(), ns, uid)
@@ -114,6 +120,12 @@ func (h *AdminSessionHandler) revokeAll(c *gin.Context) {
 func (h *AdminSessionHandler) revokeOne(c *gin.Context) {
 	uid, ok := ginutil.ParseInt64Param(c, "id")
 	if !ok {
+		return
+	}
+	// Same target guard as revokeAll: without it this route is that denial of
+	// service one request at a time. Before the session lookup so an unknown
+	// target cannot be probed for session existence.
+	if !authz.MayAdministerTarget(c, uid) {
 		return
 	}
 	sid := c.Param("sid")

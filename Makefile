@@ -347,7 +347,15 @@ verify-vuln:
 	@# with. Without this the scan reports on whatever Go the developer happens
 	@# to have: a newer local Go that already carries the fix hides a standard
 	@# library vulnerability that the shipped binary still has.
-	GOTOOLCHAIN=$(GO_TOOLCHAIN) go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
+	@# Scope: everything the release binary is built from. tools/ is excluded —
+	@# those are developer harnesses (a SAML SP test server, a lint plugin, two
+	@# RP probes) that no image contains, and a finding reachable only from one
+	@# of them blocks a release over code nobody runs. The list is computed, not
+	@# hardcoded, so a new business package is scanned without anyone
+	@# remembering to add it. Never widen this exclusion to reach a package the
+	@# server imports.
+	GOTOOLCHAIN=$(GO_TOOLCHAIN) go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) \
+		$$(go list ./... | grep -v '/tools/')
 
 # package.json `exports` map paths must exist on disk.
 verify-exports:

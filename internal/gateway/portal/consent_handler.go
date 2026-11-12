@@ -31,6 +31,10 @@ type ConsentApp struct {
 // page needs. Implemented by the cmd/server adapter against app.Module.
 type ConsentQuerier interface {
 	GetApp(ctx context.Context, appID int64) (*ConsentApp, error)
+	// CanAccessApp reports whether the user passes the app's access policy.
+	// The consent prompt renders app metadata for an app id taken from the
+	// query string, so it must be gated like a launch.
+	CanAccessApp(ctx context.Context, userID, appID, tenantID int64) (bool, error)
 }
 
 type consentHandler struct {
@@ -71,9 +75,31 @@ func registerConsentRoutes(rg *gin.RouterGroup, h *consentHandler) {
 
 // preview returns the app + scope info needed to render /consent.
 func (h *consentHandler) preview(c *gin.Context) {
+	userID, ok := authn.GetUserID(c)
+	if !ok {
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
+		return
+	}
 	appID, err := parseID(c.Query("app_id"))
 	if err != nil {
 		response.BadRequest(c, errcode.NumBadRequest, "invalid app_id")
+		return
+	}
+	// Gate before any metadata is read: the prompt returns name, logo and scope
+	// labels, so an ungated preview let a signed-in user enumerate apps they
+	// have no access to. Fail closed when no querier is wired. An unknown app
+	// id matches no rule and so answers 403 too — no existence oracle.
+	if h.queryier == nil {
+		response.Forbidden(c, errcode.NumAccessDenied, "not authorized for this app")
+		return
+	}
+	allowed, aerr := h.queryier.CanAccessApp(c.Request.Context(), userID, appID, h.tenantID)
+	if aerr != nil || !allowed {
+		if aerr != nil {
+			response.InternalError(c, "failed to check app access", aerr)
+			return
+		}
+		response.Forbidden(c, errcode.NumAccessDenied, "not authorized for this app")
 		return
 	}
 	scopesQ := c.QueryArray("scope")
@@ -100,6 +126,27 @@ func (h *consentHandler) preview(c *gin.Context) {
 		"app":    app,
 		"scopes": items,
 	})
+}
+
+// authorizeApp answers whether userID may act on appID, writing the refusal
+// response itself and reporting false when it did. Same gate and same shape as
+// preview: fail closed with no querier, and an unknown app id is a 403 too so
+// there is no existence oracle.
+func (h *consentHandler) authorizeApp(c *gin.Context, userID, appID int64) bool {
+	if h.queryier == nil {
+		response.Forbidden(c, errcode.NumAccessDenied, "not authorized for this app")
+		return false
+	}
+	allowed, err := h.queryier.CanAccessApp(c.Request.Context(), userID, appID, h.tenantID)
+	if err != nil {
+		response.InternalError(c, "failed to check app access", err)
+		return false
+	}
+	if !allowed {
+		response.Forbidden(c, errcode.NumAccessDenied, "not authorized for this app")
+		return false
+	}
+	return true
 }
 
 // grant records the user's affirmative consent and returns 200 so the SPA
@@ -133,6 +180,13 @@ func (h *consentHandler) grant(c *gin.Context) {
 	// protocol-relative and backslash smuggles, userinfo.
 	if _, err := saferedirect.ValidateShape(req.ReturnTo); err != nil {
 		response.BadRequest(c, errcode.NumBadRequest, "invalid return_to")
+		return
+	}
+	// app_id comes from the body, so gate it before any side effect: without
+	// this any signed-in user could plant a consent row — and mint a
+	// login-confirmation token — for an app they have no access to. Stays after
+	// the shape check so a hostile return_to still answers 400.
+	if !h.authorizeApp(c, userID, req.AppID) {
 		return
 	}
 	// Record the scope grant. Empty for non-OIDC confirmations (SAML/CAS carry
@@ -185,7 +239,17 @@ func (h *consentHandler) list(c *gin.Context) {
 	}
 	out := make([]gin.H, 0, len(rows))
 	for _, r := range rows {
-		app, _ := h.queryier.GetApp(c.Request.Context(), r.AppID)
+		// The row is the user's own record, so it stays listed either way — but
+		// the app metadata is gated like preview/grant/revoke. A grant recorded
+		// before that gate existed, or one whose app access policy was revoked
+		// afterwards, must not keep echoing an app the user cannot reach.
+		// Withheld on every unknown: no querier wired, or a failed check.
+		var app *ConsentApp
+		if h.queryier != nil {
+			if allowed, aerr := h.queryier.CanAccessApp(c.Request.Context(), userID, r.AppID, h.tenantID); aerr == nil && allowed {
+				app, _ = h.queryier.GetApp(c.Request.Context(), r.AppID)
+			}
+		}
 		out = append(out, gin.H{
 			"app_id":     strconv.FormatInt(r.AppID, 10),
 			"app":        app,
@@ -207,6 +271,10 @@ func (h *consentHandler) revoke(c *gin.Context) {
 	appID, err := parseID(c.Param("app_id"))
 	if err != nil {
 		response.BadRequest(c, errcode.NumBadRequest, "invalid app_id")
+		return
+	}
+	// app_id comes from the path — gate it like grant does.
+	if !h.authorizeApp(c, userID, appID) {
 		return
 	}
 	if err := h.consentSvc.Revoke(c.Request.Context(), h.tenantID, userID, appID); err != nil {

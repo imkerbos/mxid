@@ -1679,6 +1679,7 @@ export default {
       passwordPlaceholderSet: '●●●●●●●● (已设置 — 留空保留原值)',
       passwordPlaceholderNew: '应用专用密码 / SMTP 密码',
       skipVerify: '跳过证书验证 (自签证书时勾选)',
+      skipVerifyHint: '开启后将不校验 SMTP 服务端证书，仅限内网自签场景。',
       tlsStartTLS: 'STARTTLS (587)',
       tlsTLS: 'TLS (465)',
       tlsNone: '无加密 (仅 dev)',

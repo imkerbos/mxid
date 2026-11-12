@@ -10,10 +10,10 @@
 //      the CURRENT SAVED config — not the unsaved form values — so admins
 //      must save before testing. We show a hint when the form is dirty.
 import { useEffect, useState } from 'react'
-import { Save, Send, Loader2 } from 'lucide-react'
+import { Save, Send, Loader2, AlertTriangle } from 'lucide-react'
 import { settingsApi, useTranslation } from '@mxid/shared'
 import type { MailSMTP } from '@mxid/shared'
-import { Field, Input, Select, Button } from '../../components/ui'
+import { Field, Input, Select, Button, Checkbox, Switch } from '../../components/ui'
 import { toast, extractMessage } from '../../components/ui/toast'
 
 const TLS_OPTION_KEYS = [
@@ -111,26 +111,22 @@ export default function MailSMTPPage() {
               {t('settings.smtp.desc')}
             </p>
           </div>
-          <label className="flex items-center gap-2 text-sm text-ink">
-            <input
-              type="checkbox"
-              checked={cfg.enabled}
-              onChange={(e) => update({ enabled: e.target.checked })}
-              className="h-4 w-4 rounded border-border"
-            />
-            {t('common.enable')}
-          </label>
+          {/* Switch, not Checkbox: this turns the whole mail capability on/off. */}
+          <div className="flex items-center gap-2 text-sm text-ink">
+            <span>{t('common.enable')}</span>
+            <Switch checked={cfg.enabled} onChange={(c) => update({ enabled: c })} />
+          </div>
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Field label={`${t('settings.smtp.host')} *`} hint={t('settings.smtp.hostHint')}>
+          <Field label={t('settings.smtp.host')} required hint={t('settings.smtp.hostHint')}>
             <Input
               value={cfg.host}
               onChange={(e) => update({ host: e.target.value })}
               placeholder="smtp.example.com"
             />
           </Field>
-          <Field label={`${t('settings.smtp.port')} *`}>
+          <Field label={t('settings.smtp.port')} required>
             <Input
               type="number"
               value={cfg.port}
@@ -145,16 +141,22 @@ export default function MailSMTPPage() {
               ))}
             </Select>
           </Field>
-          <Field label="" hint="">
-            <label className="flex items-center gap-2 pt-7 text-sm text-ink">
-              <input
-                type="checkbox"
+          {/* skip_verify downgrades TLS verification, so it does not render as
+              a plain checkbox among the ordinary fields: warning framing plus a
+              hint spelling out the consequence. Behaviour is unchanged. */}
+          <Field label="" hint={<span className="text-warning">{t('settings.smtp.skipVerifyHint')}</span>}>
+            <div className="rounded-lg border border-warning/40 bg-warning/5 px-3 py-2">
+              <Checkbox
                 checked={cfg.skip_verify}
-                onChange={(e) => update({ skip_verify: e.target.checked })}
-                className="h-4 w-4 rounded border-border"
+                onChange={(c) => update({ skip_verify: c })}
+                label={
+                  <span className="inline-flex items-center gap-1.5 font-medium text-warning">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    {t('settings.smtp.skipVerify')}
+                  </span>
+                }
               />
-              {t('settings.smtp.skipVerify')}
-            </label>
+            </div>
           </Field>
           <Field label={t('settings.smtp.username')}>
             <Input
@@ -172,7 +174,7 @@ export default function MailSMTPPage() {
               autoComplete="new-password"
             />
           </Field>
-          <Field label={`${t('settings.smtp.fromAddress')} *`}>
+          <Field label={t('settings.smtp.fromAddress')} required>
             <Input
               type="email"
               value={cfg.from_address}

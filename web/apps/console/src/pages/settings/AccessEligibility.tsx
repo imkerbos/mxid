@@ -29,7 +29,7 @@ import type {
   Role,
   User,
 } from '@mxid/shared'
-import { pageMotion, Button, Field, Select, ConfirmDialog, SearchSelect } from '@mxid/shared/ui'
+import { pageMotion, Button, Field, Select, Checkbox, ConfirmDialog, SearchSelect } from '@mxid/shared/ui'
 import { toast, extractMessage } from '../../components/ui/toast'
 
 const ALL_DURATIONS = [3600, 14400, 86400, 259200, 604800] as const
@@ -316,8 +316,7 @@ export default function AccessEligibilityPage() {
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Field label={t('eligibility.targetKind')}>
-            <select
-              className="w-full rounded-lg border border-border bg-surface text-ink px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+            <Select
               value={form.target_kind}
               onChange={(e) => {
                 const value = e.target.value as 'console' | 'app'
@@ -331,7 +330,7 @@ export default function AccessEligibilityPage() {
             >
               <option value="app">{t('access.targetApp')}</option>
               <option value="console">{t('access.targetConsole')}</option>
-            </select>
+            </Select>
           </Field>
 
           {form.target_kind === AccessTargetKind.Console ? (
@@ -487,8 +486,7 @@ export default function AccessEligibilityPage() {
           </Field>
 
           <Field label={t('eligibility.maxDuration')}>
-            <select
-              className="w-full rounded-lg border border-border bg-surface text-ink px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+            <Select
               value={form.max_duration_seconds}
               onChange={(e) =>
                 setForm((f) => ({
@@ -502,7 +500,7 @@ export default function AccessEligibilityPage() {
                   {DURATION_LABELS[d]}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
 
           <div className="md:col-span-2">
@@ -511,42 +509,27 @@ export default function AccessEligibilityPage() {
             </div>
             <div className="flex flex-wrap gap-4">
               {ALL_DURATIONS.map((d) => (
-                <label key={d} className="flex cursor-pointer items-center gap-1.5 text-sm text-ink">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 rounded border-border"
-                    checked={form.allowed_durations.includes(d)}
-                    onChange={() => toggleDuration(d)}
-                  />
-                  {DURATION_LABELS[d]}
-                </label>
+                <Checkbox
+                  key={d}
+                  checked={form.allowed_durations.includes(d)}
+                  onChange={() => toggleDuration(d)}
+                  label={DURATION_LABELS[d]}
+                />
               ))}
             </div>
           </div>
 
           <div className="flex flex-wrap gap-6 md:col-span-2">
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-border"
-                checked={form.require_justification ?? false}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, require_justification: e.target.checked }))
-                }
-              />
-              {t('eligibility.requireJustification')}
-            </label>
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-border"
-                checked={form.require_stepup ?? false}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, require_stepup: e.target.checked }))
-                }
-              />
-              {t('eligibility.requireStepup')}
-            </label>
+            <Checkbox
+              checked={form.require_justification ?? false}
+              onChange={(c) => setForm((f) => ({ ...f, require_justification: c }))}
+              label={t('eligibility.requireJustification')}
+            />
+            <Checkbox
+              checked={form.require_stepup ?? false}
+              onChange={(c) => setForm((f) => ({ ...f, require_stepup: c }))}
+              label={t('eligibility.requireStepup')}
+            />
           </div>
         </div>
 

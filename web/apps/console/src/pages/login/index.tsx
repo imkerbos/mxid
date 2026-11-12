@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { authApi, externalIdpApi, ExternalIdpButtons, useAuthStore, useBootstrap, useTranslation, safeReturnPath, apiErrorCode, CODE_CAPTCHA_REQUIRED, CODE_CAPTCHA_INVALID, CODE_UNAUTHENTICATED, CODE_INVALID_MFA_CODE, CODE_ACCOUNT_LOCKED, CODE_ACCOUNT_DISABLED, CODE_ACCESS_DENIED, CODE_TOO_MANY_ATTEMPTS } from '@mxid/shared'
+import { Checkbox } from '@mxid/shared/ui'
 import { extractMessage } from '@mxid/shared/ui/toast'
 import type { PublicIDP } from '@mxid/shared'
 import { Eye, EyeOff, Loader2, RefreshCw } from 'lucide-react'
@@ -359,15 +360,15 @@ export default function LoginPage() {
             </div>
             )}
 
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-white/80 select-none">
-              <input
-                type="checkbox"
-                checked={remember}
-                onChange={(e) => setRemember(e.target.checked)}
-                className="h-4 w-4 rounded border-white/30 bg-surface/10 text-primary focus:ring-primary/30"
-              />
-{t('login.rememberMe')}
-            </label>
+            {/* Shared primitive, not a bare input: the sign-in page is where a
+                mismatched control is most visible. className only recolors the
+                label for the dark hero background. */}
+            <Checkbox
+              checked={remember}
+              onChange={setRemember}
+              label={t('login.rememberMe')}
+              className="select-none text-white/80"
+            />
 
             {error && (
               <motion.div

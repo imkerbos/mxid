@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import type { OrgNode, RuleExpr, RuleCondition } from '@mxid/shared'
 import { groupApi, orgApi, useTranslation } from '@mxid/shared'
+import { Input, Select } from '@mxid/shared/ui'
 
 // Field labels shown in the dropdown — keys must match the backend
 // rule-fields allow-list (see internal/domain/group/rule.go).
@@ -56,6 +57,15 @@ function pickDefaultCmp(field: string, allowed: string[]): string {
   if (field === 'org_id' && allowed.includes('in_subtree')) return 'in_subtree'
   return allowed[0] ?? 'eq'
 }
+
+// The condition row is a dense 4-column grid, so the shared Select is trimmed
+// back to the xs/compact metrics the row was built around.
+const COMPACT_SELECT = 'rounded-md px-2 py-1 text-xs'
+
+// The org picker's search box sits flush at the top of the popover, so the
+// shared Input keeps its colors/placeholder but loses the rounded box, the
+// side/top borders and the focus ring.
+const POPOVER_SEARCH = 'rounded-none border-x-0 border-t-0 px-2 py-1.5 text-xs focus:ring-0'
 
 export interface RuleEditorProps {
   value: RuleExpr
@@ -118,7 +128,7 @@ export default function RuleEditor({ value, onChange }: RuleEditorProps) {
           const cmps = fields[c.field] ?? []
           return (
             <div key={i} className="grid grid-cols-[1fr_1fr_1.4fr_auto] gap-2 rounded-md border border-border bg-surface p-2">
-              <select
+              <Select
                 value={c.field}
                 onChange={(e) => {
                   const newField = e.target.value
@@ -129,26 +139,26 @@ export default function RuleEditor({ value, onChange }: RuleEditorProps) {
                     value: newField === 'status' ? 1 : '',
                   })
                 }}
-                className="rounded-md border border-border bg-surface text-ink px-2 py-1 text-xs outline-none focus:border-primary"
+                className={COMPACT_SELECT}
               >
                 {fieldKeys.map((f) => (
                   <option key={f} value={f}>
                     {FIELD_LABELS[f] ?? f}
                   </option>
                 ))}
-              </select>
+              </Select>
 
-              <select
+              <Select
                 value={c.cmp}
                 onChange={(e) => updateCondition(i, { cmp: e.target.value })}
-                className="rounded-md border border-border bg-surface text-ink px-2 py-1 text-xs outline-none focus:border-primary"
+                className={COMPACT_SELECT}
               >
                 {cmps.map((op) => (
                   <option key={op} value={op}>
                     {CMP_LABELS[op] ?? op}
                   </option>
                 ))}
-              </select>
+              </Select>
 
               <ConditionValue
                 field={c.field}
@@ -194,27 +204,27 @@ function ConditionValue({
   const STATUS_OPTIONS = useStatusOptions()
   if (field === 'status') {
     return (
-      <select
+      <Select
         value={typeof value === 'number' ? value : Number(value) || 1}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="rounded-md border border-border bg-surface text-ink px-2 py-1 text-xs outline-none focus:border-primary"
+        className={COMPACT_SELECT}
       >
         {STATUS_OPTIONS.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
         ))}
-      </select>
+      </Select>
     )
   }
   if (field === 'org_id') {
     return <OrgSelector cmp={cmp} value={value} onChange={onChange} />
   }
   return (
-    <input
+    <Input
       type="text"
       value={typeof value === 'string' ? value : String(value ?? '')}
       onChange={(e) => onChange(e.target.value)}
       placeholder={t('groupRules.valuePlaceholder')}
-      className="rounded-md border border-border px-2 py-1 text-xs outline-none focus:border-primary"
+      className={COMPACT_SELECT}
     />
   )
 }
@@ -285,12 +295,12 @@ function OrgSelector({
       </button>
       {open && (
         <div className="absolute z-20 mt-1 w-72 rounded-md border border-border bg-surface shadow-lg">
-          <input
+          <Input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t('groupRules.searchOrgPlaceholder')}
-            className="w-full border-b border-border px-2 py-1.5 text-xs outline-none"
+            className={POPOVER_SEARCH}
             autoFocus
           />
           <div className="max-h-56 overflow-y-auto">

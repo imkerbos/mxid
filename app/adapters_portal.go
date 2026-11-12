@@ -228,6 +228,13 @@ func (a *portalUserQuerierAdapter) UpdateLastLogin(ctx context.Context, userID i
 
 /* ─────────── App ─────────── */
 
+// errNoAppAccessService is the portal app adapters' fail-closed answer when no
+// access-policy service is wired. Production always wires one, so this is a
+// defence, not a reachable state — and it is an error rather than an empty
+// list so the misconfiguration surfaces in the log instead of looking like a
+// user with no apps. Mirrors GetAppLaunchURL, which denies for the same reason.
+var errNoAppAccessService = errors.New("portal app access policy service not wired")
+
 type portalAppQuerierAdapter struct {
 	app       *bootstrap.App
 	idGen     *snowflake.Generator
@@ -246,8 +253,11 @@ func (a *portalAppQuerierAdapter) ListAuthorizedApps(ctx context.Context, userID
 	if err != nil {
 		return nil, err
 	}
+	if a.accessSvc == nil {
+		return nil, errNoAppAccessService
+	}
 	allowed := map[int64]struct{}{}
-	if a.accessSvc != nil {
+	{
 		ids, err := a.accessSvc.AppsForUser(ctx, userID, tenantID)
 		if err != nil {
 			return nil, fmt.Errorf("apps for user: %w", err)
@@ -285,10 +295,8 @@ func (a *portalAppQuerierAdapter) ListAuthorizedApps(ctx context.Context, userID
 		if ap.Status != app.StatusEnabled {
 			continue
 		}
-		if a.accessSvc != nil {
-			if _, ok := allowed[ap.ID]; !ok {
-				continue
-			}
+		if _, ok := allowed[ap.ID]; !ok {
+			continue
 		}
 		gids := groupsByApp[ap.ID]
 		gidStrs := make([]string, len(gids))
@@ -326,12 +334,15 @@ func (a *portalAppQuerierAdapter) ListAuthorizedApps(ctx context.Context, userID
 // returned so the sidebar shape stays stable (frontend hides empty ones
 // if it wants — server stays declarative).
 func (a *portalAppQuerierAdapter) ListAuthorizedAppGroups(ctx context.Context, userID, tenantID int64) ([]*portal.AppGroupInfo, error) {
+	if a.accessSvc == nil {
+		return nil, errNoAppAccessService
+	}
 	groups, err := a.appModule.Repo.ListGroups(ctx, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("list groups: %w", err)
 	}
 	allowed := map[int64]struct{}{}
-	if a.accessSvc != nil {
+	{
 		ids, err := a.accessSvc.AppsForUser(ctx, userID, tenantID)
 		if err != nil {
 			return nil, fmt.Errorf("apps for user: %w", err)
@@ -381,10 +392,8 @@ func (a *portalAppQuerierAdapter) ListAuthorizedAppGroups(ctx context.Context, u
 		if _, ok := liveEnabled[r.AppID]; !ok {
 			continue // deleted (orphan rel) or disabled app — not shown, not counted
 		}
-		if a.accessSvc != nil {
-			if _, ok := allowed[r.AppID]; !ok {
-				continue
-			}
+		if _, ok := allowed[r.AppID]; !ok {
+			continue
 		}
 		countByGroup[r.GroupID]++
 	}
@@ -527,7 +536,23 @@ func launchableURL(u string) string {
 	return u
 }
 
-func (a *portalAppQuerierAdapter) GetAppLaunchURL(ctx context.Context, appID, userID int64) (string, error) {
+func (a *portalAppQuerierAdapter) GetAppLaunchURL(ctx context.Context, appID, userID int64, tenantID int64) (string, error) {
+	// Re-decide access here. appID comes from the URL, so without this any
+	// signed-in portal user could enumerate ids and read an unauthorized app's
+	// launch target (OIDC client_id, CAS service URL, a form app's third-party
+	// login page) — and stamp an app.launched audit row under their own name.
+	// Same authority the app list filters cards with, and the same one the EE
+	// form-fill reveal gates on. Fail closed when it is absent.
+	if a.accessSvc == nil {
+		return "", portal.ErrAppAccessDenied
+	}
+	dec, err := a.accessSvc.CanAccess(ctx, userID, appID, tenantID)
+	if err != nil {
+		return "", fmt.Errorf("app access check: %w", err)
+	}
+	if dec == nil || !dec.Allowed {
+		return "", portal.ErrAppAccessDenied
+	}
 	ap, err := a.appModule.Repo.GetByID(ctx, appID)
 	if err != nil {
 		return "", err

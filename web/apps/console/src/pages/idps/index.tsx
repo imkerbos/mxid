@@ -5,10 +5,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Plus, Pencil, Trash2, Plug, Power } from 'lucide-react'
-import { externalIdpApi, cn, useTranslation, useEdition, IdpStatus } from '@mxid/shared'
+import { externalIdpApi, useTranslation, useEdition, IdpStatus } from '@mxid/shared'
 import type { ExternalIDP } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
-import { Field, Button, Tag, EmptyState, LoadingState, Card, ConfirmDialog, Modal, pageMotion } from '../../components/ui'
+import { Field, Button, Checkbox, Input, Select, Tag, EmptyState, LoadingState, Card, ConfirmDialog, Modal, pageMotion } from '../../components/ui'
 import { toast, extractMessage } from '../../components/ui/toast'
 
 // Provider field schemas — what the config form renders per type. Keep this
@@ -334,29 +334,28 @@ function IDPForm({
     <Modal open title={initial ? t('idps.editTitle') : t('idps.createTitle')} onClose={onCancel} size="xl">
         <form onSubmit={submit} className="space-y-4">
           <Field label={t('idps.fields.providerType')} hint={t('idps.fields.providerTypeHint')}>
-            <select
+            {/* Select already carries the disabled styling, so the branch on `initial` goes away. */}
+            <Select
               value={form.type}
               onChange={(e) => setForm({ ...form, type: e.target.value, config: {} })}
               disabled={!!initial}
-              className={cn('w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20', initial ? 'border-border bg-surface-muted text-muted' : 'border-border bg-surface text-ink')}
             >
               {allowedTypes.map((tp) => (
                 <option key={tp} value={tp}>{PROVIDER_LABEL[tp] ?? tp}</option>
               ))}
-            </select>
+            </Select>
           </Field>
 
           <div className="grid grid-cols-2 gap-4">
             <Field label={t('idps.fields.nameRequired')} hint={t('idps.fields.nameHint')}>
-              <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
             </Field>
             <Field label={initial ? t('idps.fields.codeImmutable') : t('idps.fields.codeRequired')} hint={t('idps.fields.codeHint')}>
-              <input
+              <Input
                 value={form.code}
                 onChange={(e) => setForm({ ...form, code: e.target.value })}
                 disabled={!!initial}
                 required={!initial}
-                className={cn('w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20', initial ? 'border-border bg-surface-muted text-muted' : 'border-border bg-surface text-ink')}
               />
             </Field>
           </div>
@@ -385,11 +384,11 @@ function IDPForm({
           )}
 
           <Field label={t('idps.fields.description')}>
-            <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+            <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </Field>
 
           <Field label={t('idps.fields.iconUrl')}>
-            <input value={form.icon} onChange={(e) => setForm({ ...form, icon: e.target.value })} placeholder="https://..." className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+            <Input value={form.icon} onChange={(e) => setForm({ ...form, icon: e.target.value })} placeholder="https://..." />
           </Field>
 
           {/* Provider-specific config block */}
@@ -399,13 +398,12 @@ function IDPForm({
               <div className="space-y-3">
                 {fields.map((f) => (
                   <Field key={f.key} label={f.required ? `${f.label} *` : f.label} hint={f.hint}>
-                    <input
+                    <Input
                       type={f.secret ? 'password' : 'text'}
                       value={form.config[f.key] ?? ''}
                       onChange={(e) => setForm({ ...form, config: { ...form.config, [f.key]: e.target.value } })}
                       placeholder={f.placeholder}
                       required={f.required && !initial}
-                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                     />
                   </Field>
                 ))}
@@ -415,23 +413,27 @@ function IDPForm({
 
           <div className="grid grid-cols-2 gap-4">
             <Field label={t('idps.fields.enable')}>
-              <select value={form.status} onChange={(e) => setForm({ ...form, status: Number(e.target.value) })} className="w-full rounded-lg border border-border bg-surface text-ink px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
+              <Select value={form.status} onChange={(e) => setForm({ ...form, status: Number(e.target.value) })}>
                 <option value={1}>{t('common.enable')}</option>
                 <option value={2}>{t('common.disable')}</option>
-              </select>
+              </Select>
             </Field>
             <Field label={t('idps.fields.sortOrder')} hint={t('idps.fields.sortOrderHint')}>
-              <input type="number" value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: Number(e.target.value) })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+              <Input type="number" value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: Number(e.target.value) })} />
             </Field>
           </div>
 
-          <label className="flex items-start gap-2 text-sm">
-            <input type="checkbox" checked={form.auto_create} onChange={(e) => setForm({ ...form, auto_create: e.target.checked })} className="mt-0.5 h-4 w-4 rounded border-border text-primary" />
-            <span>
-              <span className="font-medium">{t('idps.fields.autoCreate')}</span>
-              <span className="ml-1 text-xs text-muted">{t('idps.fields.autoCreateHint')}</span>
-            </span>
-          </label>
+          <Checkbox
+            checked={form.auto_create}
+            onChange={(checked) => setForm({ ...form, auto_create: checked })}
+            className="items-start"
+            label={
+              <span>
+                <span className="font-medium">{t('idps.fields.autoCreate')}</span>
+                <span className="ml-1 text-xs text-muted">{t('idps.fields.autoCreateHint')}</span>
+              </span>
+            }
+          />
 
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="secondary" onClick={onCancel}>{t('common.cancel')}</Button>

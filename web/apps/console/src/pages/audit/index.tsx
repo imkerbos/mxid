@@ -194,15 +194,19 @@ export default function AuditPage() {
     {
       key: 'created_at',
       title: t('audit.cols.time'),
+      // Widths keep the fixed-shape columns intact at 1280px; the resource
+      // column stays flexible and absorbs the surplus.
+      width: '180px',
       render: (l) => <span className="whitespace-nowrap text-muted">{formatDate(l.created_at)}</span>,
     },
     {
       key: 'event_type',
       title: t('audit.cols.eventType'),
+      width: '200px',
       render: (l) => <EventPill eventType={l.event_type} label={getEventLabel(l.event_type)} />,
     },
-    { key: 'actor_name', title: t('audit.cols.actor'), render: (l) => <span className="text-muted">{l.actor_name || '-'}</span> },
-    { key: 'resource_type', title: t('audit.cols.resourceType'), render: (l) => <span className="text-muted">{l.resource_type}</span> },
+    { key: 'actor_name', title: t('audit.cols.actor'), width: '140px', render: (l) => <span className="text-muted">{l.actor_name || '-'}</span> },
+    { key: 'resource_type', title: t('audit.cols.resourceType'), width: '140px', render: (l) => <span className="text-muted">{l.resource_type}</span> },
     {
       key: 'resource_id',
       title: t('audit.cols.resource'),
@@ -216,11 +220,12 @@ export default function AuditPage() {
           <code className="rounded bg-surface-muted px-2 py-0.5 text-xs text-muted">{l.resource_id}</code>
         ),
     },
-    { key: 'ip', title: t('audit.cols.ip'), render: (l) => <span className="text-faint">{l.ip || '-'}</span> },
+    { key: 'ip', title: t('audit.cols.ip'), width: '140px', render: (l) => <span className="text-faint">{l.ip || '-'}</span> },
     {
       key: 'detail',
       title: t('audit.cols.detail'),
       align: 'right',
+      width: '112px',
       render: (l) => (
         <button
           onClick={(e) => {

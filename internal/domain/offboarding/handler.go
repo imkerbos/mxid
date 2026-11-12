@@ -49,6 +49,12 @@ func (h *Handler) Offboard(c *gin.Context) {
 	if !ok {
 		return
 	}
+	// Offboarding disables the account and kills every session, so it reaches
+	// the same takeover/lockout as the admin lock — it needs the same target
+	// check, not just the caller's own user.update.
+	if !authz.MayAdministerTarget(c, id) {
+		return
+	}
 	if err := h.svc.Offboard(c.Request.Context(), id, actorID(c)); err != nil {
 		if errors.Is(err, user.ErrUserNotFound) {
 			response.NotFound(c, errcode.NumNotFound, err.Error())

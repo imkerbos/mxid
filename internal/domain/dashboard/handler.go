@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/imkerbos/mxid/pkg/authz"
+	"github.com/imkerbos/mxid/pkg/errcode"
 	"github.com/imkerbos/mxid/pkg/response"
 	"github.com/imkerbos/mxid/pkg/tenantctx"
 )
@@ -53,7 +54,12 @@ func (h *Handler) Overview(c *gin.Context) {
 		rangeDays = 90
 	}
 
-	ov, err := h.svc.Overview(c.Request.Context(), h.resolveTenant(c), rangeDays)
+	tenantID, ok := h.resolveTenant(c)
+	if !ok {
+		return
+	}
+
+	ov, err := h.svc.Overview(c.Request.Context(), tenantID, rangeDays)
 	if err != nil {
 		response.InternalError(c, "failed to build dashboard overview", err)
 		return
@@ -75,7 +81,12 @@ func (h *Handler) Export(c *gin.Context) {
 	}
 	since := time.Now().AddDate(0, 0, -rangeDays)
 
-	rows, err := h.svc.ExportAudit(c.Request.Context(), h.resolveTenant(c), since)
+	tenantID, ok := h.resolveTenant(c)
+	if !ok {
+		return
+	}
+
+	rows, err := h.svc.ExportAudit(c.Request.Context(), tenantID, since)
 	if err != nil {
 		response.InternalError(c, "failed to export audit log", err)
 		return
@@ -105,16 +116,66 @@ func (h *Handler) Export(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
-// resolveTenant returns the tenant to scope metrics to: the explicit
-// ?tenant_id override (super-admin drilldown) when present and valid,
-// otherwise the caller's tenant context.
-func (h *Handler) resolveTenant(c *gin.Context) int64 {
-	if t := c.Query("tenant_id"); t != "" {
-		if id, err := strconv.ParseInt(t, 10, 64); err == nil && id > 0 {
+// resolveTenant returns the tenant to scope metrics to: the caller's tenant
+// context by default, or the explicit ?tenant_id when the caller is a
+// super_admin drilling down.
+//
+// These queries go through .Table(), which bypasses the tenantscope plugin, so
+// this value is the only tenant boundary they have. It was taken on trust,
+// which let anyone who could reach the routes (audit.read is enough for the CSV
+// export) read another tenant's data. The gate mirrors
+// middleware.TenantContext's X-Tenant-ID gate: the authz wildcard "*" only —
+// tenant.manage is sufficient for same-tenant work but not to leave the tenant.
+//
+// ok=false means a response has already been written and the caller must
+// return. Fail closed: no authz service, no identity, or a check error refuses.
+func (h *Handler) resolveTenant(c *gin.Context) (int64, bool) {
+	own := tenantctx.FromContext(c, h.tenantID)
+	t := c.Query("tenant_id")
+	if t == "" {
+		return own, true
+	}
+	id, err := strconv.ParseInt(t, 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, errcode.NumBadRequest, "invalid tenant_id")
+		return 0, false
+	}
+	if id == own {
+		return own, true
+	}
+	svc := authz.FromContext(c)
+	if svc == nil {
+		response.Error(c, http.StatusInternalServerError, errcode.NumNotConfigured,
+			"authz not installed", "")
+		return 0, false
+	}
+	uid, _ := c.Get("user_id")
+	userID, _ := uid.(int64)
+	if userID == 0 {
+		response.Unauthorized(c, errcode.NumUnauthenticated, "not authenticated")
+		return 0, false
+	}
+	// Check against the caller's OWN tenant: bindings live there, and asking in
+	// the target tenant would evaluate the escape inside the place being escaped
+	// into.
+	ok, err := svc.Check(c.Request.Context(), sessionTenant(c, own), userID, "*", nil)
+	if err != nil || !ok {
+		response.Forbidden(c, errcode.NumForbidden, "cross-tenant drilldown requires super_admin")
+		return 0, false
+	}
+	return id, true
+}
+
+// sessionTenant is the tenant the caller's session was issued for, which
+// middleware.TenantContext preserves separately when it honours an
+// X-Tenant-ID override. Falls back to the effective tenant.
+func sessionTenant(c *gin.Context, fallback int64) int64 {
+	if v, ok := c.Get("session_tenant_id"); ok {
+		if id, ok := v.(int64); ok && id > 0 {
 			return id
 		}
 	}
-	return tenantctx.FromContext(c, h.tenantID)
+	return fallback
 }
 
 func statusLabel(s int) string {

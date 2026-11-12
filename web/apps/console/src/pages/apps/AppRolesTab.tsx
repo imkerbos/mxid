@@ -13,7 +13,7 @@ import type {
   AppRole, AppRoleBinding, AppRoleSubjectType, AppRoleOwner,
   Group, User as UserT, OrgNode, Role,
 } from '@mxid/shared'
-import { Field, Input, Select, Button, Textarea, ConfirmDialog } from '../../components/ui'
+import { Field, Input, Select, Button, Checkbox, Textarea, ConfirmDialog } from '../../components/ui'
 import { toast, extractMessage } from '../../components/ui/toast'
 
 export default function AppRolesTab({
@@ -319,10 +319,7 @@ function RoleForm({
           <Field label={t('apps.roles.sortLabel')}>
             <Input type="number" value={sortOrder} onChange={(e) => setSortOrder(Number(e.target.value))} />
           </Field>
-          <label className="flex items-center gap-2 text-sm text-ink">
-            <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} className="h-4 w-4 rounded border-border" />
-            <span>{t('apps.roles.setDefault')}</span>
-          </label>
+          <Checkbox checked={isDefault} onChange={setIsDefault} label={t('apps.roles.setDefault')} />
         </div>
         <div className="mt-6 flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button>

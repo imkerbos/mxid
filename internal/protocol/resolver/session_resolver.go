@@ -29,6 +29,16 @@ func NewSessionResolver(rdb *redis.Client) SessionResolver {
 	return &sessionResolverImpl{rdb: rdb}
 }
 
+// GetSSOSession is the single point every protocol entry (OIDC bridge, SAML
+// /sso, CAS /login) goes through to answer "is the user logged in", so the
+// obligation check lives here rather than in each of the three — this is a
+// repository where a rule written once per path is a rule that misses one.
+//
+// Fail-closed by construction: an unreadable or undecodable record returns an
+// error with a nil session, and a session carrying an unsettled obligation is
+// reported as no session at all, which every caller already handles by
+// bouncing to the portal login. The alternative — treating an unparseable flag
+// as "nothing owed" — would make a schema change silently reopen the bypass.
 func (r *sessionResolverImpl) GetSSOSession(ctx context.Context, sessionID string) (*SSOSession, error) {
 	// Look in the protocol namespace first (what login-bridge wrote), then
 	// fall back to the portal namespace. IdP-initiated SSO from the portal
@@ -56,6 +66,9 @@ func (r *sessionResolverImpl) GetSSOSession(ctx context.Context, sessionID strin
 			}
 			return nil, nil
 		}
+		if sess.HasPendingObligation() {
+			return nil, nil
+		}
 		return &sess, nil
 	}
 	return nil, nil
@@ -64,7 +77,8 @@ func (r *sessionResolverImpl) GetSSOSession(ctx context.Context, sessionID strin
 // GetProtocolSSOSession resolves a session id ONLY within the protocol
 // namespace — no portal fallback, unlike GetSSOSession. Returns (nil, nil)
 // when no live protocol session exists for the id (expired sessions are
-// swept, matching GetSSOSession's semantics).
+// swept, matching GetSSOSession's semantics). A session owing a password change
+// or an MFA enrollment is likewise reported as none — see GetSSOSession.
 func (r *sessionResolverImpl) GetProtocolSSOSession(ctx context.Context, sessionID string) (*SSOSession, error) {
 	data, err := r.rdb.Get(ctx, ssoSessionPrefix+sessionID).Bytes()
 	if err != nil {
@@ -79,6 +93,9 @@ func (r *sessionResolverImpl) GetProtocolSSOSession(ctx context.Context, session
 	}
 	if time.Now().After(sess.ExpiresAt) {
 		_ = r.DeleteSSOSession(ctx, sessionID)
+		return nil, nil
+	}
+	if sess.HasPendingObligation() {
 		return nil, nil
 	}
 	return &sess, nil

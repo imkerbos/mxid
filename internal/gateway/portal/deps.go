@@ -136,7 +136,11 @@ type AppQuerier interface {
 	// client-side once N grows past a few hundred apps — the pg_trgm
 	// index on mxid_app makes it cheap.
 	ListAuthorizedApps(ctx context.Context, userID, tenantID int64, q string) ([]*AppInfo, error)
-	GetAppLaunchURL(ctx context.Context, appID, userID int64) (string, error)
+	// GetAppLaunchURL resolves an app's launch target for a user. The
+	// implementation MUST re-check the app's access policy against userID —
+	// appID is a path param, not proof of entitlement — and return
+	// ErrAppAccessDenied when it does not hold.
+	GetAppLaunchURL(ctx context.Context, appID, userID, tenantID int64) (string, error)
 	// AppName returns an app's display name, used to label the app.launched
 	// audit row so the trail reads "launched <name>" not a bare id.
 	AppName(ctx context.Context, appID int64) (string, error)

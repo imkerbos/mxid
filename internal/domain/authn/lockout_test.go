@@ -65,7 +65,7 @@ func TestBruteForceLock_TripsAndAutoExpires(t *testing.T) {
 	req := &AuthRequest{TenantID: 1, ClientIP: "10.0.0.9"}
 
 	// Before any failure, not locked.
-	if err := e.checkLoginLock(ctx, userID, req.ClientIP); err != nil {
+	if err := e.checkLoginLock(ctx, req.ClientIP); err != nil {
 		t.Fatalf("unexpected pre-lock: %v", err)
 	}
 
@@ -73,8 +73,9 @@ func TestBruteForceLock_TripsAndAutoExpires(t *testing.T) {
 		e.trackFailure(ctx, userID, req)
 	}
 
-	// Now locked (per-user OR per-IP both tripped).
-	if err := e.checkLoginLock(ctx, userID, req.ClientIP); err == nil {
+	// Now locked. The per-IP dimension is the only one that locks — the account
+	// dimension is counted only, and feeds the refusal window instead.
+	if err := e.checkLoginLock(ctx, req.ClientIP); err == nil {
 		t.Fatal("after threshold the brute-force lock must trip, got nil")
 	}
 
@@ -85,7 +86,7 @@ func TestBruteForceLock_TripsAndAutoExpires(t *testing.T) {
 
 	// Advance past the lock TTL: Redis expiry self-heals the lock.
 	mr.FastForward(16 * time.Minute)
-	if err := e.checkLoginLock(ctx, userID, req.ClientIP); err != nil {
+	if err := e.checkLoginLock(ctx, req.ClientIP); err != nil {
 		t.Fatalf("lock must auto-expire after TTL, still locked: %v", err)
 	}
 }
@@ -102,9 +103,8 @@ func TestBruteForceLock_PerIPDimension(t *testing.T) {
 		e.trackFailure(ctx, int64(1000+i), &AuthRequest{TenantID: 1, ClientIP: ip})
 	}
 
-	// A brand-new user from that IP is blocked by the per-IP lock (pre-auth
-	// IP-only check, userID=0).
-	if err := e.checkLoginLock(ctx, 0, ip); err == nil {
+	// A brand-new user from that IP is blocked by the per-IP lock.
+	if err := e.checkLoginLock(ctx, ip); err == nil {
 		t.Fatal("per-IP lock must block further attempts from the same IP, got nil")
 	}
 }
@@ -124,7 +124,7 @@ func TestBruteForceLock_AdminLockIsSeparate(t *testing.T) {
 	// A successful login clears the brute-force budget without ever calling
 	// UpdateStatus (the admin lock path is the only DB-status writer).
 	e.clearFailureCountIP(ctx, userID, req.ClientIP)
-	if err := e.checkLoginLock(ctx, userID, req.ClientIP); err != nil {
+	if err := e.checkLoginLock(ctx, req.ClientIP); err != nil {
 		t.Fatalf("after reset the brute-force lock must clear, still locked: %v", err)
 	}
 	if repo.statusCalls != 0 {

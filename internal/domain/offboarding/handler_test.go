@@ -8,7 +8,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/imkerbos/mxid/internal/domain/authn"
 	"github.com/imkerbos/mxid/internal/domain/user"
+	"github.com/imkerbos/mxid/pkg/authz"
 )
 
 // Offboarding a user that does not exist must surface as 404 — the service
@@ -22,6 +24,13 @@ func TestHandler_Offboard_UnknownUserReturns404(t *testing.T) {
 	h := NewHandler(svc, 1)
 
 	r := gin.New()
+	// The route now carries the shared target guard, which fails closed without
+	// an authz context; a super_admin caller keeps this case on the 404 path.
+	r.Use(func(c *gin.Context) {
+		c.Set(authn.CtxUserID, ogCallerSuperAdmin)
+		c.Set(authz.CtxAuthzKey, authz.NewService(offboardGuardBindings{byUser: offboardGuardFixture()}, nil))
+		c.Next()
+	})
 	r.POST("/users/:id/offboard", h.Offboard)
 
 	req := httptest.NewRequest(http.MethodPost, "/users/999/offboard", nil)

@@ -6,9 +6,24 @@
 // notifications) working on the real values while preserving the leak-
 // minimization invariant at the wire boundary.
 //
-// Admin endpoints that legitimately need the full value MUST go through a
-// dedicated route gated by a separate permission (e.g. user.read.pii) and
-// MUST emit an audit event for every successful read.
+// # Known gap: no separate permission for the full value
+//
+// The intended design is that an admin endpoint returning unmasked PII sits
+// behind its own permission AND emits an audit event. Only the second half
+// ships today.
+//
+// What is actually true: GET /users/:id and GET /users/:id/detail return
+// phone, email and the detail block (address, employee_no, birthday)
+// unmasked, and both are gated by the SAME `user.read` as the masked list
+// endpoint — there is no `user.read.pii` permission in the catalog or in any
+// migration. So "can list users" is also "can read every user's raw PII".
+// GET /users/:id does emit the audit event (`user.pii_view`, chain class
+// sensitive_read); GET /users/:id/detail does not.
+//
+// Closing it means adding a permission code, a migration, and a grant path
+// for already-deployed instances — a product decision, not a refactor. Until
+// that happens, do not cite a dedicated PII permission as an existing
+// control.
 package mask
 
 import (

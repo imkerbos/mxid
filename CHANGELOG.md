@@ -5,6 +5,29 @@ All notable changes to MXID are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0] — 2026-11-12
+
+### Security
+
+- Fixed several authentication and authorization flaws: a bypass of the login
+  challenge, a brute-force counter that was never enforced, a forced
+  password-change gate that single sign-on ignored, administrative actions that
+  did not compare privileges against their target, and endpoints that acted or
+  returned data without checking the caller's entitlement. Instances on 1.15.1
+  and earlier are affected; upgrade.
+- Go 1.26.11 (GO-2026-6859). The vulnerability scan now covers only the packages
+  the release image is built from.
+
+### Changed
+
+- Repeated failed sign-ins on one account get progressively slower, up to a
+  ceiling. The response stays identical to any other failed sign-in and no
+  session is revoked. The built-in administrator is exempt.
+- Administrative actions on another account refuse a target whose privileges are
+  not a subset of the caller's; only a super administrator may act on one.
+- Console forms use the shared components. Fixes dark-mode inputs, table headers
+  wrapping on narrow screens, and dialog and drawer overlays.
+
 ## [1.15.1] — 2026-11-04
 
 ### Fixed
@@ -1736,6 +1759,7 @@ Initial public preview. Two integrations verified end-to-end: **Grafana (OIDC)**
 - Tailwind v4 monorepo `@source` directive so shared package UI compiles into both SPAs.
 
 [Unreleased]: https://github.com/imkerbos/mxid/compare/v1.13.1...HEAD
+[1.16.0]: https://github.com/imkerbos/mxid/compare/v1.15.1...v1.16.0
 [1.15.1]: https://github.com/imkerbos/mxid/compare/v1.15.0...v1.15.1
 [1.15.0]: https://github.com/imkerbos/mxid/compare/v1.14.1...v1.15.0
 [1.14.1]: https://github.com/imkerbos/mxid/compare/v1.14.0...v1.14.1

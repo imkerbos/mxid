@@ -174,8 +174,18 @@ func (p *LocalProvider) resolveUser(ctx context.Context, tenantID int64, identif
 	return nil, err
 }
 
+// ResolveAccount maps a login identifier to its account without touching the
+// password — the accountResolver capability the engine's per-account throttle
+// needs. Same lookup path as Authenticate (resolveUser), so it adds no timing
+// difference between a known and an unknown identifier that a login did not
+// already have.
+func (p *LocalProvider) ResolveAccount(ctx context.Context, tenantID int64, identifier string) (*UserAuth, error) {
+	return p.resolveUser(ctx, tenantID, identifier)
+}
+
 // Ensure LocalProvider implements Provider at compile time.
 var _ Provider = (*LocalProvider)(nil)
+var _ accountResolver = (*LocalProvider)(nil)
 
 // authQuerierAdapter adapts functions into a UserAuthQuerier.
 type authQuerierAdapter struct {

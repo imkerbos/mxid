@@ -105,13 +105,24 @@ func (h *Handler) checkAssignAllowed(c *gin.Context, roleID int64, req *AddMembe
 		}
 	}
 
-	// 4. Verify the caller's OWN authority covers the requested scope — INCLUDING
-	// a GLOBAL (unscoped) grant. Previously this ran only for scoped bindings, so
-	// a scope-limited admin (who holds a perm within one org/group) could hand
-	// out an UNSCOPED binding of that perm — privilege escalation. A nil target
-	// is the runtime check for a globally-required permission, so a scoped-only
-	// holder fails it. Runs per granted perm via the same engine path as runtime
-	// checks.
+	// 4. Verify the caller's OWN authority covers the requested scope, via the
+	// same engine path as a runtime check, once per granted permission.
+	//
+	// SCOPED grants (target != nil) are genuinely constrained here: the caller
+	// must hold the permission within an org that is ancestor-or-self of the
+	// target org, or within exactly the target group.
+	//
+	// UNSCOPED grants (target == nil) are NOT. Service.scopeCovers in
+	// pkg/authz returns true for a nil target by design ("caller does its own
+	// filtering"), so a scope-limited admin still passes this step and can
+	// hand out a GLOBAL binding of a permission they only hold within one
+	// org — the escalation this step was meant to close. Step 3's subset check
+	// is what still stands in the way; it only checks WHICH permissions, not
+	// at what scope.
+	//
+	// Fixing it means inverting that nil-target default in pkg/authz, which
+	// changes every runtime call site at once. Out of scope here; do not read
+	// this step as a scope limit on unscoped grants.
 	var target *authz.ScopeTarget
 	if req.ScopeType != nil && req.ScopeID != nil {
 		target = scopeToTarget(*req.ScopeType, *req.ScopeID)

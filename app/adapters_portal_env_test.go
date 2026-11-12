@@ -32,7 +32,9 @@ func TestListAuthorizedApps_PopulatesEnv(t *testing.T) {
 	adapter := &portalAppQuerierAdapter{
 		app:       &bootstrap.App{DB: db},
 		appModule: &app.Module{Repo: app.NewGormRepository(db)},
-		accessSvc: nil,
+		// Permissive policy: this test is about the env label, not gating.
+		// (nil would now fail closed.)
+		accessSvc: stubAccessSvc(1, 2, 3),
 	}
 
 	list, err := adapter.ListAuthorizedApps(sys, 1, tenantID, "")

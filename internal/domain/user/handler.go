@@ -176,6 +176,13 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 
+	// Email and Status are both in the body: rewriting a super_admin's address
+	// and then using password recovery lands in the same place as resetting its
+	// password, and status=3 disables it outright.
+	if !h.mayAdministerTarget(c, id) {
+		return
+	}
+
 	var req UpdateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
@@ -197,6 +204,13 @@ func (h *Handler) Update(c *gin.Context) {
 func (h *Handler) Delete(c *gin.Context) {
 	id, ok := ginutil.ParseInt64Param(c, "id")
 	if !ok {
+		return
+	}
+
+	// user.delete only says what the caller holds. Deleting the sole wildcard
+	// holder is a harder lockout than disabling it — the account is gone, not
+	// switched off — so the same target guard as the lock/disable routes.
+	if !h.mayAdministerTarget(c, id) {
 		return
 	}
 
@@ -275,6 +289,11 @@ func (h *Handler) UpdateStatus(c *gin.Context) {
 		return
 	}
 
+	// Disabling an account is the admin lock by another route — same guard.
+	if !h.mayAdministerTarget(c, id) {
+		return
+	}
+
 	var req UpdateStatusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
@@ -296,6 +315,10 @@ func (h *Handler) ResetPassword(c *gin.Context) {
 		return
 	}
 
+	if !h.mayAdministerTarget(c, id) {
+		return
+	}
+
 	var req ResetPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, errcode.NumBadRequest, "invalid request body")
@@ -308,6 +331,20 @@ func (h *Handler) ResetPassword(c *gin.Context) {
 	}
 
 	response.OK(c, nil)
+}
+
+// mayAdministerTarget / administerTargetDenial forward to the shared guard in
+// pkg/authz, which other domains (admin sessions, offboarding) reach the same
+// decision through. Kept as methods so the call sites below read unchanged.
+func (h *Handler) mayAdministerTarget(c *gin.Context, targetID int64) bool {
+	return authz.MayAdministerTarget(c, targetID)
+}
+
+// administerTargetDenial is the decision without the response write, for
+// BatchAction: it needs a reason per id to report partial success instead of a
+// single 403.
+func (h *Handler) administerTargetDenial(c *gin.Context, targetID int64) string {
+	return authz.AdministerTargetDenial(c, targetID)
 }
 
 // callerMay evaluates a permission for the current caller outside the route
@@ -361,11 +398,29 @@ func (h *Handler) BatchAction(c *gin.Context) {
 		}
 	}
 
+	// Every action here lands in the same service call as its single-id route
+	// (Service.UpdateStatus / Service.Delete), each of which mayAdministerTarget
+	// guards. Without the same check per id, a caller could disable — or erase —
+	// the sole wildcard holder through the batch door, or re-enable one that was
+	// deliberately disabled. Refused ids become per-item errors rather than a
+	// 403 for the whole call, the partial-success shape the console renders.
+	refused := []BatchItemError{}
+	allowed := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if reason := h.administerTargetDenial(c, id); reason != "" {
+			refused = append(refused, BatchItemError{ID: id, Error: reason})
+			continue
+		}
+		allowed = append(allowed, id)
+	}
+	ids = allowed
+
 	res, err := h.svc.BatchAction(c.Request.Context(), ids, req.Action, actorIDFromCtx(c))
 	if err != nil {
 		response.BadRequest(c, errcode.NumInvalidInput, err.Error())
 		return
 	}
+	res.Errors = append(refused, res.Errors...)
 	response.OK(c, res)
 }
 
@@ -374,6 +429,9 @@ func (h *Handler) BatchAction(c *gin.Context) {
 func (h *Handler) LockUser(c *gin.Context) {
 	id, ok := ginutil.ParseInt64Param(c, "id")
 	if !ok {
+		return
+	}
+	if !h.mayAdministerTarget(c, id) {
 		return
 	}
 	var req LockUserRequest
@@ -582,6 +640,9 @@ func (h *Handler) ListMFA(c *gin.Context) {
 func (h *Handler) DeleteMFA(c *gin.Context) {
 	id, ok := ginutil.ParseInt64Param(c, "id")
 	if !ok {
+		return
+	}
+	if !h.mayAdministerTarget(c, id) {
 		return
 	}
 	mfaType := c.Param("type")

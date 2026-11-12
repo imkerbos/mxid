@@ -27,6 +27,16 @@ type Provider interface {
 	Authenticate(ctx context.Context, req *AuthRequest) (*AuthResult, error)
 }
 
+// accountResolver is the optional capability a Provider exposes when a login
+// identifier can be mapped to an account BEFORE the credential is evaluated.
+// The engine needs it for the per-account login throttle: the account a guess
+// is aimed at has to be known while refusing the guess is still cheap. A
+// provider that cannot resolve one (an external IdP) simply isn't throttled on
+// the account dimension.
+type accountResolver interface {
+	ResolveAccount(ctx context.Context, tenantID int64, identifier string) (*UserAuth, error)
+}
+
 // AuthRequest carries the credentials and metadata for an authentication attempt.
 type AuthRequest struct {
 	TenantID    int64
@@ -62,6 +72,9 @@ type UserInfo struct {
 	DisplayName string
 	Avatar      string
 	Status      int
+	// IsBuiltin mirrors mxid_user.is_builtin: the platform-seeded break-glass
+	// admin. Server-side state only — never anything a request may claim.
+	IsBuiltin bool
 }
 
 // UserAuthQuerier is the interface the local provider needs for credential verification.

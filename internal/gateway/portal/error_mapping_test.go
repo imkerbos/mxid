@@ -96,7 +96,7 @@ type fakeAppQuerier struct {
 func (f fakeAppQuerier) ListAuthorizedApps(context.Context, int64, int64, string) ([]*AppInfo, error) {
 	return nil, nil
 }
-func (f fakeAppQuerier) GetAppLaunchURL(context.Context, int64, int64) (string, error) {
+func (f fakeAppQuerier) GetAppLaunchURL(context.Context, int64, int64, int64) (string, error) {
 	return "", f.launchErr
 }
 func (f fakeAppQuerier) AppName(context.Context, int64) (string, error) { return "", nil }

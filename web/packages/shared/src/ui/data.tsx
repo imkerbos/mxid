@@ -12,6 +12,11 @@ export interface Column<T> {
   title: ReactNode
   align?: 'left' | 'right' | 'center'
   width?: string
+  // Cells and headers are nowrap by default: without it a narrow viewport
+  // (1280px laptop) reflows a two-character header like "状态" one glyph per
+  // line. Set wrap on a genuinely long free-text column (description, user
+  // agent) that should break instead of widening the table.
+  wrap?: boolean
   render?: (row: T, index: number) => ReactNode
   // sortable marks the header clickable; the table is CONTROLLED — it calls
   // onSort(key) and the parent decides how to reorder / refetch.
@@ -89,7 +94,9 @@ export function DataTable<T>({
                   key={col.key}
                   style={col.width ? { width: col.width } : undefined}
                   aria-sort={active ? (sort!.dir === 'asc' ? 'ascending' : 'descending') : undefined}
-                  className={cn('px-6 py-3', ALIGN[col.align ?? 'left'])}
+                  // Headers are short labels, so they never wrap — not even for
+                  // a wrap column, whose body text is the long part.
+                  className={cn('whitespace-nowrap px-6 py-3', ALIGN[col.align ?? 'left'])}
                 >
                   {sortable ? (
                     <button
@@ -165,7 +172,10 @@ export function DataTable<T>({
                     </td>
                   )}
                   {columns.map((col) => (
-                    <td key={col.key} className={cn('px-6 py-3', ALIGN[col.align ?? 'left'])}>
+                    <td
+                      key={col.key}
+                      className={cn('px-6 py-3', !col.wrap && 'whitespace-nowrap', ALIGN[col.align ?? 'left'])}
+                    >
                       {col.render ? col.render(row, i) : ((row as Record<string, ReactNode>)[col.key])}
                     </td>
                   ))}

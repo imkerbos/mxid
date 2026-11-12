@@ -1,6 +1,7 @@
 // Drawer (right-slide detail/edit panel) + ConfirmDialog (destructive-action
 // second confirm). Modal itself lives in ./index; these build on it.
 import { AnimatePresence, motion } from 'framer-motion'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { useTranslation } from '@mxid/shared'
 import type { ReactNode } from 'react'
@@ -22,12 +23,16 @@ export function Drawer({
   footer?: ReactNode
 }) {
   const { t } = useTranslation()
-  return (
+  // Portal to <body> for the same reason Modal does: MainLayout's page-transition
+  // motion.div uses transform, which creates a stacking context AND makes
+  // `fixed` resolve against it — so an in-tree overlay neither painted above the
+  // page chrome nor covered the viewport, leaving the cards behind it clickable.
+  return createPortal(
     <AnimatePresence>
       {open && (
         <div className="fixed inset-0 z-50">
           <motion.div
-            className="absolute inset-0 bg-black/40"
+            className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -59,7 +64,8 @@ export function Drawer({
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   )
 }
 

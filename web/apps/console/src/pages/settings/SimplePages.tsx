@@ -26,7 +26,7 @@ import {
   type MailTemplates,
   type ExternalURLs,
 } from '@mxid/shared'
-import { Field, Input, Select, Textarea, Button } from '../../components/ui'
+import { Field, Input, Select, Textarea, Button, Switch } from '../../components/ui'
 import { toast, extractMessage } from '../../components/ui/toast'
 import { ImageUpload } from '../../components/ImageUpload'
 
@@ -133,24 +133,39 @@ function GenericForm<T>({
         <fieldset disabled={locked} className={cn('grid grid-cols-1 gap-4 md:grid-cols-2', locked && 'opacity-60')}>
           {rows.map((r) => {
             // Booleans render as a self-contained toggle row (label inside a
-            // bordered box, checkbox on the right) so they sit flush with the
+            // bordered box, switch on the right) so they sit flush with the
             // adjacent inputs instead of a stray checkbox under a redundant
             // label. self-end aligns the box bottom with the neighbouring
-            // input box (which has a label above it).
+            // input box (which has a label above it). Every bool row here
+            // turns a capability on or off, so Switch rather than Checkbox.
+            //
+            // A <div>, not a <label>: Switch is a role=switch button and a
+            // button may not nest inside a label. The whole row stays clickable
+            // through its own onClick instead. It deliberately gets no
+            // role=button — the keyboard path is the Switch itself, which is a
+            // real focusable button; making the row a second fake button would
+            // need its own key handling and announce the control twice.
             if (r.kind === 'bool') {
+              const checked = !!get(v, r.key)
               return (
-                <label
+                <div
                   key={r.key}
-                  className="flex cursor-pointer select-none items-center justify-between gap-3 self-end rounded-lg border border-border px-3.5 py-2.5 text-sm hover:bg-surface-muted"
+                  // fieldset[disabled] only reaches form controls, so the row
+                  // handler has to honour `locked` on its own.
+                  onClick={locked ? undefined : () => setV(set(v, r.key, !checked))}
+                  className={cn(
+                    'flex select-none items-center justify-between gap-3 self-end rounded-lg border border-border px-3.5 py-2.5 text-sm',
+                    locked ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-surface-muted',
+                  )}
                 >
                   <span className="font-medium text-ink">{r.label}</span>
-                  <input
-                    type="checkbox"
-                    checked={!!get(v, r.key)}
-                    onChange={(e) => setV(set(v, r.key, e.target.checked))}
-                    className="h-4 w-4 rounded border-border text-primary focus:ring-primary/20"
-                  />
-                </label>
+                  {/* Stop the Switch's own click from also reaching the row
+                      handler, which would toggle twice and land back where it
+                      started. */}
+                  <span className="inline-flex" onClick={(e) => e.stopPropagation()}>
+                    <Switch checked={checked} onChange={(c) => setV(set(v, r.key, c))} />
+                  </span>
+                </div>
               )
             }
             return (

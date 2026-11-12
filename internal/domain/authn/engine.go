@@ -96,6 +96,15 @@ type Engine struct {
 	mfaRateLimiter *MFARateLimiter
 	loginRecorder  LoginRecorder
 	loginLimiter   *ratelimit.Limiter
+	// dummyCompare burns the constant-cost password compare on a branch that
+	// refuses a login without evaluating the credential. nil = the real
+	// burnDummyCompare; tests swap it to observe that the refusal keeps paying
+	// the enumeration equalizer.
+	dummyCompare func(password string)
+	// accountThrottleArmed, when set (tests), is notified of every refusal
+	// window the account dimension arms, so the escalation can be asserted
+	// without reading Redis keys.
+	accountThrottleArmed func(userID int64, window time.Duration)
 }
 
 // SetLoginLimiter wires the brute-force limiter that backs the password
@@ -169,12 +178,28 @@ func (e *Engine) Login(ctx context.Context, req *AuthRequest, namespace string) 
 	}
 
 	// Brute-force gate (pre-auth, IP-scoped): if this client IP has already
-	// tripped the limiter, reject before spending a bcrypt compare. The
-	// per-user dimension is checked post-auth (we don't know the userID yet
-	// for a username that may not exist — keeping the pre-auth check IP-only
-	// also avoids leaking which usernames are locked).
-	if err := e.checkLoginLock(ctx, 0, req.ClientIP); err != nil {
+	// tripped the limiter, reject before spending a bcrypt compare. This is the
+	// only dimension that hard-locks; see accountIdentifier for why the account
+	// dimension must not.
+	if err := e.checkLoginLock(ctx, req.ClientIP); err != nil {
 		return nil, err
+	}
+
+	// Per-account throttle (pre-auth): an account that just failed repeatedly
+	// has its next attempts REFUSED for a short, growing window.
+	if userID, username, throttled := e.accountThrottled(ctx, req); throttled {
+		// The IP dimension must keep counting — it is what stops a scan that
+		// never gets as far as a compare. The ACCOUNT tally is deliberately not
+		// bumped: nothing was evaluated, so a refused attempt is no evidence
+		// about the credential, and counting it would let an attacker ratchet a
+		// victim's own window straight to the cap by hammering it.
+		e.trackFailure(ctx, 0, req)
+		e.publishLoginEvent(ctx, &AuthResult{
+			UserID:   userID,
+			Username: username,
+			Status:   AuthFailed,
+		}, req, false)
+		return nil, ErrAuthFailed
 	}
 
 	result, err := provider.Authenticate(ctx, req)
@@ -189,9 +214,11 @@ func (e *Engine) Login(ctx context.Context, req *AuthRequest, namespace string) 
 		// invented usernames never incremented anything: no captcha was ever
 		// demanded and no IP lock ever tripped, however many attempts it made.
 		// The per-user dimension is simply absent for an unknown account —
-		// loginIdentifiers already omits it.
+		// trackFailure skips it when there is no userID.
 		e.trackFailure(ctx, result.UserID, req)
 		e.publishLoginEvent(ctx, result, req, false)
+		// Arms from the tally trackFailure just wrote, so it must run after it.
+		e.armAccountThrottle(ctx, result.UserID)
 		return nil, ErrAuthFailed
 
 	case AuthLocked:
@@ -582,36 +609,207 @@ func (e *Engine) failCountKey(userID int64) string {
 	return "mxid:login_fail:" + strconv.FormatInt(userID, 10)
 }
 
-// loginIdentifiers builds the per-user and per-IP identifiers the brute-force
-// limiter keys on. Empty parts are omitted so a missing IP (test) or pre-auth
-// userID=0 simply narrows the scope rather than poisoning a shared key.
+// accountIdentifier is the limiter identifier for the per-account dimension.
+// Single definition so the writer (trackFailure) and the readers
+// (accountThrottled, armAccountThrottle) can never drift onto different keys.
+//
+// This dimension is COUNTED ONLY — trackFailure records it through
+// RecordFailureCount, which never writes a ":locked" key. A binary lock keyed
+// on the account hands a denial of service to anyone who knows a username, and
+// the limiter's lock also answers 429 with a distinct business code, i.e. an
+// account-enumeration oracle. The throttle below replaces it.
+func accountIdentifier(userID int64) string {
+	return "u:" + strconv.FormatInt(userID, 10)
+}
+
+// ipIdentifier is the limiter identifier for the per-IP dimension — the only
+// login dimension that hard-locks.
+func ipIdentifier(clientIP string) string {
+	return "ip:" + clientIP
+}
+
+// loginIdentifiers builds every identifier a login failure touches, for the
+// reset path. Empty parts are omitted so a missing IP (test) or an unknown
+// account simply narrows the scope rather than poisoning a shared key.
 func loginIdentifiers(userID int64, clientIP string) []string {
 	ids := make([]string, 0, 2)
 	if userID > 0 {
-		ids = append(ids, "u:"+strconv.FormatInt(userID, 10))
+		ids = append(ids, accountIdentifier(userID))
 	}
 	if clientIP != "" {
-		ids = append(ids, "ip:"+clientIP)
+		ids = append(ids, ipIdentifier(clientIP))
 	}
 	return ids
 }
 
-// checkLoginLock reports whether the (user, ip) pair is currently locked by
-// the brute-force limiter, returning ErrAccountLocked (with the limiter's
-// RateLimitError as cause, so the handler can surface Retry-After). userID may
-// be 0 pre-auth (IP-only check). nil limiter = no lock (legacy path).
-func (e *Engine) checkLoginLock(ctx context.Context, userID int64, clientIP string) error {
-	if e.loginLimiter == nil {
+// checkLoginLock reports whether the client IP is currently locked by the
+// brute-force limiter, returning ErrAccountLocked (with the limiter's
+// RateLimitError as cause, so the handler can surface Retry-After). nil
+// limiter = no lock (legacy path).
+//
+// It takes NO userID on purpose: the account dimension must never be checked
+// here. Doing so would resurrect the binary account lock — and its 429 +
+// too-many-attempts code — that accountIdentifier explains away, and it would
+// do it silently, because the lock key would simply start existing. With the
+// parameter gone that cannot be reintroduced by passing a value.
+func (e *Engine) checkLoginLock(ctx context.Context, clientIP string) error {
+	if e.loginLimiter == nil || clientIP == "" {
 		return nil
 	}
-	ids := loginIdentifiers(userID, clientIP)
-	if len(ids) == 0 {
-		return nil
-	}
-	if err := e.loginLimiter.CheckMany(ctx, ids...); err != nil {
+	if err := e.loginLimiter.Check(ctx, ipIdentifier(clientIP)); err != nil {
 		return fmt.Errorf("%w: %w", ErrAccountLocked, err)
 	}
 	return nil
+}
+
+// Per-account login throttle. The account dimension deliberately does NOT hard
+// lock: a binary lock keyed on the account hands a DoS switch to anyone who
+// knows a username. Instead, an account that keeps failing has its next
+// attempts REFUSED for a window that grows with the tally, while a real user
+// who mistyped a couple of times pays nothing at all.
+//
+// Why a refusal and not a delay. A delay is paid by US: it runs after the
+// provider has already spent the bcrypt compare, it parks a goroutine for the
+// whole wait, and an attacker that does not read the response keeps its full
+// guess rate regardless. It also reopens the enumeration oracle
+// burnDummyCompare exists to close, pointing the other way — slow answer =
+// throttled account = this account exists. A refusal costs us one indexed
+// lookup plus the equalizer compare, and costs the attacker the window.
+const (
+	// accountThrottleFreeFailures is how many failures cost nothing. Typos live
+	// here; brute force does not.
+	accountThrottleFreeFailures = 3
+	accountThrottleBase         = time.Second
+	// accountThrottleMax caps the window. The cap is what keeps the control a
+	// throttle and not a lockout: the owner is never more than this far from
+	// their next real attempt.
+	accountThrottleMax = 8 * time.Second
+	// accountThrottleMaxShift is where base<<n already exceeds the cap; it
+	// keeps a long run of failures from shifting into overflow.
+	accountThrottleMaxShift = 4
+)
+
+// accountThrottleWindow maps an account's failure tally to how long its next
+// attempts are refused: 0 up to accountThrottleFreeFailures, then 1s, 2s, 4s,
+// capped at 8s.
+func accountThrottleWindow(failures int) time.Duration {
+	over := failures - accountThrottleFreeFailures
+	if over <= 0 {
+		return 0
+	}
+	if over > accountThrottleMaxShift {
+		return accountThrottleMax
+	}
+	if d := accountThrottleBase << uint(over-1); d < accountThrottleMax {
+		return d
+	}
+	return accountThrottleMax
+}
+
+// accountThrottled reports whether this attempt must be refused without the
+// credential ever being evaluated, together with the account it was aimed at
+// (for the audit row). Only the identifier is resolved — no password work.
+//
+// The caller answers the ordinary ErrAuthFailed, with no RateLimitError in the
+// chain: a throttled attempt is the same 401 and the same business code as a
+// plain wrong password. Anything distinguishable here would be an
+// account-enumeration oracle. It also never revokes sessions and never flips
+// account status — an attacker-triggered control that logged the victim out
+// would be self-service DoS by another name.
+func (e *Engine) accountThrottled(ctx context.Context, req *AuthRequest) (int64, string, bool) {
+	if e.loginLimiter == nil {
+		return 0, "", false
+	}
+	u := e.resolveLoginAccount(ctx, req)
+	if u == nil {
+		return 0, "", false
+	}
+	if !e.loginLimiter.InCooldown(ctx, accountIdentifier(u.ID)) {
+		return 0, "", false
+	}
+	// Break-glass exemption, checked here as well as at arming time: the seeded
+	// admin must not be refused even if a key was armed while a lookup was
+	// failing. A past release auto-locked it and deadlocked fresh installs
+	// outright, with nobody left who could log in and repair it.
+	if e.isBuiltinUser(ctx, u.ID) {
+		return 0, "", false
+	}
+	// Flat timing: the refusal has to cost what a real compare costs, or fast
+	// means "throttled" and slow means "actually checking".
+	e.burnEqualizer(req.Credentials["password"])
+	return u.ID, u.Username, true
+}
+
+// resolveLoginAccount maps the submitted login identifier to its account
+// BEFORE the credential is evaluated. Returns nil when the identifier matches
+// nobody, the credentials are incomplete, or the provider cannot resolve one
+// (an external IdP — that path is covered by the per-IP dimension only).
+//
+// Resolving pre-auth leaks nothing here: the refusal it enables is the ordinary
+// ErrAuthFailed and burns the same dummy compare, so "which usernames are
+// throttled" is not readable off the response. The lookup is the provider's own
+// resolveUser, so a known and an unknown identifier take the same path they
+// already took on every login.
+func (e *Engine) resolveLoginAccount(ctx context.Context, req *AuthRequest) *UserAuth {
+	resolver, ok := e.providers[req.AuthType].(accountResolver)
+	if !ok {
+		return nil
+	}
+	identifier := req.Credentials["username"]
+	if identifier == "" || req.Credentials["password"] == "" {
+		return nil
+	}
+	u, err := resolver.ResolveAccount(ctx, req.TenantID, identifier)
+	if err != nil || u == nil {
+		return nil
+	}
+	return u
+}
+
+// armAccountThrottle opens the window during which this account's next
+// attempts are refused outright. Called after the failure has been counted and
+// audited; the tally it reads is the per-account counter, which is why rotating
+// the source IP no longer resets the guessing budget.
+func (e *Engine) armAccountThrottle(ctx context.Context, userID int64) {
+	if e.loginLimiter == nil || userID <= 0 {
+		return
+	}
+	window := accountThrottleWindow(e.loginLimiter.FailureCount(ctx, accountIdentifier(userID)))
+	if window <= 0 {
+		return
+	}
+	// Break-glass exemption — see accountThrottled. is_builtin is server-side
+	// DB state, never a request claim. The lookup sits behind the window check,
+	// so a normal login never pays for it.
+	if e.isBuiltinUser(ctx, userID) {
+		return
+	}
+	e.loginLimiter.ArmCooldown(ctx, accountIdentifier(userID), window)
+	if e.accountThrottleArmed != nil {
+		e.accountThrottleArmed(userID, window)
+	}
+}
+
+// burnEqualizer spends the constant-cost compare that keeps a credential-free
+// refusal as slow as a real one.
+func (e *Engine) burnEqualizer(password string) {
+	if e.dummyCompare != nil {
+		e.dummyCompare(password)
+		return
+	}
+	burnDummyCompare(password)
+}
+
+// isBuiltinUser reports whether the account is the seeded break-glass admin.
+// Fails to "not built-in" on a lookup error: the throttle is the safe side of
+// that decision (it refuses for seconds, it does not lock), and claiming
+// built-in on a failed read would hand an attacker an exemption.
+func (e *Engine) isBuiltinUser(ctx context.Context, userID int64) bool {
+	if e.userRepo == nil {
+		return false
+	}
+	u, err := e.userRepo.GetByID(ctx, userID)
+	return err == nil && u != nil && u.IsBuiltin
 }
 
 // LoginFailureCount returns the current brute-force failure count for the
@@ -622,15 +820,19 @@ func (e *Engine) LoginFailureCount(ctx context.Context, clientIP string) int {
 	if e.loginLimiter == nil {
 		return 0
 	}
-	return e.loginLimiter.FailureCount(ctx, "ip:"+clientIP)
+	return e.loginLimiter.FailureCount(ctx, ipIdentifier(clientIP))
 }
 
-// trackFailure records a failed login against the brute-force limiter
-// (per-user + per-IP, auto-expiring lock) and emits UserLocked when the
-// threshold is crossed. It NO LONGER flips mxid_user.status — that permanent
-// DB lock is reserved for admin LockUser. The Redis lock self-heals when its
-// TTL elapses, so a brute-forced victim is not stranded until an admin
-// intervenes, while the per-IP dimension also throttles a scripted scan.
+// trackFailure records a failed login against the brute-force limiter and
+// emits UserLocked when the account crosses the threshold. It NO LONGER flips
+// mxid_user.status — that permanent DB lock is reserved for admin LockUser.
+//
+// The two dimensions are recorded differently on purpose. The per-IP dimension
+// takes the auto-expiring lock: it throttles a scripted scan and self-heals
+// when its TTL elapses. The per-account dimension is COUNTED ONLY
+// (RecordFailureCount never writes a lock key) — it feeds the refusal window
+// in armAccountThrottle instead, because a lock keyed on the account is a DoS
+// switch for anyone who knows a username.
 func (e *Engine) trackFailure(ctx context.Context, userID int64, req *AuthRequest) {
 	if e.loginLimiter == nil {
 		// Legacy fallback (no limiter wired, e.g. tests): keep a per-user
@@ -638,18 +840,19 @@ func (e *Engine) trackFailure(ctx context.Context, userID int64, req *AuthReques
 		e.trackFailureLegacy(ctx, userID, req)
 		return
 	}
-	ids := loginIdentifiers(userID, req.ClientIP)
-	if len(ids) == 0 {
+	if req.ClientIP != "" {
+		_ = e.loginLimiter.RecordFailure(ctx, ipIdentifier(req.ClientIP))
+	}
+	// userID 0 means the username matched no account: the IP counter still
+	// moved, but there is nothing to count or report against an account.
+	if userID <= 0 {
 		return
 	}
-	// Read the pre-increment lock state so we only emit UserLocked on the
-	// transition (this failure is the one that trips it), not on every
-	// subsequent attempt while already locked.
-	alreadyLocked := e.loginLimiter.CheckMany(ctx, ids...) != nil
-	tripped := e.loginLimiter.RecordFailureMany(ctx, ids...)
-	// userID 0 means the username matched no account: the IP counter still
-	// moved, but there is no user to report as locked.
-	if tripped != nil && !alreadyLocked && userID > 0 {
+	count := e.loginLimiter.RecordFailureCount(ctx, accountIdentifier(userID))
+	// Emitted on the crossing only (exact equality), so a run of failures
+	// reports once. Now that the account dimension no longer rides the IP
+	// lock's transition, this also fires for an attacker rotating addresses.
+	if max := e.loginLimiter.Config().MaxAttempts; max > 0 && count == max {
 		e.eventBus.Publish(ctx, event.Event{
 			Type: event.UserLocked,
 			Payload: map[string]any{

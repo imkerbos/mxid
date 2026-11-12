@@ -1,13 +1,61 @@
-// Form primitives — Switch, Tabs (pill segmented control), RangePicker (date
-// range with presets).
+// Form primitives — Checkbox, Switch, Tabs (pill segmented control),
+// RangePicker (date range with presets).
 //
 // The label/control/error group lives in ./index.tsx as Field. This file used to
 // carry a second one called FormField: same idea, weaker accessibility (no
 // htmlFor/id association, no aria-invalid), zero usages. Two primitives for one
 // job is how a design system gets bypassed — whichever one a page reaches for
 // first becomes the local convention.
-import { cn, useTranslation } from '@mxid/shared'
+import { cn, useTranslation, FOCUS_RING } from '@mxid/shared'
+import { useId } from 'react'
 import type { ReactNode } from 'react'
+
+// Checkbox — the single styled replacement for the bare `<input type="checkbox">`
+// each page was hand-rolling. Styling stays native (accent-color) rather than a
+// faked box: the native control keeps indeterminate state, form semantics and
+// the platform's own high-contrast/forced-colors handling for free.
+export function Checkbox({
+  checked,
+  onChange,
+  disabled,
+  label,
+  className,
+}: {
+  checked: boolean
+  onChange: (checked: boolean) => void
+  disabled?: boolean
+  label?: ReactNode
+  className?: string
+}) {
+  const id = useId()
+  const input = (
+    <input
+      id={id}
+      type="checkbox"
+      checked={checked}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.checked)}
+      className={cn(
+        'h-4 w-4 shrink-0 rounded accent-primary disabled:cursor-not-allowed disabled:opacity-50',
+        FOCUS_RING,
+      )}
+    />
+  )
+  if (label === undefined) return <span className={className}>{input}</span>
+  return (
+    <label
+      htmlFor={id}
+      className={cn(
+        'inline-flex cursor-pointer items-center gap-2 text-sm text-ink',
+        disabled && 'cursor-not-allowed opacity-50',
+        className,
+      )}
+    >
+      {input}
+      {label}
+    </label>
+  )
+}
 
 export function Switch({
   checked,

@@ -1679,6 +1679,7 @@ export default {
       passwordPlaceholderSet: '●●●●●●●● (set — leave empty to keep)',
       passwordPlaceholderNew: 'App-specific password / SMTP password',
       skipVerify: 'Skip TLS verify (for self-signed)',
+      skipVerifyHint: 'The SMTP server certificate will not be verified. Use only for self-signed certificates on an internal network.',
       tlsStartTLS: 'STARTTLS (587)',
       tlsTLS: 'TLS (465)',
       tlsNone: 'None (dev only)',

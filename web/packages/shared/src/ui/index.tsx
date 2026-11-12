@@ -236,7 +236,9 @@ export function Modal({
   return createPortal(
     <div
       className={cn(
-        'fixed inset-0 flex items-center justify-center bg-black/40',
+        // Deep scrim + slight blur: at bg-black/40 the table behind stayed
+        // legible and competed with the dialog for attention.
+        'fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-[2px]',
         elevated ? 'z-[100]' : 'z-50',
       )}
       onClick={onClose}
@@ -271,8 +273,24 @@ export function Modal({
 
 /* ──────────────── Status helpers ──────────────── */
 
-export function EmptyState({ children }: { children: ReactNode }) {
-  return <div className="py-16 text-center text-sm text-faint">{children}</div>
+// icon/action are optional so existing `<EmptyState>text</EmptyState>` call
+// sites keep rendering byte-identical markup.
+export function EmptyState({
+  icon,
+  action,
+  children,
+}: {
+  icon?: ReactNode
+  action?: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <div className="py-16 text-center text-sm text-faint">
+      {icon && <div className="mb-3 flex justify-center text-faint [&>svg]:h-8 [&>svg]:w-8">{icon}</div>}
+      {children}
+      {action && <div className="mt-5 flex justify-center">{action}</div>}
+    </div>
+  )
 }
 
 export function LoadingState() {

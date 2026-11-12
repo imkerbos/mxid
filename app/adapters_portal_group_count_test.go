@@ -63,7 +63,9 @@ func TestListAuthorizedAppGroups_ExcludesDeletedAndDisabled(t *testing.T) {
 	adapter := &portalAppQuerierAdapter{
 		app:       &bootstrap.App{DB: db},
 		appModule: &app.Module{Repo: app.NewGormRepository(db)},
-		accessSvc: nil, // no access gating → count is driven purely by live+enabled filter
+		// Every rel'd app allowed (including the orphan id) so the count is
+		// driven purely by the live+enabled filter. nil now fails closed.
+		accessSvc: stubAccessSvc(1, 2, 3, 99),
 	}
 
 	groups, err := adapter.ListAuthorizedAppGroups(sys, 1, tenantID)

@@ -374,6 +374,9 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 				DisplayName: displayName,
 				Avatar:      avatar,
 				Status:      int(u.Status),
+				// Carries the break-glass flag into the engine so the login
+				// backoff can exempt the seeded admin.
+				IsBuiltin: u.IsBuiltin,
 			}, nil
 		},
 		func(ctx context.Context, id int64, ip string) error {
@@ -1583,7 +1586,7 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 	portalSessQ := buildPortalSessionQuerier(sessionMgr)
 	portalMFAQ := buildPortalMFAQuerier(userModule)
 	portalIDQ := buildPortalIdentityQuerier(userModule)
-	portalConsentQ := buildPortalConsentQuerier(appModule)
+	portalConsentQ := buildPortalConsentQuerier(appModule, accessSvc)
 	portal.Register(a.PortalGroup, portalUserQ, portalAppQ, portalSessQ, portalMFAQ, portalIDQ,
 		consentModule.Service, portalConsentQ, a.Config.Tenant.DefaultID,
 		a.Redis, a.Logger, a.Config.Server.PortalURL, mailerSvc, a.EventBus)
@@ -1761,12 +1764,26 @@ func registerModules(a *bootstrap.App, workerCtx context.Context) {
 // buildPortalConsentQuerier surfaces a thin app-domain projection to the
 // consent handler so it can render app metadata on the consent screen
 // without coupling the portal handler to the app domain types.
-func buildPortalConsentQuerier(appModule *app.Module) portal.ConsentQuerier {
-	return portalConsentQuerierAdapter{appModule: appModule}
+func buildPortalConsentQuerier(appModule *app.Module, accessSvc *appaccess.Service) portal.ConsentQuerier {
+	return portalConsentQuerierAdapter{appModule: appModule, accessSvc: accessSvc}
 }
 
 type portalConsentQuerierAdapter struct {
 	appModule *app.Module
+	accessSvc *appaccess.Service
+}
+
+// CanAccessApp mirrors the launch gate: the consent prompt must not describe an
+// app the user may not use. Fail closed when the policy service is absent.
+func (a portalConsentQuerierAdapter) CanAccessApp(ctx context.Context, userID, appID, tenantID int64) (bool, error) {
+	if a.accessSvc == nil {
+		return false, nil
+	}
+	dec, err := a.accessSvc.CanAccess(ctx, userID, appID, tenantID)
+	if err != nil {
+		return false, err
+	}
+	return dec != nil && dec.Allowed, nil
 }
 
 func (a portalConsentQuerierAdapter) GetApp(ctx context.Context, appID int64) (*portal.ConsentApp, error) {

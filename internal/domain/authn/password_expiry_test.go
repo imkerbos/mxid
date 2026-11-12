@@ -71,14 +71,15 @@ func TestAuthenticate_ExpiredPasswordStillRejectsWrongPassword(t *testing.T) {
 	}
 }
 
-// A session that owes a password change must NOT be bridged into the protocol
-// namespace. PwdGateMiddleware confines such a session to the change-password
-// route, but it guards only MXID's own SPA surfaces — the protocol endpoints
-// read the protocol-scope session and cannot see the obligation. Bridging
-// anyway stopped the user from reaching their own profile page while letting
-// them single-sign-on into every downstream application: the gate held the
-// door it did not need to hold and left open the one that mattered.
-func TestFinalizeLoginCookies_NoProtoSessionWhilePasswordChangePending(t *testing.T) {
+// A session owing a password change IS bridged, and the bridged protocol
+// session must carry the obligation: the protocol resolver collapses any
+// session with an open obligation to "no session", so nothing downstream is
+// issued until the debt is settled. The handler used to skip the bridge
+// instead — a second, narrower copy of that rule (it never looked at
+// MFAEnrollPending) which also cost the user their SSO session until the next
+// login. What this pins is that the flag reaches the protocol namespace,
+// because that is what the resolver reads.
+func TestFinalizeLoginCookies_BridgedProtoSessionCarriesPwdObligation(t *testing.T) {
 	h, sm := newTestHandler(t, false)
 	h.tenantID = 1
 	sm.SetPwdChangeDecider(func(context.Context, int64, int64) bool { return true })
@@ -99,10 +100,22 @@ func TestFinalizeLoginCookies_NoProtoSessionWhilePasswordChangePending(t *testin
 	h.finalizeLoginCookies(c, session.NamespacePortal, CookiePortal,
 		&LoginResponse{UserID: 42, TenantID: 1, SessionID: spa.ID}, "password", false)
 
+	var protoID string
 	for _, ck := range w.Result().Cookies() {
-		if ck.Name == CookieProto && ck.Value != "" {
-			t.Fatal("a session owing a password change was bridged to the protocol namespace — it can SSO into every downstream application while the gate holds it out of the portal")
+		if ck.Name == CookieProto {
+			protoID = ck.Value
 		}
+	}
+	if protoID == "" {
+		t.Fatal("no protocol session was bridged — the obligation now gates at the resolver, so the bridge must still happen")
+	}
+	proto, err := sm.Get(context.Background(), session.NamespaceProtocol, protoID)
+	if err != nil {
+		t.Fatalf("read bridged proto session: %v", err)
+	}
+	if !proto.PwdChangePending {
+		t.Fatal("the bridged protocol session does not carry the password-change obligation — the resolver " +
+			"would treat it as a clean session and SSO into every downstream application")
 	}
 }
 

@@ -43,7 +43,11 @@ func EnrollGateMiddleware(d EnrollGateDeps) gin.HandlerFunc {
 			return !has, err
 		},
 		clearFlag: d.SessionMgr.SetEnrollPending,
-		code:      CodeMFAEnrollRequired,
-		message:   "mfa enrollment required",
+		// The shared protocol session carries the same flag from the same
+		// login — see obligationGate.peerNamespaces.
+		peerNamespaces: []string{session.NamespaceProtocol},
+		sessionsByUser: d.SessionMgr.ListByUser,
+		code:           CodeMFAEnrollRequired,
+		message:        "mfa enrollment required",
 	}.handler()
 }

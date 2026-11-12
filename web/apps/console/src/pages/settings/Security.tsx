@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
 import { Loader2, Save } from 'lucide-react'
 import { settingsApi, useTranslation } from '@mxid/shared'
 import type { SecurityPolicy } from '@mxid/shared'
-import { Field, Input, Button } from '../../components/ui'
+import { Field, Input, Button, Checkbox } from '../../components/ui'
 import { toast, extractMessage } from '../../components/ui/toast'
 
 export default function SecurityPage() {
@@ -79,22 +79,22 @@ export default function SecurityPage() {
           </Field>
         </div>
         <div className="mt-3 flex flex-wrap gap-4">
-          <Toggle
+          <Checkbox
             label={t('settings.security.requireUpper')}
             checked={v.password.require_uppercase}
             onChange={(b) => setV({ ...v, password: { ...v.password, require_uppercase: b } })}
           />
-          <Toggle
+          <Checkbox
             label={t('settings.security.requireLower')}
             checked={v.password.require_lowercase}
             onChange={(b) => setV({ ...v, password: { ...v.password, require_lowercase: b } })}
           />
-          <Toggle
+          <Checkbox
             label={t('settings.security.requireNumber')}
             checked={v.password.require_number}
             onChange={(b) => setV({ ...v, password: { ...v.password, require_number: b } })}
           />
-          <Toggle
+          <Checkbox
             label={t('settings.security.requireSpecial')}
             checked={v.password.require_special}
             onChange={(b) => setV({ ...v, password: { ...v.password, require_special: b } })}
@@ -198,14 +198,5 @@ function Section({ title, desc, children }: { title: string; desc?: string; chil
       </div>
       {children}
     </section>
-  )
-}
-
-function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (b: boolean) => void }) {
-  return (
-    <label className="flex items-center gap-2 text-sm text-ink">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 rounded border-border" />
-      {label}
-    </label>
   )
 }

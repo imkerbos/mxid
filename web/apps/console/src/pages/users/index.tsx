@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Plus, RotateCcw, Trash2, Loader2, Pencil, ShieldCheck, ShieldOff, Undo2 } from 'lucide-react'
 import { userApi, formatDate, statusLabel, statusColor, cn, useTranslation, useUrlState, UserStatus } from '@mxid/shared'
-import { Field, pageMotion, Button, Card, DataTable, Modal, Pagination, SearchInput, Select, FilterBar, ConfirmDialog } from '@mxid/shared/ui'
+import { Field, pageMotion, Button, Card, Checkbox, DataTable, Input, Modal, Pagination, SearchInput, Select, FilterBar, ConfirmDialog } from '@mxid/shared/ui'
 import type { Column } from '@mxid/shared/ui'
 import type { User, PaginatedData, UpdateUserRequest } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
@@ -205,6 +205,9 @@ export default function UsersPage() {
     {
       key: 'username',
       title: t('users.columns.username'),
+      // Widths reserve room for the short columns so the flexible ones
+      // (display name, email) can't eat the row at 1280px.
+      width: '200px',
       render: (u) => (
         <div className={cn('flex items-center gap-2.5', u.deleted_at && 'opacity-50')}>
           {u.avatar ? (
@@ -231,6 +234,7 @@ export default function UsersPage() {
     {
       key: 'status',
       title: t('users.columns.status'),
+      width: '104px',
       render: (u) =>
         u.deleted_at ? (
           <span className="text-sm font-medium text-red-500 opacity-50">{t('users.list.deleted')}</span>
@@ -241,6 +245,7 @@ export default function UsersPage() {
     {
       key: 'mfa',
       title: t('users.columns.mfa'),
+      width: '120px',
       render: (u) =>
         u.mfa_enabled ? (
           <span className={cn('inline-flex items-center gap-1 text-xs font-medium text-emerald-600', u.deleted_at && 'opacity-50')}>
@@ -255,17 +260,21 @@ export default function UsersPage() {
     {
       key: 'last_login',
       title: t('users.columns.lastLogin'),
+      width: '180px',
       render: (u) => <span className={cn('whitespace-nowrap text-muted', u.deleted_at && 'opacity-50')}>{formatDate(u.last_login_at)}</span>,
     },
     {
       key: 'created_at',
       title: t('users.columns.createdAt'),
+      width: '180px',
       render: (u) => <span className={cn('whitespace-nowrap text-muted', u.deleted_at && 'opacity-50')}>{formatDate(u.created_at)}</span>,
     },
     {
       key: 'actions',
       title: t('common.actions'),
       align: 'right',
+      // Four icon buttons plus one text button ("Disable" / "Enable").
+      width: '208px',
       render: (u) =>
         u.deleted_at ? (
           <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
@@ -352,15 +361,12 @@ export default function UsersPage() {
             <option value={3}>{t('users.statusDisabled')}</option>
             <option value={4}>{t('users.statusPending')}</option>
           </Select>
-          <label className="flex items-center gap-2 text-sm text-muted">
-            <input
-              type="checkbox"
-              checked={q.showDeleted === '1'}
-              onChange={(e) => setQ({ showDeleted: e.target.checked ? '1' : '0', page: 1 })}
-              className="h-4 w-4 rounded border-border"
-            />
-            {t('users.list.showDeleted')}
-          </label>
+          <Checkbox
+            checked={q.showDeleted === '1'}
+            onChange={(checked) => setQ({ showDeleted: checked ? '1' : '0', page: 1 })}
+            label={t('users.list.showDeleted')}
+            className="text-muted"
+          />
         </FilterBar>
 
         <Card className="overflow-hidden hover:shadow-card">
@@ -386,11 +392,10 @@ export default function UsersPage() {
                 label={t('users.list.createModal.username')}
                 required hint={<>{t('users.list.createModal.usernameHintPrefix')}<code className="rounded bg-surface-muted px-1">zhangsan</code>{t('users.list.createModal.usernameHintMid')}<span className="text-amber-600">{t('users.list.createModal.usernameHintImmutable')}</span></>}
               >
-                <input
+                <Input
                   type="text"
                   value={createForm.username}
                   onChange={(e) => setCreateForm((f) => ({ ...f, username: e.target.value }))}
-                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   required
                 />
               </Field>
@@ -398,11 +403,10 @@ export default function UsersPage() {
                 label={t('users.list.createModal.password')}
                 required hint={t('users.list.createModal.passwordHint')}
               >
-                <input
+                <Input
                   type="password"
                   value={createForm.password}
                   onChange={(e) => setCreateForm((f) => ({ ...f, password: e.target.value }))}
-                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   required
                 />
               </Field>
@@ -410,19 +414,17 @@ export default function UsersPage() {
                 label={t('users.list.createModal.displayName')}
                 hint={t('users.list.createModal.displayNameHint')}
               >
-                <input
+                <Input
                   type="text"
                   value={createForm.display_name}
                   onChange={(e) => setCreateForm((f) => ({ ...f, display_name: e.target.value }))}
-                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                 />
               </Field>
               <Field label={t('users.list.createModal.email')} hint={t('users.list.createModal.emailHint')}>
-                <input
+                <Input
                   type="email"
                   value={createForm.email}
                   onChange={(e) => setCreateForm((f) => ({ ...f, email: e.target.value }))}
-                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                 />
               </Field>
               <div className="flex justify-end gap-3 pt-2">
@@ -449,11 +451,10 @@ export default function UsersPage() {
                 label={t('users.list.resetModal.newPassword')}
                 required hint={t('users.list.resetModal.newPasswordHint')}
               >
-                <input
+                <Input
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   required
                   autoFocus
                 />
@@ -489,57 +490,52 @@ export default function UsersPage() {
                   label={t('users.list.editModal.username')}
                   hint={<>{t('users.list.editModal.usernameHintPrefix')}<span className="text-amber-600">{t('users.list.editModal.usernameHintImmutable')}</span></>}
                 >
-                  <input
+                  <Input
                     type="text"
                     value={editTarget.username}
                     disabled
-                    className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-muted outline-none"
                   />
                 </Field>
                 <Field
                   label={t('users.list.editModal.displayName')}
                   hint={t('users.list.editModal.displayNameHint')}
                 >
-                  <input
+                  <Input
                     type="text"
                     value={editForm.display_name}
                     onChange={(e) => setEditForm((f) => ({ ...f, display_name: e.target.value }))}
                     placeholder={t('users.list.editModal.displayNamePlaceholder')}
-                    className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   />
                 </Field>
                 <Field label={t('users.list.editModal.email')} hint={t('users.list.editModal.emailHint')}>
-                  <input
+                  <Input
                     type="email"
                     value={editForm.email}
                     onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
                     placeholder={t('users.list.editModal.emailPlaceholder')}
-                    className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   />
                 </Field>
                 <Field label={t('users.list.editModal.phone')} hint={t('users.list.editModal.phoneHint')}>
-                  <input
+                  <Input
                     type="tel"
                     value={editForm.phone}
                     onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
                     placeholder={t('users.list.editModal.phonePlaceholder')}
-                    className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   />
                 </Field>
                 <Field
                   label={t('users.list.editModal.status')}
                   hint={<><strong>{t('users.list.editModal.statusActive')}</strong>{t('users.list.editModal.statusHintActiveDesc')}<strong>{t('users.list.editModal.statusLocked')}</strong>{t('users.list.editModal.statusHintLockedDesc')}<strong>{t('users.list.editModal.statusDisabled')}</strong>{t('users.list.editModal.statusHintDisabledDesc')}<strong>{t('users.list.editModal.statusPending')}</strong>{t('users.list.editModal.statusHintPendingDesc')}</>}
                 >
-                  <select
+                  <Select
                     value={editForm.status}
                     onChange={(e) => setEditForm((f) => ({ ...f, status: Number(e.target.value) }))}
-                    className="w-full rounded-lg border border-border bg-surface text-ink px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   >
                     <option value={1}>{t('users.list.editModal.statusActive')}</option>
                     <option value={2}>{t('users.list.editModal.statusLocked')}</option>
                     <option value={3}>{t('users.list.editModal.statusDisabled')}</option>
                     <option value={4}>{t('users.list.editModal.statusPending')}</option>
-                  </select>
+                  </Select>
                 </Field>
                 <div className="flex justify-end gap-3 pt-2">
                   <Button type="button" variant="secondary" onClick={() => setEditTarget(null)}>

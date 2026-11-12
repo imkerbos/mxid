@@ -42,7 +42,7 @@ import type {
   PaginatedData,
 } from '@mxid/shared'
 import PageHeader from '../../components/layout/PageHeader'
-import { Field, pageMotion, Button, ConfirmDialog, AvatarUpload, avatarTexts } from '../../components/ui'
+import { Field, pageMotion, Button, Checkbox, ConfirmDialog, Input, Select, AvatarUpload, avatarTexts } from '../../components/ui'
 import { toast, extractMessage } from '../../components/ui/toast'
 
 type Tab = 'basic' | 'detail' | 'orgs' | 'groups' | 'roles' | 'identities' | 'mfa' | 'sessions' | 'history'
@@ -296,26 +296,21 @@ function ResetPasswordButton({
             </h3>
             <div className="space-y-3">
               <Field label={t('users.detail.resetPwd.newPassword')} required error={pwdError}>
-                <input
+                <Input
                   type="password"
                   value={pwd}
                   onChange={(e) => {
                     setPwd(e.target.value)
                     setPwdError('')
                   }}
-                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   placeholder={t('users.detail.resetPwd.placeholder')}
                 />
               </Field>
-              <label className="flex items-center gap-2 text-sm text-ink">
-                <input
-                  type="checkbox"
-                  checked={mustChange}
-                  onChange={(e) => setMustChange(e.target.checked)}
-                  className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
-                />
-                {t('users.detail.resetPwd.forceChange')}
-              </label>
+              <Checkbox
+                checked={mustChange}
+                onChange={setMustChange}
+                label={t('users.detail.resetPwd.forceChange')}
+              />
               <div className="flex justify-end gap-3 pt-2">
                 <Button variant="secondary" onClick={() => { setOpen(false); setPwdError('') }}>
                   {t('users.detail.common.cancel')}
@@ -378,13 +373,13 @@ function BasicTab({ user, onSaved }: { user: User; onSaved: () => void }) {
   return (
     <form onSubmit={save} className="max-w-2xl space-y-4">
       <Field label={t('users.detail.basicForm.displayName')} hint={t('users.detail.basicForm.displayNameHint')}>
-        <input value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+        <Input value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} />
       </Field>
       <Field label={t('users.detail.basicForm.email')} hint={t('users.detail.basicForm.emailHint')}>
-        <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+        <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
       </Field>
       <Field label={t('users.detail.basicForm.phone')} hint={t('users.detail.basicForm.phoneHint')}>
-        <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+        <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
       </Field>
       <Field label={t('users.detail.basicForm.avatar')} hint={t('users.detail.basicForm.avatarHint')}>
         <div className="flex items-center gap-4">
@@ -403,11 +398,11 @@ function BasicTab({ user, onSaved }: { user: User; onSaved: () => void }) {
         </div>
       </Field>
       <Field label={t('users.detail.basicForm.status')} hint={<><strong>{t('users.detail.status.active')}</strong>{t('users.detail.basicForm.statusHintActiveDesc')}<strong>{t('users.detail.status.locked')}</strong>{t('users.detail.basicForm.statusHintLockedDesc')}<strong>{t('users.detail.status.disabled')}</strong>{t('users.detail.basicForm.statusHintDisabledDesc')}<strong>{t('users.detail.status.pending')}</strong>{t('users.detail.basicForm.statusHintPendingDesc')}</>}>
-        <select value={form.status} onChange={(e) => setForm({ ...form, status: Number(e.target.value) })} className="w-full rounded-lg border border-border bg-surface text-ink px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
+        <Select value={form.status} onChange={(e) => setForm({ ...form, status: Number(e.target.value) })}>
           {STATUS_VALUES.map((s) => (
             <option key={s.value} value={s.value}>{t(s.i18nKey)}</option>
           ))}
-        </select>
+        </Select>
       </Field>
       <div className="pt-2">
         <Button type="submit" loading={saving}>
@@ -488,23 +483,24 @@ function DetailTab({ userID }: { userID: string }) {
   return (
     <form onSubmit={save} className="max-w-2xl space-y-4">
       <Field label={t('users.detail.profile.gender')} hint={t('users.detail.profile.genderHint')}>
-        <select value={form.gender} onChange={(e) => setForm({ ...form, gender: Number(e.target.value) })} className="w-full rounded-lg border border-border bg-surface text-ink px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
+        <Select value={form.gender} onChange={(e) => setForm({ ...form, gender: Number(e.target.value) })}>
           {GENDER_VALUES.map((g) => (
             <option key={g.value} value={g.value}>{t(g.i18nKey)}</option>
           ))}
-        </select>
+        </Select>
       </Field>
       <Field label={t('users.detail.profile.birthday')} hint={t('users.detail.profile.birthdayHint')}>
-        <input type="date" value={form.birthday} onChange={(e) => setForm({ ...form, birthday: e.target.value })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+        {/* Single date, not a range — RangePicker does not apply here. */}
+        <Input type="date" value={form.birthday} onChange={(e) => setForm({ ...form, birthday: e.target.value })} />
       </Field>
       <Field label={t('users.detail.profile.department')} hint={t('users.detail.profile.departmentHint')}>
-        <input value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder={t('users.detail.profile.departmentPlaceholder')} />
+        <Input value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} placeholder={t('users.detail.profile.departmentPlaceholder')} />
       </Field>
       <Field label={t('users.detail.profile.jobTitle')} hint={t('users.detail.profile.jobTitleHint')}>
-        <input value={form.job_title} onChange={(e) => setForm({ ...form, job_title: e.target.value })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder={t('users.detail.profile.jobTitlePlaceholder')} />
+        <Input value={form.job_title} onChange={(e) => setForm({ ...form, job_title: e.target.value })} placeholder={t('users.detail.profile.jobTitlePlaceholder')} />
       </Field>
       <Field label={t('users.detail.profile.employeeNo')} hint={t('users.detail.profile.employeeNoHint')}>
-        <input value={form.employee_no} onChange={(e) => setForm({ ...form, employee_no: e.target.value })} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+        <Input value={form.employee_no} onChange={(e) => setForm({ ...form, employee_no: e.target.value })} />
       </Field>
       <Field label={t('users.detail.profile.address')} hint={t('users.detail.profile.addressHint')}>
         <textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} rows={2} className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />

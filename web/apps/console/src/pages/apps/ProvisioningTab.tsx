@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { appApi, useTranslation, type AppProvisioning } from '@mxid/shared'
-import { Field, Input, Button } from '../../components/ui'
+import { Field, Input, Button, Switch } from '../../components/ui'
 import { toast, extractMessage } from '../../components/ui/toast'
 
 // ProvisioningTab — per-app outbound provisioning config (L2 offboarding
@@ -70,15 +70,11 @@ export default function ProvisioningTab({ appId }: { appId: string }) {
         {t('apps.detail.provisioning.warning')}
       </p>
 
-      <label className="flex items-center gap-3">
-        <input
-          type="checkbox"
-          checked={cfg.enabled}
-          onChange={(e) => setCfg({ ...cfg, enabled: e.target.checked })}
-          className="h-4 w-4 rounded border-border text-primary focus:ring-primary/20"
-        />
+      {/* Switch, not Checkbox: this turns the whole connector on/off. */}
+      <div className="flex items-center gap-3">
+        <Switch checked={cfg.enabled} onChange={(checked) => setCfg({ ...cfg, enabled: checked })} />
         <span className="text-sm font-medium text-ink">{t('apps.detail.provisioning.enabled')}</span>
-      </label>
+      </div>
 
       <Field label={t('apps.detail.provisioning.baseUrl')} hint={t('apps.detail.provisioning.baseUrlHint')}>
         <Input
